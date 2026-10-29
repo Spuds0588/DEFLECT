@@ -269,7 +269,7 @@ Last updated: 2026-10-28 (v0.1.8 controller, assembly, shooting family, Pages al
       non-mod derivatives, and an explicit free-mod carve-out
 
 ### Verification
-- [x] `npm run build` clean: 285.62 kB JS (82.16 kB gzip), 34.83 kB CSS (8.05 kB gzip)
+- [x] `npm run build` clean: 285.62 kB JS (82.16 kB gzip), 34.67 kB CSS (8.03 kB gzip)
 - [x] `npm run bench`: gauntlet max 0.107 ms avg / 0.401 ms p99; 8P bot swarm 0.040 / 0.227
 - [x] Input harness: D-pad edge/repeat, stick edge/hysteresis and release all produce one expected edge
 - [x] Headless deflect angles: early 0.304 rad, mid 0.164, late 0.103, contact 0.008
@@ -277,7 +277,8 @@ Last updated: 2026-10-28 (v0.1.8 controller, assembly, shooting family, Pages al
 - [x] Browser: title grid display none, no loading bar element, boot overlay transparent, build v0.1.8
 - [x] Browser: staged gauntlet flow reaches the arena; arena assembly renders with no console errors
 - [ ] Real device controller pass (mapping still verified with a virtual standard-layout pad)
-- [ ] GitHub Pages deployment and play URL verified after this commit
+- [x] GitHub Pages deployment and play URL verified: `dist` served at
+      <https://spuds0588.github.io/DEFLECT/>, menu visible, gauntlet started, no console errors
 
 ---
 

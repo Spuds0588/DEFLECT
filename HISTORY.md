@@ -496,7 +496,7 @@ playable GitHub Pages alpha with a clear license.
 - Version 0.1.8; service-worker cache version bumped.
 
 **Verification:**
-- `npm run build` clean: **285.62 kB JS (82.16 kB gzip), 34.83 kB CSS (8.05 kB gzip)**.
+- `npm run build` clean: **285.62 kB JS (82.16 kB gzip), 34.67 kB CSS (8.03 kB gzip)**.
 - `npm run bench`: 8P bot swarm 0.040 ms avg / 0.227 ms p99; gauntlet max 0.107 ms avg / 0.401 ms p99
   with 31.3 live threats. All cases stay under the 4 ms budget.
 - Input harness: D-pad edge, release, second tap, 100 ms hold (no repeat), 380 ms hold (repeat), 120 ms
@@ -506,9 +506,11 @@ playable GitHub Pages alpha with a clear license.
 - Headless 60 s gauntlet: 1 worm, 6 viruses, 9 sentries, 14 error blocks, no non-finite positions.
 - Browser: title grid display `none`, no boot-bar element, transparent boot overlay, version v0.1.8;
   staged gauntlet flow reached the arena and rendered with no console errors.
+- Pages run 40814155155 completed build + deploy; `gh api .../pages` reports `status: built`,
+  `build_type: workflow`. The live URL served the hashed bundle, showed the v0.1.8 console menu, and
+  started gauntlet with only the expected init/state console logs.
 
 **Limitations:** Controller verification still uses a standard-layout virtual pad, not physical hardware.
-The Pages deployment is triggered by the push that follows this entry and must be checked on the live URL.
 No new network or two-tab pass was run in this session.
 
 **Next:** designer pass on the shooter mix and wave pacing, physical controller check, verify the Pages
