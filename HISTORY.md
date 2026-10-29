@@ -617,3 +617,39 @@ remains a virtual standard-layout pad rather than physical hardware. No new two-
 
 **Next:** Build the destructible firewall switch, then do a physical-pad pass over the training flow and
 held guard.
+
+---
+
+## 2026-10-28 — Session 12: auto-advancing training flow (v0.1.10)
+
+**Goal:** Remove the extra NEXT/RUN stops from the solo setup. Selecting a level, bot count, and difficulty
+should carry the player straight into training, so confirming repeatedly with `A` is enough.
+
+**Changed:**
+- Choosing an arena advances directly to bot count. Choosing a bot count advances directly to difficulty.
+  Choosing a difficulty starts the run.
+- Choosing a gauntlet arena starts the run immediately.
+- Removed the arena `NEXT // OPPOSITION`, bot-count `NEXT DIFFICULTY`, and difficulty `RUN START BOT`
+  buttons, along with their now-unused CSS and element references.
+- Replaced per-stage helper notes with `SELECT A COUNT TO CONTINUE.` and `SELECT A TIER TO START.`.
+- Title-screen hover focus now follows `pointermove` rather than `pointerover`, so a stationary mouse
+  cannot steal focus when a new menu stage appears under it. This keeps the controller/keyboard cursor on
+  the saved or selected choice.
+- Version 0.1.10; service-worker cache bumped.
+
+**Verification:**
+- `npm run build` clean: **304.08 kB JS (87.29 kB gzip)**, **34.70 kB CSS (8.03 kB gzip)**.
+- Local browser: five Enter presses from the hub reached a live training run with no intermediate NEXT or
+  RUN step. Selecting a gauntlet arena started gauntlet directly.
+- Local browser: arena stage focused `CROSSROADS` (the selected card) instead of the card under the
+  stationary pointer.
+- Production browser: GitHub Pages v0.1.10 walked the same five-confirm path to a live 3-bot training run
+  on `CROSSROADS`; console showed only `[DEFLECT-INIT] Build 0.1.10 ready` and the training state line.
+- Commit `9a10843` pushed. Pages run `40821032854` completed build and deploy successfully. Production
+  serves `assets/index-4mQsryyT.js`; `sw.js` uses `deflect-0.1.10`.
+
+**Limitations:** No simulation code changed, so the bench was not rerun. The physical-controller and
+two-tab network passes are still pending.
+
+**Next:** Have the designer run the shield/flood test routes, then tune guard duration, cooldown, or
+gauntlet pressure from the notes.
