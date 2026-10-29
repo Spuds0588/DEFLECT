@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.freebuff/
+.env
+.env.*
+!.env.example
+*.local
+*.log
+*.pid
+.DS_Store

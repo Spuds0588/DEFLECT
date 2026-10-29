@@ -1,0 +1,22 @@
+{
+  "name": "deflect",
+  "private": true,
+  "version": "0.1.5",
+  "type": "module",
+  "description": "DEFLECT — top-down geometric arena duelist with one-stick facing",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "bench": "tsx scripts/bench.ts",
+    "icons": "node scripts/gen-icons.mjs"
+  },
+  "dependencies": {
+    "peerjs": "^1.5.4"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}

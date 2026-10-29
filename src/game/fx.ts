@@ -1,0 +1,195 @@
+import {
+  ParticleSystem,
+  P_COLOR_DANGER,
+  P_COLOR_FIREWALL,
+  P_COLOR_ICE,
+  P_COLOR_VIRUS,
+  P_COLOR_WHITE,
+  P_COLOR_WORM,
+} from './particles';
+import { MINE, PLAYER } from './config';
+import { EV, type GameEvent } from './types';
+
+/**
+ * Local visual feedback: particles, shake, flash. Driven by replicated game events so
+ * every client reacts to the same moments.
+ */
+export class Fx {
+  readonly particles = new ParticleSystem();
+  shake = 0;
+  shakeX = 0;
+  shakeY = 0;
+  /** Screen tilt in radians on a local hit; scaled by the settings slider. */
+  rotationShake = 0;
+  rotationScale = 1;
+  /** Global multiplier for the white impact flash, from the settings screen. */
+  flashScale = 1;
+  flash = 0;
+  flashColor = '#ffffff';
+
+  reset(): void {
+    this.shake = 0;
+    this.flash = 0;
+    this.shakeX = 0;
+    this.shakeY = 0;
+    this.rotationShake = 0;
+  }
+
+  update(dt: number): void {
+    this.particles.update(dt);
+    this.shake *= Math.exp(-10 * dt);
+    if (this.shake < 0.05) this.shake = 0;
+    this.shakeX = (Math.random() * 2 - 1) * this.shake;
+    this.shakeY = (Math.random() * 2 - 1) * this.shake;
+    this.rotationShake *= Math.exp(-13 * dt);
+    if (Math.abs(this.rotationShake) < 0.0004) this.rotationShake = 0;
+    if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 2.6);
+  }
+
+  /** A short tilt with a random side; called only when the local avatar loses health. */
+  triggerHitRotation(): void {
+    if (this.rotationScale <= 0) return;
+    const amp = 0.022 * this.rotationScale;
+    this.rotationShake = (Math.random() < 0.5 ? -1 : 1) * amp;
+  }
+
+  handle(ev: GameEvent): void {
+    const color = ev.slot >= 0 ? ev.slot : P_COLOR_ICE;
+    switch (ev.kind) {
+      case EV.SHOOT: {
+        this.particles.cone(ev.x, ev.y, ev.power + Math.PI, 4, color, 300, 0.85);
+        break;
+      }
+      case EV.PLANT_MINE: {
+        this.particles.cone(ev.x, ev.y, ev.power + Math.PI, 7, color, 220, 1.1);
+        this.particles.ring(ev.x, ev.y, color, 5, 40, 0.18);
+        break;
+      }
+      case EV.DEFLECT: {
+        this.particles.burst(ev.x, ev.y, 16, color, 140, 620);
+        this.particles.ring(ev.x, ev.y, color, 6, 120, 0.28);
+        this.shake = Math.max(this.shake, 4);
+        this.flash = Math.max(this.flash, 0.16);
+        this.flashColor = '#ffffff';
+        break;
+      }
+      case EV.SHIELD_WAVE: {
+        this.particles.cone(ev.x, ev.y, ev.power, 10, color, 260, 0.6);
+        this.particles.ring(ev.x, ev.y, color, 8, PLAYER.waveRange * 0.9, 0.3);
+        this.shake = Math.max(this.shake, 5);
+        this.flash = Math.max(this.flash, 0.12);
+        this.flashColor = '#ffffff';
+        break;
+      }
+      case EV.BOUNCE: {
+        if (ev.power > 0) this.particles.burst(ev.x, ev.y, 3, color, 60, 220);
+        break;
+      }
+      case EV.EXPLODE: {
+        this.particles.ring(ev.x, ev.y, P_COLOR_DANGER, 10, ev.power * 3.2, 0.36);
+        this.particles.ring(ev.x, ev.y, color, 4, ev.power * 1.8, 0.24);
+        this.particles.shards(ev.x, ev.y, 20, color, 120, 720);
+        this.particles.burst(ev.x, ev.y, 14, P_COLOR_WHITE, 180, 760);
+        this.shake = Math.max(this.shake, 9);
+        this.flash = Math.max(this.flash, 0.3);
+        this.flashColor = '#ffdfc4';
+        break;
+      }
+      case EV.HIT: {
+        this.particles.impact(ev.x, ev.y, ev.dirX, ev.dirY, P_COLOR_DANGER, 20);
+        this.particles.burst(ev.x, ev.y, 6, P_COLOR_WHITE, 90, 320);
+        this.particles.ring(ev.x, ev.y, color, 8, 72, 0.2);
+        this.shake = Math.max(this.shake, 6);
+        this.flash = Math.max(this.flash, 0.1);
+        this.flashColor = '#ffffff';
+        break;
+      }
+      case EV.WORM_HIT: {
+        this.particles.impact(ev.x, ev.y, ev.dirX, ev.dirY, P_COLOR_WORM, 12);
+        this.shake = Math.max(this.shake, 2.5);
+        break;
+      }
+      case EV.VIRUS_HIT: {
+        this.particles.impact(ev.x, ev.y, ev.dirX, ev.dirY, P_COLOR_VIRUS, 12);
+        break;
+      }
+      case EV.EAT: {
+        this.particles.ring(ev.x, ev.y, P_COLOR_WORM, 5, 46, 0.26);
+        this.particles.shards(ev.x, ev.y, 7, P_COLOR_WORM, 60, 280);
+        break;
+      }
+      case EV.VIRUS_SPLIT: {
+        this.particles.ring(ev.x, ev.y, P_COLOR_VIRUS, 6, 66, 0.34);
+        this.particles.impact(ev.x, ev.y, 1, 0, P_COLOR_VIRUS, 5);
+        break;
+      }
+      case EV.INFECT: {
+        this.particles.ring(ev.x, ev.y, P_COLOR_VIRUS, 18, 42 + ev.power * 30, 0.36);
+        this.particles.shards(ev.x, ev.y, 8, P_COLOR_VIRUS, 80, 300);
+        break;
+      }
+      case EV.FIREWALL: {
+        this.particles.ring(ev.x, ev.y, P_COLOR_FIREWALL, 12, 52, 0.3);
+        break;
+      }
+      case EV.THRALL: {
+        this.particles.ring(ev.x, ev.y, P_COLOR_VIRUS, 10, 190, 0.55);
+        this.particles.shards(ev.x, ev.y, 16, P_COLOR_VIRUS, 80, 420);
+        this.shake = Math.max(this.shake, 7);
+        this.flash = Math.max(this.flash, 0.2);
+        this.flashColor = '#ffb6ee';
+        break;
+      }
+      case EV.DASH: {
+        for (let i = 0; i < 3; i++) {
+          this.particles.spawn(3, ev.x, ev.y, 0, 0, 0.28 + i * 0.04, 16, color);
+        }
+        break;
+      }
+      case EV.ELIMINATED: {
+        this.particles.ring(ev.x, ev.y, color, 8, 220, 0.5);
+        this.particles.shards(ev.x, ev.y, 22, color, 80, 540);
+        this.particles.burst(ev.x, ev.y, 12, P_COLOR_WHITE, 100, 460);
+        this.shake = Math.max(this.shake, 12);
+        this.flash = Math.max(this.flash, 0.28);
+        this.flashColor = '#ffffff';
+        break;
+      }
+      case EV.RESPAWN: {
+        this.particles.ring(ev.x, ev.y, color, 6, 170, 0.45);
+        this.particles.burst(ev.x, ev.y, 8, color, 60, 260);
+        break;
+      }
+      case EV.DRONE_SHOOT: {
+        this.particles.cone(ev.x, ev.y, ev.power, 4, P_COLOR_ICE, 200, 0.6);
+        break;
+      }
+      case EV.ROUND_START: {
+        this.particles.ring(ev.x, ev.y, P_COLOR_ICE, 40, MINE.blastRadius * 2.2, 0.7);
+        break;
+      }
+      case EV.LASER: {
+        this.particles.cone(ev.x, ev.y, ev.power, 12, P_COLOR_WHITE, 520, 0.35);
+        this.particles.ring(ev.x, ev.y, color, 10, 120, 0.55);
+        this.shake = Math.max(this.shake, 7);
+        break;
+      }
+      case EV.ERROR_SPAWN: {
+        this.particles.ring(ev.x, ev.y, P_COLOR_FIREWALL, 6, 56, 0.45);
+        this.particles.shards(ev.x, ev.y, 5, P_COLOR_FIREWALL, 40, 150);
+        break;
+      }
+      case EV.ERROR_HIT: {
+        this.particles.impact(ev.x, ev.y, ev.dirX, ev.dirY, P_COLOR_FIREWALL, 8);
+        break;
+      }
+      case EV.ERROR_BREAK: {
+        this.particles.ring(ev.x, ev.y, P_COLOR_FIREWALL, 8, 74, 0.35);
+        this.particles.shards(ev.x, ev.y, 10, P_COLOR_FIREWALL, 60, 280);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+}

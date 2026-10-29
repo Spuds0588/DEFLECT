@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#05070c" />
+    <meta name="description" content="DEFLECT — a one-stick geometric arena duelist. Move to aim. Deflect the volley. Survive." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon-192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>DEFLECT</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="arena" class="arena" aria-label="DEFLECT arena"></canvas>
+
+      <section id="screen-title" class="screen screen-title active">
+        <div class="screen-inner title-inner console-body">
+          <header class="console-head">
+            <h1 class="console-title">
+              <span class="sr-only">DEFLECT</span>
+              <pre class="ascii-logo" aria-hidden="true">██████╗ ███████╗███████╗██╗     ███████╗ ██████╗████████╗
+██╔══██╗██╔════╝██╔════╝██║     ██╔════╝██╔════╝╚══██╔══╝
+██║  ██║█████╗  █████╗  ██║     █████╗  ██║        ██║   
+██║  ██║██╔══╝  ██╔══╝  ██║     ██╔══╝  ██║        ██║   
+██████╔╝███████╗██║     ███████╗███████╗╚██████╗   ██║   
+╚═════╝ ╚══════╝╚═╝     ╚══════╝╚══════╝ ╚═════╝   ╚═╝   </pre><span class="caret" aria-hidden="true">_</span>
+            </h1>
+            <p class="console-version">v0.1.5</p>
+          </header>
+
+          <div class="console-shell">
+            <div class="console-status">
+              <span>DEFLECT.OS</span>
+              <span id="device-status" class="device-status">KEYBOARD // MOUSE</span>
+            </div>
+
+            <div id="menu-hub" class="menu-stage console-menu">
+              <button id="btn-mode-solo" class="console-option" data-nav>
+                <span class="option-key">01</span><span class="option-label">SINGLE PLAYER</span><span class="option-value">LOCAL</span>
+              </button>
+              <button id="btn-mode-multi" class="console-option" data-nav>
+                <span class="option-key">02</span><span class="option-label">MULTIPLAYER</span><span class="option-value">ONLINE</span>
+              </button>
+              <button id="btn-settings" class="console-option" data-nav>
+                <span class="option-key">03</span><span class="option-label">SETTINGS</span>
+              </button>
+              <button id="btn-mute" class="console-option" data-nav aria-pressed="false">
+                <span class="option-key">04</span><span id="mute-label" class="option-label">SOUND: ON</span>
+              </button>
+            </div>
+
+            <div id="menu-solo" class="menu-stage console-menu" hidden>
+              <button id="btn-solo-back" class="console-option console-back" data-nav>
+                <span class="option-key">ESC</span><span class="option-label">BACK</span>
+              </button>
+              <p class="console-stage-label">SINGLE PLAYER // SELECT PROGRAM</p>
+
+              <button id="btn-training" class="console-option" data-nav>
+                <span class="option-key">01</span><span class="option-label">TRAINING</span><span class="option-value">DRONE</span>
+              </button>
+              <button id="btn-gauntlet" class="console-option" data-nav>
+                <span class="option-key">02</span><span class="option-label">GAUNTLET</span><span class="option-value">ENDLESS</span>
+              </button>
+
+              <div class="console-group">
+                <p class="console-group-head">ARENA <b id="arena-name">CROSSROADS</b></p>
+                <div id="arena-picker" class="console-choices" role="group" aria-label="Arena"></div>
+                <p id="arena-tagline" class="console-note">Four gates. One center.</p>
+              </div>
+
+              <div class="console-group">
+                <p class="console-group-head">BOT SIM <b id="bot-summary">TRIAD // VETERAN</b></p>
+                <div id="bot-count" class="console-choices" role="group" aria-label="Number of bots"></div>
+                <div id="bot-tier" class="console-choices" role="group" aria-label="Bot difficulty"></div>
+                <p id="bot-roster" class="console-note">STYLES // VEX DUELIST / GLITCH TRICKSTER / RIFT SIEGE</p>
+                <button id="btn-bots" class="console-option console-run" data-nav>
+                  <span class="option-key">RUN</span><span id="bot-start-label" class="option-label">START BOT TRIAD</span>
+                </button>
+              </div>
+            </div>
+
+            <div id="menu-multi" class="menu-stage console-menu" hidden>
+              <button id="btn-multi-back" class="console-option console-back" data-nav>
+                <span class="option-key">ESC</span><span class="option-label">BACK</span>
+              </button>
+              <p class="console-stage-label">MULTIPLAYER // NETWORK</p>
+
+              <button id="btn-create" class="console-option" data-nav>
+                <span class="option-key">01</span><span class="option-label">CREATE ROOM</span><span class="option-value">HOST</span>
+              </button>
+              <div class="console-form">
+                <label class="option-key" for="room-code">02</label>
+                <input
+                  id="room-code"
+                  class="code-input console-code"
+                  maxlength="4"
+                  inputmode="text"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  placeholder="ROOM CODE"
+                  aria-label="Room code"
+                />
+                <button id="btn-join" class="console-option console-join" data-nav>
+                  <span class="option-label">CONNECT</span>
+                </button>
+              </div>
+
+              <p id="title-status" class="console-status-line" role="status"></p>
+
+              <button class="console-option" type="button" disabled>
+                <span class="option-key">03</span><span class="option-label">SECTORS // PVPvE</span><span class="option-value">IN DEVELOPMENT</span>
+              </button>
+              <p class="console-note console-sectors">Gated bridges, escalating sectors, mini-bosses, destructible data, and transmitters you can deflect into enemies.</p>
+            </div>
+
+            <p class="console-hint">ARROWS / STICK SELECT &middot; ENTER / A CONFIRM &middot; ESC / B BACK</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-settings" class="screen screen-settings">
+        <div class="screen-inner settings-inner">
+          <header class="settings-header">
+            <button id="btn-settings-back" class="btn btn-ghost" data-nav>BACK</button>
+            <p class="eyebrow">DEFLECT // SYSTEM SETTINGS</p>
+            <span class="device-status" id="settings-device">KEYBOARD // MOUSE</span>
+          </header>
+
+          <nav id="settings-tabs" class="settings-tabs" role="tablist" aria-label="Settings sections">
+            <button class="settings-tab active" data-settings-tab="controls" data-nav role="tab" aria-selected="true">CONTROLS</button>
+            <button class="settings-tab" data-settings-tab="feedback" data-nav role="tab" aria-selected="false">FEEDBACK</button>
+            <button class="settings-tab" data-settings-tab="audio" data-nav role="tab" aria-selected="false">AUDIO</button>
+            <button class="settings-tab" data-settings-tab="system" data-nav role="tab" aria-selected="false">SYSTEM</button>
+          </nav>
+
+          <div class="settings-body">
+            <section class="settings-page active" data-settings-page="controls">
+              <div class="settings-grid">
+                <div class="panel settings-panel">
+                  <div class="controls-head">
+                    <h2>CONTROLS</h2>
+                    <span>GAMEPAD PREFERRED</span>
+                  </div>
+                  <div class="controls-grid">
+                    <div class="ctrl"><span>MOVE + FACE</span><b>L-STICK / WASD</b></div>
+                    <div class="ctrl"><span>WEAK ATTACK</span><b>X / RMB / K</b></div>
+                    <div class="ctrl"><span>STRONG / BUG</span><b>Y / E / L</b></div>
+                    <div class="ctrl"><span>DEFLECT</span><b>B / LMB / J</b></div>
+                    <div class="ctrl"><span>LOCK TARGET</span><b>LT / Q</b></div>
+                    <div class="ctrl"><span>DASH</span><b>A / SHIFT / SPACE</b></div>
+                    <div class="ctrl"><span>MENU</span><b>START / ESC</b></div>
+                  </div>
+                </div>
+
+                <div class="panel settings-panel">
+                  <div class="controls-head">
+                    <h2>THE KIT</h2>
+                    <span>ONE STICK // ALL ACTIONS</span>
+                  </div>
+                  <ul class="kit-list">
+                    <li><b>DEFLECT</b><span>Tap in rhythm: left, right, forward wave. Each arc reflects.</span></li>
+                    <li><b>HOLD DEFLECT</b><span>Release a shield wave that pushes and reflects in a line.</span></li>
+                    <li><b>DASH</b><span>Tap phases through threats and cover. Hold for a charged triangle dash that damages.</span></li>
+                    <li><b>STRONG / BUG</b><span>Your bug is random each match: mine, trap, wall shield, or ghost. Hold to charge the heavy beam.</span></li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-page" data-settings-page="feedback">
+              <div class="settings-grid settings-grid-wide">
+                <div class="panel settings-panel">
+                  <div class="controls-head">
+                    <h2>FEEDBACK</h2>
+                    <span>APPLIES IN MATCH</span>
+                  </div>
+                  <label class="setting-row setting-row-stack" for="hit-rotation">
+                    <span>HIT ROTATION</span>
+                    <input id="hit-rotation" type="range" min="0" max="100" step="5" value="100" aria-label="Hit rotation shake" />
+                    <b id="hit-rotation-value">100%</b>
+                  </label>
+                  <label class="setting-row setting-row-stack" for="flash-strength">
+                    <span>IMPACT FLASH</span>
+                    <input id="flash-strength" type="range" min="0" max="100" step="5" value="100" aria-label="Impact flash strength" />
+                    <b id="flash-strength-value">100%</b>
+                  </label>
+                  <div class="setting-row">
+                    <span>CRT SCANLINES</span>
+                    <button id="btn-scanlines" class="btn btn-ghost" data-nav aria-pressed="true">SCANLINES: ON</button>
+                  </div>
+                  <p class="controls-note">Hit rotation tilts the whole view when your avatar loses a segment. Set it to 0 if the tilt reads as motion sickness. Impact flash scales the white splash on hits.</p>
+                </div>
+                <div class="panel settings-panel preview-panel">
+                  <div class="controls-head">
+                    <h2>PREVIEW</h2>
+                    <span>TEST WITHOUT DYING</span>
+                  </div>
+                  <p class="controls-note">The arena tilt and flash fire here so you can tune them before a match.</p>
+                  <button id="btn-test-feedback" class="btn" data-nav>TEST HIT FEEDBACK</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-page" data-settings-page="audio">
+              <div class="settings-grid settings-grid-wide">
+                <div class="panel settings-panel">
+                  <div class="controls-head">
+                    <h2>AUDIO</h2>
+                    <span>SYNTH ONLY // NO FILES</span>
+                  </div>
+                  <label class="setting-row setting-row-stack" for="volume">
+                    <span>MASTER VOLUME</span>
+                    <input id="volume" type="range" min="0" max="100" step="5" value="80" aria-label="Master volume" />
+                    <b id="volume-value">80%</b>
+                  </label>
+                  <div class="setting-row">
+                    <span>MASTER SOUND</span>
+                    <button id="btn-settings-mute" class="btn btn-ghost" data-nav aria-pressed="false">SOUND: ON</button>
+                  </div>
+                  <div class="setting-row">
+                    <span>MUSIC LOOP</span>
+                    <button id="btn-music" class="btn btn-ghost" data-nav aria-pressed="true">MUSIC: ON</button>
+                  </div>
+                  <p class="controls-note">All audio is synthesized in the browser. Volume and music preference save locally. <b>M</b> mutes from anywhere.</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-page" data-settings-page="system">
+              <div class="settings-grid settings-grid-wide">
+                <div class="panel settings-panel">
+                  <div class="controls-head">
+                    <h2>SYSTEM</h2>
+                    <span>DIAGNOSTICS</span>
+                  </div>
+                  <label class="setting-row" for="callsign">
+                    <span>CALLSIGN</span>
+                    <input
+                      id="callsign"
+                      class="settings-callsign"
+                      name="callsign"
+                      maxlength="10"
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder="OPERATOR"
+                      aria-label="Callsign"
+                    />
+                  </label>
+                  <div class="setting-row">
+                    <span>TELEMETRY</span>
+                    <b>F3 IN MATCH</b>
+                  </div>
+                  <div class="setting-row">
+                    <span>INPUT DEVICE</span>
+                    <b id="settings-input-device">KEYBOARD // MOUSE</b>
+                  </div>
+                  <div class="setting-row">
+                    <span>ROOM CAP</span>
+                    <b>8 OPERATORS</b>
+                  </div>
+                  <div class="setting-row">
+                    <span>BUILD</span>
+                    <b>0.1.5 // CONSOLE</b>
+                  </div>
+                  <div class="setting-row">
+                    <span>RESET OPTIONS</span>
+                    <button id="btn-settings-reset" class="btn btn-ghost" data-nav>RESET DEFAULTS</button>
+                  </div>
+                  <p class="controls-note">Player status is drawn on the avatar: rotating health segments, core damage, energy arc, and floating bug/dash readiness icons. No name plates or bars.</p>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-lobby" class="screen screen-lobby">
+        <div class="screen-inner lobby-inner">
+          <header class="lobby-header">
+            <button id="btn-lobby-back" class="btn btn-ghost" data-nav>LEAVE</button>
+            <p class="eyebrow">DEFLECT // ROOM</p>
+            <span id="lobby-role" class="lobby-role">HOST</span>
+          </header>
+
+          <div class="lobby-grid">
+            <div class="panel room-panel">
+              <p class="eyebrow">ROOM CODE</p>
+              <div id="lobby-code" class="room-code">----</div>
+              <button id="btn-arena-cycle" class="btn btn-ghost" data-nav>ARENA: CROSSROADS</button>
+              <button id="btn-copy" class="btn btn-ghost" data-nav>COPY INVITE LINK</button>
+              <p id="lobby-url" class="invite-url"></p>
+              <div class="room-rule"></div>
+              <p class="hint">Send the link. Guests open it, join, and ready up. Host can start at two operators.</p>
+              <div class="room-stats">
+                <span>CAP <b>8</b></span>
+                <span>TICK <b>60</b></span>
+                <span>NET <b>30</b></span>
+              </div>
+            </div>
+
+            <div class="panel players-panel">
+              <div class="panel-head">
+                <h2>OPERATORS</h2>
+                <span id="lobby-count" class="count">1 / 8</span>
+              </div>
+              <ul id="lobby-players" class="player-list"></ul>
+              <div class="lobby-actions">
+                <button id="btn-ready" class="btn" data-nav>READY</button>
+                <button id="btn-start" class="btn btn-primary" data-nav>START MATCH</button>
+                <p id="lobby-status" class="status" role="status"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="game-ui" class="game-ui" hidden>
+        <button id="btn-leave-match" class="icon-btn" data-nav>LEAVE MATCH</button>
+        <div id="net-badge" class="net-badge" hidden></div>
+        <div id="countdown" class="countdown" hidden>
+          <span id="countdown-label">GET READY</span>
+          <strong id="countdown-value">2</strong>
+        </div>
+      </div>
+
+      <div id="overlay" class="overlay" hidden>
+        <div class="overlay-card" role="dialog" aria-modal="true">
+          <p id="overlay-kicker" class="eyebrow"></p>
+          <h2 id="overlay-title"></h2>
+          <p id="overlay-sub" class="overlay-sub"></p>
+          <div id="overlay-actions" class="overlay-actions"></div>
+        </div>
+      </div>
+
+      <div id="boot" class="boot-screen" hidden aria-live="polite">
+        <div class="boot-inner">
+          <p class="boot-kicker">DEFLECT.OS // COLD START</p>
+          <pre id="boot-log" class="boot-log">MOUNTING ARENA VOLUME ...
+VERIFYING GEOMETRY .................... OK
+LINKING OPERATOR RIGS ................. OK</pre>
+          <div class="boot-bar"><i id="boot-bar-fill"></i></div>
+          <p id="boot-status" class="boot-status">LOADING SECTOR</p>
+        </div>
+      </div>
+
+      <div id="perf" class="perf" hidden></div>
+      <div id="toasts" class="toasts" aria-live="polite"></div>
+      <div class="scanlines" aria-hidden="true"></div>
+      <div class="vignette" aria-hidden="true"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
