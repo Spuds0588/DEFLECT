@@ -606,6 +606,11 @@ from practice, keep a deflect tap distinct from a held guard, and record final v
   `MAINFRAME`; training started with 3 `DIGITAL` bots, reached 40 kills in 6.8 s with no rounds and no
   console errors; gauntlet launched clean; minimap toggle persisted (`deflect.minimap`).
 - `git diff --check` clean.
+- Commit `b106224` pushed to `main`. Pages run `40819895257` completed both build and deploy successfully.
+- Production verify: <https://spuds0588.github.io/DEFLECT/> serves `v0.1.9` with
+  `assets/index-DAT_q9fJ.js`; `sw.js` uses `deflect-0.1.9`; a fresh browser reached the title, walked the
+  staged training flow to 3 `DIGITAL` bots on `CROSSROADS`, stayed in training with no round overlay after
+  6 s, and logged only the init/state messages.
 
 **Limitations:** Firewall switches are still not built, pickups remain local-only, and the controller pass
 remains a virtual standard-layout pad rather than physical hardware. No new two-tab network pass was run.

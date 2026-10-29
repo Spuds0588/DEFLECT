@@ -328,6 +328,8 @@ Last updated: 2026-10-28 (v0.1.9 guard, pickups, sentry pacing, training flow, m
 - [x] Headless gauntlet: no automatic firewalls, sentry pack starts at 1 and caps at 8, 60 s stable
 - [x] Browser: four-way arena grid nav changed arena on each arrow, training count → tier → run,
       endless training started, gauntlet ran with no console errors, minimap toggle persisted
+- [x] Commit `b106224` pushed; Pages run `40819895257` built and deployed; production serves v0.1.9 and
+      the staged training flow starts cleanly
 - [ ] Real device controller pass still pending
 - [ ] Firewall switch and first-time pickups in competitive rooms are not built
 
