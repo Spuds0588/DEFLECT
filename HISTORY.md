@@ -395,3 +395,30 @@ menu. No physical controller test. The disabled Sectors entry is informational, 
 
 **Next:** designer pass on menu spacing and cursor motion on a controller, then consider the same
 text-menu language for lobby actions if it still feels inconsistent beside the title.
+
+---
+
+## 2026-10-28 — Session 8: remove input-mode readouts
+
+**Goal:** Stop announcing the input device. The game should simply follow whichever device was used last.
+
+**Changed:**
+- Removed `KEYBOARD // MOUSE`, `GAMEPAD CONNECTED`, `GAMEPAD PREFERRED` and the Settings input-device
+  row. The title status bar was removed with them; the version remains under the logo.
+- `Input` now owns the active device: a keyboard/mouse event switches to keyboard, any gamepad stick,
+  trigger or button switches to gamepad, and only that device builds the movement/action frame. Both
+  accumulators are still cleared every sample so stale presses cannot leak across a switch.
+- Missing/disconnected pads fall back to keyboard.
+
+**Verification:**
+- `npm run build` clean: 266.23 kB JS (77.47 kB gzip), 34.18 kB CSS (7.98 kB gzip).
+- Browser: no input-device label remains anywhere in the UI; title header is logo + `v0.1.5` only.
+- Browser: training started after the change; holding `D` moved the player 68 → 1212 on x.
+- Browser: injected standard-layout pad at x=1 moved the player 424 → 498 on x; centering the stick and
+  pressing ArrowLeft moved the same player back to 449, confirming the gamepad → keyboard handoff.
+- No console errors.
+
+**Limitations:** No physical controller was available; the handoff was exercised with an injected pad and
+real browser keyboard events, not hardware.
+
+**Next:** physical controller pass, then the two-tab network verification.

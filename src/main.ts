@@ -19,8 +19,6 @@ type OverlayKind = 'none' | 'round' | 'match' | 'leave';
 const canvas = el<HTMLCanvasElement>('arena');
 const titleScreen = el('screen-title');
 const settingsScreen = el('screen-settings');
-const settingsDevice = el('settings-device');
-const settingsInputDevice = el('settings-input-device');
 const settingsMuteBtn = el<HTMLButtonElement>('btn-settings-mute');
 const lobbyScreen = el('screen-lobby');
 const gameUi = el('game-ui');
@@ -37,7 +35,6 @@ const netBadge = el('net-badge');
 const muteBtn = el<HTMLButtonElement>('btn-mute');
 const muteLabel = el('mute-label');
 const settingsBtn = el<HTMLButtonElement>('btn-settings');
-const deviceStatus = el('device-status');
 const callsignInput = el<HTMLInputElement>('callsign');
 const roomCodeInput = el<HTMLInputElement>('room-code');
 const titleStatus = el('title-status');
@@ -133,7 +130,6 @@ let lastMatchWinner = -2;
 let goUntil = 0;
 let perfTimer = 0;
 let lastNetBadge = '';
-let lastDeviceText = '';
 let lastCountdownText = '';
 let lastBounceSound = 0;
 let lastThreatSound = 0;
@@ -600,7 +596,6 @@ function loop(now: number): void {
     }
   }
 
-  updateDeviceLabel();
   updatePerf(dt);
   if (perfEl.hidden) {
     /* nothing */
@@ -1564,18 +1559,6 @@ function toggleMute(): void {
   if (!muted && audio.musicWanted && screen === 'game') audio.startMusic();
   updateMuteLabel();
   toast(muted ? 'AUDIO MUTED' : 'AUDIO ONLINE');
-}
-
-function updateDeviceLabel(): void {
-  const text = input.hasGamepad() ? 'GAMEPAD CONNECTED' : 'KEYBOARD // MOUSE';
-  if (text !== lastDeviceText) {
-    lastDeviceText = text;
-    deviceStatus.textContent = text;
-  }
-  const padTitle = input.hasGamepad() ? input.gamepadName : '';
-  if (deviceStatus.title !== padTitle) deviceStatus.title = padTitle;
-  if (settingsDevice.textContent !== text) settingsDevice.textContent = text;
-  if (settingsInputDevice.textContent !== text) settingsInputDevice.textContent = text;
 }
 
 function updateNetBadge(state: RenderState): void {

@@ -204,12 +204,18 @@ Last updated: 2026-10-28 (v0.1.5 console menu + callsign settings)
 - [x] Arena picker and bot count/tier are text choices with a `*` selected marker
 - [x] `SECTORS // PVPvE` appears only inside the multiplayer stage, as an in-development entry
 - [x] Callsign moved out of the title menu into `SETTINGS > SYSTEM`
+- [x] Input-mode labels removed from the title, settings and system diagnostics
+- [x] `Input` uses the most recently touched device for movement and actions
 
 ### Verification
-- [x] `npm run build` clean: 266.56 kB JS (77.62 kB gzip), 34.62 kB CSS (8.06 kB gzip)
+- [x] `npm run build` clean: 266.23 kB JS (77.47 kB gzip), 34.18 kB CSS (7.98 kB gzip)
 - [x] Browser: hub shows four options with one `>` cursor; focus moves with arrow keys and Enter
 - [x] Browser: no Sectors entry in the hub; it appears only in the multiplayer stage
 - [x] Browser: callsign saved from Settings SYSTEM, persisted through reload, and Enter no longer starts a match
+- [x] Browser: no KEYBOARD/GAMEPAD/INPUT DEVICE text remains in the UI
+- [x] Browser: injected pad moved the player right, then switching the pad to neutral and pressing
+      ArrowLeft moved the same player left (gamepad → keyboard handoff)
+- [x] Browser: keyboard movement after the input arbitration change moved the player 68 → 1212 on x
 - [x] Browser: sound label updates in the menu; bot match starts from the new solo menu
 
 ---

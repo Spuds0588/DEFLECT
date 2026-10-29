@@ -32,7 +32,8 @@ The build is a static PWA in `dist/`; serve it over HTTPS to install it and to u
 
 ## Controls
 
-Gamepad is the preferred input. Keyboard/mouse is fully supported.
+Gamepad and keyboard/mouse are both supported. The most recently used device takes over; there is no
+on-screen input-mode badge.
 
 | Action | Gamepad | Keyboard/mouse |
 | --- | --- | --- |

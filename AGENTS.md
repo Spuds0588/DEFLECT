@@ -171,6 +171,9 @@ The title is a single console menu, not a dashboard: plain text options, one `>`
 line, and no footer links. `SETTINGS` is a top-level option; callsign editing lives in `SETTINGS >
 SYSTEM`. `SECTORS // PVPvE` is only shown inside the Multiplayer stage, as an in-development entry.
 
+Do not show the current input device anywhere in the UI. `Input` follows the most recently used device
+(keyboard/mouse or gamepad) and switches on the next real input.
+
 ---
 
 ## 3. Architecture

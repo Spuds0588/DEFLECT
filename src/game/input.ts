@@ -58,6 +58,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 /**
  * One input source for the local player: keyboard + mouse buttons + first connected gamepad.
+ * The most recently used device owns the frame; there is no on-screen input-mode indicator.
  * Facing is not an input (AGENTS.md D2) so there is deliberately no mouse-position sampling.
  */
 export class Input {
@@ -139,6 +140,8 @@ export class Input {
     // Leave Space to native button activation when a menu button has focus.
     if (e.code === 'Space' && e.target instanceof HTMLElement && e.target.closest('button')) return;
     if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+    // The most recent real input wins until the other device is touched.
+    this.lastDevice = 'keyboard';
 
     if (
       MOVE_KEYS.up.includes(e.code as never) ||
@@ -234,6 +237,7 @@ export class Input {
       }
       this.padIndex = null;
       this.gamepadName = '';
+      this.lastDevice = 'keyboard';
       this.padHeld = 0;
       this.padPressed = 0;
       this.padX = 0;
@@ -327,28 +331,29 @@ export class Input {
     return this.padIndex !== null;
   }
 
-  /** Builds the local input frame. Pressed bits accumulate until consumed. */
+  /** Builds the local input frame from the most recently used device. */
   sample(): InputFrame {
+    const padActive = this.lastDevice === 'gamepad';
     let mx = 0;
     let my = 0;
-    if (this.isDown(MOVE_KEYS.left)) mx -= 1;
-    if (this.isDown(MOVE_KEYS.right)) mx += 1;
-    if (this.isDown(MOVE_KEYS.up)) my -= 1;
-    if (this.isDown(MOVE_KEYS.down)) my += 1;
 
-    if (mx !== 0 || my !== 0) {
-      const mag = Math.hypot(mx, my);
-      mx /= mag;
-      my /= mag;
-      this.lastDevice = 'keyboard';
-    } else if (this.padX !== 0 || this.padY !== 0) {
+    if (padActive) {
       mx = this.padX;
       my = this.padY;
-      this.lastDevice = 'gamepad';
+    } else {
+      if (this.isDown(MOVE_KEYS.left)) mx -= 1;
+      if (this.isDown(MOVE_KEYS.right)) mx += 1;
+      if (this.isDown(MOVE_KEYS.up)) my -= 1;
+      if (this.isDown(MOVE_KEYS.down)) my += 1;
+      if (mx !== 0 || my !== 0) {
+        const mag = Math.hypot(mx, my);
+        mx /= mag;
+        my /= mag;
+      }
     }
 
-    const held = this.keyHeld | this.mouseHeld | this.padHeld;
-    const pressed = this.pendingPressed | this.padPressed;
+    const held = padActive ? this.padHeld : this.keyHeld | this.mouseHeld;
+    const pressed = padActive ? this.padPressed : this.pendingPressed;
     this.pendingPressed = 0;
     this.padPressed = 0;
 
