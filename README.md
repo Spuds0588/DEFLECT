@@ -1,9 +1,12 @@
 # DEFLECT
 
+**Play the current alpha:** <https://spuds0588.github.io/DEFLECT/>
+
 DEFLECT is an ultra-responsive, top-down geometric duelist game built for the web. It merges the
 accelerating volley tension of Lethal League with twitch-reflex arena combat. Everything in the arena is
 drawn from simple neon shapes and every sound is synthesized in the browser — no spritesheet or audio
-assets, only generated PWA icons.
+assets, only generated PWA icons. The soundtrack is an 82 BPM lofi-house loop built from MIDI note
+numbers, with a vinyl-crackle bed.
 
 **Playable now:** solo training against a sparring drone, local bot matches (1v1 or 1v3 at three
 difficulties), a wave-based local **GAUNTLET** against worms, viruses, firewalls, cascading errors and
@@ -12,6 +15,12 @@ screen, including the multi-district `MAINFRAME`. Match modes are first to 3 rou
 gauntlet are continuous practice spaces.
 
 ## Play
+
+The latest main-branch build is deployed to GitHub Pages:
+
+<https://spuds0588.github.io/DEFLECT/>
+
+Run it locally:
 
 ```bash
 npm install
@@ -138,8 +147,8 @@ This build is a test rig as much as a game. A useful pass:
   ghost. Ghost should dim your avatar and let you pass through enemies until you attack.
 - Deflect a `DIGITAL` bolt back at it. Higher tiers try to dodge their own armed ricochets.
 - Finish a first-to-3 and rematch. Scores reset, the arena choice persists, and bot brains reset.
-- Enter the gauntlet on each arena. On `SWITCHBACK`, watch a worm snake through the bars instead of
-  stopping at them; on `THE RING`, use a gate to cut a firewall's line.
+- Enter the gauntlet on each arena. On `SWITCHBACK`, watch a worm route around the bars instead of
+  passing through them; on `THE RING`, use a gate to cut a firewall's line.
 - Let a worm eat a few viruses. Its chain should grow and its health should recover; cut it down with
   the beam before it reaches the cap.
 - Let viruses stack on you until the infection bar fills. A thrall should spawn nearby, chase you, swing
@@ -158,7 +167,19 @@ npm run bench   # headless 60 Hz simulation, 8P bot AI, and gauntlet threat benc
 npm run icons   # regenerate PWA icons
 ```
 
+Pushing to `main` builds `dist/` and deploys it to GitHub Pages through
+`.github/workflows/pages.yml`. The repository's Pages source must be set to **GitHub Actions**, not the
+raw branch.
+
 Architecture, invariants, network protocol, and measured performance live in [AGENTS.md](AGENTS.md).
 The forward plan and open design questions are in [TODO.md](TODO.md); session-by-session decisions and
 verification are in [HISTORY.md](HISTORY.md). The original specification is
 [PRD-Deflect_game.md](PRD-Deflect_game.md).
+
+## License
+
+DEFLECT is **source-available**, not OSI open source. You can read, run, study, and modify it for
+non-commercial use. Selling it or building a paid product on it requires prior written permission.
+Modders are explicitly welcome to build and share free mods, provided they credit Corey Burns, link back
+to this repository, include the license, and do not present their work as official. See [LICENSE](LICENSE)
+for the full terms.

@@ -1,9 +1,10 @@
 {
   "name": "deflect",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.8",
   "type": "module",
   "description": "DEFLECT — top-down geometric arena duelist with one-stick facing",
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",

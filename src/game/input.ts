@@ -82,6 +82,11 @@ export class Input {
   private padRescan = true;
 
   private menu = { up: false, down: false, left: false, right: false, confirm: false, back: false, menu: false };
+  /** Held menu direction, edge-triggered with a repeat delay so a D-pad tap is one move. */
+  private menuDir = 0;
+  private menuRepeatAt = 0;
+  /** Analog stick direction with hysteresis, so a tilt near the threshold cannot chatter. */
+  private menuStickDir = 0;
 
   lastDevice: 'keyboard' | 'gamepad' = 'keyboard';
   gamepadName = '';
@@ -127,6 +132,8 @@ export class Input {
     this.padPressed = 0;
     this.padX = 0;
     this.padY = 0;
+    this.menuDir = 0;
+    this.menuStickDir = 0;
     this.padPrev.fill(false);
     this.padRescan = true;
   };
@@ -226,22 +233,28 @@ export class Input {
     }
 
     if (!pad) {
-      // Hold the last known pad through a short gap, then degrade cleanly.
-      if (this.padIndex !== null && now - this.padLastSeen < 1200) {
+      // Hold the last known pad through a real gap. Chrome intermittently omits a
+      // connected pad for a frame or two during focus changes; dropping the index
+      // here made the controller appear dead until it reconnected. Keep the last
+      // device as gamepad too: only a real keyboard/mouse event should take over.
+      if (this.padIndex !== null && now - this.padLastSeen < 3000) {
         this.padHeld = 0;
         this.padPressed = 0;
         this.padX = 0;
         this.padY = 0;
         this.padPrev.fill(false);
+        this.menuDir = 0;
+        this.menuStickDir = 0;
         return;
       }
       this.padIndex = null;
       this.gamepadName = '';
-      this.lastDevice = 'keyboard';
       this.padHeld = 0;
       this.padPressed = 0;
       this.padX = 0;
       this.padY = 0;
+      this.menuDir = 0;
+      this.menuStickDir = 0;
       this.padRescan = false;
       return;
     }
@@ -268,6 +281,7 @@ export class Input {
 
     const btn = (i: number): boolean => !!pad!.buttons[i]?.pressed;
     const axis = pad.axes;
+    this.menu.up = this.menu.down = this.menu.left = this.menu.right = false;
     // Face-button layout: X weak, Y strong, B deflect, A dash.
     const swingDown = btn(PAD.B);
     const boltDown = btn(PAD.X);
@@ -299,24 +313,64 @@ export class Input {
     this.padPressed |= held & ~this.padHeld;
     this.padHeld = held;
 
-    if (btn(PAD.UP)) this.menu.up = true;
-    if (btn(PAD.DOWN)) this.menu.down = true;
-    if (btn(PAD.LEFT)) this.menu.left = true;
-    if (btn(PAD.RIGHT)) this.menu.right = true;
+    // D-pad first, then the left stick. The stick path was missing entirely, so a
+    // controller user could move in-game but not navigate a single menu line.
+    let dir = 0;
+    if (btn(PAD.UP)) dir = 1;
+    else if (btn(PAD.DOWN)) dir = 2;
+    else if (btn(PAD.LEFT)) dir = 3;
+    else if (btn(PAD.RIGHT)) dir = 4;
+    if (dir === 0) {
+      const ax = axis[0] ?? 0;
+      const ay = axis[1] ?? 0;
+      // Engage around 0.55 raw, release below 0.32. Without the release gap a
+      // stick resting near the threshold fires a stream of direction changes.
+      const threshold = this.menuStickDir === 0 ? 0.55 : 0.32;
+      let stickDir = 0;
+      if (Math.abs(ax) > threshold || Math.abs(ay) > threshold) {
+        stickDir = Math.abs(ax) > Math.abs(ay) ? (ax > 0 ? 4 : 3) : ay > 0 ? 2 : 1;
+      }
+      this.menuStickDir = stickDir;
+      dir = stickDir;
+    }
+    if (dir === 0) {
+      this.menuDir = 0;
+    } else if (dir !== this.menuDir) {
+      this.menuDir = dir;
+      // `now` is milliseconds. A seconds value here made every frame count as a
+      // repeat, so one D-pad tap skipped several menu lines.
+      this.menuRepeatAt = now + 360;
+      this.setMenuDir(dir);
+    } else if (now >= this.menuRepeatAt) {
+      this.menuRepeatAt = now + 110;
+      this.setMenuDir(dir);
+    }
+
     if ((btn(PAD.A) && !this.padPrev[PAD.A]) || (btn(PAD.START) && !this.padPrev[PAD.START])) {
       this.menu.confirm = true;
+      this.lastDevice = 'gamepad';
     }
     if (btn(PAD.B) && !this.padPrev[PAD.B]) {
       this.menu.back = true;
+      this.lastDevice = 'gamepad';
     }
     if ((btn(PAD.START) && !this.padPrev[PAD.START]) || (btn(PAD.BACK) && !this.padPrev[PAD.BACK])) {
       this.menu.menu = true;
+      this.lastDevice = 'gamepad';
     }
 
     if (swingDown && !this.padSwingDown) this.lastDevice = 'gamepad';
     this.padSwingDown = swingDown;
 
     for (let i = 0; i < this.padPrev.length; i++) this.padPrev[i] = btn(i);
+  }
+
+  private setMenuDir(dir: number): void {
+    if (dir === 1) this.menu.up = true;
+    else if (dir === 2) this.menu.down = true;
+    else if (dir === 3) this.menu.left = true;
+    else if (dir === 4) this.menu.right = true;
+    this.lastDevice = 'gamepad';
   }
 
   /** Reads and clears the latched gamepad menu edges. */

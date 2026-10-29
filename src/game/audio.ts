@@ -9,13 +9,37 @@ type Wave = OscillatorType;
 const STORAGE_MUTE = 'deflect.muted';
 const STORAGE_MUSIC = 'deflect.music';
 const STORAGE_VOLUME = 'deflect.volume';
+const STORAGE_MUSIC_VOLUME = 'deflect.musicVolume';
+const STORAGE_SFX_VOLUME = 'deflect.sfxVolume';
+const STORAGE_MENU_VOLUME = 'deflect.menuVolume';
 const MASTER_LEVEL = 0.6;
+
+/** Chill lofi-house loop. Notes are MIDI numbers; the synth does the rest. */
+const MUSIC_BPM = 82;
+const MUSIC_STEP = 60 / MUSIC_BPM / 4;
+const MUSIC_LOOP = 64;
+const MUSIC_CHORDS: readonly (readonly number[])[] = [
+  [60, 64, 67, 71], // Cmaj7
+  [57, 60, 64, 67], // Am7
+  [50, 53, 57, 60], // Dm7
+  [55, 59, 62, 65], // G7
+];
+const MUSIC_BASS = [36, 33, 38, 31] as const; // C2, A1, D2, G1
+
+function midiToHz(note: number): number {
+  return 440 * Math.pow(2, (note - 69) / 12);
+}
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private musicBus: GainNode | null = null;
+  private sfxBus: GainNode | null = null;
+  private menuBus: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
+  private vinylBuffer: AudioBuffer | null = null;
+  private vinylSource: AudioBufferSourceNode | null = null;
+  private vinylGain: GainNode | null = null;
   private delaySend: GainNode | null = null;
 
   private musicTimer: number | null = null;
@@ -26,6 +50,10 @@ export class AudioEngine {
   muted = false;
   musicWanted = true;
   volume = 0.8;
+  /** Independent channel levels so the soundtrack never has to share a slider with hits. */
+  musicVolume = 0.65;
+  sfxVolume = 0.9;
+  menuVolume = 0.8;
 
   constructor() {
     try {
@@ -37,10 +65,20 @@ export class AudioEngine {
         const vol = Number(rawVolume);
         if (Number.isFinite(vol)) this.volume = Math.max(0, Math.min(1, vol));
       }
+      this.musicVolume = this.readLevel(STORAGE_MUSIC_VOLUME, this.musicVolume);
+      this.sfxVolume = this.readLevel(STORAGE_SFX_VOLUME, this.sfxVolume);
+      this.menuVolume = this.readLevel(STORAGE_MENU_VOLUME, this.menuVolume);
     } catch {
       this.muted = false;
       this.musicWanted = true;
     }
+  }
+
+  private readLevel(key: string, fallback: number): number {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    const value = Number(raw);
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback;
   }
 
   /** Master gain follows volume and mute; 0 is silent without tearing down the graph. */
@@ -58,6 +96,44 @@ export class AudioEngine {
       /* storage can be unavailable */
     }
     this.applyMaster();
+  }
+
+  setMusicVolume(volume: number): void {
+    this.musicVolume = Math.max(0, Math.min(1, volume));
+    try {
+      localStorage.setItem(STORAGE_MUSIC_VOLUME, String(this.musicVolume));
+    } catch {
+      /* storage can be unavailable */
+    }
+    this.applyBusLevels();
+  }
+
+  setSfxVolume(volume: number): void {
+    this.sfxVolume = Math.max(0, Math.min(1, volume));
+    try {
+      localStorage.setItem(STORAGE_SFX_VOLUME, String(this.sfxVolume));
+    } catch {
+      /* storage can be unavailable */
+    }
+    this.applyBusLevels();
+  }
+
+  setMenuVolume(volume: number): void {
+    this.menuVolume = Math.max(0, Math.min(1, volume));
+    try {
+      localStorage.setItem(STORAGE_MENU_VOLUME, String(this.menuVolume));
+    } catch {
+      /* storage can be unavailable */
+    }
+    this.applyBusLevels();
+  }
+
+  private applyBusLevels(): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    this.musicBus?.gain.setTargetAtTime(0.24 * this.musicVolume, now, 0.02);
+    this.sfxBus?.gain.setTargetAtTime(0.9 * this.sfxVolume, now, 0.02);
+    this.menuBus?.gain.setTargetAtTime(0.8 * this.menuVolume, now, 0.02);
   }
 
   /** Must be called from a user gesture before any sound can play. */
@@ -80,9 +156,24 @@ export class AudioEngine {
       this.master = master;
 
       const musicBus = ctx.createGain();
-      musicBus.gain.value = 0.24;
-      musicBus.connect(master);
+      musicBus.gain.value = 0.24 * this.musicVolume;
+      // Warm the whole music bed. Combat cues keep their sharper digital edge.
+      const musicFilter = ctx.createBiquadFilter();
+      musicFilter.type = 'lowpass';
+      musicFilter.frequency.value = 7000;
+      musicFilter.Q.value = 0.4;
+      musicBus.connect(musicFilter).connect(master);
       this.musicBus = musicBus;
+
+      const sfxBus = ctx.createGain();
+      sfxBus.gain.value = 0.9 * this.sfxVolume;
+      sfxBus.connect(master);
+      this.sfxBus = sfxBus;
+
+      const menuBus = ctx.createGain();
+      menuBus.gain.value = 0.8 * this.menuVolume;
+      menuBus.connect(master);
+      this.menuBus = menuBus;
 
       const delay = ctx.createDelay(0.5);
       delay.delayTime.value = 0.11;
@@ -100,6 +191,26 @@ export class AudioEngine {
       const data = buffer.getChannelData(0);
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
       this.noiseBuffer = buffer;
+
+      // Sparse crackle over a quiet noise floor, looped under the music.
+      const vinylLen = Math.floor(ctx.sampleRate * 2);
+      const vinyl = ctx.createBuffer(1, vinylLen, ctx.sampleRate);
+      const vdata = vinyl.getChannelData(0);
+      for (let i = 0; i < vinylLen; i++) vdata[i] = (Math.random() * 2 - 1) * 0.035;
+      for (let c = 0; c < 90; c++) {
+        const at = Math.floor(Math.random() * vinylLen);
+        const amp = 0.25 + Math.random() * 0.5;
+        for (let j = 0; j < 10 && at + j < vinylLen; j++) {
+          vdata[at + j] += (Math.random() * 2 - 1) * amp * (1 - j / 10);
+        }
+      }
+      // Crossfade the seam so the two-second loop does not tick.
+      const seam = Math.floor(ctx.sampleRate * 0.02);
+      for (let i = 0; i < seam; i++) {
+        const t = i / seam;
+        vdata[vinylLen - seam + i] = vdata[vinylLen - seam + i] * (1 - t) + vdata[i] * t;
+      }
+      this.vinylBuffer = vinyl;
     }
 
     if (this.ctx.state === 'suspended') void this.ctx.resume();
@@ -140,7 +251,7 @@ export class AudioEngine {
     env.gain.setValueAtTime(0.0001, t);
     env.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + 0.006);
     env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(env).connect(dest ?? this.master!);
+    osc.connect(env).connect(dest ?? this.sfxBus ?? this.master!);
     osc.start(t);
     osc.stop(t + dur + 0.02);
   }
@@ -168,13 +279,13 @@ export class AudioEngine {
     env.gain.setValueAtTime(0.0001, t);
     env.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + 0.006);
     env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(filter).connect(env).connect(dest ?? this.master!);
+    src.connect(filter).connect(env).connect(dest ?? this.sfxBus ?? this.master!);
     src.start(t);
     src.stop(t + dur + 0.02);
   }
 
   ui(): void {
-    this.tone('square', 620, 760, 0.045, 0.05);
+    this.tone('square', 620, 760, 0.045, 0.05, 0, this.menuBus);
   }
 
   shootBolt(): void {
@@ -264,6 +375,7 @@ export class AudioEngine {
     this.musicStep = 0;
     this.nextNoteTime = this.ctx.currentTime + 0.08;
     this.musicTimer = window.setInterval(() => this.scheduleMusic(), 50);
+    this.startVinyl();
     this.scheduleMusic();
   }
 
@@ -272,6 +384,48 @@ export class AudioEngine {
     if (this.musicTimer !== null) {
       window.clearInterval(this.musicTimer);
       this.musicTimer = null;
+    }
+    this.stopVinyl();
+  }
+
+  private startVinyl(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.musicBus || !this.vinylBuffer || this.vinylSource) return;
+    const src = ctx.createBufferSource();
+    src.buffer = this.vinylBuffer;
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 2400;
+    filter.Q.value = 0.5;
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.045, now + 0.6);
+    src.connect(filter).connect(gain).connect(this.musicBus);
+    src.start();
+    this.vinylSource = src;
+    this.vinylGain = gain;
+  }
+
+  private stopVinyl(): void {
+    const src = this.vinylSource;
+    const gain = this.vinylGain;
+    this.vinylSource = null;
+    this.vinylGain = null;
+    if (!src) return;
+    const ctx = this.ctx;
+    try {
+      if (ctx && gain) {
+        const now = ctx.currentTime;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setTargetAtTime(0.0001, now, 0.06);
+        src.stop(now + 0.3);
+      } else {
+        src.stop();
+      }
+    } catch {
+      /* already stopped */
     }
   }
 
@@ -288,30 +442,60 @@ export class AudioEngine {
   private scheduleMusic(): void {
     const ctx = this.ctx;
     if (!ctx || !this.musicPlaying || !this.musicBus) return;
-    const stepDur = 0.125;
     while (this.nextNoteTime < ctx.currentTime + 0.2) {
-      const s = this.musicStep % 32;
+      const s = this.musicStep % MUSIC_LOOP;
+      const bar = Math.floor(s / 16) % 4;
+      const beat = s % 16;
       const when = this.nextNoteTime - ctx.currentTime;
+      const swing = beat % 4 === 2 ? 0.028 : 0;
       if (when >= 0) {
-        // Bass pulse on quarter notes.
-        if (s % 4 === 0) {
-          const bass = [55, 55, 43.65, 49][Math.floor(s / 8) % 4];
-          this.tone('triangle', bass, bass, 0.3, 0.2, when, this.musicBus);
-          this.tone('square', bass * 2, bass * 2, 0.12, 0.035, when, this.musicBus);
+        // Soft four-on-the-floor kick: strong on 1 and 3, lighter on 2 and 4.
+        if (beat % 4 === 0) {
+          const accent = beat === 0 || beat === 8 ? 1 : 0.8;
+          this.tone('sine', 115, 43, 0.28, 0.2 * accent, when, this.musicBus);
+          this.noise(0.02, 0.018 * accent, 700, 250, 'lowpass', when, this.musicBus);
         }
-        // Sparse digital arp.
-        const arpSteps = [0, 3, 6, 10, 14, 19, 22, 27];
-        if (arpSteps.includes(s)) {
-          const notes = [220, 261.63, 329.63, 392, 440, 523.25];
-          const n = notes[(s + Math.floor(this.musicStep / 32)) % notes.length];
-          this.tone('square', n, n, 0.09, 0.028, when, this.musicBus);
+        // Clap on 2 and 4.
+        if (beat === 4 || beat === 12) {
+          this.noise(0.13, 0.05, 2100, 850, 'bandpass', when, this.musicBus);
+          this.tone('triangle', 185, 150, 0.07, 0.03, when, this.musicBus);
         }
-        // Hat tick.
+        // Swung closed hats, plus a longer open hat on the backbeat.
         if (s % 2 === 0) {
-          this.noise(0.03, 0.012, 8000, 6000, 'highpass', when, this.musicBus);
+          const open = s % 8 === 6;
+          this.noise(
+            open ? 0.14 : 0.03,
+            open ? 0.011 : 0.007 + (beat === 0 ? 0.003 : 0),
+            8500,
+            open ? 6000 : 7000,
+            'highpass',
+            when + swing,
+            this.musicBus,
+          );
+        }
+        // Rhodes-style seventh chords: a long hit on the downbeat and a soft re-hit.
+        if (beat === 0 || beat === 10) {
+          const chord = MUSIC_CHORDS[bar];
+          const dur = beat === 0 ? 2.2 : 1.15;
+          const gain = beat === 0 ? 0.015 : 0.009;
+          for (let i = 0; i < chord.length; i++) {
+            const f = midiToHz(chord[i]);
+            this.tone('triangle', f, f * 0.999, dur, gain, when + 0.008, this.musicBus);
+            this.tone('sine', f * 2, f * 2, dur * 0.5, gain * 0.32, when + 0.012, this.musicBus);
+          }
+        }
+        // Warm bass root, with a short octave lift late in the bar.
+        const root = midiToHz(MUSIC_BASS[bar]);
+        if (beat === 0) {
+          this.tone('sine', root, root, 1.2, 0.14, when, this.musicBus);
+          this.tone('triangle', root * 2, root * 2, 0.3, 0.03, when + 0.01, this.musicBus);
+        } else if (beat === 8) {
+          this.tone('sine', root, root, 0.7, 0.11, when, this.musicBus);
+        } else if (beat === 14) {
+          this.tone('triangle', root * 2, root * 2, 0.22, 0.024, when, this.musicBus);
         }
       }
-      this.nextNoteTime += stepDur;
+      this.nextNoteTime += MUSIC_STEP;
       this.musicStep++;
     }
   }

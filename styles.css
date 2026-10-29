@@ -104,6 +104,12 @@ body.playing .arena {
   -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, black 10%, transparent 78%);
 }
 
+/* The title is a CRT console, not a dashboard. The fabricated grid belonged to
+   the earlier card layout and fights the scanline/frame treatment. */
+.screen-title::before {
+  display: none;
+}
+
 .screen-inner {
   position: relative;
   z-index: 2;
@@ -1368,6 +1374,10 @@ input:focus {
   }
 }
 
+body.playing .scanlines {
+  display: none;
+}
+
 .scanlines {
   position: fixed;
   inset: 0;
@@ -1972,12 +1982,12 @@ input:focus {
   inset: 0;
   z-index: 90;
   display: grid;
-  place-items: center;
-  background:
-    repeating-linear-gradient(0deg, rgba(46, 230, 255, 0.035) 0 1px, transparent 1px 3px),
-    radial-gradient(ellipse at center, #06151a, #010305 70%);
+  place-items: end start;
+  padding: 28px;
+  pointer-events: none;
+  background: none;
   opacity: 0;
-  transition: opacity 0.28s ease;
+  transition: opacity 0.4s ease;
 }
 
 .boot-screen.active {
@@ -1989,13 +1999,13 @@ input:focus {
 }
 
 .boot-inner {
-  width: min(580px, calc(100vw - 48px));
-  padding: 22px 24px;
-  border: 1px solid rgba(46, 230, 255, 0.32);
-  background: rgba(1, 8, 10, 0.9);
+  width: min(390px, calc(100vw - 48px));
+  padding: 14px 16px;
+  border-left: 1px solid rgba(46, 230, 255, 0.4);
+  background: linear-gradient(90deg, rgba(1, 8, 10, 0.8), rgba(1, 8, 10, 0));
   color: #9cefff;
   font-family: var(--mono);
-  box-shadow: inset 0 0 50px rgba(46, 230, 255, 0.05), 0 0 40px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 0 10px rgba(46, 230, 255, 0.24);
 }
 
 .boot-kicker {
@@ -2013,22 +2023,6 @@ input:focus {
   font-size: 9px;
   line-height: 1.9;
   white-space: pre-wrap;
-}
-
-.boot-bar {
-  height: 8px;
-  border: 1px solid rgba(46, 230, 255, 0.45);
-  background: rgba(2, 14, 18, 0.8);
-  overflow: hidden;
-}
-
-.boot-bar i {
-  display: block;
-  width: 0;
-  height: 100%;
-  background: linear-gradient(90deg, rgba(46, 230, 255, 0.35), #8df7ff);
-  box-shadow: 0 0 14px rgba(46, 230, 255, 0.5);
-  transition: width 0.1s linear;
 }
 
 .boot-status {
@@ -2433,6 +2427,67 @@ body.no-scanlines .scanlines {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px 10px;
+}
+
+.console-arena-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 9px;
+  margin: 6px 0 10px;
+}
+
+.console-arena-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid rgba(46, 230, 255, 0.14);
+  border-radius: 0;
+  background: rgba(2, 9, 12, 0.55);
+  color: rgba(140, 211, 222, 0.62);
+  font-family: var(--mono);
+  text-align: left;
+  cursor: pointer;
+}
+
+.console-arena-card canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  height: auto;
+  background: #04080e;
+}
+
+.console-arena-label {
+  display: block;
+  padding: 0 2px 2px;
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.console-arena-card:hover,
+.console-arena-card:focus,
+.console-arena-card.nav-focus {
+  border-color: rgba(120, 248, 255, 0.55);
+  background: rgba(46, 230, 255, 0.06);
+  color: #e7feff;
+  outline: none;
+}
+
+.console-arena-card.selected {
+  border-color: #7df8ff;
+  background: rgba(46, 230, 255, 0.1);
+  color: #eaffff;
+}
+
+.console-group-tight {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .console-choice {

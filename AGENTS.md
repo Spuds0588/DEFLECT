@@ -53,7 +53,7 @@ Consequences that are part of the design, not bugs:
 
 ### D3 — N players, host-authoritative star (decided 2026-10-28)
 Not a two-player game. Target cap is **8** for v1 (`MAX_PLAYERS` in `src/game/config.ts`), measured rather
-than assumed (see §7). Topology:
+than assumed (see §8). Topology:
 
 ```
         host (slot 0): authoritative sim @60Hz
@@ -122,8 +122,9 @@ On explicit designer request, hostiles exist in an endless local **GAUNTLET** mo
 not over the network. It is a test bed for the eventual PvE direction, not a promise of online PvE.
 
 - Enter from the title screen. It runs `World('gauntlet')` with one human, respawns, and no round flow.
-- **Worms** are red square chains that phase through cover, damage on touch, swallow projectiles and
-  viruses, and grow a segment per meal. They always chase the local player.
+- **Worms** are red square chains that damage on touch, swallow projectiles and viruses, and grow a
+  segment per meal. They always chase the local player and are **blocked by cover** like the player;
+  only designated phasing threats should pass through geometry.
 - **Viruses** are magenta diamonds that swarm, split, and infect. They can convert a worm (magenta,
   faster) or fill the local player's infection meter; at full meter the meter resets to 0.3 and a
   **thrall** copy spawns nearby. A thrall writes an `InputFrame` like any player, so it obeys one-stick
@@ -134,11 +135,17 @@ not over the network. It is a test bed for the eventual PvE direction, not a pro
 - **Cascading errors** are yellow blocks with red exclamation marks. They spread outward block by block,
   damage on contact, and take several hits to delete one block. They are part of the threat pool, not
   arena geometry.
+- **Sentries** are the shooting family: pulse squares, nested triplex shotguns, trapezoid homing pods
+  whose missiles can be shot down or deflected, and three-dart flocks. They respect cover and line of
+  sight.
+- Every enemy assembles in over a short spawn window, holds still while its parts arrive, and de-rezzes
+  into a size-scaled triangle burst on death.
 - Waves escalate every 30 s: spawn intervals shrink toward a floor. The mode is a survive-as-long-as-you-
   can sandbox; there is no final win.
 - The mode is deliberately absent from `Snapshot` and `NetView`. Any future networked PvE needs its own
   protocol work and a new decision; do not leak gauntlet entities into match snapshots.
-- All numbers live in `GAUNTLET`, `WORM`, `VIRUS`, `FIREWALL` and `THRALL` in `config.ts`.
+- All numbers live in `GAUNTLET`, `WORM`, `VIRUS`, `FIREWALL`, `SENTRY`, `CASCADING_ERROR` and `THRALL` in
+  `config.ts`.
 
 ### D10 — Weak burst, random bug, charged beam (revised 2026-10-28)
 The action buttons are jobs, not two versions of one bolt:
@@ -146,7 +153,9 @@ The action buttons are jobs, not two versions of one bolt:
 - **Weak (`X`)**: fast burst bolt, three shots, 0.45 s life (~390 units), one bank, 1 damage, then a
   0.45 s recharge. Close-range pressure. Do not restore the old long TTL without reworking the kit.
 - **Deflect (`B`)**: taps chain left, right, then a forward shield wave; each arc reflects. Holding and
-  releasing also fires the wave. The swing punches at close range. Facing locks for the swing.
+  releasing also fires the wave. The swing punches at close range. Facing locks for the swing. The
+  active window is generous; an early or far-edge catch still returns the bolt, but angles it and loses
+  some speed. A last-instant catch returns it straight.
 - **Strong (`Y`), tap**: uses the player's **randomly assigned bug** for that match. Four kinds:
   `0` proximity mine, `1` slow trap, `2` frontal wall shield, `3` ghost (translucent, damage/aggro
   immune, cancelled by attacking). The host owns the roll; guests read it from the snapshot.
@@ -164,12 +173,17 @@ rotating segmented outer ring; energy is the inner arc; burst ammo, dash readine
 icon float behind the avatar. Match state (round, timer, score pips) stays in the bottom strip.
 
 The DOM settings screen is tabbed: `CONTROLS`, `FEEDBACK`, `AUDIO`, `SYSTEM`. Persisted options are
-callsign, hit rotation, impact flash, scanlines, master volume, music, mute, and arena/bot preferences.
-New feedback options belong in the Feedback tab, not beside the title menu.
+callsign, hit rotation, impact flash, scanlines, master volume, soundtrack, SFX, menu sounds, mute, and
+arena/bot preferences. New feedback options belong in the Feedback tab, not beside the title menu.
 
 The title is a single console menu, not a dashboard: plain text options, one `>` cursor on the focused
-line, and no footer links. `SETTINGS` is a top-level option; callsign editing lives in `SETTINGS >
-SYSTEM`. `SECTORS // PVPvE` is only shown inside the Multiplayer stage, as an in-development entry.
+line, no grid backdrop, and no footer links. `SETTINGS` is a top-level option; callsign editing lives in
+`SETTINGS > SYSTEM`. `SECTORS // PVPvE` is only shown inside the Multiplayer stage, as an in-development
+entry. The solo flow is staged: program (training/gauntlet) → arena with previews → bot count/tier for
+training. In-game canvas text is suppressed except for short wave banners and the Esc/overlay menus.
+
+The level intro is assembly, not a loading screen: ground, frame, cover (dropping in), then player
+skeletons and spin-up. Do not add a progress bar back into the intro.
 
 Do not show the current input device anywhere in the UI. `Input` follows the most recently used device
 (keyboard/mouse or gamepad) and switches on the next real input.
@@ -182,6 +196,7 @@ Do not show the current input device anywhere in the UI. `Input` follows the mos
 index.html            DOM screens (title, settings, lobby, overlays), canvas mount
 styles.css            UI system (neon geometry, no external fonts/images)
 src/main.ts           app state machine: title → lobby → game; UI wiring; gamepad menu nav
+.github/workflows/pages.yml  build dist and deploy the main-branch alpha to GitHub Pages
 src/game/config.ts    ALL tuning numbers. Change feel here, not in systems.
 src/game/arenas.ts    five arena layouts (MAINFRAME is multi-district), spawn rings, previews
 src/game/nav.ts       per-arena 20u navigation grid + reusable A* workspace for bots
@@ -190,7 +205,7 @@ src/game/types.ts     shared interfaces and network packet shapes
 src/game/identity.ts  palette, glyph drawing, callsigns
 src/game/rng.ts       seeded RNG for deterministic tests/bench
 src/game/input.ts     keyboard, mouse buttons, gamepad; per-player InputFrame
-src/game/audio.ts     Web Audio synthesis (no files) + tiny procedural music
+src/game/audio.ts     Web Audio synthesis (no files) + MIDI-note lofi-house loop
 src/game/world.ts     authoritative simulation (players, projectiles, rounds, drone, gauntlet threats)
 src/game/render.ts    canvas renderer, camera shake, HUD, in-world FX
 src/game/particles.ts pooled particle system
@@ -245,18 +260,24 @@ public/               manifest, generated icons, service worker
 - Trails are drawn from a small ring buffer per projectile. Gradients are built on resize only.
 - HUD is canvas-drawn. Health is the avatar's rotating three-segment outer ring; energy, dash, burst
   ammo, and the random bug icon cluster behind the avatar. There are no operator chips, name plates or
-  side bars. Round/timer/score pips live in the bottom strip. Label strings are cached; per-frame rgba
-  strings were removed from the draw path.
-- DOM is only for menus, lobby, toasts, and round/match overlays.
+  side bars. Round/timer/score pips live in the bottom strip. Permanent in-match text is suppressed;
+  only short wave banners and the DOM pause/round/match overlays carry words. Label strings are cached.
+- DOM is only for menus, lobby, toasts, and round/match overlays. The title and settings screens keep
+  the CRT scanline treatment; the arena does not draw scanlines.
+- Enemy pools draw an assembly phase on spawn (scale/rotation/reveal) and emit size-scaled triangle
+  shards on death. These are render-side, allocation-free, and must not change hitboxes.
 
 ### Audio
 
-- One lazy `AudioContext`, unlocked on first gesture. Master gain + compressor. Master volume,
-  mute, and music preference persist in `localStorage` and are exposed in the Audio settings tab.
+- One lazy `AudioContext`, unlocked on first gesture. Master gain + compressor. Master volume, mute,
+  soundtrack, sound-effects, and menu-sound levels persist in `localStorage` and are exposed in the
+  Audio settings tab.
 - Digital timbres: square/triangle/saw oscillators with fast envelopes, short noise bursts through
   band/low-pass filters. Button click, shoot, swing, deflect chirp, wall bounce, explode, hit, dash,
-  round arpeggio, victory motif. A 2-bar procedural pulse loop starts when a match starts. `M` mutes
-  the whole mix. Nothing loaded from disk.
+  round arpeggio, victory motif. The music bed is a four-bar, 82 BPM lofi-house loop: seventh chords and
+  bass encoded as MIDI note numbers, soft four-on-the-floor kick, swung hats, claps, and a low vinyl
+  crackle layer. The music bus is low-passed at 7 kHz for warmth; combat cues stay sharp. `M` mutes the whole
+  mix. Nothing loaded from disk.
 
 ---
 
@@ -278,12 +299,13 @@ public/               manifest, generated icons, service worker
 | Perf HUD | — | `F3` |
 
 `B` is the deflect button in-game, so only `Start`/`View` opens the in-game menu while playing. `B`
-closes an open overlay (menu back). Settings live behind `SETTINGS` on the title footer; the gamepad
-navigates the four tabs with the d-pad/stick and confirms with `A`. Gameplay actions are edge-triggered and buffered: guest inputs
+closes an open overlay (menu back). Settings are a top-level title option; the gamepad navigates the
+four tabs with the d-pad/stick and confirms with `A`. Gameplay actions are edge-triggered and buffered: guest inputs
 include a `pressed` mask accumulated since the previous send so taps are never lost between 60 Hz packets.
 
-Arena and bot setup live on the title screen: click an arena card, choose 1v1 or 1v3, choose a bot tier,
-then `START BOT ...`. The host can cycle the arena in the lobby; the choice reaches guests in `START`.
+Arena and bot setup live on the title screen and flow in stages: `SINGLE PLAYER` → program (training or
+gauntlet) → arena card with previews → bot count/tier for training. The host can cycle the arena in the
+lobby; the choice reaches guests in `START`.
 
 ---
 
@@ -334,7 +356,14 @@ slot after a 6 s grace and marks the player as disconnected; if a round is live,
 
 ---
 
-## 7. Performance guardrails
+## 7. Deployment
+
+The alpha is hosted from `main` with GitHub Actions: `.github/workflows/pages.yml` runs `npm ci`,
+`npm run build`, and deploys `dist/` through the Pages artifact action. The repository Pages source must
+be **GitHub Actions**; serving the raw branch would expose unbundled TypeScript instead of the game. The
+play URL is <https://spuds0588.github.io/DEFLECT/>.
+
+## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.
   Run `npm run bench` after touching the sim. The bench also runs an eight-bot digital swarm
@@ -348,14 +377,14 @@ slot after a 6 s grace and marks the player as disconnected; if a round is live,
   (`?stress=8` spawns eight simulated players in training).
 - Bot cost is part of the bench result; do not move AI into `World.step` or allocate per bot per frame.
   A* scratch must stay preallocated (`src/game/nav.ts`); re-plan on a timer, not every tick.
-- The gauntlet max case (2 worms, 12 viruses, 2 firewalls, cascading-error blocks, one thrall) is part
-  of `npm run bench`. v0.1.4 measured 0.096 ms/tick avg, p99 0.379 ms with 28.9 live threats. Keep it
-  there so threat complexity cannot regress silently.
+- The gauntlet max case (2 worms, 12 viruses, 2 firewalls, cascading-error blocks, sentries, one
+  thrall) is part of `npm run bench`. v0.1.8 measured 0.107 ms/tick avg, p99 0.401 ms with 31.3 live
+  threats. Keep it there so threat complexity cannot regress silently.
 - Measured results live in `TODO.md` §Performance. Do not claim a cap without numbers there.
 
 ---
 
-## 8. Verification
+## 9. Verification
 
 ```bash
 npm install
@@ -378,7 +407,7 @@ without two real clients.
 
 ---
 
-## 9. Out of scope for v1 (do not build without an explicit request)
+## 10. Out of scope for v1 (do not build without an explicit request)
 
 Networked bot slots, PvPvE enemies **inside competitive matches**, arena hazards/rails/switches/power-ups,
 destructible geometry, cosmetics/customization, accounts/persistence, spectators, teams, ranking, Tauri

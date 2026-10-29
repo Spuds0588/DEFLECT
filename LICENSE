@@ -1,0 +1,118 @@
+DEFLECT SOURCE-AVAILABLE LICENSE
+Version 1.0 — 2026-10-28
+
+Copyright (c) 2026 Corey Burns. All rights reserved.
+
+This is a source-available license, not an OSI-approved open-source license.
+You may read, run, study, modify, and share the Software only under the terms
+below. Commercial rights are reserved.
+
+1. DEFINITIONS
+
+"Software" means the DEFLECT source code, game data, configuration, scripts,
+art, audio synthesis code, documentation, and any other files distributed in
+this repository, including modified versions.
+
+"Mod" means a free, non-commercial add-on or modification that builds on the
+Software, including arenas, maps, game modes, balance changes, bots, tools,
+cosmetic packs, user-interface changes, bug fixes, and forks made to support
+those things.
+
+"Commercial Use" means any use that generates revenue, directly or indirectly,
+including selling, licensing, renting, paywalling, ad-monetizing, bundling
+into a paid product or service, or requiring payment or a paid subscription
+for access.
+
+"Credit" means a prominent attribution to "Corey Burns / DEFLECT" together
+with a working link to the original project at
+https://github.com/Spuds0588/DEFLECT and a copy of this license.
+
+2. GRANT FOR PERSONAL AND NON-COMMERCIAL USE
+
+Subject to this license, you may:
+
+  a. run and study the Software for personal, educational, or other
+     non-commercial purposes;
+  b. copy and modify the Software for those purposes;
+  c. publish and share Mods under Section 4; and
+  d. share unmodified copies of the Software for free, with Credit and this
+     license included.
+
+3. CONDITIONS
+
+Any permitted distribution or public deployment of the Software or a Mod must:
+
+  a. give Credit;
+  b. include this license, unchanged, in the distribution;
+  c. clearly identify any changes you made and state that your version is
+     unofficial and not endorsed by Corey Burns;
+  d. keep this license's copyright and attribution notices intact; and
+  e. not remove or obscure any credit, license, or link in the Software.
+
+4. MOD CARVE-OUT
+
+Modding is explicitly encouraged. You do not need separate permission to
+create, publish, and distribute a Mod for free, including a fork of the
+Software needed to run that Mod, provided that:
+
+  a. the Mod is distributed free of charge and is not used for Commercial Use;
+  b. you give Credit in the Mod's README or distribution page and, where the
+     Mod has an in-game credits or about screen, in that screen as well;
+  c. you link back to the original project and this license;
+  d. you do not present the Mod as official or endorsed by Corey Burns; and
+  e. the Mod includes this license and does not sublicense the Software under
+     different terms.
+
+This carve-out is the permission required to build on the Software for
+modding. It does not grant permission for Commercial Use.
+
+5. COMMERCIAL USE AND OTHER DERIVATIVE WORKS
+
+You may not use the Software for Commercial Use without prior written
+permission from the copyright holder.
+
+Except for Mods distributed under Section 4, you may not publish, distribute,
+deploy, or otherwise make available a modified version or other derivative
+work of the Software without prior written permission from the copyright
+holder.
+
+Requests for permission should be opened as an issue at
+https://github.com/Spuds0588/DEFLECT/issues. The copyright holder may grant or
+refuse permission at their sole discretion.
+
+6. CONTRIBUTIONS
+
+Unless you state otherwise in writing when submitting a contribution, by
+submitting code, art, audio, documentation, or other material to this project
+you grant Corey Burns a perpetual, worldwide, non-exclusive, royalty-free
+license to use, reproduce, modify, distribute, and sublicense that
+contribution as part of the Software or under other terms.
+
+7. TRADEMARKS
+
+This license does not grant any right to use the DEFLECT name, logo, or other
+brand identifiers except to give the Credit required above or to accurately
+describe a Mod as built on DEFLECT.
+
+8. TERMINATION
+
+This license terminates automatically if you breach any term. On termination,
+you must stop distributing the Software and Mods and delete any copies you
+control, except that end users who received a compliant copy may continue to
+run it for personal, non-commercial use.
+
+9. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
+AUTHOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
+OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+10. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE COPYRIGHT HOLDER'S TOTAL LIABILITY
+UNDER THIS LICENSE SHALL NOT EXCEED THE AMOUNT YOU PAID FOR THE SOFTWARE,
+WHICH IS ZERO.

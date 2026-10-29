@@ -36,6 +36,9 @@ export const THREAT_COLORS = {
   thrall: '#ff54d8',
   error: '#ffd23d',
   errorInk: '#ff2e2e',
+  sentry: '#ff7a3d',
+  homing: '#ff4f6d',
+  flock: '#ffb03a',
 } as const;
 
 export const CALLSIGNS = [

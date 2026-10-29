@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-28 (v0.1.5 console menu + callsign settings)
+Last updated: 2026-10-28 (v0.1.8 controller, assembly, shooting family, Pages alpha)
 
 ---
 
@@ -39,7 +39,7 @@ Last updated: 2026-10-28 (v0.1.5 console menu + callsign settings)
 - [x] Camera shake driven by snapshot events, hit flash, low-HP vignette
 - [x] Canvas HUD scaling to 8 players, round pips
 - [x] Procedural audio: 14 distinct cues, digital/MIDI character, mute
-- [x] 2-bar procedural music loop while a match runs
+- [x] Procedural music loop while a match runs (v0.1.7: four-bar, 82 BPM lofi house from MIDI notes)
 
 ### Multiplayer
 - [x] PeerJS star host, 4-char room codes, invite links, max 8 slots
@@ -220,19 +220,80 @@ Last updated: 2026-10-28 (v0.1.5 console menu + callsign settings)
 
 ---
 
+## v0.1.7 — Lofi-house soundtrack (complete 2026-10-28)
+
+### Audio
+- [x] Replaced the 120 BPM square arpeggio with a four-bar, 82 BPM lofi-house loop
+- [x] Cmaj7 / Am7 / Dm7 / G7 progression and bass roots encoded as MIDI note numbers
+- [x] Soft four-on-the-floor kick, claps, swung hats, sustained octave bass
+- [x] Rhodes-style chord downbeat plus a soft late-bar re-hit
+- [x] Looped vinyl crackle under a low-passed music bus; combat cues keep their digital edge
+- [x] Music starts with a match, survives rounds, and stops/restarts cleanly on leave and toggle
+
+### Verification
+- [x] `npm run build` clean: 268.20 kB JS (78.15 kB gzip), 34.18 kB CSS (7.98 kB gzip)
+- [x] Browser: 27 oscillators and 14 buffer sources scheduled in a measured 3 s window of idle
+      training, matching the loop math; counts stopped immediately after leave
+- [x] Browser: music toggle OFF and back ON, then a fresh match restarted the loop with no console errors
+- [x] No simulation files changed; bench was not rerun for this audio-only pass
+
+---
+
+## v0.1.8 — Controller, assembly and alpha hosting (complete 2026-10-28)
+
+### Input and menus
+- [x] Fixed gamepad menu repeat mixing milliseconds and seconds; one D-pad tap is one line
+- [x] Left-stick menu navigation restored with 0.55/0.32 hysteresis so a resting stick cannot chatter
+- [x] Pad-loss grace raised to 3 s; a missing poll no longer flips the active device to keyboard
+- [x] Solo flow staged: program → arena with previews → bot count/tier; local/online labels removed
+- [x] Audio settings split into soundtrack, SFX and menu-sound channels; master mute retained
+
+### Presentation
+- [x] Removed the title-screen grid so the CRT console treatment reads cleanly
+- [x] Larger arenas, tighter follow camera, circuitry/Unicode floor signatures
+- [x] Permanently visible in-match text removed; wave banners and overlays remain
+- [x] Removed in-game scanlines and the extra avatar rings; larger code-symbol cores and facing arrow
+- [x] Level assembly replaces the loading bar: ground → frame → dropping cover → operator skeletons → spin-up
+
+### Threats and feel
+- [x] Shooter family: pulse square, nested triplex shotgun, trapezoid homing pod, three-dart flock
+- [x] Worm chain is blocked by cover; shooting family and errors use the same collision rules
+- [x] Enemy assembly on spawn and size-scaled triangle de-rez on death
+- [x] Laser corridor widened and damage tick shortened/higher so the beam hurts while it tracks
+- [x] Deflect active window 0.16 → 0.2 s and max early angle 0.28 → 0.32 rad; timing and distance grade the return
+
+### Hosting and license
+- [x] GitHub Actions Pages workflow builds `dist/` on `main`
+- [x] Play link at the top of README
+- [x] Custom source-available license with non-commercial terms, credit/link requirements, permission for
+      non-mod derivatives, and an explicit free-mod carve-out
+
+### Verification
+- [x] `npm run build` clean: 285.62 kB JS (82.16 kB gzip), 34.83 kB CSS (8.05 kB gzip)
+- [x] `npm run bench`: gauntlet max 0.107 ms avg / 0.401 ms p99; 8P bot swarm 0.040 / 0.227
+- [x] Input harness: D-pad edge/repeat, stick edge/hysteresis and release all produce one expected edge
+- [x] Headless deflect angles: early 0.304 rad, mid 0.164, late 0.103, contact 0.008
+- [x] Headless 60 s gauntlet: 1 worm, 6 viruses, 9 sentries, 14 error blocks, no non-finite positions
+- [x] Browser: title grid display none, no loading bar element, boot overlay transparent, build v0.1.8
+- [x] Browser: staged gauntlet flow reaches the arena; arena assembly renders with no console errors
+- [ ] Real device controller pass (mapping still verified with a virtual standard-layout pad)
+- [ ] GitHub Pages deployment and play URL verified after this commit
+
+---
+
 ## Performance (measured 2026-10-28)
 
 Machine: current dev laptop, Node 20 headless bench and Chromium for the browser run.
 
 | Scenario | Sim ms/tick avg / p99 | Render | Notes |
 | --- | --- | --- | --- |
-| 2P duel, 0.6 live projectiles | 0.017 / 0.070 | 60 fps | v0.1.4 final bench |
-| 4P brawl, 1.3 live projectiles | 0.009 / 0.051 | — | v0.1.4 final bench |
-| 8P stress, 5.4 live projectiles | 0.010 / 0.031 | 60 fps | bench + `?stress=8` |
-| 8P max projectiles, 13.6 live avg | 0.057 / 0.275 | 60 fps | v0.1.4 bench; mine/trap feed |
-| 8P idle | 0.005 / 0.012 | — | floor case |
-| 8P bot swarm (AI + sim) | 0.044 / 0.161 | — | three styles, digital, pathfinding |
-| Gauntlet max threats (2W/12V/2F + 28E + thrall) | 0.096 / 0.379 | 60 fps | v0.1.4 bench, 28.9 live threats |
+| 2P duel, 0.5 live projectiles | 0.012 / 0.044 | 60 fps | v0.1.8 bench |
+| 4P brawl, 1.4 live projectiles | 0.009 / 0.040 | — | v0.1.8 bench |
+| 8P stress, 5.8 live projectiles | 0.012 / 0.051 | 60 fps | v0.1.8 bench + `?stress=8` |
+| 8P max projectiles, 15.4 live avg | 0.030 / 0.147 | 60 fps | v0.1.8 bench; mine/trap feed |
+| 8P idle | 0.003 / 0.004 | — | floor case |
+| 8P bot swarm (AI + sim) | 0.040 / 0.227 | — | three styles, digital, pathfinding |
+| Gauntlet max threats (2W/12V/2F + 28E + sentries + thrall) | 0.107 / 0.401 | 60 fps | v0.1.8 bench, 31.3 live threats |
 
 Budget is under 4 ms per tick with 8 players and 48 live projectiles. Every measured case remains far
 under budget. Render held 60 fps (the display cap) under stress.
@@ -306,7 +367,7 @@ The 8-player cap stands as a product decision; the real test is still eight actu
 12. Three health with a 3-shot burst means a clean burst can delete a target. Is that the intended
     close-range risk/reward, or should the burst cost more energy or have a slightly longer recharge?
 
-## Known limitations (v0.1.4)
+## Known limitations (v0.1.8)
 
 - PeerJS public broker only; no reconnect after a network drop (return to title).
 - No dedicated servers, no NAT edge cases beyond PeerJS/WebRTC.

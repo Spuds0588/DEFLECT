@@ -5,6 +5,8 @@
 
 export const VIEW_W = 1280;
 export const VIEW_H = 720;
+/** World units per screen pixel. Higher = closer camera. */
+export const CAMERA_ZOOM = 1.28;
 
 export const ARENA = {
   left: 48,
@@ -51,8 +53,13 @@ export const PLAYER = {
   dashCooldown: 1.8,
   /** One tick of anticipation; the hitbox is live on the next fixed step. */
   swingStartup: 0.006,
-  swingActive: 0.09,
+  /** Generous active window; press timing and catch distance grade the return. */
+  swingActive: 0.2,
   swingWhiffRecovery: 0.18,
+  /** Max return-angle error on an early or far-edge catch. */
+  deflectMaxAngle: 0.32,
+  /** Early catches lose a little of the return speed. */
+  deflectEarlySpeed: 0.84,
   swingHitRecovery: 0.08,
   /** Half of a 120 degree sector. */
   swingHalfAngle: Math.PI / 3,
@@ -85,9 +92,10 @@ export const PLAYER = {
   laserCooldown: 5,
   laserCost: 60,
   laserDamage: 1,
-  laserTick: 0.5,
+  /** Fast repeat so a held beam visibly chews through a target instead of plinking. */
+  laserTick: 0.14,
   /** Half-width of the beam for collision; the drawn glow is wider. */
-  laserHalfWidth: 12,
+  laserHalfWidth: 22,
   /** Radians per second while the beam is live. Sweeping is possible, but deliberate. */
   laserTurnRate: 0.55,
   laserRange: 3000,
@@ -203,8 +211,10 @@ export const GAUNTLET = {
   virusRetry: 3,
 } as const;
 
-/** Segmented red worm. It phases through cover, eats projectiles and viruses. */
+/** Segmented red worm. It is blocked by cover, but eats projectiles and viruses. */
 export const WORM = {
+  /** Assembly time before the chain starts moving. */
+  spawnTime: 1.05,
   speed: 78,
   turnRate: 2.1,
   headRadius: 16,
@@ -228,7 +238,80 @@ export const WORM = {
 } as const;
 
 /** Floating diamond swarm that replicates and infects what it touches. */
+/**
+ * Hostile shooter family. One pool, four silhouettes:
+ * 0 pulse square, 1 nested triplex (shotgun), 2 trapezoid homing pod, 3 flock dart.
+ */
+export const SENTRY = {
+  max: 12,
+  /** Drop-in animation before the turret wakes up. */
+  spawnTime: 0.7,
+  spawnDelay: 4,
+  interval: 9,
+  minInterval: 5.5,
+  initialPulses: 2,
+  flockSize: 3,
+  /** Common hit feedback. */
+  knockDrag: 8,
+  pulse: {
+    radius: 18,
+    hp: 4,
+    speed: 92,
+    keepMin: 220,
+    keepMax: 380,
+    strafe: 0.6,
+    fireMin: 1.35,
+    fireMax: 2.2,
+    range: 560,
+    boltSpeed: 430,
+  },
+  triplex: {
+    radius: 23,
+    hp: 7,
+    speed: 68,
+    keepMin: 280,
+    keepMax: 460,
+    strafe: 0.35,
+    fireMin: 2.3,
+    fireMax: 3.3,
+    range: 620,
+    boltSpeed: 380,
+  },
+  homing: {
+    radius: 21,
+    hp: 6,
+    speed: 58,
+    keepMin: 360,
+    keepMax: 560,
+    strafe: 0.22,
+    fireMin: 3.1,
+    fireMax: 4.2,
+    range: 700,
+  },
+  flock: {
+    radius: 10,
+    hp: 2,
+    speed: 150,
+    keepMin: 150,
+    keepMax: 280,
+    strafe: 1.35,
+    fireMin: 1.8,
+    fireMax: 2.8,
+    range: 440,
+    boltSpeed: 340,
+  },
+  /** Small direct shots and tight shotgun pellets. */
+  boltRadius: 5,
+  boltDamage: 1,
+  boltTtl: 3.2,
+  missileRadius: 10,
+  missileSpeed: 150,
+  missileTurn: 2.2,
+  missileTtl: 6.5,
+} as const;
+
 export const VIRUS = {
+  spawnTime: 0.55,
   radius: 10,
   speed: 96,
   accel: 4,
@@ -253,6 +336,7 @@ export const VIRUS = {
 
 /** Cascading Error: a spreading field of yellow/red blocks in the gauntlet. */
 export const CASCADING_ERROR = {
+  spawnTime: 0.45,
   spawnDelay: 11,
   /** Delay after the last block dies before a new root can appear. */
   reseedDelay: 16,

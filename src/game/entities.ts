@@ -1,4 +1,4 @@
-import { BOLT, MINE, CASCADING_ERROR, MAX_PROJECTILES, PLAYER, TRAIL_LEN, TRAINING, VIRUS, WORM } from './config';
+import { BOLT, MINE, CASCADING_ERROR, MAX_PROJECTILES, PLAYER, SENTRY, TRAIL_LEN, TRAINING, VIRUS, WORM } from './config';
 import {
   PF,
   type CascadingError,
@@ -6,6 +6,7 @@ import {
   type Firewall,
   type Player,
   type Projectile,
+  type Sentry,
   type Virus,
   type Worm,
 } from './types';
@@ -50,6 +51,7 @@ export function createPlayer(slot: number): Player {
     dashHitWorms: 0,
     dashHitViruses: 0,
     dashHitErrors: 0,
+    dashHitSentries: 0,
     dashHitDrone: false,
     iframes: 0,
     swingPhase: 0,
@@ -161,6 +163,7 @@ export function createWorm(): Worm {
     ky: 0,
     infected: false,
     phase: 0,
+    spawnT: 0,
   };
 }
 
@@ -183,6 +186,7 @@ export function createVirus(): Virus {
     hitFlash: 0,
     kx: 0,
     ky: 0,
+    spawnT: 0,
   };
 }
 
@@ -203,6 +207,30 @@ export function createCascadingError(): CascadingError {
     hitFlash: 0,
     touchCd: 0,
     phase: 0,
+    spawnT: 0,
+  };
+}
+
+export function createSentry(): Sentry {
+  return {
+    active: false,
+    kind: 0,
+    x: 0,
+    y: 0,
+    prevX: 0,
+    prevY: 0,
+    vx: 0,
+    vy: 0,
+    kx: 0,
+    ky: 0,
+    hp: SENTRY.pulse.hp,
+    maxHp: SENTRY.pulse.hp,
+    radius: SENTRY.pulse.radius,
+    fireT: 1.5,
+    phase: 0,
+    hitFlash: 0,
+    orbitSign: 1,
+    spawnT: 0,
   };
 }
 
@@ -249,6 +277,7 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.dashHitWorms = 0;
   p.dashHitViruses = 0;
   p.dashHitErrors = 0;
+  p.dashHitSentries = 0;
   p.dashHitDrone = false;
   p.iframes = 0;
   p.swingPhase = 0;

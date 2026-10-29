@@ -29,22 +29,19 @@
 ██████╔╝███████╗██║     ███████╗███████╗╚██████╗   ██║   
 ╚═════╝ ╚══════╝╚═╝     ╚══════╝╚══════╝ ╚═════╝   ╚═╝   </pre><span class="caret" aria-hidden="true">_</span>
             </h1>
-            <p class="console-version">v0.1.5</p>
+            <p class="console-version">v0.1.8</p>
           </header>
 
           <div class="console-shell">
             <div id="menu-hub" class="menu-stage console-menu">
               <button id="btn-mode-solo" class="console-option" data-nav>
-                <span class="option-key">01</span><span class="option-label">SINGLE PLAYER</span><span class="option-value">LOCAL</span>
+                <span class="option-key">01</span><span class="option-label">SINGLE PLAYER</span>
               </button>
               <button id="btn-mode-multi" class="console-option" data-nav>
-                <span class="option-key">02</span><span class="option-label">MULTIPLAYER</span><span class="option-value">ONLINE</span>
+                <span class="option-key">02</span><span class="option-label">MULTIPLAYER</span>
               </button>
               <button id="btn-settings" class="console-option" data-nav>
                 <span class="option-key">03</span><span class="option-label">SETTINGS</span>
-              </button>
-              <button id="btn-mute" class="console-option" data-nav aria-pressed="false">
-                <span class="option-key">04</span><span id="mute-label" class="option-label">SOUND: ON</span>
               </button>
             </div>
 
@@ -55,20 +52,30 @@
               <p class="console-stage-label">SINGLE PLAYER // SELECT PROGRAM</p>
 
               <button id="btn-training" class="console-option" data-nav>
-                <span class="option-key">01</span><span class="option-label">TRAINING</span><span class="option-value">DRONE</span>
+                <span class="option-key">01</span><span class="option-label">TRAINING</span><span class="option-value">BOTS</span>
               </button>
               <button id="btn-gauntlet" class="console-option" data-nav>
                 <span class="option-key">02</span><span class="option-label">GAUNTLET</span><span class="option-value">ENDLESS</span>
               </button>
+            </div>
 
-              <div class="console-group">
-                <p class="console-group-head">ARENA <b id="arena-name">CROSSROADS</b></p>
-                <div id="arena-picker" class="console-choices" role="group" aria-label="Arena"></div>
-                <p id="arena-tagline" class="console-note">Four gates. One center.</p>
-              </div>
+            <div id="menu-arena" class="menu-stage console-menu" hidden>
+              <button id="btn-arena-back" class="console-option console-back" data-nav>
+                <span class="option-key">ESC</span><span class="option-label">BACK</span>
+              </button>
+              <p id="arena-stage-label" class="console-stage-label">SELECT ARENA</p>
+              <div id="arena-picker" class="console-arena-grid" role="group" aria-label="Arena"></div>
+              <button id="btn-arena-continue" class="console-option console-run" data-nav>
+                <span class="option-key">RUN</span><span id="arena-continue-label" class="option-label">CONTINUE</span>
+              </button>
+            </div>
 
-              <div class="console-group">
-                <p class="console-group-head">BOT SIM <b id="bot-summary">TRIAD // VETERAN</b></p>
+            <div id="menu-solo-bots" class="menu-stage console-menu" hidden>
+              <button id="btn-bots-back" class="console-option console-back" data-nav>
+                <span class="option-key">ESC</span><span class="option-label">BACK</span>
+              </button>
+              <p id="bot-stage-label" class="console-stage-label">TRAINING // OPPOSITION</p>
+              <div class="console-group console-group-tight">
                 <div id="bot-count" class="console-choices" role="group" aria-label="Number of bots"></div>
                 <div id="bot-tier" class="console-choices" role="group" aria-label="Bot difficulty"></div>
                 <p id="bot-roster" class="console-note">STYLES // VEX DUELIST / GLITCH TRICKSTER / RIFT SIEGE</p>
@@ -82,7 +89,7 @@
               <button id="btn-multi-back" class="console-option console-back" data-nav>
                 <span class="option-key">ESC</span><span class="option-label">BACK</span>
               </button>
-              <p class="console-stage-label">MULTIPLAYER // NETWORK</p>
+              <p class="console-stage-label">MULTIPLAYER // ROOM</p>
 
               <button id="btn-create" class="console-option" data-nav>
                 <span class="option-key">01</span><span class="option-label">CREATE ROOM</span><span class="option-value">HOST</span>
@@ -113,7 +120,6 @@
               <p class="console-note console-sectors">Gated bridges, escalating sectors, mini-bosses, destructible data, and transmitters you can deflect into enemies.</p>
             </div>
 
-            <p class="console-hint">ARROWS / STICK SELECT &middot; ENTER / A CONFIRM &middot; ESC / B BACK</p>
           </div>
         </div>
       </section>
@@ -183,10 +189,10 @@
                     <b id="flash-strength-value">100%</b>
                   </label>
                   <div class="setting-row">
-                    <span>CRT SCANLINES</span>
+                    <span>CONSOLE SCANLINES</span>
                     <button id="btn-scanlines" class="btn btn-ghost" data-nav aria-pressed="true">SCANLINES: ON</button>
                   </div>
-                  <p class="controls-note">Hit rotation tilts the whole view when your avatar loses a segment. Set it to 0 if the tilt reads as motion sickness. Impact flash scales the white splash on hits.</p>
+                  <p class="controls-note">Hit rotation tilts the whole view when your avatar loses a segment. Set it to 0 if the tilt reads as motion sickness. Impact flash scales the white splash on hits. Scanlines belong to the console menus and are never drawn over the arena.</p>
                 </div>
                 <div class="panel settings-panel preview-panel">
                   <div class="controls-head">
@@ -211,15 +217,26 @@
                     <input id="volume" type="range" min="0" max="100" step="5" value="80" aria-label="Master volume" />
                     <b id="volume-value">80%</b>
                   </label>
+                  <label class="setting-row setting-row-stack" for="music-volume">
+                    <span>SOUNDTRACK</span>
+                    <input id="music-volume" type="range" min="0" max="100" step="5" value="65" aria-label="Soundtrack volume" />
+                    <b id="music-volume-value">65%</b>
+                  </label>
+                  <label class="setting-row setting-row-stack" for="sfx-volume">
+                    <span>SOUND EFFECTS</span>
+                    <input id="sfx-volume" type="range" min="0" max="100" step="5" value="90" aria-label="Sound effects volume" />
+                    <b id="sfx-volume-value">90%</b>
+                  </label>
+                  <label class="setting-row setting-row-stack" for="menu-volume">
+                    <span>MENU SOUNDS</span>
+                    <input id="menu-volume" type="range" min="0" max="100" step="5" value="80" aria-label="Menu sounds volume" />
+                    <b id="menu-volume-value">80%</b>
+                  </label>
                   <div class="setting-row">
                     <span>MASTER SOUND</span>
                     <button id="btn-settings-mute" class="btn btn-ghost" data-nav aria-pressed="false">SOUND: ON</button>
                   </div>
-                  <div class="setting-row">
-                    <span>MUSIC LOOP</span>
-                    <button id="btn-music" class="btn btn-ghost" data-nav aria-pressed="true">MUSIC: ON</button>
-                  </div>
-                  <p class="controls-note">All audio is synthesized in the browser. Volume and music preference save locally. <b>M</b> mutes from anywhere.</p>
+                  <p class="controls-note">All audio is synthesized in the browser. Each channel saves locally. <b>M</b> mutes from anywhere.</p>
                 </div>
               </div>
             </section>
@@ -254,7 +271,7 @@
                   </div>
                   <div class="setting-row">
                     <span>BUILD</span>
-                    <b>0.1.5 // CONSOLE</b>
+                    <b>0.1.8 // CONSOLE</b>
                   </div>
                   <div class="setting-row">
                     <span>RESET OPTIONS</span>
@@ -309,8 +326,6 @@
       </section>
 
       <div id="game-ui" class="game-ui" hidden>
-        <button id="btn-leave-match" class="icon-btn" data-nav>LEAVE MATCH</button>
-        <div id="net-badge" class="net-badge" hidden></div>
         <div id="countdown" class="countdown" hidden>
           <span id="countdown-label">GET READY</span>
           <strong id="countdown-value">2</strong>
@@ -332,7 +347,6 @@
           <pre id="boot-log" class="boot-log">MOUNTING ARENA VOLUME ...
 VERIFYING GEOMETRY .................... OK
 LINKING OPERATOR RIGS ................. OK</pre>
-          <div class="boot-bar"><i id="boot-bar-fill"></i></div>
           <p id="boot-status" class="boot-status">LOADING SECTOR</p>
         </div>
       </div>

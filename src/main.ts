@@ -1,5 +1,5 @@
 import { MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
-import { ARENAS, getArena } from './game/arenas';
+import { ARENAS, drawArenaPreview, getArena } from './game/arenas';
 import { BOT_NAMES, BOT_STYLE_LABELS, BOT_TIERS, BOT_TIER_LABELS, BotBrain, type BotTier } from './game/bot';
 import { AudioEngine } from './game/audio';
 import { Fx } from './game/fx';
@@ -31,9 +31,6 @@ const countdownEl = el('countdown');
 const countdownLabel = el('countdown-label');
 const countdownValue = el<HTMLElement>('countdown-value');
 const perfEl = el('perf');
-const netBadge = el('net-badge');
-const muteBtn = el<HTMLButtonElement>('btn-mute');
-const muteLabel = el('mute-label');
 const settingsBtn = el<HTMLButtonElement>('btn-settings');
 const callsignInput = el<HTMLInputElement>('callsign');
 const roomCodeInput = el<HTMLInputElement>('room-code');
@@ -50,12 +47,13 @@ const lobbyStatus = el('lobby-status');
 const readyBtn = el<HTMLButtonElement>('btn-ready');
 const startBtn = el<HTMLButtonElement>('btn-start');
 const copyBtn = el<HTMLButtonElement>('btn-copy');
-const arenaNameEl = el('arena-name');
-const arenaTaglineEl = el('arena-tagline');
 const arenaPicker = el('arena-picker');
+const arenaStageLabel = el('arena-stage-label');
+const arenaContinueLabel = el('arena-continue-label');
+const arenaContinueBtn = el<HTMLButtonElement>('btn-arena-continue');
 const botCountEl = el('bot-count');
 const botTierEl = el('bot-tier');
-const botSummary = el('bot-summary');
+const botStageLabel = el('bot-stage-label');
 const botRoster = el('bot-roster');
 const botBtn = el<HTMLButtonElement>('btn-bots');
 const botStartLabel = el('bot-start-label');
@@ -68,12 +66,19 @@ const flashInput = el<HTMLInputElement>('flash-strength');
 const flashValue = el('flash-strength-value');
 const volumeInput = el<HTMLInputElement>('volume');
 const volumeValue = el('volume-value');
+const musicVolumeInput = el<HTMLInputElement>('music-volume');
+const musicVolumeValue = el('music-volume-value');
+const sfxVolumeInput = el<HTMLInputElement>('sfx-volume');
+const sfxVolumeValue = el('sfx-volume-value');
+const menuVolumeInput = el<HTMLInputElement>('menu-volume');
+const menuVolumeValue = el('menu-volume-value');
 const scanlinesBtn = el<HTMLButtonElement>('btn-scanlines');
-const musicBtn = el<HTMLButtonElement>('btn-music');
 const resetSettingsBtn = el<HTMLButtonElement>('btn-settings-reset');
 const testFeedbackBtn = el<HTMLButtonElement>('btn-test-feedback');
 const menuHub = el('menu-hub');
 const menuSolo = el('menu-solo');
+const menuArena = el('menu-arena');
+const menuSoloBots = el('menu-solo-bots');
 const menuMulti = el('menu-multi');
 const modeSoloBtn = el<HTMLButtonElement>('btn-mode-solo');
 const modeMultiBtn = el<HTMLButtonElement>('btn-mode-multi');
@@ -81,7 +86,6 @@ const soloBackBtn = el<HTMLButtonElement>('btn-solo-back');
 const multiBackBtn = el<HTMLButtonElement>('btn-multi-back');
 const bootScreen = el('boot');
 const bootLog = el('boot-log');
-const bootBarFill = el('boot-bar-fill');
 const bootStatus = el('boot-status');
 
 const renderer = new Renderer(canvas);
@@ -99,8 +103,10 @@ let lobbyState: LobbyState | null = null;
 let localSlot = 0;
 let busy = false;
 let overlayKind: OverlayKind = 'none';
-type MenuStage = 'hub' | 'solo' | 'multi';
+type MenuStage = 'hub' | 'solo' | 'soloArena' | 'soloBots' | 'multi';
+type SoloProgram = 'training' | 'gauntlet';
 let menuStage: MenuStage = 'hub';
+let soloProgram: SoloProgram = 'training';
 let settingsTab: SettingsTab = 'controls';
 
 const localFrame: InputFrame = { mx: 0, my: 0, held: 0, pressed: 0 };
@@ -129,7 +135,6 @@ let lastRoundWinner = -2;
 let lastMatchWinner = -2;
 let goUntil = 0;
 let perfTimer = 0;
-let lastNetBadge = '';
 let lastCountdownText = '';
 let lastBounceSound = 0;
 let lastThreatSound = 0;
@@ -162,7 +167,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.5 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.8 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -170,12 +175,16 @@ function bindUi(): void {
   modeMultiBtn.addEventListener('click', () => showMenuStage('multi'));
   soloBackBtn.addEventListener('click', () => showMenuStage('hub'));
   multiBackBtn.addEventListener('click', () => showMenuStage('hub'));
-  trainingBtn.addEventListener('click', startTraining);
+  trainingBtn.addEventListener('click', () => openSoloArena('training'));
+  gauntletBtn.addEventListener('click', () => openSoloArena('gauntlet'));
+  el<HTMLButtonElement>('btn-arena-back').addEventListener('click', () => showMenuStage('solo'));
+  el<HTMLButtonElement>('btn-bots-back').addEventListener('click', () => showMenuStage('soloArena'));
+  arenaContinueBtn.addEventListener('click', () => {
+    if (soloProgram === 'training') showMenuStage('soloBots');
+    else startGauntlet();
+  });
   createBtn.addEventListener('click', () => void createRoom());
   joinBtn.addEventListener('click', joinRoom);
-  muteBtn.addEventListener('click', () => {
-    toggleMute();
-  });
   settingsMuteBtn.addEventListener('click', () => {
     toggleMute();
   });
@@ -202,13 +211,17 @@ function bindUi(): void {
   volumeInput.addEventListener('input', () => {
     applyVolume(Number(volumeInput.value) / 100, true);
   });
+  musicVolumeInput.addEventListener('input', () => {
+    applyMusicVolume(Number(musicVolumeInput.value) / 100, true);
+  });
+  sfxVolumeInput.addEventListener('input', () => {
+    applySfxVolume(Number(sfxVolumeInput.value) / 100, true);
+  });
+  menuVolumeInput.addEventListener('input', () => {
+    applyMenuVolume(Number(menuVolumeInput.value) / 100, true);
+  });
   scanlinesBtn.addEventListener('click', () => {
     applyScanlines(scanlinesBtn.getAttribute('aria-pressed') !== 'true', true);
-  });
-  musicBtn.addEventListener('click', () => {
-    audio.setMusicEnabled(!audio.musicWanted);
-    if (audio.musicWanted && screen === 'game' && !audio.muted) audio.startMusic();
-    updateAudioLabels();
   });
   testFeedbackBtn.addEventListener('click', () => {
     audio.hit();
@@ -217,13 +230,11 @@ function bindUi(): void {
   });
   resetSettingsBtn.addEventListener('click', resetSettings);
   el<HTMLButtonElement>('btn-lobby-back').addEventListener('click', leaveLobby);
-  el<HTMLButtonElement>('btn-leave-match').addEventListener('click', openLeave);
   readyBtn.addEventListener('click', toggleReady);
   startBtn.addEventListener('click', startHostMatch);
   copyBtn.addEventListener('click', () => void copyInvite());
   lobbyArenaBtn.addEventListener('click', cycleLobbyArena);
   botBtn.addEventListener('click', startBotMatch);
-  gauntletBtn.addEventListener('click', startGauntlet);
   el<HTMLButtonElement>('btn-lobby-back').setAttribute('data-nav', '');
 
   callsignInput.addEventListener('input', () => {
@@ -274,14 +285,13 @@ function unlockAudio(): void {
 function beginLoadSequence(arenaName: string): void {
   const now = performance.now();
   loading = true;
-  loadingUntil = now + 1900;
+  loadingUntil = now + 3000;
   bootShownAt = now;
   bootLeaving = false;
   bootScreen.hidden = false;
   bootScreen.classList.remove('leaving');
-  bootBarFill.style.width = '0%';
-  bootStatus.textContent = `MOUNTING ${arenaName} // STREAMING GEOMETRY`;
-  bootLog.textContent = `> MOUNT ARENA "${arenaName}"\n> VERIFY COVER / SPAWNS / NAV GRID ......... OK\n> BUILD OPERATOR RIGS ..................... OK\n> SYNCHRONIZE INPUT BUS ................... OK`;
+  bootStatus.textContent = `COMPILING ${arenaName}`;
+  bootLog.textContent = `> MOUNT ARENA "${arenaName}"\n> LAY GROUND PLANE ......................... OK\n> DROP COVER GEOMETRY ...................... OK\n> ASSEMBLE OPERATOR RIGS ................... OK`;
   // Two animation frames let the title console paint once before the overlay fades in.
   requestAnimationFrame(() => bootScreen.classList.add('active'));
   renderer.beginIntro();
@@ -290,14 +300,11 @@ function beginLoadSequence(arenaName: string): void {
 function updateLoadSequence(now: number): void {
   if (!loading) return;
   const elapsed = now - bootShownAt;
-  const total = Math.max(1, loadingUntil - bootShownAt);
-  const pct = Math.max(0, Math.min(1, elapsed / total));
-  bootBarFill.style.width = `${Math.round(pct * 100)}%`;
-  if (elapsed > 720 && !bootLeaving) {
+  if (elapsed > 1050 && !bootLeaving) {
     bootLeaving = true;
     bootScreen.classList.add('leaving');
   }
-  if (elapsed > 1040 && bootScreen.classList.contains('active')) {
+  if (elapsed > 1400 && bootScreen.classList.contains('active')) {
     bootScreen.classList.remove('active');
     bootScreen.hidden = true;
   }
@@ -314,20 +321,62 @@ function showMenuStage(stage: MenuStage, focus = true): void {
   menuStage = stage;
   menuHub.hidden = stage !== 'hub';
   menuSolo.hidden = stage !== 'solo';
+  menuArena.hidden = stage !== 'soloArena';
+  menuSoloBots.hidden = stage !== 'soloBots';
   menuMulti.hidden = stage !== 'multi';
+  if (stage === 'soloArena') updateSoloArenaCopy();
   resetNavFocus();
   if (focus) focusMenuStage();
 }
 
+function openSoloArena(program: SoloProgram): void {
+  soloProgram = program;
+  showMenuStage('soloArena');
+}
+
+function updateSoloArenaCopy(): void {
+  const training = soloProgram === 'training';
+  arenaStageLabel.textContent = `${training ? 'TRAINING' : 'GAUNTLET'} // SELECT ARENA`;
+  arenaContinueLabel.textContent = training ? 'NEXT // OPPOSITION' : 'ENTER GAUNTLET';
+}
+
 function focusMenuStage(): void {
-  const first = menuStage === 'solo' ? trainingBtn : menuStage === 'multi' ? createBtn : modeSoloBtn;
+  if (menuStage === 'hub') {
+    resetNavFocus();
+    modeSoloBtn.classList.add('nav-focus');
+    modeSoloBtn.focus({ preventScroll: true });
+    return;
+  }
+  if (menuStage === 'solo') {
+    resetNavFocus();
+    trainingBtn.classList.add('nav-focus');
+    trainingBtn.focus({ preventScroll: true });
+    return;
+  }
+  if (menuStage === 'soloArena') {
+    const card = arenaPicker.querySelector<HTMLButtonElement>('.console-arena-card.selected');
+    resetNavFocus();
+    (card ?? arenaContinueBtn).classList.add('nav-focus');
+    (card ?? arenaContinueBtn).focus({ preventScroll: true });
+    return;
+  }
+  if (menuStage === 'soloBots') {
+    const card = botCountEl.querySelector<HTMLButtonElement>('.selected') ?? botBtn;
+    resetNavFocus();
+    card.classList.add('nav-focus');
+    card.focus({ preventScroll: true });
+    return;
+  }
   resetNavFocus();
-  first.classList.add('nav-focus');
-  first.focus({ preventScroll: true });
+  createBtn.classList.add('nav-focus');
+  createBtn.focus({ preventScroll: true });
 }
 
 function menuBack(): void {
-  if (screen === 'title' && menuStage !== 'hub') showMenuStage('hub');
+  if (screen !== 'title') return;
+  if (menuStage === 'soloBots') showMenuStage('soloArena');
+  else if (menuStage === 'soloArena') showMenuStage('solo');
+  else if (menuStage !== 'hub') showMenuStage('hub');
 }
 
 // Arena & bot setup --------------------------------------------------------------------------
@@ -364,7 +413,9 @@ function loadSettings(): void {
   applyFlash(flash, false);
   applyScanlines(scanlines, false);
   applyVolume(audio.volume, false);
-  updateAudioLabels();
+  applyMusicVolume(audio.musicVolume, false);
+  applySfxVolume(audio.sfxVolume, false);
+  applyMenuVolume(audio.menuVolume, false);
 }
 
 function applyHitRotation(scale: number, persist: boolean): void {
@@ -401,6 +452,30 @@ function applyVolume(volume: number, persist: boolean): void {
   volumeValue.textContent = `${Math.round(clamped * 100)}%`;
 }
 
+function applyMusicVolume(volume: number, persist: boolean): void {
+  const clamped = Math.max(0, Math.min(1, volume));
+  audio.musicVolume = clamped;
+  if (persist) audio.setMusicVolume(clamped);
+  musicVolumeInput.value = String(Math.round(clamped * 100));
+  musicVolumeValue.textContent = `${Math.round(clamped * 100)}%`;
+}
+
+function applySfxVolume(volume: number, persist: boolean): void {
+  const clamped = Math.max(0, Math.min(1, volume));
+  audio.sfxVolume = clamped;
+  if (persist) audio.setSfxVolume(clamped);
+  sfxVolumeInput.value = String(Math.round(clamped * 100));
+  sfxVolumeValue.textContent = `${Math.round(clamped * 100)}%`;
+}
+
+function applyMenuVolume(volume: number, persist: boolean): void {
+  const clamped = Math.max(0, Math.min(1, volume));
+  audio.menuVolume = clamped;
+  if (persist) audio.setMenuVolume(clamped);
+  menuVolumeInput.value = String(Math.round(clamped * 100));
+  menuVolumeValue.textContent = `${Math.round(clamped * 100)}%`;
+}
+
 function applyScanlines(on: boolean, persist: boolean): void {
   document.body.classList.toggle('no-scanlines', !on);
   scanlinesBtn.textContent = `SCANLINES: ${on ? 'ON' : 'OFF'}`;
@@ -413,19 +488,14 @@ function applyScanlines(on: boolean, persist: boolean): void {
   }
 }
 
-function updateAudioLabels(): void {
-  const musicOn = audio.musicWanted;
-  musicBtn.textContent = `MUSIC: ${musicOn ? 'ON' : 'OFF'}`;
-  musicBtn.setAttribute('aria-pressed', String(musicOn));
-}
-
 function resetSettings(): void {
   applyHitRotation(1, true);
   applyFlash(1, true);
   applyVolume(0.8, true);
+  applyMusicVolume(0.65, true);
+  applySfxVolume(0.9, true);
+  applyMenuVolume(0.8, true);
   applyScanlines(true, true);
-  audio.setMusicEnabled(true);
-  updateAudioLabels();
   toast('SETTINGS RESTORED TO DEFAULTS');
 }
 
@@ -455,8 +525,6 @@ function persistArenaPrefs(): void {
 
 function selectArena(index: number): void {
   arenaIndex = ((index % ARENAS.length) + ARENAS.length) % ARENAS.length;
-  arenaNameEl.textContent = getArena(arenaIndex).name;
-  arenaTaglineEl.textContent = getArena(arenaIndex).tagline;
   persistArenaPrefs();
   renderArenaPicker();
   if (mode === 'host' && hostNet) {
@@ -467,24 +535,32 @@ function selectArena(index: number): void {
 }
 
 function renderArenaPicker(): void {
-  const arena = getArena(arenaIndex);
-  arenaNameEl.textContent = arena.name;
-  arenaTaglineEl.textContent = arena.tagline;
   const keepFocus = arenaPicker.contains(document.activeElement);
   clearChildren(arenaPicker);
   for (let i = 0; i < ARENAS.length; i++) {
     const option = ARENAS[i];
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = `console-choice${i === arenaIndex ? ' selected' : ''}`;
+    card.className = `console-arena-card${i === arenaIndex ? ' selected' : ''}`;
     card.dataset.nav = '';
     card.title = option.tagline;
     card.setAttribute('aria-pressed', String(i === arenaIndex));
-    card.textContent = `${String(i + 1).padStart(2, '0')}  ${option.name}`;
+    card.setAttribute('aria-label', `${option.name}. ${option.tagline}`);
+
+    const preview = document.createElement('canvas');
+    preview.width = 240;
+    preview.height = 120;
+    preview.setAttribute('aria-hidden', 'true');
+    drawArenaPreview(preview, option);
+
+    const label = document.createElement('span');
+    label.className = 'console-arena-label';
+    label.textContent = `${String(i + 1).padStart(2, '0')}  ${option.name}`;
+    card.append(preview, label);
     card.addEventListener('click', () => selectArena(i));
     arenaPicker.appendChild(card);
   }
-  if (keepFocus) arenaPicker.querySelector<HTMLButtonElement>('.selected')?.focus();
+  if (keepFocus) arenaPicker.querySelector<HTMLButtonElement>('.selected')?.focus({ preventScroll: true });
 }
 
 function renderBotControls(): void {
@@ -534,7 +610,7 @@ function setBotTier(tier: BotTier): void {
 }
 
 function updateBotSummary(): void {
-  botSummary.textContent = `${botCount === 1 ? 'DUEL' : 'TRIAD'} // ${BOT_TIER_LABELS[botTier]}`;
+  botStageLabel.textContent = `TRAINING // ${botCount === 1 ? '1 V 1' : '1 V 3'} // ${BOT_TIER_LABELS[botTier]}`;
   botStartLabel.textContent = `START ${botCount === 1 ? 'BOT DUEL' : 'BOT TRIAD'}`;
   botRoster.textContent = `STYLES // ${BOT_NAMES.slice(0, botCount)
     .map((name, i) => `${name} ${BOT_STYLE_LABELS[i]}`)
@@ -590,7 +666,6 @@ function loop(now: number): void {
       if (guestView) guestView.present();
       trackLocalHit(state);
       syncPhaseUi(state);
-      updateNetBadge(state);
       fx.update(dt);
       renderer.render(state, Math.min(1, acc / SIM_DT), fx);
     }
@@ -776,11 +851,25 @@ function handleGameEvent(e: GameEvent, remote: boolean): void {
       audio.eliminate();
       break;
     case EV.WORM_HIT:
-    case EV.VIRUS_HIT: {
+    case EV.VIRUS_HIT:
+    case EV.SENTRY_HIT: {
       const now = performance.now();
       if (now - lastThreatSound > 55) {
         lastThreatSound = now;
         audio.hit();
+      }
+      break;
+    }
+    case EV.SENTRY_KILL:
+    case EV.WORM_KILL:
+    case EV.VIRUS_KILL:
+      audio.explode();
+      break;
+    case EV.SENTRY_SHOOT: {
+      const now = performance.now();
+      if (now - lastThreatSound > 90) {
+        lastThreatSound = now;
+        audio.shootBolt();
       }
       break;
     }
@@ -818,7 +907,6 @@ function startTraining(): void {
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
-  toast(`TRAINING // ${arena.name} // SPARRING DRONE ONLINE`);
   console.log('[DEFLECT-STATE] Training start', arena.name);
 }
 
@@ -837,7 +925,6 @@ function startGauntlet(): void {
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
-  toast(`GAUNTLET // ${arena.name} // SURVIVE`, 'warn');
   console.log('[DEFLECT-STATE] Gauntlet start', arena.name);
 }
 
@@ -866,7 +953,6 @@ function startBotMatch(): void {
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
-  toast(`BOT ${botCount === 1 ? 'DUEL' : 'TRIAD'} // ${BOT_TIER_LABELS[botTier]} // ${arena.name}`);
   console.log('[DEFLECT-STATE] Bot match', botCount, botTier, arena.name);
 }
 
@@ -1167,6 +1253,7 @@ function leaveLobby(): void {
 
 function leaveToTitle(): void {
   teardownSession();
+  showMenuStage('hub', false);
   setScreen('title');
   busy = false;
   refreshTitleButtons();
@@ -1546,11 +1633,8 @@ function namesFromLobby(): string[] {
 
 function updateMuteLabel(): void {
   const text = `SOUND: ${audio.muted ? 'OFF' : 'ON'}`;
-  muteLabel.textContent = text;
-  muteBtn.setAttribute('aria-pressed', String(audio.muted));
   settingsMuteBtn.textContent = text;
   settingsMuteBtn.setAttribute('aria-pressed', String(audio.muted));
-  updateAudioLabels();
 }
 
 function toggleMute(): void {
@@ -1559,30 +1643,6 @@ function toggleMute(): void {
   if (!muted && audio.musicWanted && screen === 'game') audio.startMusic();
   updateMuteLabel();
   toast(muted ? 'AUDIO MUTED' : 'AUDIO ONLINE');
-}
-
-function updateNetBadge(state: RenderState): void {
-  let text = '';
-  if (stress) {
-    text = `STRESS // ${stressBots} OPERATORS`;
-  } else if (mode === 'host' && hostNet) {
-    let count = 0;
-    for (let i = 0; i < state.players.length; i++) if (state.players[i].active) count++;
-    text = `ROOM ${hostNet.code} // ${count} OPERATORS // HOST`;
-  } else if (mode === 'guest') {
-    text = `ROOM ${lobbyState?.code ?? '----'} // GUEST P${localSlot + 1}`;
-  } else if (mode === 'bots' && world) {
-    text = `BOT ${botCount === 1 ? 'DUEL' : 'TRIAD'} // ${world.arena.name}`;
-  } else if (mode === 'training' && world) {
-    text = `TRAINING // ${world.arena.name}`;
-  } else if (mode === 'gauntlet' && world) {
-    text = `GAUNTLET // ${world.arena.name}`;
-  }
-  if (text !== lastNetBadge) {
-    lastNetBadge = text;
-    netBadge.textContent = text;
-    netBadge.hidden = !text;
-  }
 }
 
 function countActive(items: readonly { active: boolean }[]): number {

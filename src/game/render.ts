@@ -1,9 +1,9 @@
-import { BUG, MINE, CASCADING_ERROR, COLORS, FIREWALL, MAX_PLAYERS, PLAYER, ROUND, TRAIL_LEN, VIEW_H, VIEW_W, WORM } from './config';
+import { BUG, CAMERA_ZOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, MAX_PLAYERS, PLAYER, ROUND, SENTRY, TRAIL_LEN, VIEW_H, VIEW_W, VIRUS, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
 import { drawGlyph, slotColor, slotGlyph, THREAT_COLORS } from './identity';
 import { P_COLOR_ICE, particleColor } from './particles';
-import type { CascadingError, Drone, Firewall, GameMode, Phase, Player, Projectile, Virus, Worm } from './types';
+import type { CascadingError, Drone, Firewall, GameMode, Phase, Player, Projectile, Sentry, Virus, Worm } from './types';
 
 export interface RenderState {
   mode: GameMode;
@@ -23,6 +23,7 @@ export interface RenderState {
   viruses?: readonly Virus[];
   firewalls?: readonly Firewall[];
   errors?: readonly CascadingError[];
+  sentries?: readonly Sentry[];
   infection?: number;
   gauntletKills?: number;
   wave?: number;
@@ -42,8 +43,7 @@ const LABEL_DRONE = 'SPARRING DRONE';
 const SPIN_TRAIL_LEN = 20;
 const SPIN_TRAIL_LIFE = 0.42;
 const SPIN_TRAIL_INTERVAL = 0.02;
-const INTRO_LEN = 1.85;
-const LABEL_LOADING = 'LOADING OPERATOR RIGS';
+const INTRO_LEN = 3.1;
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -77,6 +77,8 @@ export class Renderer {
   private offY = 0;
 
   private floorGradient: CanvasGradient | null = null;
+  private floorPattern: CanvasPattern | null = null;
+  private floorPatternArena = -1;
   private lowHpGradient: CanvasGradient | null = null;
   private dustX = new Float32Array(56);
   private dustY = new Float32Array(56);
@@ -165,7 +167,7 @@ export class Renderer {
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    const sx = this.dpr * this.scale;
+    const sx = this.dpr * this.scale * CAMERA_ZOOM;
     ctx.setTransform(
       sx,
       0,
@@ -177,8 +179,8 @@ export class Renderer {
     ctx.translate(-this.camX, -this.camY);
     if (fx.rotationShake !== 0) {
       // Pivot on the middle of the visible camera window, not world origin.
-      const pivotX = this.camX + VIEW_W * 0.5;
-      const pivotY = this.camY + VIEW_H * 0.5;
+      const pivotX = this.camX + VIEW_W / CAMERA_ZOOM * 0.5;
+      const pivotY = this.camY + VIEW_H / CAMERA_ZOOM * 0.5;
       ctx.translate(pivotX, pivotY);
       ctx.rotate(fx.rotationShake);
       ctx.translate(-pivotX, -pivotY);
@@ -192,6 +194,7 @@ export class Renderer {
       this.drawProjectiles(state, alpha, t);
       if (state.worms) this.drawWorms(state.worms, alpha, t);
       if (state.viruses) this.drawViruses(state.viruses, alpha, t);
+      if (state.sentries) this.drawSentries(state.sentries, alpha, t);
       if (state.errors) this.drawErrors(state.errors, alpha, t);
       this.drawLasers(state, alpha, t);
       if (state.drone) this.drawDrone(state.drone, alpha, t);
@@ -228,31 +231,6 @@ export class Renderer {
     }
 
     if (introDone) this.drawHud(state, t);
-    else this.drawIntroBar(intro);
-  }
-
-  private drawIntroBar(intro: number): void {
-    if (intro < 0.95 || intro > 1.62) return;
-    const ctx = this.ctx;
-    const pct = Math.max(0, Math.min(1, (intro - 0.95) / 0.6));
-    const w = 250;
-    const x = (VIEW_W - w) * 0.5;
-    const y = VIEW_H * 0.62;
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = FONT_TINY;
-    ctx.fillStyle = 'rgba(141, 247, 255, 0.72)';
-    ctx.fillText(LABEL_LOADING, VIEW_W * 0.5, y - 12);
-    ctx.strokeStyle = 'rgba(46, 230, 255, 0.35)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, w, 7);
-    ctx.fillStyle = '#8df7ff';
-    ctx.globalAlpha = 0.8;
-    ctx.fillRect(x + 1, y + 1, (w - 2) * pct, 5);
-    ctx.globalAlpha = 0.6;
-    ctx.fillText(`${Math.round(pct * 100)}%`, VIEW_W * 0.5, y + 20);
-    ctx.restore();
   }
 
   private updateCamera(state: RenderState, alpha: number, dt: number): void {
@@ -268,12 +246,14 @@ export class Renderer {
 
     let targetX: number;
     let targetY: number;
+    const viewW = VIEW_W / CAMERA_ZOOM;
+    const viewH = VIEW_H / CAMERA_ZOOM;
     const spanX = b.right - b.left;
     const spanY = b.bottom - b.top;
-    if (spanX <= VIEW_W) targetX = (b.left + b.right - VIEW_W) * 0.5;
-    else targetX = Math.max(b.left, Math.min(b.right - VIEW_W, focusX - VIEW_W * 0.5));
-    if (spanY <= VIEW_H) targetY = (b.top + b.bottom - VIEW_H) * 0.5;
-    else targetY = Math.max(b.top, Math.min(b.bottom - VIEW_H, focusY - VIEW_H * 0.5));
+    if (spanX <= viewW) targetX = (b.left + b.right - viewW) * 0.5;
+    else targetX = Math.max(b.left, Math.min(b.right - viewW, focusX - viewW * 0.5));
+    if (spanY <= viewH) targetY = (b.top + b.bottom - viewH) * 0.5;
+    else targetY = Math.max(b.top, Math.min(b.bottom - viewH, focusY - viewH * 0.5));
 
     if (!this.camReady || this.camArena !== arena.id) {
       this.camX = targetX;
@@ -287,12 +267,75 @@ export class Renderer {
     this.camY += (targetY - this.camY) * k;
   }
 
+  /**
+   * Circuit traces, nodes and code glyphs baked into one repeating tile. Built once
+   * per arena, never per frame; the arena keeps its own visual signature.
+   */
+  private ensureFloorPattern(arena: ArenaDef): void {
+    if (this.floorPattern && this.floorPatternArena === arena.id) return;
+    const tile = document.createElement('canvas');
+    tile.width = 384;
+    tile.height = 384;
+    const c = tile.getContext('2d');
+    if (!c) return;
+    c.clearRect(0, 0, 384, 384);
+    c.strokeStyle = arena.accent;
+    c.fillStyle = arena.accent;
+    c.lineWidth = 1;
+
+    // Sparse board traces with right-angle turns and small solder pads.
+    c.globalAlpha = 0.14;
+    for (let row = 0; row < 6; row++) {
+      const y = 22 + row * 64;
+      c.beginPath();
+      c.moveTo(0, y);
+      c.lineTo(78, y);
+      c.lineTo(78, y + 24);
+      c.lineTo(168, y + 24);
+      c.moveTo(256, y + 6);
+      c.lineTo(256, y + 40);
+      c.lineTo(330, y + 40);
+      c.lineTo(330, y + 62);
+      c.lineTo(384, y + 62);
+      c.stroke();
+      c.fillRect(77, y + 23, 3, 3);
+      c.fillRect(329, y + 39, 3, 3);
+    }
+    c.globalAlpha = 0.1;
+    for (let col = 0; col < 4; col++) {
+      const x = 52 + col * 96;
+      c.strokeRect(x, 116, 26, 18);
+      c.beginPath();
+      c.moveTo(x + 13, 116);
+      c.lineTo(x + 13, 98);
+      c.lineTo(x + 38, 98);
+      c.stroke();
+    }
+
+    const glyphs = ['0xFF', '>>', '::', '##', '{}', '&&', '01', '//', '[]', 'λ', 'Σ', '∆'];
+    c.font = '700 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    for (let i = 0; i < glyphs.length; i++) {
+      const x = 36 + ((i * 97) % 340);
+      const y = 54 + ((i * 83) % 300);
+      c.globalAlpha = 0.1 + (i % 3) * 0.012;
+      c.fillText(glyphs[i], x, y);
+    }
+    this.floorPattern = this.ctx.createPattern(tile, 'repeat');
+    this.floorPatternArena = arena.id;
+  }
+
   private drawArena(t: number, arena: ArenaDef, intro = INTRO_LEN): void {
     const ctx = this.ctx;
     const b = arena.bounds;
-    const groundA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, intro / 0.45));
-    const frameA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 0.4) / 0.4));
-    const pillarA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 0.65) / 0.35));
+    this.ensureFloorPattern(arena);
+    // Each layer compiles in on its own beat. Cover drops a few units into place,
+    // so the arena reads as assembled rather than simply faded up.
+    const groundA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, intro / 0.9));
+    const frameA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 0.7) / 0.75));
+    const pillarA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 1.15) / 0.8));
+    const pillarDrop = (1 - pillarA) * 30;
     if (this.dustArena !== arena.id) {
       for (let i = 0; i < this.dustX.length; i++) {
         this.dustX[i] = b.left + Math.random() * (b.right - b.left);
@@ -306,6 +349,12 @@ export class Renderer {
     ctx.fillRect(arena.bounds.left, arena.bounds.top, arena.bounds.right - arena.bounds.left, arena.bounds.bottom - arena.bounds.top);
     ctx.fillStyle = arena.accentFaint;
     ctx.fillRect(arena.bounds.left, arena.bounds.top, arena.bounds.right - arena.bounds.left, arena.bounds.bottom - arena.bounds.top);
+    if (this.floorPattern) {
+      ctx.fillStyle = this.floorPattern;
+      ctx.globalAlpha = groundA * 0.85;
+      ctx.fillRect(arena.bounds.left, arena.bounds.top, arena.bounds.right - arena.bounds.left, arena.bounds.bottom - arena.bounds.top);
+      ctx.globalAlpha = groundA;
+    }
 
     // Grid.
     ctx.beginPath();
@@ -388,6 +437,8 @@ export class Renderer {
     ctx.restore();
 
     // Arena furniture.
+    ctx.save();
+    ctx.translate(0, -pillarDrop);
     for (let i = 0; i < arena.pillars.length; i++) {
       const r = arena.pillars[i];
       ctx.fillStyle = COLORS.pillarFill;
@@ -413,6 +464,7 @@ export class Renderer {
       ctx.fillRect(r.x + r.w * 0.5 - 6, r.y + r.h - 5, 12, 2);
       ctx.globalAlpha = 1;
     }
+    ctx.restore();
 
     // Center floor marking: one shared ring plus a map-specific signature.
     ctx.save();
@@ -592,8 +644,11 @@ export class Renderer {
       const w = worms[i];
       if (!w.active) continue;
       const base = w.infected ? THREAT_COLORS.virus : THREAT_COLORS.worm;
+      const build = w.spawnT > 0 ? 1 - w.spawnT / WORM.spawnTime : 1;
+      const builtSegments = 1 + Math.floor(build * w.segCount);
 
       for (let s = w.segCount - 1; s >= 0; s--) {
+        if (s >= builtSegments) continue;
         const x = lerp(w.segPrevX[s], w.segX[s], alpha);
         const y = lerp(w.segPrevY[s], w.segY[s], alpha);
         const size = 10.5 - s * 0.22;
@@ -619,8 +674,21 @@ export class Renderer {
       const hx = lerp(w.prevX, w.x, alpha);
       const hy = lerp(w.prevY, w.y, alpha);
       ctx.save();
+      if (build < 1) {
+        // Temporary assembly cage: the head is already here, the chain is still compiling.
+        for (let k = 0; k < 4; k++) {
+          const a = build * 7 + k * (Math.PI / 2);
+          ctx.globalAlpha = (1 - build) * 0.55;
+          ctx.strokeStyle = base;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(hx, hy, WORM.headRadius + 14 + k * 4, a, a + 0.5);
+          ctx.stroke();
+        }
+      }
       ctx.translate(hx, hy);
       ctx.rotate(w.angle + Math.PI * 0.25);
+      ctx.scale(0.45 + 0.55 * build, 0.45 + 0.55 * build);
       const r = WORM.headRadius;
       ctx.globalAlpha = 0.12;
       ctx.fillStyle = base;
@@ -678,9 +746,24 @@ export class Renderer {
       const x = lerp(v.prevX, v.x, alpha);
       const y = lerp(v.prevY, v.y, alpha);
       const spin = t * 1.1 + v.phase;
+      const build = v.spawnT > 0 ? 1 - v.spawnT / VIRUS.spawnTime : 1;
       ctx.save();
+      if (build < 1) {
+        ctx.globalAlpha = (1 - build) * 0.6;
+        ctx.strokeStyle = THREAT_COLORS.virus;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 5]);
+        for (let k = 0; k < 4; k++) {
+          const a = build * 5 + k * (Math.PI / 2);
+          ctx.beginPath();
+          ctx.arc(x, y, v.radius + 8 + k * 5, a, a + 0.7);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
       ctx.translate(x, y);
-      ctx.rotate(spin);
+      ctx.rotate(spin + (1 - build) * 2.4);
+      ctx.scale(0.25 + 0.75 * build, 0.25 + 0.75 * build);
       const r = v.radius;
       ctx.globalAlpha = 0.14;
       ctx.fillStyle = THREAT_COLORS.virus;
@@ -721,6 +804,134 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** Hostile shooters: square, nested triplex, trapezoid missile pod and flock dart. */
+  private drawSentries(sentries: readonly Sentry[], alpha: number, t: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < sentries.length; i++) {
+      const s = sentries[i];
+      if (!s.active) continue;
+      const x = lerp(s.prevX, s.x, alpha);
+      const y = lerp(s.prevY, s.y, alpha);
+      const color = s.kind === 2 ? THREAT_COLORS.homing : s.kind === 3 ? THREAT_COLORS.flock : THREAT_COLORS.sentry;
+      const angle = Math.atan2(s.vy, s.vx);
+      const r = s.radius;
+      const build = s.spawnT > 0 ? 1 - s.spawnT / SENTRY.spawnTime : 1;
+      ctx.save();
+      if (build < 1) {
+        ctx.globalAlpha = (1 - build) * 0.6;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([4, 6]);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(build * 5 + s.phase);
+        ctx.strokeRect(-r - 16, -r - 16, (r + 16) * 2, (r + 16) * 2);
+        ctx.restore();
+        ctx.setLineDash([]);
+      }
+      ctx.translate(x, y);
+      ctx.rotate((1 - build) * 3.2);
+      ctx.scale(0.2 + 0.8 * build, 0.2 + 0.8 * build);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = color;
+
+      if (s.kind === 0) {
+        ctx.rotate(t * 0.8 + s.phase);
+        ctx.globalAlpha = 0.12;
+        ctx.fillRect(-r - 5, -r - 5, (r + 5) * 2, (r + 5) * 2);
+        ctx.globalAlpha = 0.86;
+        ctx.lineWidth = 1.8;
+        ctx.strokeRect(-r, -r, r * 2, r * 2);
+        ctx.globalAlpha = 0.5;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-r * 0.52, -r * 0.52, r * 1.04, r * 1.04);
+        ctx.globalAlpha = 0.9;
+        ctx.fillRect(-2.4, -2.4, 4.8, 4.8);
+        ctx.rotate(-(t * 0.8 + s.phase));
+        ctx.rotate(angle);
+        ctx.globalAlpha = 0.55;
+        ctx.fillRect(r - 2, -2, 8, 4);
+      } else if (s.kind === 1) {
+        ctx.rotate(t * 0.45 + s.phase);
+        ctx.globalAlpha = 0.13;
+        ctx.fillRect(-r - 7, -r - 7, (r + 7) * 2, (r + 7) * 2);
+        ctx.globalAlpha = 0.88;
+        ctx.lineWidth = 1.8;
+        ctx.strokeRect(-r, -r, r * 2, r * 2);
+        ctx.rotate(Math.PI * 0.25);
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 1.3;
+        ctx.strokeRect(-r * 0.66, -r * 0.66, r * 1.32, r * 1.32);
+        ctx.rotate(Math.PI * 0.25);
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        for (let k = 0; k < 3; k++) {
+          const a = -Math.PI / 2 + k * (TWO_PI / 3);
+          const px = Math.cos(a) * r * 0.44;
+          const py = Math.sin(a) * r * 0.44;
+          if (k === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      } else if (s.kind === 2) {
+        ctx.rotate(angle);
+        ctx.globalAlpha = 0.12;
+        ctx.beginPath();
+        ctx.moveTo(r + 8, 0);
+        ctx.lineTo(-r - 5, -r - 5);
+        ctx.lineTo(-r - 5, r + 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.lineTo(-r * 0.72, -r * 0.78);
+        ctx.lineTo(-r * 0.42, 0);
+        ctx.lineTo(-r * 0.72, r * 0.78);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-r * 0.66, -r * 0.24, r * 0.5, r * 0.48);
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(-r * 1.15, -3, 6, 6);
+      } else {
+        ctx.rotate(angle);
+        const flap = 0.78 + 0.22 * Math.sin(t * 11 + s.phase);
+        ctx.globalAlpha = 0.13;
+        ctx.fillRect(-r - 4, -r - 4, (r + 4) * 2, (r + 4) * 2);
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.lineTo(-r, -r * flap);
+        ctx.lineTo(-r * 0.42, 0);
+        ctx.lineTo(-r, r * flap);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(r * 0.4, 0);
+        ctx.lineTo(-r * 0.3, 0);
+        ctx.stroke();
+      }
+
+      if (s.hitFlash > 0) {
+        ctx.globalAlpha = Math.min(1, s.hitFlash * 6);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.4;
+        ctx.strokeRect(-r - 4, -r - 4, (r + 4) * 2, (r + 4) * 2);
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   /** Cascading Error colony: yellow blocks with red warning glyphs that jitter as they take damage. */
   private drawErrors(errors: readonly CascadingError[], alpha: number, t: number): void {
     const ctx = this.ctx;
@@ -737,9 +948,17 @@ export class Renderer {
       const wobble = Math.sin(t * 7 + e.phase) * (1 + hurt * 3.4);
       const shiftX = wobble + (hurt > 0.4 ? Math.sin(t * 41 + e.phase * 3) * hurt * 2.6 : 0);
       const shiftY = Math.cos(t * 6.3 + e.phase) * (1 + hurt * 2.8);
+      const build = e.spawnT > 0 ? 1 - e.spawnT / CASCADING_ERROR.spawnTime : 1;
       ctx.save();
+      if (build < 1) {
+        ctx.globalAlpha = (1 - build) * 0.65;
+        ctx.strokeStyle = THREAT_COLORS.error;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - half - 12, y - half - 12, size + 24, size + 24);
+      }
       ctx.translate(x + shiftX, y + shiftY);
       ctx.rotate(Math.sin(t * 1.7 + e.phase) * 0.06 + hurt * 0.2);
+      ctx.scale(0.35 + 0.65 * build, 0.35 + 0.65 * build);
 
       ctx.globalAlpha = 0.14 + hurt * 0.1;
       ctx.fillStyle = THREAT_COLORS.error;
@@ -918,24 +1137,31 @@ export class Renderer {
     for (let i = 0; i < state.projectiles.length; i++) {
       const p = state.projectiles[i];
       if (!p.active) continue;
-      const color = p.owner >= 0 ? slotColor(p.owner) : particleColor(P_COLOR_ICE);
+      const hostile = p.owner < 0 && p.type >= 3;
+      const color = hostile
+        ? p.type === 4 ? THREAT_COLORS.homing : THREAT_COLORS.sentry
+        : p.owner >= 0
+          ? slotColor(p.owner)
+          : particleColor(P_COLOR_ICE);
       const x = lerp(p.prevX, p.x, alpha);
       const y = lerp(p.prevY, p.y, alpha);
       this.pushTrail(p, x, y);
       if (p.trailCount < 2) continue;
-      const start = p.trailCount === TRAIL_LEN ? p.trailHead : 0;
+      // Hostile shots get a short tail so the screen does not fill with long lines.
+      const count = p.type >= 3 ? Math.min(p.trailCount, 5) : p.trailCount;
+      const start = (p.trailHead - count + TRAIL_LEN) % TRAIL_LEN;
       ctx.beginPath();
-      for (let k = 0; k < p.trailCount; k++) {
+      for (let k = 0; k < count; k++) {
         const idx = (start + k) % TRAIL_LEN;
         if (k === 0) ctx.moveTo(p.trailX[idx], p.trailY[idx]);
         else ctx.lineTo(p.trailX[idx], p.trailY[idx]);
       }
       ctx.strokeStyle = color;
-      ctx.globalAlpha = p.type === 1 ? 0.14 : 0.16 + Math.min(0.16, p.deflects * 0.04);
-      ctx.lineWidth = p.type === 1 ? 5 : 7;
+      ctx.globalAlpha = hostile ? 0.2 : p.type === 1 ? 0.14 : 0.16 + Math.min(0.16, p.deflects * 0.04);
+      ctx.lineWidth = hostile ? 4 : p.type === 1 ? 5 : 7;
       ctx.stroke();
-      ctx.globalAlpha = p.type === 1 ? 0.3 : 0.45 + Math.min(0.25, p.deflects * 0.05);
-      ctx.lineWidth = p.type === 1 ? 2 : 2.6;
+      ctx.globalAlpha = hostile ? 0.55 : p.type === 1 ? 0.3 : 0.45 + Math.min(0.25, p.deflects * 0.05);
+      ctx.lineWidth = hostile ? 1.6 : p.type === 1 ? 2 : 2.6;
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -964,8 +1190,67 @@ export class Renderer {
       if (!p.active) continue;
       const x = lerp(p.prevX, p.x, alpha);
       const y = lerp(p.prevY, p.y, alpha);
-      const color = p.owner >= 0 ? slotColor(p.owner) : particleColor(P_COLOR_ICE);
-      if (p.type === 0) {
+      const hostile = p.owner < 0 && p.type >= 3;
+      const color = hostile
+        ? p.type === 4 ? THREAT_COLORS.homing : THREAT_COLORS.sentry
+        : p.owner >= 0
+          ? slotColor(p.owner)
+          : particleColor(P_COLOR_ICE);
+      if (p.type >= 3) {
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.fillStyle = color;
+        ctx.strokeStyle = color;
+        if (p.type === 4) {
+          // Trapezoid missile pod, deliberately slower and fatter than a bolt.
+          const body = p.radius * 1.45;
+          const tail = p.radius * 1.2;
+          ctx.globalAlpha = 0.16;
+          ctx.beginPath();
+          ctx.moveTo(body + 9, 0);
+          ctx.lineTo(-tail - 6, -p.radius - 5);
+          ctx.lineTo(-tail - 6, p.radius + 5);
+          ctx.closePath();
+          ctx.fill();
+          ctx.globalAlpha = 0.85;
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.moveTo(body, 0);
+          ctx.lineTo(-tail * 0.6, -p.radius * 0.74);
+          ctx.lineTo(-tail, 0);
+          ctx.lineTo(-tail * 0.6, p.radius * 0.74);
+          ctx.closePath();
+          ctx.stroke();
+          ctx.globalAlpha = 0.75 + 0.2 * Math.sin(t * 18 + p.serial);
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.moveTo(body * 0.7, 0);
+          ctx.lineTo(-tail * 0.25, -2.4);
+          ctx.lineTo(-tail * 0.25, 2.4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.globalAlpha = 0.5;
+          ctx.fillRect(-tail - 10, -3, 5, 6);
+        } else {
+          // Tiny hostile shot: a hard diamond, not another player-coloured bolt.
+          ctx.globalAlpha = 0.2;
+          ctx.fillRect(-p.radius - 4, -p.radius - 4, (p.radius + 4) * 2, (p.radius + 4) * 2);
+          ctx.globalAlpha = 0.9;
+          ctx.beginPath();
+          ctx.moveTo(p.radius + 2, 0);
+          ctx.lineTo(0, p.radius);
+          ctx.lineTo(-p.radius, 0);
+          ctx.lineTo(0, -p.radius);
+          ctx.closePath();
+          ctx.fill();
+          ctx.globalAlpha = 0.85;
+          ctx.fillStyle = '#fff4e8';
+          ctx.fillRect(-1.4, -1.4, 2.8, 2.8);
+        }
+        ctx.restore();
+      } else if (p.type === 0) {
         const speed = Math.hypot(p.vx, p.vy) || 1;
         const angle = Math.atan2(p.vy, p.vx);
         const len = 13 + Math.min(12, p.deflects * 2.5);
@@ -1211,8 +1496,8 @@ export class Renderer {
 
   private drawPlayers(state: RenderState, alpha: number, t: number, intro = INTRO_LEN): void {
     const ctx = this.ctx;
-    if (intro < 1.2) {
-      const a = Math.max(0, Math.min(1, (intro - 0.82) / 0.22));
+    if (intro < 1.85) {
+      const a = Math.max(0, Math.min(1, (intro - 1.55) / 0.3));
       if (a <= 0) return;
       ctx.save();
       ctx.globalAlpha = a * 0.55;
@@ -1238,7 +1523,7 @@ export class Renderer {
       ctx.restore();
       return;
     }
-    const spinUp = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 1.2) / 0.55));
+    const spinUp = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 2.2) / 0.9));
     for (let i = 0; i < state.players.length; i++) {
       const p = state.players[i];
       if (!p.active) continue;
@@ -1421,13 +1706,6 @@ export class Renderer {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
 
-      // Soft under-glow.
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.05;
-      ctx.beginPath();
-      ctx.arc(x, y, 27, 0, TWO_PI);
-      ctx.fill();
-
       // Charged triangle dash silhouette.
       if (p.dashT > 0 && p.dashKind === 1) {
         ctx.save();
@@ -1497,7 +1775,7 @@ export class Renderer {
       const freshSegments = Math.max(0, Math.min(PLAYER.hp, Math.ceil(p.hp)));
       const hpFrac = Math.max(0, Math.min(1, p.hp / PLAYER.hp));
       const spin = t * 0.22 + (1 - spinUp) * 18;
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = p.hitFlash > 0 ? '#ffffff' : color;
       ctx.lineCap = 'butt';
       ctx.beginPath();
       for (let h = 0; h < PLAYER.hp; h++) {
@@ -1517,66 +1795,28 @@ export class Renderer {
       ctx.stroke();
       ctx.lineCap = 'round';
 
-      // Heading tick sits inside the health ring now, never beyond it.
+      // Small heading arrow outside the health ring. No extra full rings around the body.
       const nx = Math.cos(facing);
       const ny = Math.sin(facing);
-      ctx.globalAlpha = 0.9;
-      ctx.lineWidth = 2.4;
+      const tip = PLAYER.radius + 8;
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.moveTo(x + nx * (PLAYER.radius - 9), y + ny * (PLAYER.radius - 9));
-      ctx.lineTo(x + nx * (PLAYER.radius - 3), y + ny * (PLAYER.radius - 3));
-      ctx.stroke();
+      ctx.moveTo(x + nx * tip, y + ny * tip);
+      ctx.lineTo(x + nx * (tip - 7) - ny * 4, y + ny * (tip - 7) + nx * 4);
+      ctx.lineTo(x + nx * (tip - 7) + ny * 4, y + ny * (tip - 7) - nx * 4);
+      ctx.closePath();
+      ctx.fill();
 
-      // Energy arc, inside the health ring.
+      // Energy is a short arc at the back of the avatar, not another full ring.
       const energyPct = Math.max(0, Math.min(1, p.energy / PLAYER.energyMax));
-      ctx.globalAlpha = 0.5;
+      const energyStart = facing + Math.PI - 0.55;
+      ctx.globalAlpha = 0.55;
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1.8;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(x, y, PLAYER.radius - 4.5, -Math.PI / 2, -Math.PI / 2 + TWO_PI * energyPct);
+      ctx.arc(x, y, PLAYER.radius - 4, energyStart, energyStart + 1.1 * energyPct);
       ctx.stroke();
-
-      // Dash cooldown arc, also inside the health ring.
-      if (p.dashCd > 0) {
-        const cdPct = 1 - Math.min(1, p.dashCd / PLAYER.dashCooldown);
-        ctx.globalAlpha = 0.25;
-        ctx.strokeStyle = '#dff7ff';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.arc(x, y, PLAYER.radius - 8, -Math.PI / 2, -Math.PI / 2 + TWO_PI * cdPct);
-        ctx.stroke();
-      }
-
-      if (p.iframes > 0) {
-        ctx.globalAlpha = 0.5;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.4;
-        ctx.setLineDash([3, 4]);
-        ctx.beginPath();
-        ctx.arc(x, y, PLAYER.radius - 2, 0, TWO_PI);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-
-      if (p.hitFlash > 0) {
-        ctx.globalAlpha = Math.min(0.8, p.hitFlash * 3.2);
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3.4;
-        ctx.beginPath();
-        ctx.arc(x, y, PLAYER.radius, 0, TWO_PI);
-        ctx.stroke();
-      }
-
-      if (p.thrall) {
-        ctx.globalAlpha = 0.5 + 0.25 * Math.sin(t * 7 + p.slot);
-        ctx.strokeStyle = THREAT_COLORS.thrall;
-        ctx.lineWidth = 1.2;
-        ctx.setLineDash([3, 4]);
-        ctx.beginPath();
-        ctx.arc(x, y, PLAYER.radius - 3, 0, TWO_PI);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
 
       // Vulnerable core: shrinks and destabilizes as segments are lost.
       const coreR = PLAYER.radius * (0.3 + 0.28 * hpFrac) * (1 + 0.035 * Math.sin(t * 4 + p.slot));
@@ -1588,13 +1828,6 @@ export class Renderer {
       ctx.arc(x, y, coreR, 0, TWO_PI);
       ctx.fill();
       ctx.restore();
-
-      ctx.strokeStyle = color;
-      ctx.globalAlpha = 0.35 + 0.4 * hpFrac;
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.arc(x, y, coreR, 0, TWO_PI);
-      ctx.stroke();
 
       if (hpFrac <= 0.34) {
         ctx.globalAlpha = 0.35 + 0.4 * Math.abs(Math.sin(t * 9 + p.slot));
@@ -1719,13 +1952,8 @@ export class Renderer {
     const ctx = this.ctx;
     const players = state.players;
 
-    // Arena identity. No operator chips: name, health and cooldowns live on the avatars.
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.font = FONT_TINY;
-    ctx.fillStyle = COLORS.textDim;
-    ctx.fillText(state.arena.hudLabel, 14, 58);
-
+    // The arena itself carries the identity. Text only appears for a wave change,
+    // which is transient information between waves.
     if (state.mode === 'gauntlet' && (state.waveBannerT ?? 0) > 0) {
       const bannerT = state.waveBannerT ?? 0;
       const fadeIn = Math.min(1, (3 - bannerT) / 0.35);
@@ -1743,122 +1971,40 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Bottom status strip.
-    const stripW = 214;
-    const stripX = (VIEW_W - stripW) / 2;
-    const stripY = VIEW_H - 38;
-    ctx.save();
-    roundRect(ctx, stripX, stripY, stripW, 26, 4);
-    ctx.fillStyle = 'rgba(3, 9, 15, 0.78)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(74, 210, 232, 0.32)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    ctx.font = FONT_TINY;
-    ctx.textAlign = 'left';
-    ctx.fillStyle = COLORS.textDim;
-    if (state.mode === 'training') {
-      ctx.fillText(LABEL_TRAINING, stripX + 10, stripY + 13.5);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = 'rgba(159, 215, 232, 0.9)';
-      ctx.fillText(LABEL_DRONE, stripX + stripW - 10, stripY + 13.5);
-    } else if (state.mode === 'gauntlet') {
-      const kills = state.gauntletKills ?? 0;
-      const wave = state.wave ?? 1;
-      const infection = Math.round((state.infection ?? 0) * 100);
-      const killKey = kills * 100 + wave;
-      if (killKey !== this.lastKills) {
-        this.lastKills = killKey;
-        this.killsText = `WAVE ${wave} // KILLS ${kills}`;
-      }
-      if (infection !== this.lastInfection) {
-        this.lastInfection = infection;
-        this.infectionText = `INFECT ${infection}%`;
-      }
-      ctx.fillStyle = THREAT_COLORS.firewall;
-      ctx.fillText('GAUNTLET', stripX + 10, stripY + 13.5);
-      ctx.textAlign = 'center';
-      ctx.fillStyle = COLORS.text;
-      ctx.fillText(this.killsText, stripX + stripW / 2, stripY + 13.5);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = infection > 0 ? THREAT_COLORS.virus : COLORS.textDim;
-      ctx.fillText(this.infectionText, stripX + stripW - 10, stripY + 13.5);
-    } else {
-      if (state.round !== this.lastRoundText) {
-        this.lastRoundText = state.round;
-        this.roundText = `ROUND ${state.round}`;
-      }
-      ctx.fillText(this.roundText, stripX + 10, stripY + 13.5);
-      ctx.textAlign = 'center';
-      const sec = Math.ceil(state.roundTimer);
-      if (sec !== this.lastTimerSec) {
-        this.lastTimerSec = sec;
-        this.timerText = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-      }
-      ctx.font = FONT_MID;
-      ctx.fillStyle = sec <= 10 && state.phase === 'live' ? COLORS.danger : COLORS.text;
-      ctx.fillText(this.timerText, stripX + stripW / 2, stripY + 13.5);
-      ctx.font = FONT_TINY;
-      ctx.textAlign = 'right';
-      ctx.fillStyle = COLORS.textDim;
-      ctx.fillText(FIRST_TO, stripX + stripW - 10, stripY + 13.5);
-    }
-    ctx.restore();
-
-    // Round pips under the strip, showing each player's score silhouette.
+    // Scores stay as silhouettes, with no labels, timer or corner readouts.
     if (state.mode === 'match') {
-      let pipX = stripX;
+      let total = 0;
+      for (let i = 0; i < players.length; i++) if (players[i].active) total += ROUND.winsNeeded * 6 - 2 + 8;
+      let pipX = (VIEW_W - total + 8) * 0.5;
+      const pipY = VIEW_H - 16;
       for (let i = 0; i < players.length; i++) {
         const p = players[i];
         if (!p.active) continue;
         for (let s = 0; s < ROUND.winsNeeded; s++) {
           ctx.fillStyle = s < p.score ? slotColor(p.slot) : 'rgba(120, 170, 190, 0.14)';
-          ctx.fillRect(pipX, stripY + 30, 4, 2);
+          ctx.fillRect(pipX, pipY, 4, 2);
           pipX += 6;
         }
         pipX += 8;
       }
     } else if (state.mode === 'gauntlet') {
-      // Infection meter above the strip: a filled bar is the warning that a thrall is close.
+      // Infection is a thin warning strip, not a labelled meter.
       const infection = Math.max(0, Math.min(1, state.infection ?? 0));
+      if (infection <= 0.001) return;
+      const w = 214;
+      const x = (VIEW_W - w) * 0.5;
+      const y = VIEW_H - 18;
       ctx.fillStyle = 'rgba(120, 170, 190, 0.16)';
-      ctx.fillRect(stripX, stripY - 8, stripW, 3);
+      ctx.fillRect(x, y, w, 3);
       ctx.fillStyle = THREAT_COLORS.virus;
-      ctx.fillRect(stripX, stripY - 8, stripW * infection, 3);
+      ctx.fillRect(x, y, w * infection, 3);
       if (infection > 0.7) {
         ctx.globalAlpha = 0.25 + 0.2 * Math.sin(t * 12);
         ctx.fillStyle = THREAT_COLORS.virus;
-        ctx.fillRect(stripX, stripY - 11, stripW * infection, 2);
+        ctx.fillRect(x, y - 4, w * infection, 2);
         ctx.globalAlpha = 1;
       }
     }
-
-    if (state.mode === 'gauntlet' && (state.worms || state.viruses || state.firewalls || state.errors)) {
-      let wormCount = 0;
-      let virusCount = 0;
-      let firewallCount = 0;
-      let errorCount = 0;
-      if (state.worms) for (let i = 0; i < state.worms.length; i++) if (state.worms[i].active) wormCount++;
-      if (state.viruses) for (let i = 0; i < state.viruses.length; i++) if (state.viruses[i].active) virusCount++;
-      if (state.firewalls) {
-        for (let i = 0; i < state.firewalls.length; i++) if (state.firewalls[i].active) firewallCount++;
-      }
-      if (state.errors) {
-        for (let i = 0; i < state.errors.length; i++) if (state.errors[i].active) errorCount++;
-      }
-      const thrall = players[1] && players[1].active && players[1].alive ? 1 : 0;
-      const key = ((wormCount * 100 + virusCount) * 100 + firewallCount) * 100 + errorCount;
-      if (key * 10 + thrall !== this.lastThreatKey) {
-        this.lastThreatKey = key * 10 + thrall;
-        this.threatText = `THREATS W${wormCount} V${virusCount} F${firewallCount} E${errorCount}${thrall ? ' // THRALL LIVE' : ''}`;
-      }
-      ctx.textAlign = 'right';
-      ctx.font = FONT_TINY;
-      ctx.fillStyle = thrall ? THREAT_COLORS.thrall : COLORS.textDim;
-      ctx.fillText(this.threatText, VIEW_W - 14, 58);
-    }
-    void t;
   }
 
 }

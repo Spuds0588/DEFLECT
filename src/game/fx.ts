@@ -86,13 +86,31 @@ export class Fx {
         break;
       }
       case EV.EXPLODE: {
+        const scale = Math.max(0.8, Math.min(2.2, ev.power / 90));
         this.particles.ring(ev.x, ev.y, P_COLOR_DANGER, 10, ev.power * 3.2, 0.36);
         this.particles.ring(ev.x, ev.y, color, 4, ev.power * 1.8, 0.24);
-        this.particles.shards(ev.x, ev.y, 20, color, 120, 720);
-        this.particles.burst(ev.x, ev.y, 14, P_COLOR_WHITE, 180, 760);
-        this.shake = Math.max(this.shake, 9);
-        this.flash = Math.max(this.flash, 0.3);
+        this.particles.shards(ev.x, ev.y, Math.round(14 + 12 * scale), color, 120, 720 * scale);
+        this.particles.burst(ev.x, ev.y, Math.round(10 + 6 * scale), P_COLOR_WHITE, 180, 760 * scale);
+        this.shake = Math.max(this.shake, 7 + 4 * scale);
+        this.flash = Math.max(this.flash, 0.24 + 0.08 * scale);
         this.flashColor = '#ffdfc4';
+        break;
+      }
+      case EV.WORM_KILL: {
+        const scale = Math.max(1, Math.min(2.6, ev.power / 100));
+        this.particles.ring(ev.x, ev.y, P_COLOR_WORM, 12, 90 + ev.power * 0.7, 0.5);
+        this.particles.shards(ev.x, ev.y, Math.round(17 + 15 * scale), P_COLOR_WORM, 100, 520 * scale);
+        this.particles.shards(ev.x, ev.y, Math.round(8 + 8 * scale), P_COLOR_WHITE, 80, 420 * scale);
+        this.particles.burst(ev.x, ev.y, Math.round(10 + 6 * scale), P_COLOR_DANGER, 120, 680 * scale);
+        this.shake = Math.max(this.shake, 8 + 5 * scale);
+        this.flash = Math.max(this.flash, 0.28);
+        this.flashColor = '#ffd6ce';
+        break;
+      }
+      case EV.VIRUS_KILL: {
+        this.particles.ring(ev.x, ev.y, P_COLOR_VIRUS, 8, 70 + ev.power * 2, 0.42);
+        this.particles.shards(ev.x, ev.y, 13, P_COLOR_VIRUS, 90, 390);
+        this.particles.burst(ev.x, ev.y, 6, P_COLOR_WHITE, 80, 320);
         break;
       }
       case EV.HIT: {
@@ -184,8 +202,26 @@ export class Fx {
         break;
       }
       case EV.ERROR_BREAK: {
-        this.particles.ring(ev.x, ev.y, P_COLOR_FIREWALL, 8, 74, 0.35);
-        this.particles.shards(ev.x, ev.y, 10, P_COLOR_FIREWALL, 60, 280);
+        this.particles.ring(ev.x, ev.y, P_COLOR_FIREWALL, 8, 80, 0.35);
+        this.particles.shards(ev.x, ev.y, 14, P_COLOR_FIREWALL, 70, 320);
+        this.particles.burst(ev.x, ev.y, 5, P_COLOR_DANGER, 60, 260);
+        break;
+      }
+      case EV.SENTRY_SHOOT: {
+        this.particles.cone(ev.x, ev.y, ev.power, 3, P_COLOR_DANGER, 220, 0.55);
+        break;
+      }
+      case EV.SENTRY_HIT: {
+        this.particles.impact(ev.x, ev.y, ev.dirX, ev.dirY, P_COLOR_DANGER, 9);
+        this.shake = Math.max(this.shake, 2);
+        break;
+      }
+      case EV.SENTRY_KILL: {
+        const scale = Math.max(0.75, Math.min(1.8, ev.power / 80));
+        this.particles.ring(ev.x, ev.y, P_COLOR_DANGER, 7, 64 + ev.power * 0.3, 0.34);
+        this.particles.shards(ev.x, ev.y, Math.round(10 + 8 * scale), P_COLOR_DANGER, 80, 360 * scale);
+        this.particles.burst(ev.x, ev.y, Math.round(4 + 4 * scale), P_COLOR_WHITE, 80, 280 * scale);
+        this.shake = Math.max(this.shake, 4 + scale);
         break;
       }
       default:

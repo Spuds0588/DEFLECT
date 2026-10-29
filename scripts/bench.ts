@@ -98,6 +98,7 @@ function runGauntlet(): void {
     spawnFirewall: () => void;
     spawnThrall: () => boolean;
     spawnErrorColony: () => void;
+    spawnSentryPack: () => void;
   };
   const samples: number[] = [];
   let threatSum = 0;
@@ -117,6 +118,9 @@ function runGauntlet(): void {
       let errors = 0;
       for (const e of world.errors) if (e.active) errors++;
       if (errors === 0) priv.spawnErrorColony();
+      let sentries = 0;
+      for (const s of world.sentries) if (s.active) sentries++;
+      if (sentries < 6) priv.spawnSentryPack();
       // Keep the colony alive for the whole measurement: this is the max-load case.
       for (const e of world.errors) if (e.active) e.hp = 999;
     }
@@ -146,6 +150,7 @@ function runGauntlet(): void {
       for (const v of world.viruses) if (v.active) threats++;
       for (const f of world.firewalls) if (f.active) threats++;
       for (const e of world.errors) if (e.active) threats++;
+      for (const s of world.sentries) if (s.active) threats++;
       if (world.players[1].active) threats++;
       threatSum += threats;
     }
@@ -158,7 +163,7 @@ function runGauntlet(): void {
   console.log(
     `Gauntlet max   avg ${avg.toFixed(3)}ms  p99 ${p99.toFixed(3)}ms  max ${max.toFixed(3)}ms  threats ${(
       threatSum / MEASURE
-    ).toFixed(1)}  (2W/12V/2F/28E + thrall)`,
+    ).toFixed(1)}  (2W/12V/2F/28E + sentries + thrall)`,
   );
 }
 

@@ -422,3 +422,94 @@ text-menu language for lobby actions if it still feels inconsistent beside the t
 real browser keyboard events, not hardware.
 
 **Next:** physical controller pass, then the two-tab network verification.
+
+---
+
+## 2026-10-28 — Session 9: lofi-house soundtrack (v0.1.7)
+
+**Goal:** Replace the placeholder pulse with chill lofi house, still generated entirely in the browser
+from MIDI note data so no audio files ship.
+
+**Changed:**
+- Music tempo 120 BPM → 82 BPM and the loop 2 bars → 4 bars. Removed the square-wave arpeggio.
+- Added a Cmaj7 / Am7 / Dm7 / G7 progression and bass roots as MIDI note numbers, converted to Hz by
+  the synth at schedule time.
+- Chords are Rhodes-style triangle notes with a quiet sine octave, hit on the downbeat and re-hit late
+  in the bar. Bass is a sustained sine root with a short octave lift.
+- Beat: soft four-on-the-floor kick, claps on 2 and 4, swung closed hats, and an open hat on the backbeat.
+- Added a two-second vinyl-crackle buffer looped under the music, faded in and out with the track.
+  The music bus now has a 7 kHz low-pass so the bed stays warm while combat cues stay sharp.
+- Leaving a match clears the music timer and stops the vinyl source; the toggle restarts both cleanly.
+- Version 0.1.7; service-worker cache version bumped.
+
+**Verification:**
+- `npm run build` clean: 268.20 kB JS (78.15 kB gzip), 34.18 kB CSS (7.98 kB gzip).
+- Browser: idle training scheduled 27 oscillators and 14 buffer sources in a measured three-second
+  window, matching the loop math. Counts stopped immediately after leaving the match.
+- Browser: music toggle OFF and back ON, then a fresh training match restarted the loop with no console
+  errors.
+- No simulation code changed; the bench was not rerun for this audio-only pass.
+
+**Limitations:** The automation environment cannot listen, so this verifies scheduling and runtime
+behavior, not the subjective mix. Chord/bass/vinyl levels need a designer listening pass.
+
+**Next:** tune the mix against combat cues, then consider a sparse lead motif or a second music state
+for gauntlet/boss encounters.
+
+---
+
+## 2026-10-28 — Session 10: controller, shooting family, assembly and alpha hosting (v0.1.8)
+
+**Goal:** Act on the next designer playtest pass: controller reliability, staged menus, larger arenas,
+shooting enemies, stronger hit feedback, a gentler deflect window, a proper level assembly intro, and a
+playable GitHub Pages alpha with a clear license.
+
+**Changed:**
+- Gamepad menu repeat was mixing milliseconds and seconds (`now + 0.36` against a millisecond timer), so
+  a held direction counted as a repeat every frame. Corrected to 360 ms initial delay and 110 ms repeat.
+  Restored left-stick navigation, added 0.55/0.32 engage/release hysteresis, and raised pad-loss grace
+  from 1.2 s to 3 s without flipping the active device to keyboard.
+- Solo menu flow is now program (training/gauntlet) → arena previews → bot count/tier. Removed the
+  LOCAL/ONLINE labels; added a single SETTINGS option. Audio settings split into soundtrack, SFX and
+  menu channels.
+- Enlarged the four compact arenas, added a 1.28× camera zoom, and replaced the flat floor-only look with
+  circuitry/Unicode signatures. Removed the title-screen grid so the CRT console reads cleanly, and
+  removed the title hint line.
+- Removed permanent in-match HUD text, in-game scanlines, and extra avatar rings. The segmented health
+  ring is the outer ring; the code-symbol core, facing arrow, and floating readiness icons carry status.
+- Level intro is now a 3.1 s assembly: ground, frame, cover dropping in, operator skeletons, then spin-up.
+  Removed the canvas loading bar and the DOM boot progress bar; the boot log is a small transparent
+  corner overlay so the arena is visible while it builds.
+- Added the shooter family: pulse square, nested triplex shotgun, trapezoid homing missile pod, and
+  three-dart flock. Worms are now blocked by cover rather than phasing through it.
+- Enemy spawn assembly (worm head/segments, virus diamonds, sentry frames, error blocks) and a larger,
+  size-scaled triangle de-rez burst on death. New `WORM_KILL` and `VIRUS_KILL` events.
+- Deflect active window **0.09 → 0.2 s**; max early return angle **0.32 rad**; early catches keep 84%
+  speed. Return angle now grades both press timing and catch distance, so a last-instant catch goes
+  straight and an early catch still deflects but clips wide.
+- Charged beam corridor **12 → 22** half-width and damage tick **0.5 → 0.14 s**, keeping 1 damage per tick.
+  This makes a tracked beam chew through targets instead of plinking twice a second.
+- Added `.github/workflows/pages.yml` to build and deploy `dist/` from `main`; the play link is at the top
+  of README. The page is built by Actions rather than serving the raw branch.
+- Added the custom source-available `LICENSE`: non-commercial use, credit and link-back required, written
+  permission for non-mod derivatives, and an explicit free-mod carve-out.
+- Version 0.1.8; service-worker cache version bumped.
+
+**Verification:**
+- `npm run build` clean: **285.62 kB JS (82.16 kB gzip), 34.83 kB CSS (8.05 kB gzip)**.
+- `npm run bench`: 8P bot swarm 0.040 ms avg / 0.227 ms p99; gauntlet max 0.107 ms avg / 0.401 ms p99
+  with 31.3 live threats. All cases stay under the 4 ms budget.
+- Input harness: D-pad edge, release, second tap, 100 ms hold (no repeat), 380 ms hold (repeat), 120 ms
+  repeat, stick engage/hysteresis/release all matched one expected edge per action.
+- Headless deflect check: early 0.304 rad, mid 0.164, late 0.103, contact 0.008. The early catch remains
+  a deflect but is visibly angled; the contact catch returns nearly straight.
+- Headless 60 s gauntlet: 1 worm, 6 viruses, 9 sentries, 14 error blocks, no non-finite positions.
+- Browser: title grid display `none`, no boot-bar element, transparent boot overlay, version v0.1.8;
+  staged gauntlet flow reached the arena and rendered with no console errors.
+
+**Limitations:** Controller verification still uses a standard-layout virtual pad, not physical hardware.
+The Pages deployment is triggered by the push that follows this entry and must be checked on the live URL.
+No new network or two-tab pass was run in this session.
+
+**Next:** designer pass on the shooter mix and wave pacing, physical controller check, verify the Pages
+URL, then continue toward the PvPvE sectors plan.

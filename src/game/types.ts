@@ -77,6 +77,11 @@ export const EV = {
   ERROR_BREAK: 25,
   ERROR_SPAWN: 26,
   BUG: 27,
+  SENTRY_HIT: 28,
+  SENTRY_KILL: 29,
+  SENTRY_SHOOT: 30,
+  WORM_KILL: 31,
+  VIRUS_KILL: 32,
 } as const;
 
 export interface Player {
@@ -129,6 +134,7 @@ export interface Player {
   dashHitWorms: number;
   dashHitViruses: number;
   dashHitErrors: number;
+  dashHitSentries: number;
   dashHitDrone: boolean;
   iframes: number;
 
@@ -182,7 +188,8 @@ export interface Player {
 export interface Projectile {
   active: boolean;
   serial: number;
-  type: 0 | 1 | 2; // 0 bolt, 1 mine, 2 trap
+  /** 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile. */
+  type: 0 | 1 | 2 | 3 | 4;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;
@@ -258,6 +265,8 @@ export interface Worm {
   ky: number;
   infected: boolean;
   phase: number;
+  /** Counts down while the chain assembles; movement is held until it reaches 0. */
+  spawnT: number;
 }
 
 export interface Virus {
@@ -279,6 +288,29 @@ export interface Virus {
   hitFlash: number;
   kx: number;
   ky: number;
+  spawnT: number;
+}
+
+export interface Sentry {
+  active: boolean;
+  /** 0 pulse square, 1 nested triplex, 2 trapezoid homing pod, 3 flock dart. */
+  kind: 0 | 1 | 2 | 3;
+  x: number;
+  y: number;
+  prevX: number;
+  prevY: number;
+  vx: number;
+  vy: number;
+  kx: number;
+  ky: number;
+  hp: number;
+  maxHp: number;
+  radius: number;
+  fireT: number;
+  phase: number;
+  hitFlash: number;
+  orbitSign: number;
+  spawnT: number;
 }
 
 export interface Firewall {
@@ -310,6 +342,7 @@ export interface CascadingError {
   hitFlash: number;
   touchCd: number;
   phase: number;
+  spawnT: number;
 }
 
 export interface LobbyPlayer {
