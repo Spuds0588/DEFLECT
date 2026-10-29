@@ -112,8 +112,10 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 ## Training and bot practice
 
 `SINGLE PLAYER → TRAINING` walks through the arena grid (navigate all four directions), bot count
-(`1 V 1`, `1 V 2`, or `1 V 3`), difficulty, then run. Training has **no rounds**: every dead body respawns
-and the session continues until you leave. Solo training with no bots keeps the sparring drone.
+(`1 V 1`, `1 V 2`, or `1 V 3`), and difficulty. Each choice advances immediately: pick an arena to choose
+the bot count, pick a count to choose difficulty, and pick a difficulty to start. There is no extra
+NEXT/RUN step. Training has **no rounds**: every dead body respawns and the session continues until you
+leave. Solo training with no bots keeps the sparring drone.
 
 Bots use the same movement, facing, swing, dash and energy rules as you; they cannot aim independently
 of movement. The same brains also run local bot matches in the codebase, but the title flow now treats

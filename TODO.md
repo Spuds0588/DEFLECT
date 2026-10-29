@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-28 (v0.1.9 guard, pickups, sentry pacing, training flow, minimap)
+Last updated: 2026-10-28 (v0.1.10 auto-advancing training flow and stable controller focus)
 
 ---
 
@@ -332,6 +332,25 @@ Last updated: 2026-10-28 (v0.1.9 guard, pickups, sentry pacing, training flow, m
       the staged training flow starts cleanly
 - [ ] Real device controller pass still pending
 - [ ] Firewall switch and first-time pickups in competitive rooms are not built
+
+---
+
+## v0.1.10 — Auto-advancing training flow (complete 2026-10-28)
+
+### Flow
+- [x] Selecting an arena advances directly to bot count
+- [x] Selecting a bot count advances directly to difficulty
+- [x] Selecting a difficulty starts the training run
+- [x] Selecting a gauntlet arena starts the run immediately
+- [x] Removed the NEXT/DIFFICULTY and RUN/START confirmation buttons and their dead CSS
+- [x] Pointer hover focus moved from `pointerover` to `pointermove`, so a stationary mouse cannot steal
+      the cursor from the controller/keyboard when a new stage appears
+
+### Verification
+- [x] `npm run build` clean: 304.08 kB JS (87.29 kB gzip), 34.70 kB CSS (8.03 kB gzip)
+- [x] Browser: five confirm presses from the hub reached a live training run (program, arena, count, tier,
+      start) with no NEXT/RUN detour; gauntlet selection started directly
+- [x] Browser console clean; no stale arena-continue, bot-run or console-run references remain
 
 ---
 

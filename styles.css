@@ -2545,9 +2545,10 @@ body.no-scanlines .scanlines {
   letter-spacing: 0.08em;
 }
 
-.console-run {
+.console-note-action {
   margin-top: 8px;
-  color: #bdfbff;
+  color: rgba(189, 251, 255, 0.62);
+  letter-spacing: 0.12em;
 }
 
 .console-form {

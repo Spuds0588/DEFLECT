@@ -221,10 +221,12 @@ player choice.
 The title is a single console menu, not a dashboard: plain text options, one `>` cursor on the focused
 line, no grid backdrop, and no footer links. `SETTINGS` is a top-level option; callsign editing lives in
 `SETTINGS > SYSTEM`. `SECTORS // PVPvE` is only shown inside the Multiplayer stage, as an in-development
-entry. The solo flow is staged: program (training/gauntlet) → arena with previews → bot count → bot
-tier → run for training. The arena grid navigates in all four directions; inside a card grid, a direction
-move stays in the grid while a neighbour exists. In-game canvas text is suppressed except for short wave
-banners and the Esc/overlay menus.
+entry. The solo flow is staged and auto-advances: program (training/gauntlet) → arena with previews →
+bot count → bot tier → start for training; a gauntlet arena choice starts immediately. Choosing an arena
+advances to the next stage, choosing a bot count advances, and choosing a tier starts the run. Do not add
+a NEXT/RUN confirmation step back. The arena grid navigates in all four directions; inside a card grid,
+a direction move stays in the grid while a neighbour exists. In-game canvas text is suppressed except for
+short wave banners and the Esc/overlay menus.
 
 The level intro is assembly, not a loading screen: ground, frame, cover (dropping in), then player
 skeletons and spin-up. Do not add a progress bar back into the intro.
