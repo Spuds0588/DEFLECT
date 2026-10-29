@@ -46,30 +46,42 @@ export const PLAYER = {
   /** Three segments of the avatar ring. One segment goes dark per hit. */
   hp: 3,
   energyMax: 100,
-  energyRegen: 15,
+  energyRegen: 18,
   dashSpeed: 1200,
   dashTime: 0.15,
   dashIframes: 0.1,
   dashCooldown: 1.8,
+  /** Two stored dodges, each recharging on the same timer. */
+  dashCharges: 2,
   /** One tick of anticipation; the hitbox is live on the next fixed step. */
   swingStartup: 0.006,
   /** Generous active window; press timing and catch distance grade the return. */
-  swingActive: 0.2,
+  swingActive: 0.24,
   swingWhiffRecovery: 0.18,
   /** Max return-angle error on an early or far-edge catch. */
-  deflectMaxAngle: 0.32,
+  deflectMaxAngle: 0.24,
   /** Early catches lose a little of the return speed. */
   deflectEarlySpeed: 0.84,
   swingHitRecovery: 0.08,
-  /** Half of a 120 degree sector. */
-  swingHalfAngle: Math.PI / 3,
+  /** Half of a 180 degree sector. Deflect is intentionally forgiving. */
+  swingHalfAngle: Math.PI / 2,
   /** Keep the deflect band tight around the avatar, not out at arm's length. */
   swingReach: 52,
   /** The deflect swing also punches anything hostile inside this close arc. */
   punchReach: 72,
   punchDamage: 1,
   punchKnockback: 560,
-  /** Hold the deflect button this long, then release, to fire the forward shield wave. */
+  /** A tap is offense; the shield arms only after this short hold. */
+  guardStartDelay: 0.08,
+  /** Held guard: a 180 degree shield that eats every shot in front for one second. */
+  guardDuration: 1,
+  guardCooldown: 0.28,
+  guardReleaseCooldown: 0.12,
+  /** Each caught shot burns guard time, so a shield that eats a barrage breaks early. */
+  guardReflectCost: 0.11,
+  guardReach: 58,
+  guardHalfAngle: Math.PI / 2,
+  /** Tap three times to fire the forward shield wave. */
   waveHoldTime: 0.3,
   waveRange: 160,
   waveHalfWidth: 48,
@@ -81,7 +93,7 @@ export const PLAYER = {
   /** Taps inside this window chain left -> right -> forward wave. */
   comboWindow: 0.62,
   /** Lock-on reticle: candidate is transparent, then becomes solid after this hold. */
-  lockRange: 1000,
+  lockRange: 1600,
   lockAcquire: 0.12,
   /** Hold the strong-attack button to charge the beam. Release before this cancels. */
   laserChargeTime: 0.9,
@@ -115,16 +127,19 @@ export const PLAYER = {
   hitFlash: 0.18,
 } as const;
 
-/** Fast close-range burst bolt. Three quick shots, then a short recharge. */
+/** Fast close-range bolt. A near-continuous five-shot stream with a short recharge. */
 export const BOLT = {
   radius: 7,
   speed: 860,
-  cost: 15,
+  /** Low enough that the five-shot stream can be held, not just tapped. */
+  cost: 3,
   damage: 1,
   maxBounces: 1,
   ttl: 0.45,
-  burstCount: 3,
-  burstCooldown: 0.45,
+  burstCount: 5,
+  burstCooldown: 0.2,
+  /** Holding weak attack keeps the baseline stream coming at this interval. */
+  autoInterval: 0.1,
   deflectMult: 1.4,
   maxSpeed: 2800,
   spawnOffset: 26,
@@ -166,6 +181,41 @@ export const BUG = {
   ghostDuration: 2.4,
 } as const;
 
+/** Local pickup loop. Definitions and weights live in `powerups.ts`. */
+export const POWERUP = {
+  firstSpawn: 6,
+  spawnInterval: 13,
+  maxActive: 3,
+  radius: 14,
+  life: 22,
+  pickupPadding: 5,
+  /** Timed effects; restore is instant. */
+  duration: 15,
+  shotgunDuration: 13,
+  overchargeDuration: 11,
+  whipDuration: 12,
+  pathDuration: 15,
+  /** Machine gun: hold weak attack for a stream of short bolts. */
+  machineInterval: 0.08,
+  machineTtl: 0.3,
+  machineCost: 1,
+  machineSpread: 0.055,
+  machineRadius: 5,
+  /** Shotgun: five short-range pellets in a fan. */
+  shotgunPellets: 5,
+  shotgunSpread: 0.24,
+  shotgunTtl: 0.24,
+  shotgunCost: 12,
+  shotgunCooldown: 0.55,
+  /** Pathfinding: axis-aligned bolts that reroute toward a target. */
+  pathTtl: 1.25,
+  pathCost: 10,
+  pathAxisSnap: 12,
+  pathRadius: 6,
+  /** Barbed whip: reflect reach and damage multiplier. */
+  whipMultiplier: 4,
+} as const;
+
 export const ROUND = {
   winsNeeded: 3,
   countdown: 1.8,
@@ -193,13 +243,15 @@ export const GAUNTLET = {
   waveSpawnRamp: 1.4,
   /** Floor so late waves stay playable rather than a solid wall of threats. */
   waveMinInterval: 5.5,
-  wormSpawnDelay: 2.5,
+  wormSpawnDelay: 4.5,
   wormInterval: 15,
   maxWorms: 3,
-  virusSpawnDelay: 4.5,
+  virusSpawnDelay: 7,
   virusInterval: 12,
   virusCluster: 6,
   maxViruses: 16,
+  /** Firewalls wait for a damage-triggered switch; no automatic sweeps in the sandbox. */
+  autoFirewalls: false,
   firewallSpawnDelay: 8,
   firewallInterval: 14,
   maxFirewalls: 3,
@@ -222,7 +274,7 @@ export const WORM = {
   segments: 7,
   maxSegments: 12,
   spacing: 15,
-  hp: 8,
+  hp: 5,
   touchDamage: 1,
   touchCooldown: 0.8,
   knockback: 720,
@@ -243,67 +295,71 @@ export const WORM = {
  * 0 pulse square, 1 nested triplex (shotgun), 2 trapezoid homing pod, 3 flock dart.
  */
 export const SENTRY = {
-  max: 12,
+  max: 8,
   /** Drop-in animation before the turret wakes up. */
   spawnTime: 0.7,
-  spawnDelay: 4,
-  interval: 9,
-  minInterval: 5.5,
-  initialPulses: 2,
+  spawnDelay: 11,
+  interval: 17,
+  minInterval: 12,
+  initialPulses: 1,
   flockSize: 3,
+  /** One silhouette lands at a time instead of an entire pack at once. */
+  packStagger: 0.65,
   /** Common hit feedback. */
   knockDrag: 8,
   pulse: {
     radius: 18,
-    hp: 4,
+    hp: 2,
     speed: 92,
     keepMin: 220,
     keepMax: 380,
     strafe: 0.6,
-    fireMin: 1.35,
-    fireMax: 2.2,
-    range: 560,
+    fireMin: 1.6,
+    fireMax: 2.5,
+    range: 400,
     boltSpeed: 430,
+    boltTtl: 1.15,
   },
   triplex: {
     radius: 23,
-    hp: 7,
+    hp: 4,
     speed: 68,
     keepMin: 280,
     keepMax: 460,
     strafe: 0.35,
-    fireMin: 2.3,
-    fireMax: 3.3,
-    range: 620,
+    fireMin: 2.6,
+    fireMax: 3.6,
+    range: 480,
     boltSpeed: 380,
+    boltTtl: 1.45,
   },
   homing: {
     radius: 21,
-    hp: 6,
+    hp: 3,
     speed: 58,
     keepMin: 360,
     keepMax: 560,
     strafe: 0.22,
-    fireMin: 3.1,
-    fireMax: 4.2,
-    range: 700,
+    fireMin: 3.4,
+    fireMax: 4.6,
+    range: 660,
   },
   flock: {
     radius: 10,
-    hp: 2,
+    hp: 1,
     speed: 150,
     keepMin: 150,
     keepMax: 280,
     strafe: 1.35,
-    fireMin: 1.8,
-    fireMax: 2.8,
-    range: 440,
+    fireMin: 2.1,
+    fireMax: 3.1,
+    range: 320,
     boltSpeed: 340,
+    boltTtl: 0.95,
   },
   /** Small direct shots and tight shotgun pellets. */
   boltRadius: 5,
   boltDamage: 1,
-  boltTtl: 3.2,
   missileRadius: 10,
   missileSpeed: 150,
   missileTurn: 2.2,
@@ -315,7 +371,7 @@ export const VIRUS = {
   radius: 10,
   speed: 96,
   accel: 4,
-  hp: 2,
+  hp: 1,
   contactCooldown: 0.9,
   knockDrag: 9,
   splitInterval: 9,
@@ -344,8 +400,8 @@ export const CASCADING_ERROR = {
   blockSize: 30,
   cell: 36,
   maxBlocks: 28,
-  /** Four fast bolts, or four mine blasts, to clear one block. */
-  hp: 4,
+  /** Three fast bolts, or three mine blasts, to clear one block. */
+  hp: 3,
   growTime: 0.3,
   touchDamage: 1,
   touchCooldown: 0.9,
@@ -386,7 +442,9 @@ export const FIREWALL = {
   speed: 72,
   warn: 1.3,
   tick: 0.45,
+  /** Player damage per tick. Enemy factions take a heavier burn. */
   damage: 1,
+  enemyDamage: 3,
   knockback: 780,
 } as const;
 
@@ -408,8 +466,9 @@ export const COLORS = {
   grid: 'rgba(52, 132, 164, 0.13)',
   frame: '#1c8ea6',
   frameSoft: 'rgba(38, 166, 190, 0.28)',
-  pillarFill: '#08121d',
-  pillarEdge: 'rgba(74, 210, 232, 0.55)',
+  pillarFill: '#173247',
+  pillarPanel: '#1e4159',
+  pillarEdge: 'rgba(118, 230, 248, 0.8)',
   text: '#d7f6ff',
   textDim: 'rgba(160, 220, 235, 0.55)',
   danger: '#ff5a3c',

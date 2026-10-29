@@ -265,7 +265,7 @@ export class BotBrain {
     // Occasional committed dash: close a long gap, or reset spacing after a whiff.
     if (
       !blocked &&
-      me.dashCd <= 0 &&
+      me.dashCharges > 0 &&
       me.swingPhase === 0 &&
       this.threatSerial < 0 &&
       dist > 330 &&
@@ -401,7 +401,7 @@ export class BotBrain {
     }
 
     if (
-      me.dashCd <= 0 &&
+      me.dashCharges > 0 &&
       me.swingPhase === 0 &&
       this.threatTime < 0.3 &&
       this.threatDist < 190 &&

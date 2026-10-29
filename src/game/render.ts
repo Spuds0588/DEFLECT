@@ -1,9 +1,10 @@
-import { BUG, CAMERA_ZOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, MAX_PLAYERS, PLAYER, ROUND, SENTRY, TRAIL_LEN, VIEW_H, VIEW_W, VIRUS, WORM } from './config';
+import { BOLT, BUG, CAMERA_ZOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, TRAIL_LEN, VIEW_H, VIEW_W, VIRUS, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
 import { drawGlyph, slotColor, slotGlyph, THREAT_COLORS } from './identity';
 import { P_COLOR_ICE, particleColor } from './particles';
-import type { CascadingError, Drone, Firewall, GameMode, Phase, Player, Projectile, Sentry, Virus, Worm } from './types';
+import { POWERUPS, POWERUP_KIND } from './powerups';
+import type { CascadingError, Drone, Firewall, GameMode, Phase, Pickup, Player, Projectile, Sentry, Virus, Worm } from './types';
 
 export interface RenderState {
   mode: GameMode;
@@ -24,6 +25,7 @@ export interface RenderState {
   firewalls?: readonly Firewall[];
   errors?: readonly CascadingError[];
   sentries?: readonly Sentry[];
+  pickups?: readonly Pickup[];
   infection?: number;
   gauntletKills?: number;
   wave?: number;
@@ -107,6 +109,8 @@ export class Renderer {
   private introT = INTRO_LEN;
   private introActive = false;
   private dustArena = -1;
+  /** Toggled from Settings > Feedback. */
+  showMinimap = true;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -196,6 +200,7 @@ export class Renderer {
       if (state.viruses) this.drawViruses(state.viruses, alpha, t);
       if (state.sentries) this.drawSentries(state.sentries, alpha, t);
       if (state.errors) this.drawErrors(state.errors, alpha, t);
+      if (state.pickups) this.drawPickups(state.pickups, alpha, t);
       this.drawLasers(state, alpha, t);
       if (state.drone) this.drawDrone(state.drone, alpha, t);
     }
@@ -230,7 +235,10 @@ export class Renderer {
       }
     }
 
-    if (introDone) this.drawHud(state, t);
+    if (introDone) {
+      this.drawHud(state, t);
+      if (this.showMinimap) this.drawMinimap(state, t);
+    }
   }
 
   private updateCamera(state: RenderState, alpha: number, dt: number): void {
@@ -441,27 +449,48 @@ export class Renderer {
     ctx.translate(0, -pillarDrop);
     for (let i = 0; i < arena.pillars.length; i++) {
       const r = arena.pillars[i];
+      // Cover is a solid object, not floor texture: bright fill, inset panel, hard rim.
+      ctx.globalAlpha = pillarA;
       ctx.fillStyle = COLORS.pillarFill;
-      ctx.globalAlpha = pillarA * 0.9;
       ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.strokeStyle = arena.accent;
-      ctx.globalAlpha = (0.4 + Math.sin(t * 1.6 + i) * 0.09) * pillarA;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
-      ctx.globalAlpha = 0.12 * pillarA;
+      ctx.fillStyle = COLORS.pillarPanel;
+      ctx.fillRect(r.x + 4, r.y + 4, Math.max(0, r.w - 8), Math.max(0, r.h - 8));
+      ctx.globalAlpha = 0.22 * pillarA;
+      ctx.strokeStyle = '#d9f8ff';
       ctx.lineWidth = 1;
-      ctx.strokeRect(r.x + 7, r.y + 7, r.w - 14, r.h - 14);
+      ctx.beginPath();
+      for (let hx = r.x + 10; hx < r.x + r.w - 8; hx += 14) {
+        ctx.moveTo(hx, r.y + 8);
+        ctx.lineTo(hx + 8, r.y + 8);
+        ctx.moveTo(hx, r.y + r.h - 8);
+        ctx.lineTo(hx + 8, r.y + r.h - 8);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = (0.75 + Math.sin(t * 1.6 + i) * 0.12) * pillarA;
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2.4;
+      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+      ctx.globalAlpha = 0.32 * pillarA;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r.x + 7, r.y + 7, Math.max(0, r.w - 14), Math.max(0, r.h - 14));
       ctx.beginPath();
       ctx.moveTo(r.x + 7, r.y + 7);
       ctx.lineTo(r.x + r.w - 7, r.y + r.h - 7);
       ctx.moveTo(r.x + r.w - 7, r.y + 7);
       ctx.lineTo(r.x + 7, r.y + r.h - 7);
       ctx.stroke();
+      // Top edge catches the light so cover separates from the animated floor.
+      ctx.globalAlpha = 0.75 * pillarA;
+      ctx.strokeStyle = '#c9f7ff';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(r.x + 3, r.y + 2);
+      ctx.lineTo(r.x + r.w - 3, r.y + 2);
+      ctx.stroke();
       ctx.globalAlpha = pillarA;
-      // Warm accent marks a hard edge without implying a hazard.
-      ctx.fillStyle = 'rgba(255, 138, 46, 0.55)';
-      ctx.fillRect(r.x + r.w * 0.5 - 6, r.y + 3, 12, 2);
-      ctx.fillRect(r.x + r.w * 0.5 - 6, r.y + r.h - 5, 12, 2);
+      ctx.fillStyle = 'rgba(255, 168, 74, 0.8)';
+      ctx.fillRect(r.x + r.w * 0.5 - 7, r.y + 4, 14, 2.4);
+      ctx.fillRect(r.x + r.w * 0.5 - 7, r.y + r.h - 6, 14, 2.4);
       ctx.globalAlpha = 1;
     }
     ctx.restore();
@@ -1553,7 +1582,60 @@ export class Renderer {
         continue;
       }
 
-      // Deflect shield: a 120-degree arc centered on facing. Each swing draws the arc
+      // Held guard: a tight 180 degree screen right against the body. It is the safe,
+      // readable option; the tap swing stays the offensive one.
+      if (p.guardT > 0) {
+        const edge = facing - PLAYER.guardHalfAngle;
+        const end = facing + PLAYER.guardHalfAngle;
+        const guardFade = Math.min(1, p.guardT / 0.08);
+        const radius = PLAYER.guardReach - 12;
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.1 * guardFade;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, edge, end);
+        ctx.arc(x, y, PLAYER.radius + 4, end, edge, true);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = (0.58 + 0.16 * Math.sin(t * 18)) * guardFade;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(x, y, radius, edge, end);
+        ctx.stroke();
+        ctx.globalAlpha = 0.28 * guardFade;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let g = 0; g <= 6; g++) {
+          const a = edge + ((end - edge) * g) / 6;
+          ctx.moveTo(x + Math.cos(a) * (PLAYER.radius + 7), y + Math.sin(a) * (PLAYER.radius + 7));
+          ctx.lineTo(x + Math.cos(a) * radius, y + Math.sin(a) * radius);
+        }
+        ctx.stroke();
+        // Burn the last of the guard down from the edges inward.
+        const left = Math.max(0, Math.min(1, p.guardT / PLAYER.guardDuration));
+        ctx.globalAlpha = 0.7 * guardFade;
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 3, edge + (end - edge) * (1 - left) * 0.5, end - (end - edge) * (1 - left) * 0.5);
+        ctx.stroke();
+        ctx.restore();
+      } else if (p.guardCd > 0) {
+        // Quick cooldown tells the eye the shield is unavailable without a number.
+        ctx.save();
+        ctx.globalAlpha = 0.2 * Math.min(1, p.guardCd / PLAYER.guardCooldown);
+        ctx.strokeStyle = '#ff6a7c';
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([3, 5]);
+        ctx.beginPath();
+        ctx.arc(x, y, PLAYER.guardReach - 12, facing - PLAYER.guardHalfAngle, facing + PLAYER.guardHalfAngle);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+
+      // Deflect swing: a 180-degree arc centered on facing. Each swing draws the arc
       // across the cone from one edge, then the next swing reverses like a real weapon.
       if (p.swingPhase !== 0) {
         const half = PLAYER.swingHalfAngle;
@@ -1603,6 +1685,45 @@ export class Renderer {
         ctx.restore();
       }
 
+      // Barbed whip: the reflect animation becomes a long red lash with triangle barbs.
+      if (p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP && p.swingPhase !== 0) {
+        const pct = Math.max(0, Math.min(1, p.swingPct));
+        const arc = p.swingDir < 0 ? -1 : 1;
+        const reach = PLAYER.swingReach * POWERUP.whipMultiplier;
+        const start = facing - arc * PLAYER.swingHalfAngle;
+        const span = arc * PLAYER.swingHalfAngle * 2 * (0.45 + 0.55 * (1 - pct) * (p.swingPhase === 2 ? 1 : 0.7));
+        ctx.save();
+        ctx.strokeStyle = '#ff3e63';
+        ctx.globalAlpha = p.swingPhase === 3 ? 0.35 : 0.9;
+        ctx.lineWidth = 2.6;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        const steps = 14;
+        for (let s = 0; s <= steps; s++) {
+          const a = start + span * (s / steps);
+          const r = PLAYER.radius + 8 + (reach - PLAYER.radius) * (s / steps);
+          const wx = x + Math.cos(a) * r;
+          const wy = y + Math.sin(a) * r;
+          if (s === 0) ctx.moveTo(wx, wy);
+          else ctx.lineTo(wx, wy);
+        }
+        ctx.stroke();
+        ctx.fillStyle = '#ff3e63';
+        for (let s = 2; s <= steps; s += 3) {
+          const a = start + span * (s / steps);
+          const r = PLAYER.radius + 8 + (reach - PLAYER.radius) * (s / steps);
+          const wx = x + Math.cos(a) * r;
+          const wy = y + Math.sin(a) * r;
+          ctx.beginPath();
+          ctx.moveTo(wx, wy);
+          ctx.lineTo(wx + Math.cos(a + 2.2) * 8, wy + Math.sin(a + 2.2) * 8);
+          ctx.lineTo(wx + Math.cos(a - 2.2) * 8, wy + Math.sin(a - 2.2) * 8);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
       // Floating readiness pips behind the avatar: dash on one side, bug on the other.
       const iconR = PLAYER.radius + 16;
       const bugAng = facing + 2.45;
@@ -1613,8 +1734,8 @@ export class Renderer {
       const dashY = y + Math.sin(dashAng) * iconR;
       const bugReady = p.bugCd <= 0;
       const bugPct = bugReady ? 1 : 1 - Math.min(1, p.bugCd / (BUG.cooldown[p.bugKind] ?? 6));
-      const dashReady = p.dashCd <= 0;
-      const dashPct = dashReady ? 1 : 1 - Math.min(1, p.dashCd / PLAYER.dashCooldown);
+      const dashReady = p.dashCharges > 0;
+      const dashPct = p.dashCharges >= PLAYER.dashCharges ? 1 : 1 - Math.min(1, p.dashCd / PLAYER.dashCooldown);
       ctx.save();
       ctx.globalAlpha = bugReady ? 0.8 : 0.22;
       ctx.strokeStyle = color;
@@ -1650,19 +1771,23 @@ export class Renderer {
         ctx.stroke();
       }
 
-      ctx.globalAlpha = dashReady ? 0.65 : 0.18;
-      ctx.strokeStyle = '#dff7ff';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(dashX - 4, dashY - 5);
-      ctx.lineTo(dashX, dashY);
-      ctx.lineTo(dashX + 4, dashY - 5);
-      ctx.stroke();
-      if (!dashReady) {
+      // Two stored dodges read as two chevrons, not a single cooldown ring.
+      for (let c = 0; c < PLAYER.dashCharges; c++) {
+        const off = (c - (PLAYER.dashCharges - 1) * 0.5) * 7;
+        ctx.globalAlpha = c < p.dashCharges ? 0.75 : 0.16;
+        ctx.strokeStyle = '#dff7ff';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(dashX - 3 + off, dashY - 5);
+        ctx.lineTo(dashX + 1 + off, dashY);
+        ctx.lineTo(dashX - 3 + off, dashY + 5);
+        ctx.stroke();
+      }
+      if (p.dashCharges < PLAYER.dashCharges) {
         ctx.globalAlpha = 0.35;
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.arc(dashX, dashY, 8, -Math.PI / 2, -Math.PI / 2 + TWO_PI * dashPct);
+        ctx.arc(dashX, dashY, 9, -Math.PI / 2, -Math.PI / 2 + TWO_PI * dashPct);
         ctx.stroke();
       }
       // Beam readiness sits beside the bug icon. It is a separate cooldown from the bug
@@ -1693,13 +1818,34 @@ export class Renderer {
       const burstY = y + Math.sin(burstAng) * iconR;
       const burstNX = -Math.sin(burstAng);
       const burstNY = Math.cos(burstAng);
-      for (let b = 0; b < 3; b++) {
-        const off = (b - 1) * 5;
-        ctx.globalAlpha = b < p.burstLeft ? 0.9 : 0.18;
+      for (let b = 0; b < BOLT.burstCount; b++) {
+        const off = (b - (BOLT.burstCount - 1) * 0.5) * 4.4;
+        ctx.globalAlpha = b < p.burstLeft ? 0.9 : 0.16;
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(burstX + burstNX * off, burstY + burstNY * off, 1.7, 0, TWO_PI);
+        ctx.arc(burstX + burstNX * off, burstY + burstNY * off, 1.5, 0, TWO_PI);
         ctx.fill();
+      }
+      // Active pickup floats behind the avatar with a small remaining-time arc.
+      if (p.powerupT > 0 && p.powerupKind >= 0 && p.powerupKind < POWERUPS.length) {
+        const pu = POWERUPS[p.powerupKind];
+        const ang = facing - 2.95;
+        const px = x + Math.cos(ang) * (iconR + 4);
+        const py = y + Math.sin(ang) * (iconR + 4);
+        ctx.globalAlpha = 0.85;
+        ctx.strokeStyle = pu.color;
+        ctx.lineWidth = 1.6;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(t * 1.7);
+        ctx.strokeRect(-4, -4, 8, 8);
+        ctx.restore();
+        const total = pu.duration > 0 ? pu.duration : 1;
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(px, py, 8, -Math.PI / 2, -Math.PI / 2 + TWO_PI * Math.min(1, p.powerupT / total));
+        ctx.stroke();
       }
       ctx.restore();
 
@@ -1755,19 +1901,6 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(x, y, Math.max(22, dist - 12), facing - 0.5, facing + 0.5);
         ctx.stroke();
-      }
-
-      if (p.chargeT > 0.06 && p.waveT <= 0) {
-        const pct = Math.min(1, p.chargeT / PLAYER.waveHoldTime);
-        const ready = pct >= 1;
-        ctx.strokeStyle = color;
-        ctx.globalAlpha = ready ? 0.55 + 0.22 * Math.sin(t * 14) : 0.28;
-        ctx.lineWidth = ready ? 3 : 2;
-        if (ready) ctx.setLineDash([5, 4]);
-        ctx.beginPath();
-        ctx.arc(x, y, PLAYER.radius + 13, -Math.PI / 2, -Math.PI / 2 + TWO_PI * pct);
-        ctx.stroke();
-        if (ready) ctx.setLineDash([]);
       }
 
       // Health ring is the outermost player circle. It rotates slowly and each lost
@@ -1850,7 +1983,27 @@ export class Renderer {
       ctx.save();
       ctx.translate(x + jitterX, y + 1 + jitterY);
       ctx.scale(symScale, symScale);
-      drawGlyph(ctx, slotGlyph(p.slot), 0, 0, 10.2);
+      if (p.powerupT > 0 && p.powerupKind === POWERUP_KIND.OVERCHARGE) {
+        // The centre symbol becomes a live bolt while overcharged.
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.2;
+        ctx.lineJoin = 'miter';
+        ctx.beginPath();
+        ctx.moveTo(2, -10);
+        ctx.lineTo(-4, 0);
+        ctx.lineTo(2, 0);
+        ctx.lineTo(-2, 10);
+        ctx.lineTo(6, -1);
+        ctx.lineTo(0, -1);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.globalAlpha = 0.5 + 0.38 * Math.abs(Math.sin(t * 16 + p.slot));
+        ctx.strokeStyle = '#c39bff';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      } else {
+        drawGlyph(ctx, slotGlyph(p.slot), 0, 0, 10.2);
+      }
       ctx.restore();
 
       if (p.ghostT > 0) {
@@ -1946,6 +2099,173 @@ export class Renderer {
       ctx.fillRect(x - total / 2 + i * (pipW + gap), y + d.radius + 8, pipW, 2);
     }
     void t;
+  }
+
+  /** Pickups are drawn in world space; their icon shape identifies the effect. */
+  private drawPickups(pickups: readonly Pickup[], alpha: number, t: number): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < pickups.length; i++) {
+      const pk = pickups[i];
+      if (!pk.active) continue;
+      const def = POWERUPS[pk.kind];
+      if (!def) continue;
+      const fade = pk.life < 3 ? 0.35 + 0.65 * Math.abs(Math.sin(pk.life * 7)) : 1;
+      const bob = Math.sin(pk.phase * 2.4 + i) * 3;
+      const x = pk.x;
+      const y = pk.y + bob;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.translate(x, y);
+      ctx.globalAlpha = 0.12 * fade;
+      ctx.fillStyle = def.color;
+      ctx.beginPath();
+      ctx.arc(0, 0, POWERUP.radius + 10, 0, TWO_PI);
+      ctx.fill();
+      ctx.globalAlpha = 0.85 * fade;
+      ctx.strokeStyle = def.color;
+      ctx.lineWidth = 1.8;
+      ctx.save();
+      ctx.rotate(t * 0.7 + pk.phase);
+      ctx.strokeRect(-POWERUP.radius * 0.75, -POWERUP.radius * 0.75, POWERUP.radius * 1.5, POWERUP.radius * 1.5);
+      ctx.restore();
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      if (pk.kind === POWERUP_KIND.RESTORE) {
+        ctx.moveTo(-6, 0);
+        ctx.lineTo(6, 0);
+        ctx.moveTo(0, -6);
+        ctx.lineTo(0, 6);
+      } else if (pk.kind === POWERUP_KIND.MACHINE_GUN) {
+        for (let d = 0; d < 3; d++) {
+          ctx.moveTo(-6 + d * 6, 4);
+          ctx.lineTo(-6 + d * 6, -4);
+        }
+      } else if (pk.kind === POWERUP_KIND.SHOTGUN) {
+        for (let d = -1; d <= 1; d++) {
+          ctx.moveTo(-5, 5);
+          ctx.lineTo(5, d * 5);
+        }
+      } else if (pk.kind === POWERUP_KIND.OVERCHARGE) {
+        ctx.moveTo(3, -9);
+        ctx.lineTo(-3, 0);
+        ctx.lineTo(2, 0);
+        ctx.lineTo(-2, 9);
+        ctx.lineTo(5, -1);
+        ctx.lineTo(0, -1);
+        ctx.closePath();
+      } else if (pk.kind === POWERUP_KIND.WHIP) {
+        ctx.moveTo(-8, 6);
+        ctx.quadraticCurveTo(-2, -8, 8, -4);
+        ctx.moveTo(0, -3);
+        ctx.lineTo(3, -7);
+        ctx.lineTo(4, -1);
+      } else {
+        ctx.moveTo(-8, 6);
+        ctx.lineTo(-3, 6);
+        ctx.lineTo(-3, 0);
+        ctx.lineTo(3, 0);
+        ctx.lineTo(3, -6);
+        ctx.lineTo(8, -6);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    void alpha;
+  }
+
+  /**
+   * Toggleable minimap. It shows cover, the local avatar, other players and local
+   * gauntlet threats. No labels; the shapes already carry meaning.
+   */
+  private drawMinimap(state: RenderState, t: number): void {
+    const arena = state.arena;
+    const b = arena.bounds;
+    const spanX = Math.max(1, b.right - b.left);
+    const spanY = Math.max(1, b.bottom - b.top);
+    const w = 190;
+    const h = Math.max(96, Math.min(168, w * (spanY / spanX)));
+    const x0 = 24;
+    const y0 = VIEW_H - h - 24;
+    const sx = w / spanX;
+    const sy = h / spanY;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.88;
+    ctx.fillStyle = 'rgba(3, 10, 16, 0.78)';
+    ctx.fillRect(x0, y0, w, h);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
+    ctx.globalAlpha = 0.22;
+    ctx.strokeRect(x0 + 5.5, y0 + 5.5, w - 11, h - 11);
+    ctx.globalAlpha = 1;
+    // Cover: brighter than the floor so it still reads at thumbnail size.
+    ctx.fillStyle = COLORS.pillarFill;
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      ctx.fillRect(x0 + (r.x - b.left) * sx, y0 + (r.y - b.top) * sy, Math.max(1.5, r.w * sx), Math.max(1.5, r.h * sy));
+    }
+    if (state.worms) {
+      ctx.fillStyle = THREAT_COLORS.worm;
+      for (let i = 0; i < state.worms.length; i++) {
+        const e = state.worms[i];
+        if (e.active) ctx.fillRect(x0 + (e.x - b.left) * sx - 1.5, y0 + (e.y - b.top) * sy - 1.5, 3, 3);
+      }
+    }
+    if (state.viruses) {
+      ctx.fillStyle = THREAT_COLORS.virus;
+      for (let i = 0; i < state.viruses.length; i++) {
+        const e = state.viruses[i];
+        if (e.active) ctx.fillRect(x0 + (e.x - b.left) * sx - 1, y0 + (e.y - b.top) * sy - 1, 2, 2);
+      }
+    }
+    if (state.sentries) {
+      ctx.fillStyle = THREAT_COLORS.sentry;
+      for (let i = 0; i < state.sentries.length; i++) {
+        const e = state.sentries[i];
+        if (e.active) ctx.fillRect(x0 + (e.x - b.left) * sx - 1.2, y0 + (e.y - b.top) * sy - 1.2, 2.4, 2.4);
+      }
+    }
+    if (state.errors) {
+      ctx.fillStyle = THREAT_COLORS.error;
+      for (let i = 0; i < state.errors.length; i++) {
+        const e = state.errors[i];
+        if (e.active) ctx.fillRect(x0 + (e.x - b.left) * sx - 1, y0 + (e.y - b.top) * sy - 1, 2, 2);
+      }
+    }
+    if (state.pickups) {
+      for (let i = 0; i < state.pickups.length; i++) {
+        const pk = state.pickups[i];
+        if (!pk.active) continue;
+        const def = POWERUPS[pk.kind];
+        if (!def) continue;
+        ctx.fillStyle = def.color;
+        ctx.beginPath();
+        ctx.arc(x0 + (pk.x - b.left) * sx, y0 + (pk.y - b.top) * sy, 2.2, 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      if (!p.active || !p.alive) continue;
+      const px = x0 + (p.x - b.left) * sx;
+      const py = y0 + (p.y - b.top) * sy;
+      ctx.fillStyle = p.thrall ? THREAT_COLORS.thrall : slotColor(p.slot);
+      ctx.beginPath();
+      ctx.arc(px, py, i === state.localSlot ? 3.4 : 2.4, 0, TWO_PI);
+      ctx.fill();
+      if (i === state.localSlot) {
+        ctx.globalAlpha = 0.65 + 0.25 * Math.sin(t * 5);
+        ctx.strokeStyle = slotColor(p.slot);
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(px + Math.cos(p.facing) * 8, py + Math.sin(p.facing) * 8);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.restore();
   }
 
   private drawHud(state: RenderState, t: number): void {

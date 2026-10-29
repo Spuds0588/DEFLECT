@@ -29,6 +29,16 @@ export function slotGlyph(slot: number): number {
 }
 
 /** Hostile palette. Kept here so threat colors never drift from the player palette. */
+/** Pickup and active-powerup palette. Kept beside the identity colors so contrast is controlled. */
+export const POWERUP_COLORS = {
+  restore: '#5dffb0',
+  machine: '#ffd54a',
+  shotgun: '#ff9a3d',
+  overcharge: '#c39bff',
+  whip: '#ff4d6d',
+  path: '#63e8ff',
+} as const;
+
 export const THREAT_COLORS = {
   worm: '#ff3b3b',
   virus: '#ff54d8',

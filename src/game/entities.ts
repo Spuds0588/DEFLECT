@@ -1,9 +1,10 @@
-import { BOLT, MINE, CASCADING_ERROR, MAX_PROJECTILES, PLAYER, SENTRY, TRAIL_LEN, TRAINING, VIRUS, WORM } from './config';
+import { BOLT, MINE, CASCADING_ERROR, MAX_PROJECTILES, PLAYER, POWERUP, SENTRY, TRAIL_LEN, TRAINING, VIRUS, WORM } from './config';
 import {
   PF,
   type CascadingError,
   type Drone,
   type Firewall,
+  type Pickup,
   type Player,
   type Projectile,
   type Sentry,
@@ -39,6 +40,7 @@ export function createPlayer(slot: number): Player {
     thrall: false,
     dashT: 0,
     dashCd: 0,
+    dashCharges: PLAYER.dashCharges,
     moveDirX: 1,
     moveDirY: 0,
     dashDirX: 1,
@@ -66,8 +68,13 @@ export function createPlayer(slot: number): Player {
     laserFacing: 0,
     chargeT: 0,
     chargeHeld: false,
+    guardT: 0,
+    guardCd: 0,
     bugKind: 0,
     bugCd: 0,
+    powerupKind: -1,
+    powerupT: 0,
+    autoFireT: 0,
     ghostT: 0,
     wallT: 0,
     wallFacing: 0,
@@ -105,6 +112,8 @@ export function createProjectile(): Projectile {
     fuse: 0,
     grace: 0,
     armed: false,
+    homing: false,
+    pathAxis: 0,
     trailX: new Float32Array(TRAIL_LEN),
     trailY: new Float32Array(TRAIL_LEN),
     trailHead: 0,
@@ -115,6 +124,23 @@ export function createProjectile(): Projectile {
 export function createProjectilePool(): Projectile[] {
   const pool: Projectile[] = new Array(MAX_PROJECTILES);
   for (let i = 0; i < pool.length; i++) pool[i] = createProjectile();
+  return pool;
+}
+
+export function createPickup(): Pickup {
+  return {
+    active: false,
+    kind: 0,
+    x: 0,
+    y: 0,
+    phase: 0,
+    life: 0,
+  };
+}
+
+export function createPickupPool(): Pickup[] {
+  const pool: Pickup[] = new Array(POWERUP.maxActive);
+  for (let i = 0; i < pool.length; i++) pool[i] = createPickup();
   return pool;
 }
 
@@ -267,6 +293,7 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.alive = true;
   p.dashT = 0;
   p.dashCd = 0;
+  p.dashCharges = PLAYER.dashCharges;
   p.dashKind = 0;
   p.dashChargeT = 0;
   p.dashChargeHeld = false;
@@ -292,10 +319,15 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.laserFacing = facing;
   p.chargeT = 0;
   p.chargeHeld = false;
+  p.guardT = 0;
+  p.guardCd = 0;
   p.ghostT = 0;
   p.wallT = 0;
   p.slowT = 0;
   p.bugCd = 0;
+  p.powerupKind = -1;
+  p.powerupT = 0;
+  p.autoFireT = 0;
   p.waveT = 0;
   p.waveCd = 0;
   p.comboStage = 0;
@@ -322,6 +354,7 @@ export function playerFlags(p: Player): number {
   if (p.swingDir < 0) flags |= PF.SWING_REVERSE;
   if (p.waveT > 0) flags |= PF.WAVE;
   else if (p.chargeT >= PLAYER.waveHoldTime) flags |= PF.CHARGE_READY;
+  if (p.guardT > 0) flags |= PF.GUARD;
   if (p.lockActive) flags |= PF.LOCKED;
   if (p.laserChargeHeld) flags |= PF.LASER_CHARGING;
   if (p.laserT > 0) flags |= PF.LASER_FIRING;

@@ -773,6 +773,8 @@ export class NetView {
       view.ghostT = (flags & PF.GHOST) !== 0 ? 0.2 : 0;
       view.wallT = (flags & PF.WALL) !== 0 ? 0.2 : 0;
       view.slowT = (flags & PF.SLOW) !== 0 ? 0.2 : 0;
+      view.guardT = (flags & PF.GUARD) !== 0 ? 0.2 : 0;
+      view.guardCd = 0;
       view.hitFlash = 0;
     }
 
@@ -803,8 +805,11 @@ export class NetView {
         view.iframes = lp.iframes;
         view.hitFlash = lp.hitFlash;
         view.dashCd = lp.dashCd;
+        view.dashCharges = lp.dashCharges;
         view.dashT = lp.dashT;
         view.dashKind = lp.dashKind;
+        view.guardT = lp.guardT;
+        view.guardCd = lp.guardCd;
       }
     }
 
@@ -952,6 +957,7 @@ export class LocalPredictor {
     this.p.ghostT = (flags & PF.GHOST) !== 0 ? 0.2 : 0;
     this.p.wallT = (flags & PF.WALL) !== 0 ? 0.2 : 0;
     this.p.slowT = (flags & PF.SLOW) !== 0 ? 0.2 : 0;
+    this.p.guardT = (flags & PF.GUARD) !== 0 ? 0.2 : 0;
 
     if (!this.initialized || (!wasAlive && this.p.alive)) {
       this.p.x = authX;
@@ -997,7 +1003,10 @@ export class LocalPredictor {
     this.p.comboT = 0;
     this.p.dashT = 0;
     this.p.dashCd = 0;
+    this.p.dashCharges = PLAYER.dashCharges;
     this.p.dashKind = 0;
+    this.p.guardT = 0;
+    this.p.guardCd = 0;
     this.p.dashChargeT = 0;
     this.p.dashChargeHeld = false;
     this.p.chargeDashCd = 0;
@@ -1023,7 +1032,14 @@ export class LocalPredictor {
     p.prevY = p.y;
     p.prevFacing = p.facing;
     if (p.dashT > 0) p.dashT = Math.max(0, p.dashT - dt);
-    if (p.dashCd > 0) p.dashCd = Math.max(0, p.dashCd - dt);
+    if (p.dashCd > 0) {
+      p.dashCd = Math.max(0, p.dashCd - dt);
+      if (p.dashCd === 0 && p.dashCharges < PLAYER.dashCharges) {
+        p.dashCharges++;
+        if (p.dashCharges < PLAYER.dashCharges) p.dashCd = PLAYER.dashCooldown;
+      }
+    }
+    if (p.guardCd > 0) p.guardCd = Math.max(0, p.guardCd - dt);
     if (p.chargeDashCd > 0) p.chargeDashCd = Math.max(0, p.chargeDashCd - dt);
     if (p.iframes > 0) p.iframes = Math.max(0, p.iframes - dt);
     if (p.hitFlash > 0) p.hitFlash = Math.max(0, p.hitFlash - dt);
@@ -1093,10 +1109,11 @@ export class LocalPredictor {
     const heldDash = (input.held & ACTION.DASH) !== 0;
     if (input.pressed & ACTION.DASH) {
       p.dashChargeT = 0;
-      if (p.dashT <= 0 && p.dashCd <= 0 && p.swingPhase === 0) {
+      if (p.dashT <= 0 && p.dashCharges > 0 && p.swingPhase === 0) {
         const dir = Math.atan2(p.moveDirY, p.moveDirX);
         p.dashT = PLAYER.dashTime;
-        p.dashCd = PLAYER.dashCooldown;
+        if (p.dashCd <= 0) p.dashCd = PLAYER.dashCooldown;
+        p.dashCharges--;
         p.dashKind = 0;
         p.dashDirX = Math.cos(dir);
         p.dashDirY = Math.sin(dir);
@@ -1114,7 +1131,8 @@ export class LocalPredictor {
       ) {
         const dir = Math.atan2(p.moveDirY, p.moveDirX);
         p.dashT = PLAYER.chargeDashTime;
-        p.dashCd = PLAYER.dashCooldown;
+        if (p.dashCd <= 0) p.dashCd = PLAYER.dashCooldown;
+        p.dashCharges = Math.max(0, p.dashCharges - 1);
         p.chargeDashCd = PLAYER.chargeDashCooldown;
         p.dashKind = 1;
         p.dashDirX = Math.cos(dir);
@@ -1150,18 +1168,17 @@ export class LocalPredictor {
     }
     if (heldSwing) {
       p.chargeT += dt;
+      if (p.guardT <= 0 && p.guardCd <= 0 && p.chargeT >= PLAYER.guardStartDelay) {
+        p.guardT = PLAYER.guardDuration;
+      }
+      if (p.guardT > 0) {
+        p.guardT = Math.max(0, p.guardT - dt);
+        if (p.guardT === 0) p.guardCd = PLAYER.guardCooldown;
+      }
     } else {
-      if (
-        p.chargeHeld &&
-        p.chargeT >= PLAYER.waveHoldTime &&
-        p.waveCd <= 0 &&
-        p.waveT <= 0 &&
-        p.swingPhase === 0
-      ) {
-        p.waveT = PLAYER.waveVisualTime;
-        p.waveCd = PLAYER.waveCooldown;
-        p.comboStage = 0;
-        p.comboT = 0;
+      if (p.guardT > 0) {
+        p.guardT = 0;
+        p.guardCd = Math.max(p.guardCd, PLAYER.guardReleaseCooldown);
       }
       p.chargeT = 0;
     }

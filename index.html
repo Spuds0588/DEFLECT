@@ -29,7 +29,7 @@
 ██████╔╝███████╗██║     ███████╗███████╗╚██████╗   ██║   
 ╚═════╝ ╚══════╝╚═╝     ╚══════╝╚══════╝ ╚═════╝   ╚═╝   </pre><span class="caret" aria-hidden="true">_</span>
             </h1>
-            <p class="console-version">v0.1.8</p>
+            <p class="console-version">v0.1.9</p>
           </header>
 
           <div class="console-shell">
@@ -74,12 +74,25 @@
               <button id="btn-bots-back" class="console-option console-back" data-nav>
                 <span class="option-key">ESC</span><span class="option-label">BACK</span>
               </button>
-              <p id="bot-stage-label" class="console-stage-label">TRAINING // OPPOSITION</p>
+              <p id="bot-stage-label" class="console-stage-label">TRAINING // BOT COUNT</p>
               <div class="console-group console-group-tight">
                 <div id="bot-count" class="console-choices" role="group" aria-label="Number of bots"></div>
+                <p class="console-note">ENDLESS PRACTICE // BOTS RESPAWN. NO ROUNDS.</p>
+                <button id="btn-bots" class="console-option console-run" data-nav>
+                  <span class="option-key">NEXT</span><span class="option-label">DIFFICULTY</span>
+                </button>
+              </div>
+            </div>
+
+            <div id="menu-solo-tier" class="menu-stage console-menu" hidden>
+              <button id="btn-tier-back" class="console-option console-back" data-nav>
+                <span class="option-key">ESC</span><span class="option-label">BACK</span>
+              </button>
+              <p id="tier-stage-label" class="console-stage-label">TRAINING // DIFFICULTY</p>
+              <div class="console-group console-group-tight">
                 <div id="bot-tier" class="console-choices" role="group" aria-label="Bot difficulty"></div>
                 <p id="bot-roster" class="console-note">STYLES // VEX DUELIST / GLITCH TRICKSTER / RIFT SIEGE</p>
-                <button id="btn-bots" class="console-option console-run" data-nav>
+                <button id="btn-bots-run" class="console-option console-run" data-nav>
                   <span class="option-key">RUN</span><span id="bot-start-label" class="option-label">START BOT TRIAD</span>
                 </button>
               </div>
@@ -162,10 +175,11 @@
                     <span>ONE STICK // ALL ACTIONS</span>
                   </div>
                   <ul class="kit-list">
-                    <li><b>DEFLECT</b><span>Tap in rhythm: left, right, forward wave. Each arc reflects.</span></li>
-                    <li><b>HOLD DEFLECT</b><span>Release a shield wave that pushes and reflects in a line.</span></li>
-                    <li><b>DASH</b><span>Tap phases through threats and cover. Hold for a charged triangle dash that damages.</span></li>
+                    <li><b>DEFLECT</b><span>Tap in rhythm: left, right, forward wave. The 180-degree arc reflects.</span></li>
+                    <li><b>HOLD DEFLECT</b><span>Raise a 180-degree shield for up to one second. Every caught shot burns shield time; lock on to return it at the target.</span></li>
+                    <li><b>DASH</b><span>Two charges. Tap phases through threats and cover. Hold for a charged triangle dash that damages.</span></li>
                     <li><b>STRONG / BUG</b><span>Your bug is random each match: mine, trap, wall shield, or ghost. Hold to charge the heavy beam.</span></li>
+                    <li><b>PICKUPS</b><span>RESTORE repairs the ring. Timed drops add a machine gun, scatter blasts, overcharge, a barbed whip, or pathfinding bolts.</span></li>
                   </ul>
                 </div>
               </div>
@@ -192,7 +206,11 @@
                     <span>CONSOLE SCANLINES</span>
                     <button id="btn-scanlines" class="btn btn-ghost" data-nav aria-pressed="true">SCANLINES: ON</button>
                   </div>
-                  <p class="controls-note">Hit rotation tilts the whole view when your avatar loses a segment. Set it to 0 if the tilt reads as motion sickness. Impact flash scales the white splash on hits. Scanlines belong to the console menus and are never drawn over the arena.</p>
+                  <div class="setting-row">
+                    <span>MINIMAP</span>
+                    <button id="btn-minimap" class="btn btn-ghost" data-nav aria-pressed="true">MINIMAP: ON</button>
+                  </div>
+                  <p class="controls-note">Hit rotation tilts the whole view when your avatar loses a segment. Set it to 0 if the tilt reads as motion sickness. Impact flash scales the white splash on hits. Scanlines belong to the console menus. The minimap sits in the lower-left arena corner.</p>
                 </div>
                 <div class="panel settings-panel preview-panel">
                   <div class="controls-head">
@@ -271,7 +289,7 @@
                   </div>
                   <div class="setting-row">
                     <span>BUILD</span>
-                    <b>0.1.8 // CONSOLE</b>
+                    <b>0.1.9 // CONSOLE</b>
                   </div>
                   <div class="setting-row">
                     <span>RESET OPTIONS</span>

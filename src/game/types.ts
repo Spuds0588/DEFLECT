@@ -47,6 +47,8 @@ export const PF = {
   WALL: 65536,
   /** Caught by a trap; movement is slowed. */
   SLOW: 131072,
+  /** Held 180 degree deflect guard is up. */
+  GUARD: 262144,
 } as const;
 
 export const EV = {
@@ -82,6 +84,8 @@ export const EV = {
   SENTRY_SHOOT: 30,
   WORM_KILL: 31,
   VIRUS_KILL: 32,
+  POWERUP: 33,
+  HEAL: 34,
 } as const;
 
 export interface Player {
@@ -120,6 +124,8 @@ export interface Player {
 
   dashT: number;
   dashCd: number;
+  /** Stored dodge charges. Two by default; both recharge on the same timer. */
+  dashCharges: number;
   /** Last nonzero movement direction. Dash commits to this, not to lock facing. */
   moveDirX: number;
   moveDirY: number;
@@ -154,6 +160,10 @@ export interface Player {
   laserFacing: number;
   /** Seconds the deflect button has been held; feeds the shield wave. */
   chargeT: number;
+  /** Remaining seconds of the held 180 degree guard. */
+  guardT: number;
+  /** Short lockout after the guard breaks or is released. */
+  guardCd: number;
   /** True while the deflect button is down, used to detect release. */
   chargeHeld: boolean;
   /** Remaining seconds of the forward shield-wave visual/active state. */
@@ -169,6 +179,11 @@ export interface Player {
   wallFacing: number;
   /** Trap slow remaining (applies to movement speed). */
   slowT: number;
+  /** Active pickup effect, -1 when none. See powerups.ts. */
+  powerupKind: number;
+  powerupT: number;
+  /** Machine-gun auto-fire cooldown. */
+  autoFireT: number;
   waveCd: number;
   /** 0 idle, 1 after the left swing, 2 after the right swing. */
   comboStage: number;
@@ -204,6 +219,10 @@ export interface Projectile {
   fuse: number;
   grace: number;
   armed: boolean;
+  /** Pathfinding powerup bolt: axis-aligned target seeking. */
+  homing: boolean;
+  /** 0 horizontal, 1 vertical. */
+  pathAxis: number;
 
   /** Renderer-owned trail ring buffer (also used by network views). */
   trailX: Float32Array;
@@ -343,6 +362,15 @@ export interface CascadingError {
   touchCd: number;
   phase: number;
   spawnT: number;
+}
+
+export interface Pickup {
+  active: boolean;
+  kind: number;
+  x: number;
+  y: number;
+  phase: number;
+  life: number;
 }
 
 export interface LobbyPlayer {

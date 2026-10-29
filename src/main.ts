@@ -54,8 +54,10 @@ const arenaContinueBtn = el<HTMLButtonElement>('btn-arena-continue');
 const botCountEl = el('bot-count');
 const botTierEl = el('bot-tier');
 const botStageLabel = el('bot-stage-label');
+const tierStageLabel = el('tier-stage-label');
 const botRoster = el('bot-roster');
 const botBtn = el<HTMLButtonElement>('btn-bots');
+const botRunBtn = el<HTMLButtonElement>('btn-bots-run');
 const botStartLabel = el('bot-start-label');
 const gauntletBtn = el<HTMLButtonElement>('btn-gauntlet');
 const lobbyArenaBtn = el<HTMLButtonElement>('btn-arena-cycle');
@@ -73,12 +75,14 @@ const sfxVolumeValue = el('sfx-volume-value');
 const menuVolumeInput = el<HTMLInputElement>('menu-volume');
 const menuVolumeValue = el('menu-volume-value');
 const scanlinesBtn = el<HTMLButtonElement>('btn-scanlines');
+const minimapBtn = el<HTMLButtonElement>('btn-minimap');
 const resetSettingsBtn = el<HTMLButtonElement>('btn-settings-reset');
 const testFeedbackBtn = el<HTMLButtonElement>('btn-test-feedback');
 const menuHub = el('menu-hub');
 const menuSolo = el('menu-solo');
 const menuArena = el('menu-arena');
 const menuSoloBots = el('menu-solo-bots');
+const menuSoloTier = el('menu-solo-tier');
 const menuMulti = el('menu-multi');
 const modeSoloBtn = el<HTMLButtonElement>('btn-mode-solo');
 const modeMultiBtn = el<HTMLButtonElement>('btn-mode-multi');
@@ -103,7 +107,7 @@ let lobbyState: LobbyState | null = null;
 let localSlot = 0;
 let busy = false;
 let overlayKind: OverlayKind = 'none';
-type MenuStage = 'hub' | 'solo' | 'soloArena' | 'soloBots' | 'multi';
+type MenuStage = 'hub' | 'solo' | 'soloArena' | 'soloBots' | 'soloTier' | 'multi';
 type SoloProgram = 'training' | 'gauntlet';
 let menuStage: MenuStage = 'hub';
 let soloProgram: SoloProgram = 'training';
@@ -167,7 +171,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.8 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.9 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -179,6 +183,7 @@ function bindUi(): void {
   gauntletBtn.addEventListener('click', () => openSoloArena('gauntlet'));
   el<HTMLButtonElement>('btn-arena-back').addEventListener('click', () => showMenuStage('solo'));
   el<HTMLButtonElement>('btn-bots-back').addEventListener('click', () => showMenuStage('soloArena'));
+  el<HTMLButtonElement>('btn-tier-back').addEventListener('click', () => showMenuStage('soloBots'));
   arenaContinueBtn.addEventListener('click', () => {
     if (soloProgram === 'training') showMenuStage('soloBots');
     else startGauntlet();
@@ -223,6 +228,9 @@ function bindUi(): void {
   scanlinesBtn.addEventListener('click', () => {
     applyScanlines(scanlinesBtn.getAttribute('aria-pressed') !== 'true', true);
   });
+  minimapBtn.addEventListener('click', () => {
+    applyMinimap(minimapBtn.getAttribute('aria-pressed') !== 'true', true);
+  });
   testFeedbackBtn.addEventListener('click', () => {
     audio.hit();
     fx.triggerHitRotation();
@@ -234,7 +242,8 @@ function bindUi(): void {
   startBtn.addEventListener('click', startHostMatch);
   copyBtn.addEventListener('click', () => void copyInvite());
   lobbyArenaBtn.addEventListener('click', cycleLobbyArena);
-  botBtn.addEventListener('click', startBotMatch);
+  botBtn.addEventListener('click', () => showMenuStage('soloTier'));
+  botRunBtn.addEventListener('click', startTrainingBots);
   el<HTMLButtonElement>('btn-lobby-back').setAttribute('data-nav', '');
 
   callsignInput.addEventListener('input', () => {
@@ -323,6 +332,7 @@ function showMenuStage(stage: MenuStage, focus = true): void {
   menuSolo.hidden = stage !== 'solo';
   menuArena.hidden = stage !== 'soloArena';
   menuSoloBots.hidden = stage !== 'soloBots';
+  menuSoloTier.hidden = stage !== 'soloTier';
   menuMulti.hidden = stage !== 'multi';
   if (stage === 'soloArena') updateSoloArenaCopy();
   resetNavFocus();
@@ -367,6 +377,13 @@ function focusMenuStage(): void {
     card.focus({ preventScroll: true });
     return;
   }
+  if (menuStage === 'soloTier') {
+    const card = botTierEl.querySelector<HTMLButtonElement>('.selected') ?? botRunBtn;
+    resetNavFocus();
+    card.classList.add('nav-focus');
+    card.focus({ preventScroll: true });
+    return;
+  }
   resetNavFocus();
   createBtn.classList.add('nav-focus');
   createBtn.focus({ preventScroll: true });
@@ -374,7 +391,8 @@ function focusMenuStage(): void {
 
 function menuBack(): void {
   if (screen !== 'title') return;
-  if (menuStage === 'soloBots') showMenuStage('soloArena');
+  if (menuStage === 'soloTier') showMenuStage('soloBots');
+  else if (menuStage === 'soloBots') showMenuStage('soloArena');
   else if (menuStage === 'soloArena') showMenuStage('solo');
   else if (menuStage !== 'hub') showMenuStage('hub');
 }
@@ -386,7 +404,7 @@ function loadArenaPrefs(): void {
     const savedArena = Number(localStorage.getItem('deflect.arena') ?? '0');
     if (Number.isFinite(savedArena)) arenaIndex = ((savedArena % ARENAS.length) + ARENAS.length) % ARENAS.length;
     const savedCount = Number(localStorage.getItem('deflect.botCount') ?? '3');
-    if (savedCount === 1 || savedCount === 3) botCount = savedCount;
+    if (savedCount >= 1 && savedCount <= 3) botCount = savedCount;
     const savedTier = localStorage.getItem('deflect.botTier');
     if (savedTier && (BOT_TIERS as readonly string[]).includes(savedTier)) botTier = savedTier as BotTier;
   } catch {
@@ -398,6 +416,7 @@ function loadSettings(): void {
   let rotation = 1;
   let flash = 1;
   let scanlines = true;
+  let minimap = true;
   try {
     const rawRotation = localStorage.getItem('deflect.hitRotation');
     const savedRotation = rawRotation === null ? NaN : Number(rawRotation);
@@ -406,12 +425,14 @@ function loadSettings(): void {
     const savedFlash = rawFlash === null ? NaN : Number(rawFlash);
     if (Number.isFinite(savedFlash) && savedFlash >= 0 && savedFlash <= 1) flash = savedFlash;
     scanlines = localStorage.getItem('deflect.scanlines') !== '0';
+    minimap = localStorage.getItem('deflect.minimap') !== '0';
   } catch {
     /* storage disabled: defaults */
   }
   applyHitRotation(rotation, false);
   applyFlash(flash, false);
   applyScanlines(scanlines, false);
+  applyMinimap(minimap, false);
   applyVolume(audio.volume, false);
   applyMusicVolume(audio.musicVolume, false);
   applySfxVolume(audio.sfxVolume, false);
@@ -488,6 +509,18 @@ function applyScanlines(on: boolean, persist: boolean): void {
   }
 }
 
+function applyMinimap(on: boolean, persist: boolean): void {
+  renderer.showMinimap = on;
+  minimapBtn.textContent = `MINIMAP: ${on ? 'ON' : 'OFF'}`;
+  minimapBtn.setAttribute('aria-pressed', String(on));
+  if (!persist) return;
+  try {
+    localStorage.setItem('deflect.minimap', on ? '1' : '0');
+  } catch {
+    /* storage disabled */
+  }
+}
+
 function resetSettings(): void {
   applyHitRotation(1, true);
   applyFlash(1, true);
@@ -496,6 +529,7 @@ function resetSettings(): void {
   applySfxVolume(0.9, true);
   applyMenuVolume(0.8, true);
   applyScanlines(true, true);
+  applyMinimap(true, true);
   toast('SETTINGS RESTORED TO DEFAULTS');
 }
 
@@ -567,14 +601,14 @@ function renderBotControls(): void {
   const keepCount = botCountEl.contains(document.activeElement);
   const keepTier = botTierEl.contains(document.activeElement);
   clearChildren(botCountEl);
-  const counts = [1, 3];
+  const counts = [1, 2, 3];
   for (let i = 0; i < counts.length; i++) {
     const count = counts[i];
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `console-choice${botCount === count ? ' selected' : ''}`;
     button.dataset.nav = '';
-    button.textContent = count === 1 ? '1 V 1' : '1 V 3';
+    button.textContent = count === 1 ? '1 V 1' : `1 V ${count}`;
     button.setAttribute('aria-pressed', String(botCount === count));
     button.addEventListener('click', () => setBotCount(count));
     botCountEl.appendChild(button);
@@ -598,7 +632,7 @@ function renderBotControls(): void {
 }
 
 function setBotCount(count: number): void {
-  botCount = count === 1 ? 1 : 3;
+  botCount = Math.max(1, Math.min(3, count));
   persistArenaPrefs();
   renderBotControls();
 }
@@ -610,8 +644,9 @@ function setBotTier(tier: BotTier): void {
 }
 
 function updateBotSummary(): void {
-  botStageLabel.textContent = `TRAINING // ${botCount === 1 ? '1 V 1' : '1 V 3'} // ${BOT_TIER_LABELS[botTier]}`;
-  botStartLabel.textContent = `START ${botCount === 1 ? 'BOT DUEL' : 'BOT TRIAD'}`;
+  botStageLabel.textContent = `TRAINING // BOT COUNT // ${botCount === 1 ? '1 V 1' : `1 V ${botCount}`}`;
+  tierStageLabel.textContent = `TRAINING // DIFFICULTY // ${BOT_TIER_LABELS[botTier]}`;
+  botStartLabel.textContent = `START ${botCount === 1 ? 'BOT DUEL' : `BOT ${botCount}`}`;
   botRoster.textContent = `STYLES // ${BOT_NAMES.slice(0, botCount)
     .map((name, i) => `${name} ${BOT_STYLE_LABELS[i]}`)
     .join(' / ')}`;
@@ -722,6 +757,13 @@ function stepSession(now: number, dt: number): void {
       buildStressInputs();
     } else {
       trainingInputs[0] = localFrame;
+      // Training bots are practice partners, not round opponents. They write the
+      // same InputFrame a human does and respawn with the player, forever.
+      for (let i = 1; i < botBrains.length; i++) {
+        const brain = botBrains[i];
+        const frame = trainingInputs[i];
+        if (brain && frame) brain.think(world, frame, SIM_DT);
+      }
     }
     acc += dt;
     let steps = 0;
@@ -873,6 +915,12 @@ function handleGameEvent(e: GameEvent, remote: boolean): void {
       }
       break;
     }
+    case EV.POWERUP:
+      audio.pickup(e.power);
+      break;
+    case EV.HEAL:
+      audio.heal();
+      break;
     case EV.VIRUS_SPLIT:
       break;
     case EV.DRONE_SHOOT:
@@ -908,6 +956,34 @@ function startTraining(): void {
   audio.unlock();
   audio.startMusic();
   console.log('[DEFLECT-STATE] Training start', arena.name);
+}
+
+function startTrainingBots(): void {
+  if (busy) return;
+  teardownSession();
+  mode = 'training';
+  localSlot = 0;
+  stress = false;
+  const arena = getArena(arenaIndex);
+  const names = new Array(MAX_PLAYERS).fill('');
+  names[0] = getCallsign();
+  for (let i = 1; i <= botCount; i++) names[i] = BOT_NAMES[(i - 1) % BOT_NAMES.length];
+  world = new World('training', names, 0, arena);
+  botInputs = new Array(MAX_PLAYERS);
+  for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
+  botBrains = new Array(MAX_PLAYERS).fill(null);
+  for (let i = 1; i <= botCount; i++) {
+    botBrains[i] = new BotBrain(i, botTier, i - 1, 0x51f15e + arena.id * 997 + i * 131);
+  }
+  botInputs[0] = localFrame;
+  trainingInputs = botInputs;
+  resetCounters();
+  fx.reset();
+  setScreen('game');
+  beginLoadSequence(arena.name);
+  audio.unlock();
+  audio.startMusic();
+  console.log('[DEFLECT-STATE] Training bots', botCount, botTier, arena.name);
 }
 
 function startGauntlet(): void {
@@ -1710,12 +1786,18 @@ function onUiKey(e: KeyboardEvent): void {
     return;
   }
   if (screen !== 'game' || overlayKind !== 'none') {
-    if (e.code === 'ArrowDown' || e.code === 'ArrowRight') {
+    if (e.code === 'ArrowDown') {
       e.preventDefault();
-      moveNav(1);
-    } else if (e.code === 'ArrowUp' || e.code === 'ArrowLeft') {
+      moveNavDir(0, 1);
+    } else if (e.code === 'ArrowUp') {
       e.preventDefault();
-      moveNav(-1);
+      moveNavDir(0, -1);
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault();
+      moveNavDir(1, 0);
+    } else if (e.code === 'ArrowLeft') {
+      e.preventDefault();
+      moveNavDir(-1, 0);
     }
   }
 }
@@ -1723,8 +1805,10 @@ function onUiKey(e: KeyboardEvent): void {
 function handleGamepad(edges: MenuEdges): void {
   const menuOpen = screen !== 'game' || overlayKind !== 'none';
   if (menuOpen) {
-    if (edges.up || edges.left) moveNav(-1);
-    else if (edges.down || edges.right) moveNav(1);
+    if (edges.up) moveNavDir(0, -1);
+    else if (edges.down) moveNavDir(0, 1);
+    else if (edges.left) moveNavDir(-1, 0);
+    else if (edges.right) moveNavDir(1, 0);
     if (edges.confirm) activateNav();
     if (edges.back || edges.menu) {
       if (overlayKind === 'leave') closeLeave();
@@ -1755,22 +1839,52 @@ function resetNavFocus(): void {
   for (let i = 0; i < active.length; i++) active[i].classList.remove('nav-focus');
 }
 
-function moveNav(delta: number): void {
+function moveNavDir(dx: number, dy: number): void {
   const items = navItems();
   if (items.length === 0) return;
   const active = document.activeElement as HTMLElement | null;
-  let index = active ? items.indexOf(active as HTMLButtonElement) : -1;
-  if (index < 0) {
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].classList.contains('nav-focus')) {
-        index = i;
-        break;
-      }
+  let current = active && items.includes(active as HTMLButtonElement) ? (active as HTMLButtonElement) : null;
+  if (!current) current = items.find((b) => b.classList.contains('nav-focus')) ?? null;
+  if (!current) {
+    const first = items[0];
+    resetNavFocus();
+    first.classList.add('nav-focus');
+    first.focus({ preventScroll: true });
+    return;
+  }
+  const from = current.getBoundingClientRect();
+  const cx = from.left + from.width * 0.5;
+  const cy = from.top + from.height * 0.5;
+  const group = current.closest('[role="group"]');
+  let best: HTMLButtonElement | null = null;
+  let bestScore = Infinity;
+  let groupBest: HTMLButtonElement | null = null;
+  let groupScore = Infinity;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item === current) continue;
+    const r = item.getBoundingClientRect();
+    const ix = r.left + r.width * 0.5;
+    const iy = r.top + r.height * 0.5;
+    const along = (ix - cx) * dx + (iy - cy) * dy;
+    // Require real travel in the pressed direction and prefer the nearest row/column.
+    if (along < 6) continue;
+    const perp = Math.abs(dx !== 0 ? iy - cy : ix - cx);
+    const score = along + perp * 1.8;
+    if (score < bestScore) {
+      bestScore = score;
+      best = item;
+    }
+    // Inside a card grid, stay in the grid while a neighbour exists. This keeps
+    // DOWN on a card from jumping to a wide RUN button underneath it.
+    if (group && group.contains(item) && score < groupScore) {
+      groupScore = score;
+      groupBest = item;
     }
   }
-  index = index < 0 ? (delta > 0 ? 0 : items.length - 1) : (index + delta + items.length) % items.length;
+  const target = groupBest ?? best;
+  if (!target) return;
   resetNavFocus();
-  const target = items[index];
   target.classList.add('nav-focus');
   target.focus({ preventScroll: true });
 }

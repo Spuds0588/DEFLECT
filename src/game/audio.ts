@@ -347,6 +347,17 @@ export class AudioEngine {
     this.tone('triangle', 760, 1120, 0.1, 0.05, 0.07);
   }
 
+  pickup(kind: number): void {
+    const base = 520 + kind * 70;
+    this.tone('square', base, base * 1.5, 0.08, 0.08);
+    this.tone('triangle', base * 1.5, base * 2.1, 0.12, 0.05, 0.06);
+  }
+
+  heal(): void {
+    this.tone('triangle', 420, 840, 0.16, 0.07);
+    this.tone('square', 630, 1260, 0.12, 0.04, 0.07);
+  }
+
   roundStart(round: number): void {
     const root = 392 * Math.pow(1.03, Math.min(8, round));
     [0, 4, 7, 12].forEach((semi, i) => {

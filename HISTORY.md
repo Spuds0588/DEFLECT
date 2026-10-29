@@ -515,3 +515,100 @@ No new network or two-tab pass was run in this session.
 
 **Next:** designer pass on the shooter mix and wave pacing, physical controller check, verify the Pages
 URL, then continue toward the PvPvE sectors plan.
+
+---
+
+## 2026-10-28 — Session 11: guard, pickups and gauntlet pacing (v0.1.9)
+
+**Goal:** Act on the latest playtest notes: make deflect a reliable held screen instead of a timing-only
+parry, give the player two dodges and a sustainable basic stream, calm the gauntlet opening, add local
+healing/powerups, and make the level read better with brighter cover and an optional minimap.
+
+**Changed:**
+- Deflect is now a **180°** cone. Tap active window **0.2 → 0.24 s**; max early return angle
+  **0.32 → 0.24 rad**. The old hold-and-release shield wave is gone; the third tap still fires the
+  forward wave.
+- Holding deflect raises a guard that reflects every shot in the front half-plane for up to **1 s**.
+  Each caught shot spends **0.11 s** of guard time. A broken guard enters a **0.28 s** cooldown; an early
+  release uses **0.12 s**. Target lock flattens caught shots toward the locked target (incoming angle
+  scaled to 0.02), so reflected fire goes where the player intended. Lock range **1000 → 1600** units.
+- Dodge capacity **1 → 2** charges. Both share the existing 1.8 s recharge; the HUD shows two chevrons.
+- Basic bolt **three shots / 0.45 s recharge / 15 energy** became **five shots / 0.2 s recharge / 3
+  energy**, with held auto-fire at **0.1 s** and energy regen **15 → 18/s**. This is the
+  near-continuous stream the designer asked for without making it a burst-only weapon.
+- Training flow is now arena grid (four-way navigation) → bot count (1, 2 or 3) → difficulty → run.
+  Training runs `World('training')` with **no rounds**; bots and the player respawn endlessly. The
+  sparring drone only appears in solo training. A spatial menu navigator replaced linear menu motion so
+  the arena cards behave like a real grid.
+- Gauntlet opening slowed: worm initial delay **2.5 → 4.5 s**, virus **4.5 → 7 s**, sentry first pack
+  **4 → 11 s**, interval **9 → 17 s**, floor **5.5 → 12 s**, initial pulses **2 → 1**, pool cap
+  **12 → 8**. Packs now queue and land one silhouette every **0.65 s** instead of all at once.
+- Enemy health cut across the board: worm **8 → 5**, virus **2 → 1**, pulse **4 → 2**, triplex **7 → 4**,
+  homing **6 → 3**, flock **2 → 1**, cascading error **4 → 3**. Firewall damage to enemy factions is
+  **1 → 3** (`FIREWALL.enemyDamage`); player damage stays 1.
+- Automatic firewalls are **off** behind `GAUNTLET.autoFirewalls`. They will return as a damage-triggered
+  arena switch, not ambient pressure.
+- Enemy fire now damages worms, viruses and cascading errors. Low-tier sentry shots have shorter TTL and
+  range and disperse on walls/pillars instead of bouncing.
+- Added modular local pickups in `powerups.ts`: `RESTORE_STATUS`, machine gun, scatter, overcharge,
+  barbed whip, pathfinding. Timed effects last 11–15 s, replace each other, and draw an active icon behind
+  the avatar. They spawn only in training/gauntlet and never enter snapshots.
+- Cover is brighter and clearly solid: panel fill, inset panel, hard rim, top highlight and hatch marks.
+  Added a lower-left minimap showing cover, players, threats and pickups, with a persisted
+  `Settings → Feedback → MINIMAP` toggle.
+- Version 0.1.9; service-worker cache bumped.
+
+**Verification:**
+- `npm run build` clean: **304.14 kB JS (87.31 kB gzip)**, **34.67 kB CSS (8.03 kB gzip)**.
+- `npm run bench`: 8P bot swarm **0.068 ms** avg / **0.342 ms** p99; gauntlet max **0.189 ms** avg /
+  **0.705 ms** p99 with 31.1 live threats. Every case stays under the 4 ms budget.
+- Headless combat harness: guard returns a front shot (owner 0, +700 vx) and leaves a back shot alone;
+  guard burns out after 1 s into cooldown; both dodge charges spend and refill; five-shot stream reaches
+  recharge; pickup spawns and applies a timed effect; gauntlet has zero automatic firewalls, starts with
+  one staggered sentry, and caps at eight.
+- Browser: four-way arena grid navigation, training count → tier → run, endless training start, then a
+  30 s gauntlet run with no console errors. Minimap toggle persisted (`deflect.minimap`).
+- No new network or two-tab pass was run in this session.
+
+**Limitations:** Firewall switches are not built; automatic firewalls remain off. Pickups are local only.
+Sentries do not friendly-fire each other because projectiles have no source silhouette. Physical
+controller behavior is still verified with a virtual standard-layout pad.
+
+**Next:** Add the destructible firewall switch, playtest the new guard and sentry pacing on a physical
+pad, and decide whether pickups eventually belong in networked PvE.
+
+---
+
+## 2026-10-28 — Session 11b: training flow, arena grid and guard tap window
+
+**Goal:** Finish the playtest follow-up: make the training flow a real staged grid, remove round pressure
+from practice, keep a deflect tap distinct from a held guard, and record final v0.1.9 numbers.
+
+**Changed:**
+- Split the solo flow into `TRAINING` → arena grid → bot count → bot tier → run. `SECTORS // PVPvE` is
+  only exposed under Multiplayer as an in-development entry. The new spatial menu navigator moves between
+  stage buttons and the arena grid, so arrows change the selected card instead of leaving the grid.
+- Training no longer runs rounds: the timer, score pips and round HUD are hidden (`display:none`), and the
+  session has no round/match end. Bots and the player respawn endlessly with the chosen bot count.
+- Held guard now arms after `PLAYER.guardStartDelay` = 0.08 s. A quick `B` tap stays the melee/deflect
+  swing; holding raises the 180° shield. Releasing early applies the 0.12 s release cooldown as before.
+- Minimap toggle persists; brighter cover panels use a solid fill, rim and hatch marks so cover does not
+  read as floor texture.
+- Version 0.1.9; service-worker cache bumped.
+
+**Verification:**
+- Probe: holding `SWING` for 4 ticks (`0.067 s`) leaves `guardT = 0`; two more ticks raises it to
+  `0.967 s`; release clears it and starts a `0.12 s` cooldown.
+- `npm run bench`: 2P 0.018 / 0.090, 4P 0.014 / 0.060, 8P stress 0.011 / 0.037, 8P max projectiles
+  0.039 / 0.159, 8P bot swarm 0.076 / 0.331, gauntlet max 0.172 / 0.573 with 31.1 live threats.
+- `npm run build` clean: 304.22 kB JS (87.34 kB gzip), 34.67 kB CSS (8.03 kB gzip).
+- Browser: arena grid arrows moved through `CROSSROADS` → `GRID ZERO` → `THE RING` → `SWITCHBACK` →
+  `MAINFRAME`; training started with 3 `DIGITAL` bots, reached 40 kills in 6.8 s with no rounds and no
+  console errors; gauntlet launched clean; minimap toggle persisted (`deflect.minimap`).
+- `git diff --check` clean.
+
+**Limitations:** Firewall switches are still not built, pickups remain local-only, and the controller pass
+remains a virtual standard-layout pad rather than physical hardware. No new two-tab network pass was run.
+
+**Next:** Build the destructible firewall switch, then do a physical-pad pass over the training flow and
+held guard.

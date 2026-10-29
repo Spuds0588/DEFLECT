@@ -8,6 +8,7 @@ import {
   MAX_EVENTS,
   MAX_PLAYERS,
   PLAYER,
+  POWERUP,
   ROUND,
   SENTRY,
   THRALL,
@@ -22,6 +23,7 @@ import {
   createCascadingError,
   createDrone,
   createFirewall,
+  createPickupPool,
   createPlayer,
   createProjectilePool,
   createSentry,
@@ -29,6 +31,7 @@ import {
   createWorm,
 } from './entities';
 import { computeSpawns, stepPlayerMotion } from './movement';
+import { POWERUP_KIND, isTimedPowerup, powerupDef, rollPowerup } from './powerups';
 import { Rng } from './rng';
 import {
   ACTION,
@@ -40,6 +43,7 @@ import {
   type GameMode,
   type InputFrame,
   type Phase,
+  type Pickup,
   type Player,
   type Projectile,
   type Sentry,
@@ -65,6 +69,7 @@ export class World {
   readonly firewalls: Firewall[];
   readonly errors: CascadingError[];
   readonly sentries: Sentry[];
+  readonly pickups: Pickup[];
   infection = 0;
   gauntletKills = 0;
   /** Escalation wave in gauntlet mode. Purely local presentation + spawn pacing. */
@@ -93,9 +98,21 @@ export class World {
   private firewallSpawnT: number = GAUNTLET.firewallSpawnDelay;
   private sentrySpawnT: number = SENTRY.spawnDelay;
   private sentryPack = 0;
+  /** Sentry packs land one silhouette at a time instead of all at once. */
+  private sentryQueue = new Int8Array(12);
+  private sentryQueueCount = 0;
+  private sentryQueueIndex = 0;
+  private sentryQueueT = 0;
+  private sentryQueueX = 0;
+  private sentryQueueY = 0;
   private errorSpawnT: number = CASCADING_ERROR.spawnDelay;
   private errorGrowT: number = CASCADING_ERROR.growthInterval;
   private virusSplitT: number = VIRUS.splitInterval;
+  private powerupSpawnT: number = POWERUP.firstSpawn;
+  private pathTargetX = 0;
+  private pathTargetY = 0;
+  private pathFound = false;
+  private pathBest2 = 0;
   private gauntletT = 0;
   private thrallFrame: InputFrame = { mx: 0, my: 0, held: 0, pressed: 0 };
   private thrallShootT = 0;
@@ -128,6 +145,7 @@ export class World {
     for (let i = 0; i < this.errors.length; i++) this.errors[i] = createCascadingError();
     this.sentries = new Array(SENTRY.max);
     for (let i = 0; i < this.sentries.length; i++) this.sentries[i] = createSentry();
+    this.pickups = createPickupPool();
     this.events = new Array(EVENT_CAPACITY);
     for (let i = 0; i < EVENT_CAPACITY; i++) this.events[i] = { kind: 0, slot: 0, x: 0, y: 0, power: 0, dirX: 0, dirY: 0 };
 
@@ -148,13 +166,24 @@ export class World {
 
     if (mode === 'training') {
       this.phase = 'practice';
-      const p = this.players[0];
-      computeSpawns(1, arena, this.spawnX, this.spawnY);
+      let active = 0;
+      for (let i = 0; i < this.players.length; i++) if (this.players[i].active) active++;
+      computeSpawns(Math.max(1, active), arena, this.spawnX, this.spawnY);
       const left = arena.spawns[6];
       this.spawnX[0] = left.x;
       this.spawnY[0] = left.y;
-      clearPlayerForSpawn(p, left.x, left.y, 0);
-      this.spawnDrone(true);
+      for (let i = 0; i < this.players.length; i++) {
+        const p = this.players[i];
+        if (!p.active) continue;
+        const sx = i === 0 ? left.x : this.spawnX[i];
+        const sy = i === 0 ? left.y : this.spawnY[i];
+        this.spawnX[i] = sx;
+        this.spawnY[i] = sy;
+        clearPlayerForSpawn(p, sx, sy, Math.atan2(this.centerY - sy, this.centerX - sx));
+      }
+      // Solo training keeps the sparring drone. Bot practice replaces it so the room
+      // is about the opposition, not accidental crossfire.
+      if (active <= 1) this.spawnDrone(true);
     } else if (mode === 'gauntlet') {
       this.phase = 'practice';
       this.setupGauntlet();
@@ -181,9 +210,14 @@ export class World {
     this.firewallSpawnT = GAUNTLET.firewallSpawnDelay;
     this.sentrySpawnT = SENTRY.spawnDelay;
     this.sentryPack = 0;
+    this.sentryQueueCount = 0;
+    this.sentryQueueIndex = 0;
+    this.sentryQueueT = 0;
     this.errorSpawnT = CASCADING_ERROR.spawnDelay;
     this.errorGrowT = CASCADING_ERROR.growthInterval;
     this.virusSplitT = VIRUS.splitInterval;
+    this.powerupSpawnT = POWERUP.firstSpawn;
+    for (let i = 0; i < this.pickups.length; i++) this.pickups[i].active = false;
     for (let i = 0; i < this.worms.length; i++) this.worms[i].active = false;
     for (let i = 0; i < this.viruses.length; i++) this.viruses[i].active = false;
     for (let i = 0; i < this.firewalls.length; i++) this.firewalls[i].active = false;
@@ -322,7 +356,14 @@ export class World {
       p.prevFacing = p.facing;
 
       if (p.dashT > 0) p.dashT = Math.max(0, p.dashT - dt);
-      if (p.dashCd > 0) p.dashCd = Math.max(0, p.dashCd - dt);
+      if (p.dashCd > 0) {
+        p.dashCd = Math.max(0, p.dashCd - dt);
+        if (p.dashCd === 0 && p.dashCharges < PLAYER.dashCharges) {
+          p.dashCharges++;
+          if (p.dashCharges < PLAYER.dashCharges) p.dashCd = PLAYER.dashCooldown;
+        }
+      }
+      if (p.guardCd > 0) p.guardCd = Math.max(0, p.guardCd - dt);
       if (p.chargeDashCd > 0) p.chargeDashCd = Math.max(0, p.chargeDashCd - dt);
       if (p.laserCd > 0) p.laserCd = Math.max(0, p.laserCd - dt);
       if (p.laserT > 0) {
@@ -343,6 +384,17 @@ export class World {
       if (p.waveT > 0) p.waveT = Math.max(0, p.waveT - dt);
       if (p.waveCd > 0) p.waveCd = Math.max(0, p.waveCd - dt);
       if (p.bugCd > 0) p.bugCd = Math.max(0, p.bugCd - dt);
+      if (p.autoFireT > 0) p.autoFireT = Math.max(0, p.autoFireT - dt);
+      if (p.powerupT > 0) {
+        p.powerupT = Math.max(0, p.powerupT - dt);
+        if (p.powerupT === 0) {
+          if (p.powerupKind === POWERUP_KIND.OVERCHARGE && p.laserT > 0) {
+            p.laserT = 0;
+            p.laserTickT = 0;
+          }
+          p.powerupKind = -1;
+        }
+      }
       if (p.ghostT > 0) p.ghostT = Math.max(0, p.ghostT - dt);
       if (p.wallT > 0) p.wallT = Math.max(0, p.wallT - dt);
       if (p.slowT > 0) p.slowT = Math.max(0, p.slowT - dt);
@@ -359,7 +411,8 @@ export class World {
         p.moveDirX = input.mx;
         p.moveDirY = input.my;
       }
-      let laserBusy = p.laserT > 0 || p.laserChargeHeld;
+      const overcharged = p.powerupKind === POWERUP_KIND.OVERCHARGE && p.powerupT > 0;
+      let laserBusy = (p.laserT > 0 && !overcharged) || p.laserChargeHeld;
       this.updateLock(p, laserBusy ? null : canAct ? input : null, canAct, dt);
       // Facing must follow the stick before the action snapshot is taken, otherwise a
       // dash/swing started while turning would use last frame's facing.
@@ -401,7 +454,11 @@ export class World {
           if (p.laserT > 0) laserBusy = true;
         }
       } else if (p.laserT > 0) {
-        if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+        if (overcharged) {
+          // The overcharge beam is an instant-on weak attack: facing follows the stick
+          // directly, and the beam can be switched off on the next frame.
+          p.laserFacing = p.facing;
+        } else if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
           // A live beam sweeps slowly. Wide aim snaps would make a 3 s beam feel like a
           // whip and undercut the commitment of choosing the firing line first.
           let delta = Math.atan2(input.my, input.mx) - p.laserFacing;
@@ -415,19 +472,23 @@ export class World {
         const heldSwing = (input.held & ACTION.SWING) !== 0;
         if (input.pressed & ACTION.SWING) {
           p.chargeT = 0;
+          // A tap is offense; the shield arms only after a short hold. This keeps the
+          // combo from getting a free 1 s guard every time it swings.
           this.handleDeflectPress(p);
         }
         if (heldSwing) {
           p.chargeT += dt;
+          if (p.guardT <= 0 && p.guardCd <= 0 && p.chargeT >= PLAYER.guardStartDelay) {
+            p.guardT = PLAYER.guardDuration;
+          }
+          if (p.guardT > 0) {
+            p.guardT = Math.max(0, p.guardT - dt);
+            if (p.guardT === 0) p.guardCd = PLAYER.guardCooldown;
+          }
         } else {
-          if (
-            p.chargeHeld &&
-            p.chargeT >= PLAYER.waveHoldTime &&
-            p.waveCd <= 0 &&
-            p.waveT <= 0 &&
-            p.swingPhase === 0
-          ) {
-            this.fireShieldWave(p);
+          if (p.guardT > 0) {
+            p.guardT = 0;
+            p.guardCd = Math.max(p.guardCd, PLAYER.guardReleaseCooldown);
           }
           p.chargeT = 0;
         }
@@ -449,7 +510,10 @@ export class World {
           p.dashChargeT = 0;
         }
         p.dashChargeHeld = heldDash;
-        if (input.pressed & ACTION.BOLT) this.tryShoot(p);
+        if (input.pressed & ACTION.BOLT) {
+          if (overcharged) this.startOverchargeBeam(p);
+          else this.tryShoot(p);
+        }
         if (input.pressed & ACTION.CANDLE) {
           if (
             p.laserCd <= 0 &&
@@ -480,6 +544,34 @@ export class World {
         p.dashChargeHeld = false;
       }
 
+      // Overcharge: holding weak attack keeps the beam alive; releasing it stops on the
+      // next tick. The normal charged beam still owns `laserT` outside this powerup.
+      if (overcharged) {
+        if (canAct && input && (input.held & ACTION.BOLT) !== 0 && p.swingPhase === 0 && p.dashT <= 0) {
+          if (p.laserT <= 0) this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
+          p.laserT = Math.max(p.laserT, 0.06);
+          p.laserFacing = p.facing;
+        } else if (p.laserT > 0) {
+          p.laserT = 0;
+          p.laserTickT = 0;
+        }
+      }
+
+      const autoFireKind = p.powerupT > 0 ? p.powerupKind : -1;
+      if (
+        canAct &&
+        input &&
+        (input.held & ACTION.BOLT) !== 0 &&
+        (autoFireKind === -1 || autoFireKind === POWERUP_KIND.MACHINE_GUN) &&
+        p.swingPhase === 0 &&
+        p.dashT <= 0
+      ) {
+        if (p.autoFireT <= 0) this.tryShoot(p);
+      }
+
+      // Held guard covers the entire forward 180 degrees and reflects every shot.
+      if (p.guardT > 0) this.resolveGuard(p);
+
       if (p.swingPhase === 2) {
         this.resolveSwing(p);
         if (p.swingPhase === 2) this.resolveSwingContact(p);
@@ -497,6 +589,7 @@ export class World {
       if (p.dashT > 0 && p.dashKind === 1) this.resolveChargeDash(p);
     }
 
+    if (this.mode === 'training' || this.mode === 'gauntlet') this.updatePickups(dt);
     this.updateDrone(dt);
     this.updateProjectiles(dt);
     if (this.mode === 'gauntlet') this.updateGauntlet(dt);
@@ -573,10 +666,12 @@ export class World {
   }
 
   private tryDash(p: Player): void {
-    if (p.dashT > 0 || p.dashCd > 0 || p.swingPhase !== 0) return;
+    if (p.dashT > 0 || p.dashCharges <= 0 || p.swingPhase !== 0) return;
     const dir = Math.atan2(p.moveDirY, p.moveDirX);
-    p.dashT = PLAYER.dashTime;
-    p.dashCd = PLAYER.dashCooldown;
+    const overcharged = p.powerupKind === POWERUP_KIND.OVERCHARGE && p.powerupT > 0;
+    p.dashT = PLAYER.dashTime * (overcharged ? 3 : 1);
+    if (p.dashCd <= 0) p.dashCd = PLAYER.dashCooldown;
+    p.dashCharges--;
     p.dashKind = 0;
     p.dashDirX = Math.cos(dir);
     p.dashDirY = Math.sin(dir);
@@ -585,10 +680,11 @@ export class World {
   }
 
   private tryChargeDash(p: Player): void {
-    if (p.chargeDashCd > 0 || p.dashT > 0 || p.swingPhase !== 0) return;
+    if (p.chargeDashCd > 0 || p.dashT > 0 || p.swingPhase !== 0 || p.dashCharges <= 0) return;
     const dir = Math.atan2(p.moveDirY, p.moveDirX);
     p.dashT = PLAYER.chargeDashTime;
-    p.dashCd = PLAYER.dashCooldown;
+    if (p.dashCd <= 0) p.dashCd = PLAYER.dashCooldown;
+    p.dashCharges--;
     p.chargeDashCd = PLAYER.chargeDashCooldown;
     p.dashKind = 1;
     p.dashDirX = Math.cos(dir);
@@ -640,8 +736,11 @@ export class World {
     p.ky += dirY * PLAYER.waveLunge;
     this.emit(EV.SHIELD_WAVE, p.slot, p.x, p.y, p.facing);
 
-    const range = PLAYER.waveRange;
+    const whip = p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP;
+    const whipMult = whip ? POWERUP.whipMultiplier : 1;
+    const range = PLAYER.waveRange * whipMult;
     const halfWidth = PLAYER.waveHalfWidth;
+    const waveDamage = PLAYER.waveDamage * whipMult;
     for (let i = 0; i < this.players.length; i++) {
       const target = this.players[i];
       if (target === p || !target.active || !target.alive || target.iframes > 0) continue;
@@ -651,7 +750,7 @@ export class World {
       const lateral = Math.abs(dx * dirY - dy * dirX);
       if (forward < 0 || forward > range + PLAYER.radius || lateral > halfWidth + PLAYER.radius) continue;
       if (this.lineBlocked(p.x, p.y, target.x, target.y)) continue;
-      this.damagePlayer(target, PLAYER.waveDamage, p.slot, dirX, dirY, PLAYER.waveKnockback);
+      this.damagePlayer(target, waveDamage, p.slot, dirX, dirY, PLAYER.waveKnockback);
     }
 
     if (this.mode === 'training' && this.drone.active) {
@@ -665,7 +764,7 @@ export class World {
         lateral <= halfWidth + this.drone.radius &&
         !this.lineBlocked(p.x, p.y, this.drone.x, this.drone.y)
       ) {
-        this.damageDrone(PLAYER.waveDamage, p.slot);
+        this.damageDrone(waveDamage, p.slot);
       }
     }
 
@@ -679,7 +778,7 @@ export class World {
         const lateral = Math.abs(dx * dirY - dy * dirX);
         if (forward < 0 || forward > range + WORM.headRadius || lateral > halfWidth + WORM.headRadius) continue;
         if (this.lineBlocked(p.x, p.y, w.x, w.y)) continue;
-        this.damageWorm(w, PLAYER.waveDamage, p.slot, dirX, dirY, PLAYER.waveKnockback);
+        this.damageWorm(w, waveDamage, p.slot, dirX, dirY, PLAYER.waveKnockback);
       }
       for (let i = 0; i < this.viruses.length; i++) {
         const v = this.viruses[i];
@@ -690,7 +789,7 @@ export class World {
         const lateral = Math.abs(dx * dirY - dy * dirX);
         if (forward < 0 || forward > range + v.radius || lateral > halfWidth + v.radius) continue;
         if (this.lineBlocked(p.x, p.y, v.x, v.y)) continue;
-        this.damageVirus(v, PLAYER.waveDamage, p.slot, dirX, dirY, PLAYER.waveKnockback);
+        this.damageVirus(v, waveDamage, p.slot, dirX, dirY, PLAYER.waveKnockback);
       }
       for (let i = 0; i < this.sentries.length; i++) {
         const s = this.sentries[i];
@@ -701,7 +800,7 @@ export class World {
         const lateral = Math.abs(dx * dirY - dy * dirX);
         if (forward < 0 || forward > range + s.radius || lateral > halfWidth + s.radius) continue;
         if (this.lineBlocked(p.x, p.y, s.x, s.y)) continue;
-        this.damageSentry(s, PLAYER.waveDamage, p.slot, dirX, dirY, PLAYER.waveKnockback);
+        this.damageSentry(s, waveDamage, p.slot, dirX, dirY, PLAYER.waveKnockback);
       }
       for (let i = 0; i < this.errors.length; i++) {
         const e = this.errors[i];
@@ -713,7 +812,7 @@ export class World {
         const lateral = Math.abs(dx * dirY - dy * dirX);
         if (forward < 0 || forward > range + radius || lateral > halfWidth + radius) continue;
         if (this.lineBlocked(p.x, p.y, e.x, e.y)) continue;
-        this.damageError(e, PLAYER.waveDamage, p.slot, dirX, dirY);
+        this.damageError(e, waveDamage, p.slot, dirX, dirY);
       }
     }
 
@@ -733,6 +832,7 @@ export class World {
       }
       const wasMissile = proj.type === 4;
       if (proj.type >= 3) proj.type = 0;
+      proj.homing = false;
       const speed = Math.min(
         BOLT.maxSpeed,
         Math.max(Math.hypot(proj.vx, proj.vy), wasMissile ? BOLT.speed : 0) * BOLT.deflectMult,
@@ -747,6 +847,18 @@ export class World {
       proj.grace = 0;
       this.emit(EV.DEFLECT, p.slot, proj.x, proj.y, proj.deflects);
     }
+  }
+
+  /** Overcharge weak attack: no charge, no cooldown, no root. */
+  private startOverchargeBeam(p: Player): void {
+    p.ghostT = 0;
+    p.laserT = 0.06;
+    p.laserTickT = PLAYER.laserTick;
+    p.laserFacing = p.facing;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    this.emit(EV.LASER, p.slot, p.x, p.y, p.laserFacing);
+    this.applyLaserDamage(p);
   }
 
   /** Commits the charged beam. The player is rooted for the full firing window. */
@@ -943,11 +1055,47 @@ export class World {
   private tryShoot(p: Player): void {
     if (p.swingPhase !== 0 || p.dashT > 0) return;
     p.ghostT = 0;
+    const kind = p.powerupT > 0 ? p.powerupKind : -1;
+
+    if (kind === POWERUP_KIND.MACHINE_GUN) {
+      if (p.autoFireT > 0 || p.energy < POWERUP.machineCost) return;
+      const spread = this.rng.range(-POWERUP.machineSpread, POWERUP.machineSpread);
+      if (!this.spawnProjectile(p, spread, POWERUP.machineTtl, BOLT.speed, false, POWERUP.machineRadius)) return;
+      p.energy -= POWERUP.machineCost;
+      p.autoFireT = POWERUP.machineInterval;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
+    if (kind === POWERUP_KIND.SHOTGUN) {
+      if (p.burstCd > 0 || p.energy < POWERUP.shotgunCost) return;
+      let fired = 0;
+      const half = (POWERUP.shotgunPellets - 1) * 0.5;
+      for (let i = 0; i < POWERUP.shotgunPellets; i++) {
+        const offset = (i - half) * POWERUP.shotgunSpread;
+        if (this.spawnProjectile(p, offset, POWERUP.shotgunTtl, BOLT.speed * 1.12)) fired++;
+      }
+      if (fired === 0) return;
+      p.energy -= POWERUP.shotgunCost;
+      p.burstCd = POWERUP.shotgunCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
+    if (kind === POWERUP_KIND.PATHFIND) {
+      if (p.energy < POWERUP.pathCost) return;
+      if (!this.spawnProjectile(p, 0, POWERUP.pathTtl, BOLT.speed, true, POWERUP.pathRadius)) return;
+      p.energy -= POWERUP.pathCost;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
     if (p.burstCd > 0 || p.burstLeft <= 0) return;
     if (p.energy < BOLT.cost) return;
     if (!this.spawnProjectile(p)) return;
     p.energy -= BOLT.cost;
     p.burstLeft--;
+    p.autoFireT = BOLT.autoInterval;
     if (p.burstLeft <= 0) p.burstCd = BOLT.burstCooldown;
     this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
   }
@@ -1000,6 +1148,8 @@ export class World {
     proj.fuse = MINE.life;
     proj.grace = MINE.armTime;
     proj.armed = false;
+    proj.homing = false;
+    proj.pathAxis = 0;
     proj.trailHead = 0;
     proj.trailCount = 0;
     this.emit(EV.PLANT_MINE, p.slot, p.x, p.y, p.facing);
@@ -1032,11 +1182,20 @@ export class World {
     proj.fuse = 8;
     proj.grace = 0.35;
     proj.armed = false;
+    proj.homing = false;
+    proj.pathAxis = 0;
     proj.trailHead = 0;
     proj.trailCount = 0;
   }
 
-  private spawnProjectile(p: Player): boolean {
+  private spawnProjectile(
+    p: Player,
+    angleOffset = 0,
+    ttl: number = BOLT.ttl,
+    speed: number = BOLT.speed,
+    homing = false,
+    radius: number = BOLT.radius,
+  ): boolean {
     let proj: Projectile | null = null;
     for (let i = 0; i < this.projectiles.length; i++) {
       if (!this.projectiles[i].active) {
@@ -1046,10 +1205,9 @@ export class World {
     }
     if (!proj) return false;
 
-    const speed = BOLT.speed;
-    const radius = BOLT.radius;
-    const c = Math.cos(p.facing);
-    const s = Math.sin(p.facing);
+    const angle = p.facing + angleOffset;
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
     const x = p.x + c * BOLT.spawnOffset;
     const y = p.y + s * BOLT.spawnOffset;
     for (let i = 0; i < this.arena.pillars.length; i++) {
@@ -1072,17 +1230,76 @@ export class World {
     proj.damage = BOLT.damage;
     proj.deflects = 0;
     proj.bounces = 0;
-    proj.fuse = BOLT.ttl;
+    proj.fuse = ttl;
     proj.grace = 0;
     proj.armed = false;
+    proj.homing = homing;
+    proj.pathAxis = 0;
     proj.trailHead = 0;
     proj.trailCount = 0;
     return true;
   }
 
+  /** Held guard: a 180 degree screen in front of the avatar. Every shot in it returns. */
+  private resolveGuard(p: Player): void {
+    const nx = Math.cos(p.facing);
+    const ny = Math.sin(p.facing);
+    const whip = p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP;
+    const whipMult = whip ? POWERUP.whipMultiplier : 1;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      if (p.guardT <= 0) break;
+      const proj = this.projectiles[i];
+      if (!proj.active || proj.type === 1 || proj.type === 2 || proj.owner === p.slot) continue;
+      const dx = proj.x - p.x;
+      const dy = proj.y - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > PLAYER.guardReach + proj.radius) continue;
+      // Front half-plane only. A shot from behind still has to be dodged or turned into.
+      if (dx * nx + dy * ny < -proj.radius) continue;
+      const vn = proj.vx * nx + proj.vy * ny;
+      if (vn >= 0) continue;
+      const wasMissile = proj.type === 4;
+      if (proj.type >= 3) proj.type = 0;
+      proj.homing = false;
+      const oldSpeed = Math.max(Math.hypot(proj.vx, proj.vy), wasMissile ? BOLT.speed : 0);
+      const speed = Math.min(BOLT.maxSpeed, oldSpeed * BOLT.deflectMult);
+      if (p.lockActive) {
+        // Lock-on makes the shield a return-to-sender tool: nearly all of the
+        // incoming angle is flattened toward the locked target.
+        let off = Math.atan2(proj.vy, proj.vx) - p.facing;
+        off = Math.atan2(Math.sin(off), Math.cos(off));
+        const angle = p.facing + off * 0.02;
+        proj.vx = Math.cos(angle) * speed;
+        proj.vy = Math.sin(angle) * speed;
+      } else {
+        proj.vx -= 2 * vn * nx;
+        proj.vy -= 2 * vn * ny;
+        const mag = Math.hypot(proj.vx, proj.vy) || 1;
+        proj.vx = (proj.vx / mag) * speed;
+        proj.vy = (proj.vy / mag) * speed;
+      }
+      if (dist > 0.001) {
+        proj.x = p.x + (dx / dist) * (PLAYER.guardReach + proj.radius + 1);
+        proj.y = p.y + (dy / dist) * (PLAYER.guardReach + proj.radius + 1);
+      }
+      proj.owner = p.slot;
+      proj.deflects++;
+      proj.damage = (BOLT.damage + proj.deflects) * whipMult;
+      proj.bounces = 0;
+      proj.armed = false;
+      proj.grace = 0;
+      p.swingHit = true;
+      p.guardT = Math.max(0, p.guardT - PLAYER.guardReflectCost);
+      if (p.guardT === 0) p.guardCd = PLAYER.guardCooldown;
+      this.emit(EV.DEFLECT, p.slot, proj.x, proj.y, proj.deflects);
+    }
+  }
+
   private resolveSwing(p: Player): void {
     if (p.swingHit) return;
-    const reach = PLAYER.swingReach;
+    const whip = p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP;
+    const whipMult = whip ? POWERUP.whipMultiplier : 1;
+    const reach = PLAYER.swingReach * whipMult;
     const cos = Math.cos(p.swingFacing);
     const sin = Math.sin(p.swingFacing);
     for (let i = 0; i < this.projectiles.length; i++) {
@@ -1102,6 +1319,7 @@ export class World {
         return;
       }      const wasMissile = proj.type === 4;
       if (proj.type >= 3) proj.type = 0;
+      proj.homing = false;
       const oldSpeed = Math.max(Math.hypot(proj.vx, proj.vy), wasMissile ? BOLT.speed : 0);
       // Catch it at the last moment for a straight return. Catching at the far edge
       // still reflects, but the racket clips it and sends it off at an angle.
@@ -1118,7 +1336,7 @@ export class World {
       proj.vy = Math.sin(returnAngle) * speed;
       proj.owner = p.slot;
       proj.deflects++;
-      proj.damage = BOLT.damage + proj.deflects;
+      proj.damage = (BOLT.damage + proj.deflects) * whipMult;
 
       proj.bounces = 0;
       proj.armed = false;
@@ -1190,6 +1408,8 @@ export class World {
         continue;
       }
 
+      if (proj.homing) this.steerPathBolt(proj);
+
       // Hostile homing missile: slow, obvious, and turn-limited so a dash or cover beats it.
       if (proj.type === 4) {
         const target = this.players[0];
@@ -1221,6 +1441,71 @@ export class World {
     }
   }
 
+  /** Writes the nearest valid target into the path scratch fields. */
+  private considerPathTarget(proj: Projectile, x: number, y: number): void {
+    const dx = x - proj.x;
+    const dy = y - proj.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 >= this.pathBest2) return;
+    this.pathBest2 = d2;
+    this.pathTargetX = x;
+    this.pathTargetY = y;
+    this.pathFound = true;
+  }
+
+  private findPathTarget(proj: Projectile): boolean {
+    this.pathFound = false;
+    this.pathBest2 = Infinity;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (i === proj.owner || !p.active || !p.alive || p.ghostT > 0) continue;
+      this.considerPathTarget(proj, p.x, p.y);
+    }
+    if (this.mode === 'training' && this.drone.active) {
+      this.considerPathTarget(proj, this.drone.x, this.drone.y);
+    }
+    if (this.mode === 'gauntlet') {
+      for (let i = 0; i < this.worms.length; i++) {
+        const w = this.worms[i];
+        if (w.active) this.considerPathTarget(proj, w.x, w.y);
+      }
+      for (let i = 0; i < this.viruses.length; i++) {
+        const v = this.viruses[i];
+        if (v.active) this.considerPathTarget(proj, v.x, v.y);
+      }
+      for (let i = 0; i < this.sentries.length; i++) {
+        const s = this.sentries[i];
+        if (s.active) this.considerPathTarget(proj, s.x, s.y);
+      }
+      for (let i = 0; i < this.errors.length; i++) {
+        const e = this.errors[i];
+        if (e.active) this.considerPathTarget(proj, e.x, e.y);
+      }
+    }
+    return this.pathFound;
+  }
+
+  /**
+   * Pathfinder bolts travel on one axis at a time. When the current axis is
+   * aligned with the target, they take a right-angle turn onto the other one.
+   */
+  private steerPathBolt(proj: Projectile): void {
+    if (!this.findPathTarget(proj)) return;
+    const dx = this.pathTargetX - proj.x;
+    const dy = this.pathTargetY - proj.y;
+    const snap = POWERUP.pathAxisSnap;
+    if (proj.pathAxis === 0 && Math.abs(dx) < snap) proj.pathAxis = 1;
+    else if (proj.pathAxis === 1 && Math.abs(dy) < snap) proj.pathAxis = 0;
+    const speed = Math.max(BOLT.speed * 0.8, Math.hypot(proj.vx, proj.vy));
+    if (proj.pathAxis === 0) {
+      proj.vx = (dx >= 0 ? 1 : -1) * speed;
+      proj.vy = 0;
+    } else {
+      proj.vx = 0;
+      proj.vy = (dy >= 0 ? 1 : -1) * speed;
+    }
+  }
+
   private bounceWalls(proj: Projectile): void {
     let bounced = false;
     const r = proj.radius;
@@ -1243,8 +1528,8 @@ export class World {
       bounced = true;
     }
     if (!bounced) return;
-    if (proj.type === 4) {
-      // Missiles pop on hard geometry. Cover is a real answer to them.
+    if (proj.owner < 0 && proj.type >= 3) {
+      // Low-tier hostile fire disperses on geometry. Bouncing is a stronger-enemy trait.
       proj.active = false;
       this.emit(EV.SENTRY_HIT, -1, proj.x, proj.y, 0, -proj.vx, -proj.vy);
       return;
@@ -1258,7 +1543,7 @@ export class World {
   private bouncePillars(proj: Projectile): void {
     for (let i = 0; i < this.arena.pillars.length; i++) {
       if (!circleRect(proj.x, proj.y, proj.radius, this.arena.pillars[i], hitScratch)) continue;
-      if (proj.type === 4) {
+      if (proj.owner < 0 && proj.type >= 3) {
         proj.active = false;
         this.emit(EV.SENTRY_HIT, -1, proj.x, proj.y, 0, hitScratch.nx, hitScratch.ny);
         return;
@@ -1745,6 +2030,8 @@ export class World {
     proj.fuse = TRAINING.droneBoltTtl;
     proj.grace = 0;
     proj.armed = true;
+    proj.homing = false;
+    proj.pathAxis = 0;
     proj.trailHead = 0;
     proj.trailCount = 0;
   }
@@ -1806,6 +2093,97 @@ export class World {
     if (action !== 0) f.pressed = action;
   }
 
+  /**
+   * Pickup loop. Definitions and weights live in powerups.ts; this only owns placement,
+   * collection, and the duration timer. Adding content should not require touching it.
+   */
+  private updatePickups(dt: number): void {
+    const p = this.players[0];
+    this.powerupSpawnT -= dt;
+    let activeCount = 0;
+    for (let i = 0; i < this.pickups.length; i++) if (this.pickups[i].active) activeCount++;
+    if (activeCount < POWERUP.maxActive && this.powerupSpawnT <= 0 && p.alive) {
+      this.spawnPickup(p.x, p.y);
+      this.powerupSpawnT = POWERUP.spawnInterval;
+    }
+
+    for (let i = 0; i < this.pickups.length; i++) {
+      const pickup = this.pickups[i];
+      if (!pickup.active) continue;
+      pickup.phase += dt;
+      pickup.life -= dt;
+      if (pickup.life <= 0) {
+        pickup.active = false;
+        continue;
+      }
+      for (let s = 0; s < this.players.length; s++) {
+        const target = this.players[s];
+        if (!target.active || !target.alive) continue;
+        const dx = target.x - pickup.x;
+        const dy = target.y - pickup.y;
+        const rr = PLAYER.radius + POWERUP.radius;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        pickup.active = false;
+        this.collectPickup(target, pickup);
+        break;
+      }
+    }
+  }
+
+  private spawnPickup(originX: number, originY: number): void {
+    let slot: Pickup | null = null;
+    for (let i = 0; i < this.pickups.length; i++) {
+      if (!this.pickups[i].active) {
+        slot = this.pickups[i];
+        break;
+      }
+    }
+    if (!slot) return;
+    const pad = POWERUP.pickupPadding;
+    for (let attempt = 0; attempt < 16; attempt++) {
+      const angle = this.rng.range(0, Math.PI * 2);
+      const dist = this.rng.range(160, 340);
+      const x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, originX + Math.cos(angle) * dist));
+      const y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, originY + Math.sin(angle) * dist));
+      let blocked = false;
+      for (let i = 0; i < this.arena.pillars.length; i++) {
+        if (circleRect(x, y, POWERUP.radius + 6, this.arena.pillars[i], hitScratch)) {
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) continue;
+      const def = rollPowerup(this.rng.next());
+      slot.active = true;
+      slot.kind = def.kind;
+      slot.x = x;
+      slot.y = y;
+      slot.phase = this.rng.range(0, Math.PI * 2);
+      slot.life = POWERUP.life;
+      return;
+    }
+  }
+
+  private collectPickup(p: Player, pickup: Pickup): void {
+    const def = powerupDef(pickup.kind);
+    if (isTimedPowerup(pickup.kind)) {
+      if (p.powerupKind === POWERUP_KIND.OVERCHARGE && p.laserT > 0) {
+        p.laserT = 0;
+        p.laserTickT = 0;
+      }
+      p.powerupKind = pickup.kind;
+      p.powerupT = def.duration;
+      p.autoFireT = 0;
+    } else {
+      const before = p.hp;
+      p.hp = p.maxHp;
+      p.slowT = 0;
+      if (this.mode === 'gauntlet') this.infection = 0;
+      this.emit(EV.HEAL, p.slot, p.x, p.y, Math.max(0, p.hp - before));
+    }
+    this.emit(EV.POWERUP, p.slot, pickup.x, pickup.y, pickup.kind);
+  }
+
   private updateGauntlet(dt: number): void {
     this.gauntletT += dt;
     const nextWave = 1 + Math.floor(this.gauntletT / GAUNTLET.waveDuration);
@@ -1815,7 +2193,7 @@ export class World {
       // A new wave arrives early instead of waiting out the old timer.
       if (this.wormSpawnT > 1.4) this.wormSpawnT = 1.4;
       if (this.virusSpawnT > 1.4) this.virusSpawnT = 1.4;
-      if (this.firewallSpawnT > 2.2) this.firewallSpawnT = 2.2;
+      if (GAUNTLET.autoFirewalls && this.firewallSpawnT > 2.2) this.firewallSpawnT = 2.2;
       if (this.sentrySpawnT > 2.2) this.sentrySpawnT = 2.2;
       if (this.errorSpawnT > 2.2) this.errorSpawnT = 2.2;
     }
@@ -1853,7 +2231,8 @@ export class World {
 
     let sentryCount = 0;
     for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) sentryCount++;
-    if (sentryCount < SENTRY.max) {
+    this.drainSentryQueue(dt);
+    if (sentryCount < SENTRY.max && this.sentryQueueCount === 0) {
       this.sentrySpawnT -= dt;
       if (this.sentrySpawnT <= 0) {
         this.spawnSentryPack();
@@ -1861,13 +2240,17 @@ export class World {
       }
     }
 
-    let firewallCount = 0;
-    for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) firewallCount++;
-    if (firewallCount < GAUNTLET.maxFirewalls) {
-      this.firewallSpawnT -= dt;
-      if (this.firewallSpawnT <= 0) {
-        this.spawnFirewall();
-        this.firewallSpawnT = Math.max(GAUNTLET.waveMinInterval, GAUNTLET.firewallInterval - ramp);
+    // Firewalls are off until a destructible switch wakes one. The beam is a set-piece,
+    // not ambient pressure on every wave.
+    if (GAUNTLET.autoFirewalls) {
+      let firewallCount = 0;
+      for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) firewallCount++;
+      if (firewallCount < GAUNTLET.maxFirewalls) {
+        this.firewallSpawnT -= dt;
+        if (this.firewallSpawnT <= 0) {
+          this.spawnFirewall();
+          this.firewallSpawnT = Math.max(GAUNTLET.waveMinInterval, GAUNTLET.firewallInterval - ramp);
+        }
       }
     }
 
@@ -1878,7 +2261,10 @@ export class World {
     this.updateErrors(dt);
   }
 
-  /** One mixed pack, so every hostile silhouette appears early enough to fight. */
+  /**
+   * Queue one pack. The silhouettes land one at a time over the next few seconds so a
+   * new wave never dumps a full firing squad into the room on the same frame.
+   */
   private spawnSentryPack(): void {
     // Touch down in a ring around the player, not at the far spawn. The enlarged
     // arenas are wider than a screen; spawning at the far edge delayed all shooting.
@@ -1886,32 +2272,54 @@ export class World {
     const angle = this.rng.range(0, Math.PI * 2);
     const dist = this.rng.range(480, 700);
     const margin = 150;
-    const anchorX = Math.max(this.arena.bounds.left + margin, Math.min(this.arena.bounds.right - margin, p.x + Math.cos(angle) * dist));
-    const anchorY = Math.max(this.arena.bounds.top + margin, Math.min(this.arena.bounds.bottom - margin, p.y + Math.sin(angle) * dist));
-    // Stagger the silhouettes: pulses first, then the shotgun and flock, then the
-    // homing pod. A full mixed pack is saved for later waves.
+    this.sentryQueueX = Math.max(
+      this.arena.bounds.left + margin,
+      Math.min(this.arena.bounds.right - margin, p.x + Math.cos(angle) * dist),
+    );
+    this.sentryQueueY = Math.max(
+      this.arena.bounds.top + margin,
+      Math.min(this.arena.bounds.bottom - margin, p.y + Math.sin(angle) * dist),
+    );
     const pack = this.sentryPack++;
+    let n = 0;
     if (pack === 0) {
-      for (let i = 0; i < SENTRY.initialPulses; i++) this.spawnSentry(0, anchorX, anchorY);
-      return;
+      n = this.pushQueue(0, SENTRY.initialPulses, n);
+    } else if (pack === 1) {
+      n = this.pushQueue(1, 1, n);
+      n = this.pushQueue(3, SENTRY.flockSize, n);
+    } else if (pack === 2) {
+      n = this.pushQueue(2, 1, n);
+      n = this.pushQueue(0, 1, n);
+    } else {
+      const pulseCount = 1 + Math.min(2, Math.floor(this.wave / 2));
+      n = this.pushQueue(0, pulseCount, n);
+      n = this.pushQueue(1, 1, n);
+      n = this.pushQueue(3, SENTRY.flockSize, n);
+      n = this.pushQueue(2, 1, n);
     }
-    if (pack === 1) {
-      this.spawnSentry(1, anchorX, anchorY);
-      let flock = 0;
-      while (flock < SENTRY.flockSize && this.spawnSentry(3, anchorX, anchorY)) flock++;
-      return;
+    this.sentryQueueCount = n;
+    this.sentryQueueIndex = 0;
+    this.sentryQueueT = 0;
+  }
+
+  private pushQueue(kind: number, count: number, at: number): number {
+    let n = at;
+    for (let i = 0; i < count && n < this.sentryQueue.length; i++) this.sentryQueue[n++] = kind;
+    return n;
+  }
+
+  /** Drops one queued silhouette every packStagger seconds. */
+  private drainSentryQueue(dt: number): void {
+    if (this.sentryQueueIndex >= this.sentryQueueCount) return;
+    this.sentryQueueT -= dt;
+    if (this.sentryQueueT > 0) return;
+    this.sentryQueueT = SENTRY.packStagger;
+    const kind = this.sentryQueue[this.sentryQueueIndex++] as 0 | 1 | 2 | 3;
+    this.spawnSentry(kind, this.sentryQueueX, this.sentryQueueY);
+    if (this.sentryQueueIndex >= this.sentryQueueCount) {
+      this.sentryQueueIndex = 0;
+      this.sentryQueueCount = 0;
     }
-    if (pack === 2) {
-      this.spawnSentry(2, anchorX, anchorY);
-      this.spawnSentry(0, anchorX, anchorY);
-      return;
-    }
-    const pulseCount = 1 + Math.min(2, Math.floor(this.wave / 2));
-    for (let i = 0; i < pulseCount; i++) this.spawnSentry(0, anchorX, anchorY);
-    this.spawnSentry(1, anchorX, anchorY);
-    let flock = 0;
-    while (flock < SENTRY.flockSize && this.spawnSentry(3, anchorX, anchorY)) flock++;
-    this.spawnSentry(2, anchorX, anchorY);
   }
 
   private spawnSentry(kind: 0 | 1 | 2 | 3, anchorX: number, anchorY: number): boolean {
@@ -2077,7 +2485,7 @@ export class World {
     }
     const aim = Math.atan2(dy, dx);
     if (s.kind === 0) {
-      this.spawnHostileProjectile(s.x, s.y, aim, SENTRY.pulse.boltSpeed, SENTRY.boltRadius, SENTRY.boltDamage, 3, SENTRY.boltTtl);
+      this.spawnHostileProjectile(s.x, s.y, aim, SENTRY.pulse.boltSpeed, SENTRY.boltRadius, SENTRY.boltDamage, 3, SENTRY.pulse.boltTtl);
     } else if (s.kind === 1) {
       for (let b = -2; b <= 2; b++) {
         this.spawnHostileProjectile(
@@ -2088,7 +2496,7 @@ export class World {
           SENTRY.boltRadius + 1,
           SENTRY.boltDamage,
           3,
-          SENTRY.boltTtl,
+          SENTRY.triplex.boltTtl,
         );
       }
     } else if (s.kind === 2) {
@@ -2103,7 +2511,7 @@ export class World {
           SENTRY.boltRadius - 1,
           SENTRY.boltDamage,
           3,
-          SENTRY.boltTtl,
+          SENTRY.flock.boltTtl,
         );
       }
     }
@@ -2157,6 +2565,8 @@ export class World {
     proj.fuse = ttl;
     proj.grace = 0;
     proj.armed = true;
+    proj.homing = false;
+    proj.pathAxis = 0;
     proj.trailHead = 0;
     proj.trailCount = 0;
     this.emit(EV.SENTRY_SHOOT, -1, x, y, angle);
@@ -2885,25 +3295,25 @@ export class World {
           }
         }
       }
-      if (hit) this.damageWorm(w, FIREWALL.damage, -1, nx, ny);
+      if (hit) this.damageWorm(w, FIREWALL.enemyDamage, -1, nx, ny);
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
       if (v.active && this.beamHits(f, v.x, v.y, v.radius)) {
-        this.damageVirus(v, VIRUS.hp, -1, nx, ny);
+        this.damageVirus(v, FIREWALL.enemyDamage, -1, nx, ny);
       }
     }
     for (let i = 0; i < this.sentries.length; i++) {
       const s = this.sentries[i];
       if (s.active && this.beamHits(f, s.x, s.y, s.radius)) {
-        this.damageSentry(s, FIREWALL.damage, -1, nx, ny);
+        this.damageSentry(s, FIREWALL.enemyDamage, -1, nx, ny);
       }
     }
     // The sweep burns the error blocks too; the factions are not allies.
     for (let i = 0; i < this.errors.length; i++) {
       const e = this.errors[i];
       if (e.active && this.beamHits(f, e.x, e.y, CASCADING_ERROR.blockSize * 0.5)) {
-        this.damageError(e, FIREWALL.damage, -1, nx, ny);
+        this.damageError(e, FIREWALL.enemyDamage, -1, nx, ny);
       }
     }
   }
@@ -2923,9 +3333,10 @@ export class World {
   }
 
   private projectileHitsGauntlet(proj: Projectile): boolean {
-    // Enemy fire passes through the rest of the gauntlet factions. It only threatens
-    // players, so shooters cannot delete their own pack or clear error colonies for you.
-    if (proj.owner < 0 && proj.type >= 3) return false;
+    // Enemy fire is not a friendly-fire-free laser tag beam. A missed sentry shot can
+    // chew through a worm, a virus, or an error block. Sentries ignore their own pack,
+    // because a projectile has no source silhouette to exclude safely.
+    const hostile = proj.owner < 0 && proj.type >= 3;
 
     // Player bolts can shoot down hostile shots and homing missiles. This is the
     // intended answer when a missile is too close to swat or too far to outrun.
@@ -2963,6 +3374,7 @@ export class World {
     }
 
     for (let i = 0; i < this.sentries.length; i++) {
+      if (hostile) break;
       const s = this.sentries[i];
       if (!s.active) continue;
       const dx = proj.x - s.x;
@@ -3018,8 +3430,15 @@ export class World {
         const sdy = proj.y - w.segY[s];
         const sr = proj.radius + WORM.segmentRadius;
         if (sdx * sdx + sdy * sdy > sr * sr) continue;
-        if (proj.type === 1) this.explodeMine(proj, proj.owner);
-        else this.eatProjectile(proj, w);
+        if (proj.type === 1) {
+          this.explodeMine(proj, proj.owner);
+        } else if (hostile) {
+          const speed = Math.hypot(proj.vx, proj.vy) || 1;
+          this.damageWorm(w, proj.damage, -1, proj.vx / speed, proj.vy / speed);
+          proj.active = false;
+        } else {
+          this.eatProjectile(proj, w);
+        }
         return true;
       }
     }
@@ -3031,8 +3450,11 @@ export class World {
     if (p.swingHit) return;
     const cos = Math.cos(p.swingFacing);
     const sin = Math.sin(p.swingFacing);
-    const reach = PLAYER.punchReach;
-    const force = p.thrall ? PLAYER.thrallSwingKnockback : PLAYER.punchKnockback;
+    const whip = p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP;
+    const whipMult = whip ? POWERUP.whipMultiplier : 1;
+    const reach = PLAYER.punchReach * whipMult;
+    const damage = PLAYER.punchDamage * whipMult;
+    const force = (p.thrall ? PLAYER.thrallSwingKnockback : PLAYER.punchKnockback) * (whip ? 1.8 : 1);
 
     for (let i = 0; i < this.players.length; i++) {
       const target = this.players[i];
@@ -3042,7 +3464,7 @@ export class World {
       const d = Math.hypot(dx, dy);
       if (d > reach + PLAYER.radius || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
-      this.damagePlayer(target, PLAYER.punchDamage, p.slot, dx / d, dy / d, force);
+      this.damagePlayer(target, damage, p.slot, dx / d, dy / d, force);
       this.markSwingHit(p);
       return;
     }
@@ -3052,7 +3474,7 @@ export class World {
       const dy = this.drone.y - p.y;
       const d = Math.hypot(dx, dy);
       if (d <= reach + this.drone.radius && d > 0.001 && (dx / d) * cos + (dy / d) * sin >= SWING_COS) {
-        this.damageDrone(PLAYER.punchDamage, p.slot);
+        this.damageDrone(damage, p.slot);
         this.markSwingHit(p);
         return;
       }
@@ -3067,7 +3489,7 @@ export class World {
       const d = Math.hypot(dx, dy);
       if (d > reach + s.radius || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
-      this.damageSentry(s, PLAYER.punchDamage, p.slot, dx / d, dy / d, force);
+      this.damageSentry(s, damage, p.slot, dx / d, dy / d, force);
       this.markSwingHit(p);
       return;
     }
@@ -3079,7 +3501,7 @@ export class World {
       const d = Math.hypot(dx, dy);
       if (d > reach + v.radius || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
-      this.damageVirus(v, PLAYER.punchDamage, p.slot, dx / d, dy / d, force);
+      this.damageVirus(v, damage, p.slot, dx / d, dy / d, force);
       this.markSwingHit(p);
       return;
     }
@@ -3091,7 +3513,7 @@ export class World {
       const d = Math.hypot(dx, dy);
       if (d > reach + WORM.headRadius || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
-      this.damageWorm(w, PLAYER.punchDamage, p.slot, dx / d, dy / d, force);
+      this.damageWorm(w, damage, p.slot, dx / d, dy / d, force);
       this.markSwingHit(p);
       return;
     }
@@ -3104,7 +3526,7 @@ export class World {
       const d = Math.hypot(dx, dy);
       if (d > reach + radius || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
-      this.damageError(e, PLAYER.punchDamage, p.slot, dx / d, dy / d);
+      this.damageError(e, damage, p.slot, dx / d, dy / d);
       this.markSwingHit(p);
       return;
     }

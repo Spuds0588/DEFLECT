@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-28 (v0.1.8 controller, assembly, shooting family, Pages alpha)
+Last updated: 2026-10-28 (v0.1.9 guard, pickups, sentry pacing, training flow, minimap)
 
 ---
 
@@ -282,19 +282,70 @@ Last updated: 2026-10-28 (v0.1.8 controller, assembly, shooting family, Pages al
 
 ---
 
+## v0.1.9 — Guard, pickups and gauntlet pacing (complete 2026-10-28)
+
+### Combat
+- [x] Deflect cone widened from 120° to 180°; active window 0.2 → 0.24 s and max early angle
+      0.32 → 0.24 rad
+- [x] Hold deflect for 0.08 s raises a 1 s guard that reflects every shot in the front half-plane;
+      each caught shot burns 0.11 s of guard, broken guard cooldowns in 0.28 s, early release in 0.12 s
+- [x] Removed the hold-and-release shield wave. The third tap still fires the forward wave
+- [x] Target-locked guard flattens caught shots toward the locked target instead of preserving the
+      incoming angle
+- [x] Lock-on range 1000 → 1600 units, still line-of-sight gated
+- [x] Two dodge charges with one shared 1.8 s recharge; HUD shows two chevrons
+- [x] Basic bolt is a five-shot stream: 0.45 → 0.2 s recharge, 15 → 3 energy per shot, 15 → 18 energy/s
+      regen; holding weak fire auto-fires at 0.1 s intervals
+
+### Gauntlet
+- [x] Automatic firewalls off behind `GAUNTLET.autoFirewalls`; a damage-triggered switch remains future work
+- [x] Firewall enemy damage 1 → 3 (`FIREWALL.enemyDamage`) while player damage stays 1
+- [x] Enemy health cut: worms 8 → 5, viruses 2 → 1, pulse 4 → 2, triplex 7 → 4, homing 6 → 3, flock 2 → 1,
+      cascading errors 4 → 3
+- [x] Sentry packs queue and land one silhouette every 0.65 s; cap 12 → 8, first delay 4 → 11 s,
+      interval 9 → 17 s, minimum 5.5 → 12 s, initial pulses 2 → 1
+- [x] Low-tier sentry shots are short-lived, short-ranged, and disperse on cover instead of bouncing
+- [x] Enemy fire now damages worms, viruses and cascading errors
+- [x] Opening worm delay 2.5 → 4.5 s and virus delay 4.5 → 7 s
+
+### Content and presentation
+- [x] Modular local pickups in `powerups.ts`: restore, machine gun, scatter, overcharge, barbed whip,
+      pathfinding; 11–15 s timed effects, weighted roll, floating active icon
+- [x] Pickups render in training and gauntlet, with collection FX and audio
+- [x] Brighter solid cover: panel fill, inset, hard rim, top highlight, hatch marks
+- [x] Toggleable lower-left minimap in Settings → Feedback (`deflect.minimap`), showing cover and threats
+- [x] Training flow split into arena grid (four-way nav) → bot count → difficulty → run
+- [x] Spatial menu navigation keeps arena-grid arrows inside the grid and left/right on its stage row
+- [x] Endless training: `World('training')` respawns player and bots, no rounds, timer, score pips or
+      match end; bot deaths respawn with a fresh chosen count
+
+### Verification
+- [x] `npm run build` clean: 304.22 kB JS (87.34 kB gzip), 34.67 kB CSS (8.03 kB gzip)
+- [x] `npm run bench`: 8P bot swarm 0.076 ms avg / 0.331 ms p99; gauntlet max 0.172 / 0.573 with
+      31.1 live threats
+- [x] Headless guard: front shot returns (vx +700), back shot untouched, 1 s burn-out enters cooldown,
+      pickup spawn/effect works, two dodge charges refill, five-shot stream reaches recharge
+- [x] Headless gauntlet: no automatic firewalls, sentry pack starts at 1 and caps at 8, 60 s stable
+- [x] Browser: four-way arena grid nav changed arena on each arrow, training count → tier → run,
+      endless training started, gauntlet ran with no console errors, minimap toggle persisted
+- [ ] Real device controller pass still pending
+- [ ] Firewall switch and first-time pickups in competitive rooms are not built
+
+---
+
 ## Performance (measured 2026-10-28)
 
 Machine: current dev laptop, Node 20 headless bench and Chromium for the browser run.
 
 | Scenario | Sim ms/tick avg / p99 | Render | Notes |
 | --- | --- | --- | --- |
-| 2P duel, 0.5 live projectiles | 0.012 / 0.044 | 60 fps | v0.1.8 bench |
-| 4P brawl, 1.4 live projectiles | 0.009 / 0.040 | — | v0.1.8 bench |
-| 8P stress, 5.8 live projectiles | 0.012 / 0.051 | 60 fps | v0.1.8 bench + `?stress=8` |
-| 8P max projectiles, 15.4 live avg | 0.030 / 0.147 | 60 fps | v0.1.8 bench; mine/trap feed |
-| 8P idle | 0.003 / 0.004 | — | floor case |
-| 8P bot swarm (AI + sim) | 0.040 / 0.227 | — | three styles, digital, pathfinding |
-| Gauntlet max threats (2W/12V/2F + 28E + sentries + thrall) | 0.107 / 0.401 | 60 fps | v0.1.8 bench, 31.3 live threats |
+| 2P duel, 0.5 live projectiles | 0.018 / 0.090 | 60 fps | v0.1.9 final bench |
+| 4P brawl, 1.5 live projectiles | 0.014 / 0.060 | — | v0.1.9 final bench |
+| 8P stress, 6.1 live projectiles | 0.011 / 0.037 | 60 fps | v0.1.9 final bench + `?stress=8` |
+| 8P max projectiles, 21.8 live avg | 0.039 / 0.159 | 60 fps | v0.1.9 final bench; mine/trap feed |
+| 8P idle | 0.003 / 0.008 | — | floor case |
+| 8P bot swarm (AI + sim) | 0.076 / 0.331 | — | three styles, digital, pathfinding |
+| Gauntlet max threats (2W/12V/2F + 28E + sentries + thrall) | 0.172 / 0.573 | 60 fps | v0.1.9 final bench, 31.1 live threats |
 
 Budget is under 4 ms per tick with 8 players and 48 live projectiles. Every measured case remains far
 under budget. Render held 60 fps (the display cap) under stress.
@@ -368,7 +419,7 @@ The 8-player cap stands as a product decision; the real test is still eight actu
 12. Three health with a 3-shot burst means a clean burst can delete a target. Is that the intended
     close-range risk/reward, or should the burst cost more energy or have a slightly longer recharge?
 
-## Known limitations (v0.1.8)
+## Known limitations (v0.1.9)
 
 - PeerJS public broker only; no reconnect after a network drop (return to title).
 - No dedicated servers, no NAT edge cases beyond PeerJS/WebRTC.
@@ -381,13 +432,17 @@ The 8-player cap stands as a product decision; the real test is still eight actu
 - Controller mapping verified with a standard-layout virtual pad only, not physical hardware.
 - Bots are local only; they do not occupy multiplayer room slots. Their 20u-grid pathing can still look
   mechanical at tight corners, and they do not plan bank shots; tier/style tuning is the next playtest job.
-- Arenas are static rectangles. Rails, destructibles, switches, hazards and power-ups are not built.
+- Arenas are static rectangles. Rails, destructibles and switches are not built. Pickups exist only in
+  local training/gauntlet; they are not in rooms or snapshots.
 - 8P bot-swarm performance is bench-only; it is not a real eight-client network test.
 - Gauntlet is local only. Enemies do not appear in multiplayer rooms, and the mode has no win condition,
-  progression or score persistence yet.
+  progression or score persistence yet. Sentry packs are queued but still cannot coordinate fire.
 - Thralls use simple close-range steering; they can lose time behind deep cover and do not coordinate with
   viruses or other thralls (only one thrall can exist at a time).
-- Worms phase through pillars by design; firewall beams are the only threat that respects cover.
+- Enemy fire ignores other sentries because projectiles do not carry a source silhouette. It does damage
+  worms, viruses and error blocks.
+- Firewalls are disabled until a destructible switch exists; their sweep and cover rules are still tested
+  by the bench scenario but not reachable from normal gauntlet play.
 - Physical controller and eight real WebRTC peers remain untested.
 - No control rebinding; settings cover feedback and audio, not button mapping.
 - Bug assignment is a host-side roll per match. It is visible as an avatar icon but is not previewed in

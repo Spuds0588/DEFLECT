@@ -94,7 +94,12 @@ swing / dash** sounds locally for immediacy; deflect and hit feedback come back 
 Solo training includes one simple drone: it drifts, fires slow bolts, and respawns. It exists so the
 designer can test feel without a second human; do not grow the drone into pathfinding or prediction.
 
-On explicit designer request, a separate **local bot match** now exists (`src/game/bot.ts`). Bots write
+Training has a second program: **endless bot practice**. The player picks 1–3 bots and a tier, and the
+room runs in `World('training')` with no rounds or score. Every dead body, human or bot, respawns on the
+training timer, so the session continues until the player leaves. The sparring drone is suppressed when
+bots are present. Do not route this through the match round flow.
+
+On explicit designer request, a separate **local bot match** also exists (`src/game/bot.ts`). Bots write
 ordinary `InputFrame`s and are bound by the same single-stick facing, swing locks, dash cooldown and
 energy costs as a human. There are three tiers (`ROOKIE`, `VETERAN`, `DIGITAL`) and three styles
 (`DUELIST`, `TRICKSTER`, `SIEGE`). They are test opponents, not a future PvE system; do not give them
@@ -131,17 +136,24 @@ not over the network. It is a test bed for the eventual PvE direction, not a pro
   facing, swing locks, dash cooldown, burst recharge and energy. It uses `players[1]` locally, not a room
   slot.
 - **Firewalls** are sweeping orange beams. They warn, then cross the arena and burn players, worms and
-  viruses. Pillars cut both the visible beam and its damage; line of sight is real cover.
+  viruses. Pillars cut both the visible beam and its damage; line of sight is real cover. Automatic
+  firewalls are **off**. They are reserved for a future destructible switch on selected arenas; setting
+  `GAUNTLET.autoFirewalls` back to true is the only way they appear in the sandbox today.
 - **Cascading errors** are yellow blocks with red exclamation marks. They spread outward block by block,
-  damage on contact, and take several hits to delete one block. They are part of the threat pool, not
+  damage on contact, and take three hits to delete one block. They are part of the threat pool, not
   arena geometry.
 - **Sentries** are the shooting family: pulse squares, nested triplex shotguns, trapezoid homing pods
   whose missiles can be shot down or deflected, and three-dart flocks. They respect cover and line of
-  sight.
+  sight. Packs are queued and drop one silhouette every `SENTRY.packStagger` seconds; never dump a whole
+  firing squad into the room on one frame. Their low-tier bolts are short-lived and **disperse on
+  geometry** instead of bouncing.
+- Enemy fire is factional. A missed sentry shot can damage worms, viruses, and cascading errors. Sentries
+  do not shoot their own pack because a projectile has no source silhouette to exclude safely.
 - Every enemy assembles in over a short spawn window, holds still while its parts arrive, and de-rezzes
   into a size-scaled triangle burst on death.
 - Waves escalate every 30 s: spawn intervals shrink toward a floor. The mode is a survive-as-long-as-you-
-  can sandbox; there is no final win.
+  can sandbox; there is no final win. Enemy health is deliberately low because the screen is meant to fill
+  with targets; firewalls do extra damage to enemy factions (`FIREWALL.enemyDamage`).
 - The mode is deliberately absent from `Snapshot` and `NetView`. Any future networked PvE needs its own
   protocol work and a new decision; do not leak gauntlet entities into match snapshots.
 - All numbers live in `GAUNTLET`, `WORM`, `VIRUS`, `FIREWALL`, `SENTRY`, `CASCADING_ERROR` and `THRALL` in
@@ -150,12 +162,19 @@ not over the network. It is a test bed for the eventual PvE direction, not a pro
 ### D10 — Weak burst, random bug, charged beam (revised 2026-10-28)
 The action buttons are jobs, not two versions of one bolt:
 
-- **Weak (`X`)**: fast burst bolt, three shots, 0.45 s life (~390 units), one bank, 1 damage, then a
-  0.45 s recharge. Close-range pressure. Do not restore the old long TTL without reworking the kit.
-- **Deflect (`B`)**: taps chain left, right, then a forward shield wave; each arc reflects. Holding and
-  releasing also fires the wave. The swing punches at close range. Facing locks for the swing. The
-  active window is generous; an early or far-edge catch still returns the bolt, but angles it and loses
-  some speed. A last-instant catch returns it straight.
+- **Weak (`X`)**: fast burst bolt, five shots, 0.45 s life (~390 units), one bank, 1 damage, then a
+  0.2 s recharge. Holding the button keeps the stream coming at `BOLT.autoInterval`; the low shot cost
+  makes sustained fire possible without turning it into a machine gun. Close-range pressure. Do not
+  restore the old long TTL without reworking the kit.
+- **Deflect (`B`)**: the cone is **180°**. Taps chain left, right, then a forward shield wave; each arc
+  reflects. Holding for `PLAYER.guardStartDelay` (0.08 s) raises the guard: a 180° shield that reflects
+  every shot in front for up to 1 s; a quick tap stays a tap.
+  Each caught shot burns `guardReflectCost`; when the guard or its timer runs out it enters a 0.28 s
+  cooldown. Releasing early drops the shield into a 0.12 s release lockout. If target lock is holding
+  facing, caught shots flatten toward the locked target instead of following the incoming angle. The
+  swing punches at close range. Facing locks for the swing. The tap active window is generous; an early
+  or far-edge catch still returns the bolt, but angles it and loses some speed. A last-instant catch
+  returns it straight.
 - **Strong (`Y`), tap**: uses the player's **randomly assigned bug** for that match. Four kinds:
   `0` proximity mine, `1` slow trap, `2` frontal wall shield, `3` ghost (translucent, damage/aggro
   immune, cancelled by attacking). The host owns the roll; guests read it from the snapshot.
@@ -163,9 +182,30 @@ The action buttons are jobs, not two versions of one bolt:
   3 s. The player is rooted for charge and fire, may sweep at `PLAYER.laserTurnRate` (0.55 rad/s), pierces
   every enemy in the line, and respects pillar cover. Cooldown starts when the beam ends. Releasing
   before the charge completes cancels; a release inside `heavyTapMax` uses the bug instead.
+- **Dodge**: two stored charges (`PLAYER.dashCharges`), one shared 1.8 s recharge. Tap phases through
+  geometry and enemies; hold after the tap for the charged triangle dash that damages what it crosses.
 
 Health is three ring segments (`PLAYER.hp`). One ordinary hit removes one segment. Do not add a separate
 health bar beside the ring; the ring is the readout.
+
+### D12 — Pickups are local content, definitions are data (decided 2026-10-28)
+Healing and timed powerups are a **local training/gauntlet** system for now. They do not enter the network
+snapshot, PvP rooms, or the gauntlet→PvE promise. `src/game/powerups.ts` owns ids, labels, colors,
+durations, weights, and the weighted roll; `World.updatePickups` owns placement, collection, and the
+timer. To add content, add a definition and an effect branch, not a second pickup system.
+
+- `RESTORE_STATUS` repairs the three ring segments and clears slow/infection once those exist.
+- `MACHINE GUN` turns held weak fire into a low-damage spray.
+- `SCATTER` replaces the burst with a short-range fan.
+- `OVERCHARGE` makes weak fire an instant-on/off beam, triples dash distance, and replaces the core
+  symbol with a lightning bolt while active.
+- `BARBED WHIP` replaces the reflect animation with a red lash and multiplies reflect reach and damage
+  by four.
+- `PATHFIND` turns weak bolts into axis-aligned seekers that turn at right angles toward the nearest
+  target.
+
+Timed effects last 11–15 s and replace each other rather than stacking. Active icons float behind the
+avatar; no separate powerup bar.
 
 ### D11 — Avatar-only telemetry and settings sub-menus (decided 2026-10-28)
 The canvas shows no operator name plates, life bars, or cooldown bars pinned to a corner. Health is the
@@ -173,14 +213,18 @@ rotating segmented outer ring; energy is the inner arc; burst ammo, dash readine
 icon float behind the avatar. Match state (round, timer, score pips) stays in the bottom strip.
 
 The DOM settings screen is tabbed: `CONTROLS`, `FEEDBACK`, `AUDIO`, `SYSTEM`. Persisted options are
-callsign, hit rotation, impact flash, scanlines, master volume, soundtrack, SFX, menu sounds, mute, and
-arena/bot preferences. New feedback options belong in the Feedback tab, not beside the title menu.
+callsign, hit rotation, impact flash, scanlines, minimap, master volume, soundtrack, SFX, menu sounds,
+mute, and arena/bot preferences. New feedback options belong in the Feedback tab, not beside the title
+menu. The minimap is a lower-left overlay showing cover and local threats; it is off only by explicit
+player choice.
 
 The title is a single console menu, not a dashboard: plain text options, one `>` cursor on the focused
 line, no grid backdrop, and no footer links. `SETTINGS` is a top-level option; callsign editing lives in
 `SETTINGS > SYSTEM`. `SECTORS // PVPvE` is only shown inside the Multiplayer stage, as an in-development
-entry. The solo flow is staged: program (training/gauntlet) → arena with previews → bot count/tier for
-training. In-game canvas text is suppressed except for short wave banners and the Esc/overlay menus.
+entry. The solo flow is staged: program (training/gauntlet) → arena with previews → bot count → bot
+tier → run for training. The arena grid navigates in all four directions; inside a card grid, a direction
+move stays in the grid while a neighbour exists. In-game canvas text is suppressed except for short wave
+banners and the Esc/overlay menus.
 
 The level intro is assembly, not a loading screen: ground, frame, cover (dropping in), then player
 skeletons and spin-up. Do not add a progress bar back into the intro.
@@ -201,6 +245,7 @@ src/game/config.ts    ALL tuning numbers. Change feel here, not in systems.
 src/game/arenas.ts    five arena layouts (MAINFRAME is multi-district), spawn rings, previews
 src/game/nav.ts       per-arena 20u navigation grid + reusable A* workspace for bots
 src/game/bot.ts       local bot brains: tiers, styles, same InputFrame as a human
+src/game/powerups.ts  local pickup ids, labels, colors, durations and weighted roll
 src/game/types.ts     shared interfaces and network packet shapes
 src/game/identity.ts  palette, glyph drawing, callsigns
 src/game/rng.ts       seeded RNG for deterministic tests/bench
@@ -231,9 +276,13 @@ public/               manifest, generated icons, service worker
 - Projectiles store `ownerSlot`, `deflects`, `bounces`, `armed`. A bolt cannot hit the player who last
   launched or deflected it until it has bounced off a wall (`armed` resets).
 - Bolts: speed ×1.4 per deflect, damage = 1 + deflects, short 0.45 s life (~390 units), one bank per
-  life (deflect restores the budget), fired as a **three-shot burst** with a 0.45 s recharge. Projectile
-  types are `0` bolt, `1` bug mine, `2` bug trap. The old candle is gone; the charged beam is the heavy
-  commitment.
+  life (deflect restores the budget), fired as a **five-shot stream** with a 0.2 s recharge and low
+  per-shot energy cost. Projectile types are `0` bolt, `1` bug mine, `2` bug trap, `3` hostile shot,
+  `4` hostile homing missile. The old candle is gone; the charged beam is the heavy commitment.
+- Held guard reflects every projectile in the front half-plane inside `PLAYER.guardReach`. It runs before
+  swing resolution, spends guard time per catch, and sets `PF.GUARD` so guests can draw it.
+- Powerups spawn only in training/gauntlet and are collected by any live player. Definitions are data in
+  `powerups.ts`; the world never hard-codes a pickup label or color.
 - Laser damage is tested against the full worm chain, not just the head. Wall shields absorb projectiles
   from other players; ghost ignores contact/projectile damage and ends on any attack.
 - Hit detection is substepped (max 6 units per substep) so 2800 u/s bolts cannot tunnel.
@@ -258,10 +307,13 @@ public/               manifest, generated icons, service worker
   picker draws the same geometry into small preview canvases; no separate art path.
 - All glow is multi-pass stroke + `globalCompositeOperation = 'lighter'`. **Never** use `shadowBlur`.
 - Trails are drawn from a small ring buffer per projectile. Gradients are built on resize only.
-- HUD is canvas-drawn. Health is the avatar's rotating three-segment outer ring; energy, dash, burst
-  ammo, and the random bug icon cluster behind the avatar. There are no operator chips, name plates or
-  side bars. Round/timer/score pips live in the bottom strip. Permanent in-match text is suppressed;
-  only short wave banners and the DOM pause/round/match overlays carry words. Label strings are cached.
+- HUD is canvas-drawn. Health is the avatar's rotating three-segment outer ring; energy, dash charges,
+  burst ammo, the random bug icon, and the active powerup icon cluster behind the avatar. There are no
+  operator chips, name plates or side bars. Round/timer/score pips live in the bottom strip. Permanent
+  in-match text is suppressed; only short wave banners and the DOM pause/round/match overlays carry
+  words. Label strings are cached.
+- Cover is a solid object: bright panel fill, inset panel, hard rim and top highlight. It must not read as
+  floor texture. The lower-left minimap is optional and reuses the same arena geometry.
 - DOM is only for menus, lobby, toasts, and round/match overlays. The title and settings screens keep
   the CRT scanline treatment; the arena does not draw scanlines.
 - Enemy pools draw an assembly phase on spawn (scale/rotation/reveal) and emit size-scaled triangle
@@ -378,8 +430,8 @@ play URL is <https://spuds0588.github.io/DEFLECT/>.
 - Bot cost is part of the bench result; do not move AI into `World.step` or allocate per bot per frame.
   A* scratch must stay preallocated (`src/game/nav.ts`); re-plan on a timer, not every tick.
 - The gauntlet max case (2 worms, 12 viruses, 2 firewalls, cascading-error blocks, sentries, one
-  thrall) is part of `npm run bench`. v0.1.8 measured 0.107 ms/tick avg, p99 0.401 ms with 31.3 live
-  threats. Keep it there so threat complexity cannot regress silently.
+  thrall) is part of `npm run bench`. v0.1.9 final measured 0.172 ms/tick avg, p99 0.573 ms with 31.1
+  live threats. Keep it there so threat complexity cannot regress silently.
 - Measured results live in `TODO.md` §Performance. Do not claim a cap without numbers there.
 
 ---
@@ -393,9 +445,10 @@ npm run bench      # headless sim benchmark
 npm run dev        # manual playtest
 ```
 
-Manual pass after gameplay changes: training on each arena (move/face/deflect combo/dash/three-shot
-burst/bug/charged beam), losing each health ring segment, bot matches at each tier and count, gauntlet on
-each arena (worm eat/chase, virus split/infection/thrall, firewall cover, cascading-error spread),
+Manual pass after gameplay changes: training on each arena (move/face/deflect combo/held guard/two dodge
+charges/five-shot stream/bug/charged beam), losing each health ring segment, endless training at each tier
+and count, gauntlet on each arena (worm eat/chase, virus split/infection/thrall, sentry stagger and
+friendly fire, cascading-error spread, no automatic firewalls),
 settings tabs and option persistence, two browser tabs (create + join on a non-default arena), round end
 and match end, disconnect handling, controller hot-plug, production offline reload. The v0.1.1 pass also ran
 a headless 4-arena × 3-tier × 1v1/1v3 bot matrix; every combination reached a match winner. The v0.1 pass also used

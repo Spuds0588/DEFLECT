@@ -8,6 +8,7 @@ import {
   P_COLOR_WORM,
 } from './particles';
 import { MINE, PLAYER } from './config';
+import { POWERUPS } from './powerups';
 import { EV, type GameEvent } from './types';
 
 /**
@@ -222,6 +223,21 @@ export class Fx {
         this.particles.shards(ev.x, ev.y, Math.round(10 + 8 * scale), P_COLOR_DANGER, 80, 360 * scale);
         this.particles.burst(ev.x, ev.y, Math.round(4 + 4 * scale), P_COLOR_WHITE, 80, 280 * scale);
         this.shake = Math.max(this.shake, 4 + scale);
+        break;
+      }
+      case EV.POWERUP: {
+        const def = POWERUPS[ev.power];
+        const tint = def ? def.color : '#ffffff';
+        this.particles.ring(ev.x, ev.y, color, 9, 92, 0.42);
+        this.particles.burst(ev.x, ev.y, 12, color, 80, 300);
+        this.particles.ring(ev.x, ev.y, color, 4, 42, 0.24);
+        this.flash = Math.max(this.flash, 0.08);
+        this.flashColor = tint;
+        break;
+      }
+      case EV.HEAL: {
+        this.particles.ring(ev.x, ev.y, color, 8, 96, 0.45);
+        this.particles.burst(ev.x, ev.y, 10, P_COLOR_WHITE, 40, 180);
         break;
       }
       default:
