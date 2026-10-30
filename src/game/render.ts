@@ -6067,11 +6067,12 @@ export class Renderer {
         ctx.strokeRect(x0 + (tr.lifts[i].x - b.left) * sx - 2, y0 + (tr.lifts[i].y - b.top) * sy - 2, 4, 4);
       }
     }
-    // Emitters are a fixed hazard, so the minimap marks them as red wall studs.
-    if (state.arena.emitters) {
+    // Emitters are a fixed hazard, so the minimap marks live fixtures as red wall studs.
+    // Read the world list, not the arena data: a match carries no fixtures.
+    if (state.emitters) {
       ctx.fillStyle = '#ff5a4c';
-      for (let i = 0; i < state.arena.emitters.length; i++) {
-        const e = state.arena.emitters[i];
+      for (let i = 0; i < state.emitters.length; i++) {
+        const e = state.emitters[i];
         ctx.fillRect(x0 + (e.x - b.left) * sx - 1.5, y0 + (e.y - b.top) * sy - 1.5, 3, 3);
       }
     }
