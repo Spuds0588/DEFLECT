@@ -11,8 +11,9 @@ numbers, with a vinyl-crackle bed.
 **Playable now:** solo training against a sparring drone or endless 1v1–1v3 bot practice, **VS BOTS**
 round matches against one to three local opponents, a scored local **GAUNTLET** against worms, viruses,
 cascading errors, shooters and infected thralls, the first **CAMPAIGN** node, or host/join a room for up
-to 8 players. Seven arenas are selectable from the title screen, including the multi-district
-`MAINFRAME`, the multi-deck `TRANSIT` and the wall-less `THE LEDGE`. Match modes are first to 3 rounds; training is continuous practice, while gauntlet is a
+to 8 players. Eight arenas are selectable from the title screen, including the multi-district
+`MAINFRAME`, the multi-deck `TRANSIT`, the wall-less `THE LEDGE` and the compaction-plate
+`RECYCLING BIN`. Match modes are first to 3 rounds; training is continuous practice, while gauntlet is a
 one-life score chase with a local top-runs table.
 
 **Campaign (story mode):** `SINGLE PLAYER > CAMPAIGN` opens three local save slots first. An empty slot
@@ -20,9 +21,10 @@ starts a new run: pick the bot count (none to three), then your program. A fille
 and player count and resumes the run, skipping both steps. Bots take the programs you leave unused. The
 first node, `BUILD ROOT`, opens with a sparring drill against that squad (a `NO BOTS` run still drills
 against one instructor), then a `SYSTEM BREACH` warning, then a live threat assault: delete 10 threats to
-clear it. Clearing writes the slot and returns
-to the save list; a run is never saved mid-level. Only one node is authored, so a cleared slot replays
-it for now. The layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
+clear it. The clear reports kills, time, damage taken, data crates preserved and a score; losing no crates
+is a clean sweep and pays a bonus, and the best score and sweep count stay in the slot. Clearing writes the
+slot and returns to the save list; a run is never saved mid-level. Only one node is authored, so a cleared
+slot replays it for now. The layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
 
 **Multiplayer menu:** `MULTIPLAYER` offers `ONLINE` (host a room or join by code) and `LOCAL` (same-screen
 play, not built yet). Local lists its two modes, `ARENA` and `GAUNTLET`, as placeholders until the setup
@@ -145,6 +147,7 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `MAINFRAME` | A large multi-district map (four linked combat zones) with a camera that follows you. Cross lanes, pillar cover, a gate ring and a ricochet alley; fights move between districts. |
 | `TRANSIT` | Two decks over a service trench. Cross on the central bridge, ride the paired transporter pads, or take the lift on the east end. The trench blocks bodies but not shots; dashes phase it. |
 | `THE LEDGE` | No outer wall. The floor ends in a dashed lip over the void: a shove that carries a body over it kills, shots fall instead of ricocheting, and a pushed threat is a clear in the gauntlet. |
+| `RECYCLING BIN` | A trapezoid floor with no cover and a big hole in the bottom edge. A 130-unit compaction plate descends every 30 s, stops on the hole's rim and rides everything on the sides down to the ledges. Breakable file boxes are the only clutter, and they are light: shove them, launch them, bat them with a guard. |
 
 ### Bridges, pads and lifts
 
@@ -158,7 +161,10 @@ training session and the gauntlet share the same links.
 
 Open edges are arena data, not a mode. On `THE LEDGE` the bounds are a lip rather than a wall, so Sweep's
 broom, Wedge's bash or a bomb can carry an opponent out, and a dash still commits you to whatever is on
-the other side of it. Bots steer away from the drop and refuse a dash that would end past it.
+the other side of it. Bots steer away from the drop and refuse a dash that would end past it. A fall is not
+instant: for 0.6 s the body hangs over the drop with reduced steering, so a quick stick back can still save
+you. File boxes are light debris rather than cover, and Wedge's deployed wall is solid to shots with its own
+health: chip it and it cracks, then breaks.
 
 ## Training and bot practice
 

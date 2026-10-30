@@ -1,4 +1,5 @@
 import { ARENA, type Bounds, type Rect } from './config';
+import { PROP } from './types';
 
 export interface SpawnPoint {
   x: number;
@@ -38,6 +39,43 @@ export interface ArenaTraversalDef {
 }
 
 /**
+ * A compaction arm. It warns, then descends from the top edge to `stop` over `travel`
+ * seconds, carrying every body it catches down with it and dropping them at the line.
+ * It is deliberately slower than a player, so the dodge is to stay ahead of it, slide
+ * around it, or dash past. Local content; hosted rooms skip arenas that have one.
+ */
+export interface ArenaPusherDef {
+  /** Full cycle: warn + travel + rest. */
+  period: number;
+  /** Warning lead-in before the arm starts moving. */
+  warn: number;
+  /** Seconds the arm takes to travel from the top edge to `stop`. */
+  travel: number;
+  /** Seconds the arm takes to rise back to the top after a stroke. */
+  retract: number;
+  /** World y the arm's leading edge stops at. Keep it inside the floor. */
+  stop: number;
+  /** Depth of the plate, and the band it carries bodies in. */
+  thickness: number;
+  /** Downward velocity left on a body once the arm lets it go. */
+  push: number;
+  /** Height of the housing band drawn along the top edge. */
+  band: number;
+}
+
+/**
+ * A breakable file box. Bodies step over it; shots and lashes delete it in one or two
+ * hits. Kind is a `PROP` id, which picks the mark on the box.
+ */
+export interface ArenaPropDef {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind: number;
+}
+
+/**
  * An arena is pure geometry + presentation. Collision, spawns, prediction, rendering and
  * the host snapshot all read this one definition so a guest can never simulate a different map.
  */
@@ -62,6 +100,21 @@ export interface ArenaDef {
    * shots die at the edge instead of ricocheting, and a shove becomes a kill.
    */
   walls?: 'solid' | 'open';
+  /**
+   * Interior holes in the floor. A body whose centre ends over one falls; a dash is
+   * airborne, so a short gap can be jumped. Shots fly over them like a trench.
+   */
+  voids?: Rect[];
+  /**
+   * Open arena silhouette: the side edges pull in by this many units at the top, so the
+   * plate is a trapezoid narrow at the top and full width at the bottom. Outside the
+   * slant is the same drop as past the lip; it is not a wall.
+   */
+  slant?: number;
+  /** Timed compactor plate. Absent means the floor is quiet. */
+  pushers?: ArenaPusherDef;
+  /** Breakable file boxes. Local content like powerups; no snapshot fields. */
+  props?: ArenaPropDef[];
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
 }
@@ -323,6 +376,51 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 430, y: 320 },
     ],
   },
+  {
+    id: 7,
+    name: 'RECYCLING BIN',
+    tagline: 'No walls. One hole. The compactor decides.',
+    hudLabel: 'ARENA // RECYCLING BIN',
+    accent: '#ffc24d',
+    accentSoft: 'rgba(255, 194, 77, 0.32)',
+    accentFaint: 'rgba(255, 194, 77, 0.032)',
+    signature: 1,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    walls: 'open',
+    // The bin is a trapezoid: narrow at the top where the arm comes down, full width at
+    // the bottom so the side ledges are the only ground the arm cannot clear.
+    slant: 430,
+    // The hole is the middle of the bottom edge. It reaches past the lip so the arm has
+    // somewhere to push the room into, and the left and right ledges are survival ground.
+    voids: [{ x: 695, y: 786, w: 600, h: 262 }],
+    // 30 s cycle: 2.6 s warning, a 7.5 s stroke (98 u/s, well under a player's 248) that
+    // stops on the hole's leading edge, then a slow 5 s climb back. Stopping at the rim is
+    // the point: the plate closes the bin down to the hole and no further.
+    // No cover at all, or the arm would pin bodies against it instead of pushing them.
+    pushers: { period: 30, warn: 2.6, travel: 7.5, retract: 5, stop: 786, thickness: 130, push: 260, band: 104 },
+    pillars: [],
+    spawns: [
+      { x: 995, y: 300 },
+      { x: 1400, y: 360 },
+      { x: 1660, y: 560 },
+      { x: 1500, y: 760 },
+      { x: 995, y: 720 },
+      { x: 490, y: 760 },
+      { x: 330, y: 560 },
+      { x: 590, y: 360 },
+    ],
+    // Loose file boxes. They are debris, not cover: bodies walk over them, shots stop on
+    // them, and two hits delete one. More drop in between compactor strokes.
+    props: [
+      { x: 855, y: 360, w: 42, h: 30, kind: PROP.VIDEO },
+      { x: 1085, y: 380, w: 42, h: 30, kind: PROP.DOC },
+      { x: 820, y: 640, w: 42, h: 30, kind: PROP.ZIP },
+      { x: 1120, y: 640, w: 42, h: 30, kind: PROP.AUDIO },
+      { x: 600, y: 560, w: 42, h: 30, kind: PROP.DOC },
+      { x: 1290, y: 560, w: 42, h: 30, kind: PROP.VIDEO },
+      { x: 960, y: 300, w: 42, h: 30, kind: PROP.ZIP },
+    ],
+  },
 ];
 
 export function getArena(index: number): ArenaDef {
@@ -421,6 +519,23 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
       const py = mapY(tr.lifts[i].y);
       ctx.strokeRect(px - 3, py - 3, 6, 6);
     }
+  }
+
+  // Floor holes read as black squares with a lit lip, even at thumbnail size.
+  if (arena.voids) {
+    ctx.fillStyle = '#010309';
+    for (let i = 0; i < arena.voids.length; i++) {
+      const r = arena.voids[i];
+      ctx.fillRect(mapX(r.x), mapY(r.y), Math.max(2, r.w * sx), Math.max(2, r.h * sy));
+    }
+    ctx.strokeStyle = arena.accent;
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < arena.voids.length; i++) {
+      const r = arena.voids[i];
+      ctx.strokeRect(mapX(r.x) + 0.5, mapY(r.y) + 0.5, Math.max(2, r.w * sx) - 1, Math.max(2, r.h * sy) - 1);
+    }
+    ctx.globalAlpha = 1;
   }
 
   ctx.fillStyle = '#08121d';

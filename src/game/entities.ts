@@ -129,6 +129,7 @@ export function createPlayer(slot: number): Player {
     netIndex: -1,
     chargeT: 0,
     chargeHeld: false,
+    fallT: 0,
     guardT: 0,
     guardCd: 0,
     bugKind: 0,
@@ -233,6 +234,9 @@ export function createBarrier(): Barrier {
     life: 0,
     maxLife: 1,
     phase: 0,
+    hp: 0,
+    maxHp: 0,
+    hitFlash: 0,
   };
 }
 
@@ -415,6 +419,7 @@ export function createFirewall(): Firewall {
 export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: number): void {
   p.x = x;
   p.y = y;
+  p.fallT = 0;
   p.prevX = x;
   p.prevY = y;
   p.vx = 0;

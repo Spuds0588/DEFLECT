@@ -6,6 +6,15 @@
  * sector it belongs to. The script itself (sparring drill, breach, threat assault) lives
  * in `World`; every tuning number lives in the `CAMPAIGN` block in `config.ts`.
  */
+import { PROP } from './types';
+
+/** A data crate the level asks the player to preserve. Local-only, spawned on the breach. */
+export interface CampaignDataCrate {
+  x: number;
+  y: number;
+  kind: number;
+}
+
 export interface CampaignLevel {
   id: number;
   /** Index into `SECTORS`. */
@@ -17,6 +26,11 @@ export interface CampaignLevel {
   code: string;
   /** Existing arena blockout used by this node. */
   arenaId: number;
+  /**
+   * Data crates on the arena. They are the level's clean-sweep objective: break one and
+   * the score loses its preservation pay. Spawned on the breach, never in snapshots.
+   */
+  dataCrates: readonly CampaignDataCrate[];
 }
 
 export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
@@ -27,6 +41,15 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     name: 'BUILD ROOT',
     code: 'FIRST BOOT',
     arenaId: 0,
+    // Placed in the open lanes of CROSSROADS, clear of its four pillars.
+    dataCrates: [
+      { x: 398, y: 300, kind: PROP.DOC },
+      { x: 1540, y: 300, kind: PROP.ZIP },
+      { x: 398, y: 800, kind: PROP.AUDIO },
+      { x: 1540, y: 800, kind: PROP.VIDEO },
+      { x: 974, y: 532, kind: PROP.DOC },
+      { x: 974, y: 120, kind: PROP.ZIP },
+    ],
   },
 ];
 

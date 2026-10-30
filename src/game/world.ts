@@ -8,9 +8,11 @@ import {
   MINE,
   SWEEP,
   FIREWALL,
+  FALL,
   WEDGE,
   GAUNTLET,
   KABOOM,
+  FILE_PROP,
   MAX_EVENTS,
   MAX_PLAYERS,
   PLAYER,
@@ -29,6 +31,7 @@ import {
   type Rect,
 } from './config';
 import { ARENAS, arenaSolids, type ArenaDef } from './arenas';
+import type { CampaignDataCrate } from './campaign';
 import { circleRect, hitScratch } from './collision';
 import {
   clearPlayerForSpawn,
@@ -67,6 +70,7 @@ import {
   type Pickup,
   type Player,
   type Projectile,
+  type Prop,
   type Sentry,
   type Virus,
   type Worm,
@@ -86,6 +90,8 @@ export class World {
   readonly arena: ArenaDef;
   /** Cover plus floor gaps. Bodies collide with this; shots only respect cover. */
   private readonly solids: readonly Rect[];
+  /** Breakable file boxes. Local content; the snapshot never carries them. */
+  readonly props: Prop[];
   readonly selectedProgram: number;
   readonly players: Player[];
   readonly projectiles: Projectile[];
@@ -188,6 +194,24 @@ export class World {
   private thrallDashT = 0;
   /** Open-wall arena: the bounds are a lip, not a wall. Anything past it de-rezzes. */
   private readonly openWalls: boolean;
+  /** Compactor cycle time, in seconds since this cycle began. Public for the renderer. */
+  pusherT = 0;
+  /** Seconds of warning left before the arm moves; 0 outside the warning window. */
+  pusherWarnT = 0;
+  /** World y of the arm's leading edge. Public for the renderer. */
+  pusherY = 0;
+  /** True while the arm is descending. Public for the renderer. */
+  pusherActive = false;
+  /** Brief flash when the arm reaches its stop line; the renderer fades it out. */
+  pusherFlashT = 0;
+  /** Countdown to the next file box dropping into a compacted arena. */
+  propDropT = FILE_PROP.dropEvery;
+  /** Campaign score telemetry: crates authored, crates still standing, damage taken. */
+  dataTotal = 0;
+  dataKept = 0;
+  campaignDamage = 0;
+  /** Authored data crates for this level. Spawned on the breach, never in snapshots. */
+  private readonly levelData: readonly CampaignDataCrate[];
 
   private get centerX(): number {
     return (this.arena.bounds.left + this.arena.bounds.right) * 0.5;
@@ -207,13 +231,16 @@ export class World {
     botSlots = 0,
     botPrograms: readonly number[] | null = null,
     campaign = false,
+    levelData: readonly CampaignDataCrate[] | null = null,
   ) {
     this.mode = mode;
     this.campaign = campaign;
+    this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
     this.solids = arenaSolids(arena);
     this.openWalls = arena.walls === 'open';
+    this.pusherY = arena.bounds.top;
     this.gauntletPractice = gauntletPractice;
     this.localSlot = localSlot;
     this.selectedProgram = clampProgram(program);
@@ -238,6 +265,49 @@ export class World {
     for (let i = 0; i < this.lures.length; i++) this.lures[i] = createLure();
     this.barriers = new Array(4);
     for (let i = 0; i < this.barriers.length; i++) this.barriers[i] = createBarrier();
+    this.props = [];
+    const propDefs = arena.props;
+    if (propDefs) {
+      for (let i = 0; i < propDefs.length; i++) {
+        const d = propDefs[i];
+        this.props.push({
+          active: true,
+          kind: d.kind,
+          x: d.x,
+          y: d.y,
+          w: d.w,
+          h: d.h,
+          hp: FILE_PROP.hp,
+          hitFlash: 0,
+          dropT: 0,
+          vx: 0,
+          vy: 0,
+          tx: 0,
+          ty: 0,
+        });
+      }
+    }
+    // A compactor arena needs boxes to feed back in after each stroke. They are preallocated
+    // and parked inactive so the cycle never allocates.
+    if (arena.pushers) {
+      for (let i = 0; i < FILE_PROP.spare; i++) {
+        this.props.push({
+          active: false,
+          kind: i % 4,
+          x: 0,
+          y: 0,
+          w: 42,
+          h: 30,
+          hp: FILE_PROP.hp,
+          hitFlash: 0,
+          dropT: 0,
+          vx: 0,
+          vy: 0,
+          tx: 0,
+          ty: 0,
+        });
+      }
+    }
     this.events = new Array(EVENT_CAPACITY);
     for (let i = 0; i < EVENT_CAPACITY; i++) this.events[i] = { kind: 0, slot: 0, x: 0, y: 0, power: 0, dirX: 0, dirY: 0 };
 
@@ -438,9 +508,35 @@ export class World {
     }
   }
 
+  /** Adds the level's authored data crates to the floor, once, on the breach beat. */
+  private spawnCampaignData(): void {
+    if (this.dataTotal > 0) return;
+    for (let i = 0; i < this.levelData.length; i++) {
+      const d = this.levelData[i];
+      this.props.push({
+        active: true,
+        kind: d.kind,
+        x: d.x,
+        y: d.y,
+        w: 42,
+        h: 30,
+        hp: FILE_PROP.hp,
+        hitFlash: 0,
+        dropT: 0,
+        vx: 0,
+        vy: 0,
+        tx: 0,
+        ty: 0,
+      });
+    }
+    this.dataTotal = this.levelData.length;
+  }
+
   private beginBreach(): void {
     this.campaignPhase = 'breach';
     this.campaignT = 0;
+    // The room's data loads with the assault: the drill is a spar, not a data hazard.
+    this.spawnCampaignData();
     this.campaignBannerKind = 1;
     this.campaignBannerT = CAMPAIGN.breachBannerTime;
     this.campaignBannerDur = CAMPAIGN.breachBannerTime;
@@ -479,6 +575,9 @@ export class World {
 
   private clearCampaign(): void {
     if (this.campaignPhase === 'cleared' || this.campaignPhase === 'failed') return;
+    let kept = 0;
+    for (let i = 0; i < this.props.length; i++) if (this.props[i].active) kept++;
+    this.dataKept = kept;
     this.campaignPhase = 'cleared';
     this.campaignBannerKind = 2;
     this.campaignBannerT = CAMPAIGN.clearBannerTime;
@@ -658,6 +757,7 @@ export class World {
 
     const canAct = this.phase === 'live' || this.phase === 'practice';
     if (this.mode === 'gauntlet') this.driveThrall(dt);
+    if (this.arena.pushers && canAct) this.tickPusher(dt);
 
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
@@ -690,6 +790,45 @@ export class World {
       if (p.travelCd > 0) p.travelCd = Math.max(0, p.travelCd - dt);
       if (p.travelT > 0) {
         this.tickTravel(p, dt);
+        continue;
+      }
+
+      // Over the void: the body hangs for a beat instead of vanishing on the lip. It is
+      // still steerable at reduced speed against a slight outward pull, so a quick stick
+      // back toward the floor can save it. No attacks, no knockback.
+      if (p.fallT > 0) {
+        p.fallT = Math.max(0, p.fallT - dt);
+        const fin = inputs[p.slot] ?? null;
+        const hole = this.voidAt(p.x, p.y);
+        let pullX = 0;
+        let pullY = 0;
+        if (hole) {
+          const hx = hole.x + hole.w * 0.5 - p.x;
+          const hy = hole.y + hole.h * 0.5 - p.y;
+          const hd = Math.hypot(hx, hy) || 1;
+          pullX = (hx / hd) * FALL.pull;
+          pullY = (hy / hd) * FALL.pull;
+        } else {
+          const ox = p.x - this.centerX;
+          const oy = p.y - this.centerY;
+          const od = Math.hypot(ox, oy) || 1;
+          pullX = (ox / od) * FALL.pull;
+          pullY = (oy / od) * FALL.pull;
+        }
+        const mx = fin ? fin.mx : 0;
+        const my = fin ? fin.my : 0;
+        p.x += (mx * PLAYER.speed * FALL.control + pullX) * dt;
+        p.y += (my * PLAYER.speed * FALL.control + pullY) * dt;
+        p.vx = 0;
+        p.vy = 0;
+        p.kx = 0;
+        p.ky = 0;
+        if (!this.offFloor(p.x, p.y)) {
+          // Pulled it back over the lip. The body lands with its feet under it.
+          p.fallT = 0;
+        } else if (p.fallT === 0) {
+          this.fallPlayer(p);
+        }
         continue;
       }
 
@@ -1062,7 +1201,7 @@ export class World {
         this.arena.bounds,
         this.openWalls,
       );
-      if (this.openWalls) {
+      if (this.openWalls || this.arena.voids) {
         this.checkFall(p);
         if (!p.alive) continue;
       }
@@ -1075,6 +1214,8 @@ export class World {
       if (p.bashT > 0) this.resolveBracket(p);
       this.checkTravel(p, canAct, dt);
     }
+
+    this.updateProps(dt);
 
     if (this.mode === 'training' || this.mode === 'gauntlet') this.updatePickups(dt);
     this.updateDrone(dt);
@@ -2115,6 +2256,9 @@ export class World {
     wall.ny = fy;
     wall.life = WEDGE.wallLife;
     wall.maxLife = WEDGE.wallLife;
+    wall.hp = WEDGE.wallHp;
+    wall.maxHp = WEDGE.wallHp;
+    wall.hitFlash = 0;
     wall.phase = this.rng.range(0, Math.PI * 2);
     return true;
   }
@@ -2123,12 +2267,35 @@ export class World {
     for (let i = 0; i < this.barriers.length; i++) {
       const wall = this.barriers[i];
       if (!wall.active) continue;
+      if (wall.hitFlash > 0) wall.hitFlash = Math.max(0, wall.hitFlash - dt);
       wall.life -= dt;
       if (wall.life <= 0) {
         wall.life = 0;
         wall.active = false;
       }
     }
+  }
+
+  /**
+   * Chips a deployed wall. Shots, lashes and blasts all feed this one path, so the shake,
+   * the crack stages and the break moment stay in step with its health.
+   */
+  private damageBarrier(wall: Barrier, amount: number): void {
+    if (!wall.active) return;
+    wall.hp -= amount;
+    wall.hitFlash = WEDGE.wallFlash;
+    if (wall.hp > 0) return;
+    wall.hp = 0;
+    wall.active = false;
+    this.emit(
+      EV.WALL_BREAK,
+      wall.owner,
+      (wall.x1 + wall.x2) * 0.5,
+      (wall.y1 + wall.y2) * 0.5,
+      WEDGE.wallHalfLength * 2,
+      wall.nx,
+      wall.ny,
+    );
   }
 
   /** Pushes a body out of a deployed wall. Dodges still phase through it. */
@@ -3725,6 +3892,7 @@ export class World {
           proj.y += proj.vy * bombDt;
           this.bounceWalls(proj);
           if (!proj.active) break;
+          if (this.propHit(proj)) break;
           if (proj.type === 8) {
             this.bouncePillars(proj);
             if (!proj.active) break;
@@ -3770,6 +3938,7 @@ export class World {
         proj.y += proj.vy * sdt;
         this.bounceWalls(proj);
         if (!proj.active) break;
+        if (this.propHit(proj)) break;
         this.bouncePillars(proj);
         if (!proj.active) break;
         this.bounceBarriers(proj);
@@ -3901,8 +4070,10 @@ export class World {
     if (proj.bounces > BOLT.maxBounces) proj.active = false;
   }
 
-  /** Deployed walls are real geometry: shots reflect off them like a pillar. */
+  /** Deployed walls are real geometry: shots reflect off them like a pillar, and chip them. */
   private bounceBarriers(proj: Projectile): void {
+    // The lobbed shell is airborne until it lands, so it clears a waist-high wall.
+    if (proj.type === 9) return;
     for (let i = 0; i < this.barriers.length; i++) {
       const wall = this.barriers[i];
       if (!wall.active) continue;
@@ -3917,12 +4088,15 @@ export class World {
       const rr = WEDGE.wallThickness * 0.5 + proj.radius;
       if (dx * dx + dy * dy > rr * rr) continue;
 
+      const heavy = proj.type === 5 || proj.type === 6 || proj.type === 8;
+      this.damageBarrier(wall, heavy ? 2 : 1);
+
       const side = (dx * wall.nx + dy * wall.ny) >= 0 ? 1 : -1;
       const nx = wall.nx * side;
       const ny = wall.ny * side;
       proj.x = px + nx * (rr + 0.5);
       proj.y = py + ny * (rr + 0.5);
-      if (proj.type === 5 || proj.type === 6 || proj.type === 8) {
+      if (heavy) {
         proj.active = false;
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
         return;
@@ -4055,8 +4229,45 @@ export class World {
    */
   private checkFall(p: Player): void {
     const b = this.arena.bounds;
-    if (p.x > b.left && p.x < b.right && p.y > b.top && p.y < b.bottom) return;
-    this.fallPlayer(p);
+    const pastLip = p.x < b.left || p.x > b.right || p.y < b.top || p.y > b.bottom;
+    // A dash is airborne, so a short hole can be jumped. Land inside one and the fall
+    // starts then, which is the point of a hole.
+    if (!pastLip && p.dashT > 0) return;
+    if (!pastLip && !this.offFloor(p.x, p.y)) return;
+    if (p.fallT > 0) return;
+    p.fallT = FALL.grace;
+    p.vx = 0;
+    p.vy = 0;
+    p.kx = 0;
+    p.ky = 0;
+  }
+
+  /** Off the plate: past the lip, outside a trapezoid slant, or over a floor hole. */
+  private offFloor(x: number, y: number): boolean {
+    const b = this.arena.bounds;
+    if (x < b.left || x > b.right || y < b.top || y > b.bottom) return true;
+    const slant = this.arena.slant;
+    if (slant) {
+      const k = (y - b.top) / (b.bottom - b.top);
+      const inset = slant * (1 - Math.max(0, Math.min(1, k)));
+      if (x < b.left + inset || x > b.right - inset) return true;
+    }
+    return this.inVoid(x, y);
+  }
+
+  private inVoid(x: number, y: number): boolean {
+    return this.voidAt(x, y) !== null;
+  }
+
+  /** The hole under a point, or null. Returns the arena's rect, never a copy. */
+  private voidAt(x: number, y: number): Rect | null {
+    const voids = this.arena.voids;
+    if (!voids) return null;
+    for (let i = 0; i < voids.length; i++) {
+      const r = voids[i];
+      if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return r;
+    }
+    return null;
   }
 
   private fallPlayer(p: Player): void {
@@ -4074,6 +4285,34 @@ export class World {
     p.ky = 0;
   }
 
+  /**
+   * A file box takes one hit and cracks, two and it de-rezzes into shards. Boxes are
+   * floor debris: bodies step over them, shots and lashes stop on them.
+   */
+  private damageProp(b: Prop, amount: number, x: number, y: number): void {
+    if (!b.active) return;
+    b.hp -= amount;
+    b.hitFlash = FILE_PROP.hitFlash;
+    this.emit(EV.PROP_HIT, 0, x, y, amount);
+    if (b.hp > 0) return;
+    b.active = false;
+    this.emit(EV.PROP_BREAK, 0, b.x + b.w * 0.5, b.y + b.h * 0.5, b.w + b.h * 0.5);
+  }
+
+  /** Shots stop on a file box and chip it. Returns true when the projectile was spent. */
+  private propHit(proj: Projectile): boolean {
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.active || b.dropT > 0) continue;
+      if (!circleRect(proj.x, proj.y, proj.radius, b, hitScratch)) continue;
+      this.launchProp(b, proj.vx, proj.vy, FILE_PROP.shotPush);
+      this.damageProp(b, Math.max(1, proj.damage), proj.x, proj.y);
+      proj.active = false;
+      return true;
+    }
+    return false;
+  }
+
   private damagePlayer(
     p: Player,
     amount: number,
@@ -4085,6 +4324,7 @@ export class World {
     sourceId = -1,
   ): void {
     if (!p.alive || p.iframes > 0 || p.ghostT > 0 || p.travelT > 0) return;
+    if (this.campaign && p.slot === this.localSlot) this.campaignDamage += amount;
     // The death camera reads this: who last touched the body, by family and pool index.
     p.killerKind = sourceKind;
     p.killerId = sourceId >= 0 ? sourceId : sourceSlot;
@@ -4421,6 +4661,38 @@ export class World {
         const ny = dist > 0.001 ? dy / dist : 0;
         this.damageError(e, damage, sourceSlot, nx, ny);
       }
+    }
+
+    // A deployed wall is solid to a blast as well. It is the one destructible object that
+    // a bomb reliably breaks, because the whole radius lands on the same segment.
+    for (let i = 0; i < this.barriers.length; i++) {
+      const wall = this.barriers[i];
+      if (!wall.active) continue;
+      const vx = wall.x2 - wall.x1;
+      const vy = wall.y2 - wall.y1;
+      const len2 = vx * vx + vy * vy;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((x - wall.x1) * vx + (y - wall.y1) * vy) / len2)) : 0;
+      const dx = x - (wall.x1 + vx * t);
+      const dy = y - (wall.y1 + vy * t);
+      const rr = radius + WEDGE.wallThickness * 0.5;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      this.damageBarrier(wall, 2);
+    }
+
+    // Loose file boxes catch the blast: they crack and get thrown, they do not vanish.
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.active || b.dropT > 0) continue;
+      const bx = b.x + b.w * 0.5;
+      const by = b.y + b.h * 0.5;
+      const dx = bx - x;
+      const dy = by - y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > radius + Math.max(b.w, b.h) * 0.5) continue;
+      const nx = dist > 0.001 ? dx / dist : 1;
+      const ny = dist > 0.001 ? dy / dist : 0;
+      this.launchProp(b, nx, ny, FILE_PROP.launchSpeed * 0.8);
+      this.damageProp(b, 1, bx, by);
     }
   }
 
@@ -4917,7 +5189,7 @@ export class World {
     for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) this.updateSentry(this.sentries[i], dt);
     for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) this.updateFirewall(this.firewalls[i], dt);
     this.updateErrors(dt);
-    if (this.openWalls) this.cullVoidThreats();
+    if (this.openWalls || this.arena.voids) this.cullVoidThreats();
   }
 
   /**
@@ -4929,20 +5201,299 @@ export class World {
     const b = this.arena.bounds;
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
-      if (w.active && (w.x < b.left || w.x > b.right || w.y < b.top || w.y > b.bottom)) {
-        this.damageWorm(w, 9999, 0, 0, 0);
-      }
+      if (!w.active) continue;
+      if (this.offFloor(w.x, w.y)) this.damageWorm(w, 9999, 0, 0, 0);
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
-      if (v.active && (v.x < b.left || v.x > b.right || v.y < b.top || v.y > b.bottom)) {
-        this.damageVirus(v, 9999, 0, 0, 0);
-      }
+      if (!v.active) continue;
+      if (this.offFloor(v.x, v.y)) this.damageVirus(v, 9999, 0, 0, 0);
     }
     for (let i = 0; i < this.sentries.length; i++) {
       const s = this.sentries[i];
-      if (s.active && (s.x < b.left || s.x > b.right || s.y < b.top || s.y > b.bottom)) {
-        this.damageSentry(s, 9999, 0, 0, 0);
+      if (!s.active) continue;
+      if (this.offFloor(s.x, s.y)) this.damageSentry(s, 9999, 0, 0, 0);
+    }
+  }
+
+  /**
+   * The compaction arm. It warns, then physically descends from the top edge to its stop
+   * line, carrying whatever it catches down with it. It is slower than a player, so the
+   * dodge is to stay below the front, step around the hole, or dash ahead of it.
+   */
+  private tickPusher(dt: number): void {
+    const cfg = this.arena.pushers;
+    if (!cfg) return;
+    if (this.pusherFlashT > 0) this.pusherFlashT = Math.max(0, this.pusherFlashT - dt);
+    this.pusherT += dt;
+    const t = this.pusherT;
+    const top = this.arena.bounds.top;
+    const start = cfg.warn;
+    const end = cfg.warn + cfg.travel;
+    const back = end + cfg.retract;
+    this.pusherWarnT = t < start ? start - t : 0;
+    const wasActive = this.pusherActive;
+    this.pusherActive = t >= start && t < end;
+    if (this.pusherActive) {
+      if (!wasActive) this.emit(EV.PUSHER, 0, this.centerX, top, 1);
+      const k = (t - start) / cfg.travel;
+      this.pusherY = top + (cfg.stop - top) * k;
+      this.carryWithArm(cfg.thickness, cfg.push);
+      return;
+    }
+    if (wasActive) this.pusherFlashT = 0.3;
+    if (t >= back) {
+      this.pusherY = top;
+    } else if (t >= end) {
+      // Rise back up over `retract`, so the arm is visibly out of the way before boxes drop.
+      const k = (t - end) / cfg.retract;
+      this.pusherY = cfg.stop + (top - cfg.stop) * k;
+    } else {
+      this.pusherY = top;
+    }
+    if (t >= cfg.period) {
+      this.pusherT = 0;
+      this.pusherWarnT = 0;
+      this.pusherY = top;
+      this.pusherActive = false;
+    }
+  }
+
+  /** File boxes: light debris physics, the drop-in fall, and the refill between strokes. */
+  private updateProps(dt: number): void {
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (b.hitFlash > 0) b.hitFlash = Math.max(0, b.hitFlash - dt);
+      if (b.dropT > 0) {
+        b.dropT = Math.max(0, b.dropT - dt);
+        continue;
+      }
+      if (!b.active) continue;
+      this.stepProp(b, dt);
+    }
+    this.separateProps();
+    const cfg = this.arena.pushers;
+    if (!cfg) return;
+    // Feed boxes in only while the arm is parked at the top, never on top of a body.
+    if (this.pusherT < cfg.warn + cfg.travel + cfg.retract) return;
+    this.propDropT -= dt;
+    if (this.propDropT > 0) return;
+    this.propDropT = FILE_PROP.dropEvery;
+    this.dropFileBox();
+  }
+
+  /**
+   * One tick of light debris: drift and drag, the edge, cover, bodies and a raised guard.
+   * Boxes are never solid architecture; they only ever move, so this stays cheap.
+   */
+  private stepProp(b: Prop, dt: number): void {
+    const bnd = this.arena.bounds;
+    if (b.vx !== 0 || b.vy !== 0 || b.tx !== 0 || b.ty !== 0) {
+      // The target velocity eases out; the actual velocity ramps toward it, so a hit
+      // accelerates the box over a few frames and it glides to a stop.
+      const f = Math.exp(-FILE_PROP.drag * dt);
+      b.tx *= f;
+      b.ty *= f;
+      const a = FILE_PROP.accel * dt;
+      b.vx += Math.max(-a, Math.min(a, b.tx - b.vx));
+      b.vy += Math.max(-a, Math.min(a, b.ty - b.vy));
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      if (Math.abs(b.vx) < FILE_PROP.restSpeed && Math.abs(b.tx) < FILE_PROP.restSpeed) b.vx = 0;
+      if (Math.abs(b.vy) < FILE_PROP.restSpeed && Math.abs(b.ty) < FILE_PROP.restSpeed) b.vy = 0;
+    }
+    const cx = b.x + b.w * 0.5;
+    const cy = b.y + b.h * 0.5;
+    if ((this.openWalls || this.arena.voids || this.arena.slant) && this.offFloor(cx, cy)) {
+      b.active = false;
+      this.emit(EV.PROP_BREAK, 0, cx, cy, b.w + b.h);
+      return;
+    }
+    if (b.x < bnd.left) {
+      b.x = bnd.left;
+      b.vx = Math.abs(b.vx) * 0.35;
+      b.tx = b.vx;
+    } else if (b.x + b.w > bnd.right) {
+      b.x = bnd.right - b.w;
+      b.vx = -Math.abs(b.vx) * 0.35;
+      b.tx = b.vx;
+    }
+    if (b.y < bnd.top) {
+      b.y = bnd.top;
+      b.vy = Math.abs(b.vy) * 0.35;
+      b.ty = b.vy;
+    } else if (b.y + b.h > bnd.bottom) {
+      b.y = bnd.bottom - b.h;
+      b.vy = -Math.abs(b.vy) * 0.35;
+      b.ty = b.vy;
+    }
+    for (let i = 0; i < this.arena.pillars.length; i++) {
+      if (!circleRect(cx, cy, Math.max(b.w, b.h) * 0.46, this.arena.pillars[i], hitScratch)) continue;
+      b.x += hitScratch.px - cx;
+      b.y += hitScratch.py - cy;
+      const vn = b.vx * hitScratch.nx + b.vy * hitScratch.ny;
+      if (vn < 0) {
+        b.vx -= vn * hitScratch.nx;
+        b.vy -= vn * hitScratch.ny;
+        b.tx = b.vx;
+        b.ty = b.vy;
+      }
+    }
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.travelT > 0) continue;
+      // A raised guard bats a box back the way it came instead of letting it land.
+      if (p.guardT > 0) {
+        const gx = cx - p.x;
+        const gy = cy - p.y;
+        const gd = Math.hypot(gx, gy);
+        const reach = PLAYER.guardReach + Math.max(b.w, b.h) * 0.5;
+        if (gd < reach && gx * Math.cos(p.facing) + gy * Math.sin(p.facing) > 0) {
+          b.tx = Math.cos(p.facing) * FILE_PROP.guardPush;
+          b.ty = Math.sin(p.facing) * FILE_PROP.guardPush;
+          b.hitFlash = FILE_PROP.hitFlash;
+          continue;
+        }
+      }
+      const nearX = Math.max(b.x, Math.min(p.x, b.x + b.w));
+      const nearY = Math.max(b.y, Math.min(p.y, b.y + b.h));
+      let dx = p.x - nearX;
+      let dy = p.y - nearY;
+      let d = Math.hypot(dx, dy);
+      if (d >= PLAYER.radius) continue;
+      if (d < 0.001) {
+        dx = p.x - cx;
+        dy = p.y - cy;
+        d = Math.hypot(dx, dy) || 1;
+      }
+      const ux = -dx / d;
+      const uy = -dy / d;
+      const overlap = PLAYER.radius - d;
+      b.x += ux * overlap;
+      b.y += uy * overlap;
+      if (b.vx * ux + b.vy * uy < FILE_PROP.bumpSpeed) {
+        const speed = Math.min(FILE_PROP.maxSpeed, Math.max(FILE_PROP.bumpSpeed, Math.hypot(p.vx, p.vy) * 1.4));
+        b.tx = ux * speed;
+        b.ty = uy * speed;
+      }
+    }
+  }
+
+  /** Boxes are light but not ghosts: they shove each other apart instead of stacking. */
+  private separateProps(): void {
+    for (let i = 0; i < this.props.length; i++) {
+      const a = this.props[i];
+      if (!a.active || a.dropT > 0) continue;
+      for (let j = i + 1; j < this.props.length; j++) {
+        const c = this.props[j];
+        if (!c.active || c.dropT > 0) continue;
+        const ox = Math.min(a.x + a.w, c.x + c.w) - Math.max(a.x, c.x);
+        if (ox <= 0) continue;
+        const oy = Math.min(a.y + a.h, c.y + c.h) - Math.max(a.y, c.y);
+        if (oy <= 0) continue;
+        if (ox < oy) {
+          const s = a.x < c.x ? -0.5 : 0.5;
+          a.x += ox * s;
+          c.x -= ox * s;
+        } else {
+          const s = a.y < c.y ? -0.5 : 0.5;
+          a.y += oy * s;
+          c.y -= oy * s;
+        }
+      }
+    }
+  }
+
+  /** Send a box flying. Hits launch, they do not delete: the damage is a separate path. */
+  private launchProp(b: Prop, nx: number, ny: number, speed: number): void {
+    const mag = Math.hypot(nx, ny);
+    if (mag < 0.001) return;
+    const s = Math.min(speed, FILE_PROP.maxSpeed) / mag;
+    b.tx = nx * s;
+    b.ty = ny * s;
+  }
+
+  /** Drop one parked box into the wide part of the bin. No allocation, no snapshot fields. */
+  private dropFileBox(): void {
+    const b = this.arena.bounds;
+    let slot: Prop | null = null;
+    for (let i = 0; i < this.props.length; i++) {
+      if (!this.props[i].active) {
+        slot = this.props[i];
+        break;
+      }
+    }
+    if (!slot) return;
+    const y = b.top + 180 + this.rng.range(0, 150);
+    const k = (y - b.top) / (b.bottom - b.top);
+    const inset = (this.arena.slant ?? 0) * (1 - k) + 90;
+    const span = b.right - b.left - inset * 2 - slot.w;
+    if (span <= 0) return;
+    const x = b.left + inset + this.rng.range(0, span);
+    if (this.inVoid(x + slot.w * 0.5, y + slot.h * 0.5)) return;
+    for (let i = 0; i < this.arena.pillars.length; i++) {
+      const r = this.arena.pillars[i];
+      if (x + slot.w > r.x && x < r.x + r.w && y + slot.h > r.y && y < r.y + r.h) return;
+    }
+    slot.active = true;
+    slot.kind = (this.rng.range(0, 4) | 0) % 4;
+    slot.x = x;
+    slot.y = y;
+    slot.hp = FILE_PROP.hp;
+    slot.hitFlash = 0;
+    slot.dropT = FILE_PROP.dropT;
+    slot.vx = 0;
+    slot.vy = 0;
+    slot.tx = 0;
+    slot.ty = 0;
+  }
+
+  /**
+   * Clamp anything the arm's leading face has reached to just below it and carry it down.
+   * A body pressed onto the bottom ledge is pinned instead of shoved, so the side ground
+   * keeps its promise: only the hole takes a body the arm brings it to.
+   */
+  private carryWithArm(_thickness: number, _push: number): void {
+    const front = this.pusherY;
+    const bottom = this.arena.bounds.bottom;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.travelT > 0) continue;
+      if (p.y > front + PLAYER.radius) continue;
+      // Glue the body to the plate's face instead of kicking it: the wall is solid, so it
+      // moves at the plate's speed and only the hole or the bottom pin gets a say.
+      p.y = Math.min(bottom - PLAYER.radius, front + PLAYER.radius);
+      p.ky = 0;
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      if (w.y > front + WORM.headRadius) continue;
+      w.y = Math.min(bottom - WORM.headRadius, front + WORM.headRadius);
+      w.ky = 0;
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active || v.y > front + v.radius) continue;
+      v.y = Math.min(bottom - v.radius, front + v.radius);
+      v.ky = 0;
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active || s.y > front + s.radius) continue;
+      s.y = Math.min(bottom - s.radius, front + s.radius);
+      s.ky = 0;
+    }
+    // Loose file boxes are swept along too; one that ends over the hole is gone.
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.active || b.dropT > 0 || b.y > front) continue;
+      b.y = Math.min(bottom - b.h, front);
+      b.vy = 0;
+      b.ty = 0;
+      if (this.inVoid(b.x + b.w * 0.5, b.y + b.h * 0.5)) {
+        b.active = false;
+        this.emit(EV.PROP_BREAK, 0, b.x + b.w * 0.5, b.y + b.h * 0.5, b.w + b.h * 0.5);
       }
     }
   }
@@ -5104,6 +5655,8 @@ export class World {
     ) {
       return false;
     }
+    // Nothing spawns over a hole: threats, patrol points and pickups all use this test.
+    if (this.inVoid(x, y)) return false;
     for (let i = 0; i < this.solids.length; i++) {
       if (circleRect(x, y, radius + 4, this.solids[i], hitScratch)) return false;
     }
@@ -6525,6 +7078,41 @@ export class World {
       const mag = Math.hypot(shoveX, shoveY) || 1;
       shoveX /= mag;
       shoveY /= mag;
+    }
+
+    // A deployed wall is solid: a lash chips the plate instead of reaching a body behind it.
+    for (let i = 0; i < this.barriers.length; i++) {
+      const wall = this.barriers[i];
+      if (!wall.active) continue;
+      const vx = wall.x2 - wall.x1;
+      const vy = wall.y2 - wall.y1;
+      const len2 = vx * vx + vy * vy;
+      const wt = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - wall.x1) * vx + (p.y - wall.y1) * vy) / len2)) : 0;
+      const wdx = wall.x1 + vx * wt - p.x;
+      const wdy = wall.y1 + vy * wt - p.y;
+      const wd = Math.hypot(wdx, wdy);
+      if (wd > reach + WEDGE.wallThickness * 0.5 || wd < 0.001) continue;
+      if ((wdx / wd) * cos + (wdy / wd) * sin < SWING_COS) continue;
+      this.damageBarrier(wall, 1);
+      this.markSwingHit(p);
+      return;
+    }
+
+    // A file box in the arc eats the swing: it is debris, not cover, but a lash still
+    // has to connect with it before it reaches a body behind it.
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.active || b.dropT > 0) continue;
+      const dx = b.x + b.w * 0.5 - p.x;
+      const dy = b.y + b.h * 0.5 - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > reach + Math.max(b.w, b.h) * 0.5 || d < 0.001) continue;
+      if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
+      // A lash launches the box first; the damage is a chip, so one hit never deletes it.
+      this.launchProp(b, shoveX, shoveY, FILE_PROP.launchSpeed);
+      this.damageProp(b, damage, b.x + b.w * 0.5, b.y + b.h * 0.5);
+      this.markSwingHit(p);
+      return;
     }
 
     for (let i = 0; i < this.players.length; i++) {

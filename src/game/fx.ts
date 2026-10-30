@@ -1,6 +1,7 @@
 import {
   ParticleSystem,
   P_COLOR_DANGER,
+  P_COLOR_DUST,
   P_COLOR_FIREWALL,
   P_COLOR_ICE,
   P_COLOR_VIRUS,
@@ -238,6 +239,26 @@ export class Fx {
       case EV.HEAL: {
         this.particles.ring(ev.x, ev.y, color, 8, 96, 0.45);
         this.particles.burst(ev.x, ev.y, 10, P_COLOR_WHITE, 40, 180);
+        break;
+      }
+      case EV.PROP_HIT: {
+        this.particles.impact(ev.x, ev.y, ev.dirX, ev.dirY, P_COLOR_DUST, 6);
+        this.particles.burst(ev.x, ev.y, 3, P_COLOR_WHITE, 40, 160);
+        break;
+      }
+      case EV.PROP_BREAK: {
+        const shards = Math.max(4, Math.min(14, Math.round(ev.power * 0.28)));
+        this.particles.shards(ev.x, ev.y, shards, P_COLOR_DUST, 60, 300);
+        this.particles.ring(ev.x, ev.y, P_COLOR_DUST, 4, ev.power * 1.2, 0.22);
+        break;
+      }
+      case EV.WALL_BREAK: {
+        this.particles.shards(ev.x, ev.y, 18, P_COLOR_DANGER, 90, 420);
+        this.particles.ring(ev.x, ev.y, P_COLOR_DANGER, 9, ev.power * 1.4, 0.3);
+        this.particles.burst(ev.x, ev.y, 8, P_COLOR_WHITE, 70, 300);
+        this.shake = Math.max(this.shake, 6);
+        this.flash = Math.max(this.flash, 0.12);
+        this.flashColor = '#ffd9b0';
         break;
       }
       default:

@@ -2128,3 +2128,43 @@ no console errors. `npm run bench`: gauntlet max 0.243 ms avg / 0.760 ms p99, ei
 kill feels earned. A welcoming fix would be a hit-flash on the lip when a body is carried over, plus a
 dedicated fall sound; today it reuses the hit chirp and the death burst. A second open arena (narrow lip,
 or an island in the middle) is content, not a new system.
+
+## 2026-10-30 — RECYCLING BIN compactor, light file debris, destructible Wedge wall, campaign score
+
+**Goal:** finish the recycling-bin test arena, make Wedge's wall solid and breakable, stand up the
+destructible-object read (shake + cracks) and the campaign end-of-level score with data preservation.
+
+**Changes**
+- Fall rule reworked: crossing the lip, a trapezoid slant or a hole edge no longer kills on that frame. It
+  starts `FALL.grace` (0.6 s) with reduced steering against an outward pull, and the body is saved if it gets
+  back on the floor. Death still runs the ordinary `SRC.VOID` path when the timer expires.
+- `ArenaDef.slant` (new): trapezoid plate. RECYCLING BIN is now narrow at the top and full width at the
+  bottom, with the big bottom hole at 695,786 → 1295,1046 and left/right ledges as the survival ground. Its
+  cover is gone by design; only breakable boxes remain.
+- Compaction arm rebuilt: it is a moving wall with a 30 s cycle (2.6 s warning, 7.5 s stroke at 98 u/s,
+  5 s climb). It stops exactly on the hole's leading edge and pins bodies on the side ledges. Bodies are
+  glued to the plate face instead of kicked ahead by a knock impulse, and the plate narrows with the
+  trapezoid so it always fills the bin. The 130-unit thickness and diagonal hatch sell it as solid steel.
+- File boxes became light debris: rounded dashed outlines, pairwise separation, body shoves, lash launches
+  (damage is separate, so one hit never deletes a box), guard bats, shot/blast shoves. Motion is a target
+  velocity with a 6000 u/s² ramp and low drag, so a shove eases in and glides out. Boxes also get swept by
+  the arm into the hole.
+- File boxes drop back into a compacted bin during the quiet window, with a fall-in animation.
+- Wedge's wall has `hp`/`maxHp`/`hitFlash`: every shot type stops or reflects (type 9 lob excepted), a lash
+  and blasts chip it, and at zero it de-rezzes with `EV.WALL_BREAK`. Cracks are drawn along the segment and
+  the plate shakes on every hit. Plate hit points: 7.
+- Campaign: `campaign.ts` now authors six data crates for BUILD ROOT; they spawn on the breach so the drill
+  cannot break them. `World.dataTotal`/`dataKept`/`campaignDamage` feed a score (kills, data kept, time vs
+  par, damage taken, clean-sweep bonus). Score, best score and clean-sweep count persist in the slot.
+- Death result overlays now hold 1.1 s so the aftermath is visible before the buttons.
+- Bumped to v0.1.39 and refreshed the service-worker cache.
+
+**Verification:** `npx tsc --noEmit` clean. Headless: the arm carries a mid-arena body into the hole at the
+rim (~7.8 s) and pins side bodies at y=1024 alive; arm speed 98 u/s; zero pillars. Fall grace: no input =
+death at 0.6 s at the lip and the hole; steering back = saved. Wedge wall: seven shots, hp 7 → 0, breaks on
+the seventh and blocks all of them. Campaign: six crates spawn on the breach, none overlap cover, one broken
+leaves 5/6. Browser: trapezoid, hole, plate and props render on `?gauntlet=1&arena=7`; no console errors.
+
+**Next:** playtest the arm speed and the box weight in the bin. Destructible cover (pillars) is not built —
+it needs a data record before a map can ask for it. The wall's plate does not stop the charged laser; decide
+that before adding another map with cover.

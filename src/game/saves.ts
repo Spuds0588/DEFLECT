@@ -24,6 +24,10 @@ export interface StorySave {
   bots: number;
   /** Seconds of campaign play, for the slot readout. */
   playSeconds: number;
+  /** Best end-of-level score across this slot's clears. */
+  bestScore: number;
+  /** Clean sweeps earned, one per level cleared without losing a data crate. */
+  cleanSweeps: number;
   updatedAt: number;
 }
 
@@ -50,6 +54,8 @@ export function loadStorySlots(): (StorySave | null)[] {
         players: typeof entry.players === 'number' ? Math.max(1, Math.min(4, Math.floor(entry.players))) : 1,
         bots: typeof entry.bots === 'number' ? Math.max(0, Math.min(3, Math.floor(entry.bots))) : 0,
         playSeconds: typeof entry.playSeconds === 'number' ? Math.max(0, entry.playSeconds) : 0,
+        bestScore: typeof entry.bestScore === 'number' ? Math.max(0, Math.floor(entry.bestScore)) : 0,
+        cleanSweeps: typeof entry.cleanSweeps === 'number' ? Math.max(0, Math.floor(entry.cleanSweeps)) : 0,
         updatedAt: typeof entry.updatedAt === 'number' ? entry.updatedAt : 0,
       };
     }

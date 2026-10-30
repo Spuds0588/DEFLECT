@@ -628,7 +628,40 @@ same flag. Walled arenas keep every old rule. Do not make it a mode flag or a ro
   spawn on the lip.
 - **THE LEDGE** (id 6) is the first open arena. Turning another arena open is a content change: check its
   spawn ring, its cover layout and how its bots behave near the drop before shipping it.
+- **A fall is not instant, and it is survivable.** Crossing a lip, a trapezoid slant or a hole edge starts
+  `FALL.grace` (0.6 s) instead of killing on that frame. The body hangs, keeps 62% steering against a
+  74 u/s pull toward the hole (outward on a lip), and is **saved if it gets back on the floor**. Attacks are
+  locked and knockback is cleared for the grace. The ordinary death path still runs when it expires, so
+  rounds, records and campaign failure are unchanged. Do not shorten this to a one-frame check: the whole
+  point is that a body shoved to the edge has one beat to save itself.
+- **`slant` makes a trapezoid plate.** `ArenaDef.slant` pulls the side edges in by that many units at the
+  top; the bottom keeps the full bounds. Outside the slant is a drop, not a wall, and `offFloor` is the one
+  test the player, threats and debris all use.
 
+### D20 — Destructible plates, light debris and data (built 2026-10-30)
+
+Wedge's wall and the file boxes are the first destructible objects; most environment is still solid and
+should stay that way. Damage reads as **shake + three crack stages**, never a health bar.
+
+- **Wedge's wall is solid, not shoot-through.** Every shot type stops or reflects on it; only the lobbed
+  shell (type 9) is airborne over it. It has `WEDGE.wallHp` (7): ordinary shots chip 1, spears/brooms/bombs
+  chip 2, a lash chips 1, a blast chips 2, and at zero it de-rezzes (`EV.WALL_BREAK`). Its cracks are drawn
+  along the segment; its hit shake is a 3 px normal offset. A laser is still a charged piercing beam and is
+  not blocked by the plate; do not add a special rule for it without deciding that the heavy is weaker.
+- **File boxes are debris, not cover.** Rounded dashed outlines say "this moves". They are pushed by
+  bodies, launched by the melee lash without being deleted (2 hp, so the second hit still breaks one),
+  batted by a raised guard, shoved by shots and blasts, swept by the compactor and never overlap each
+  other. Motion is a target velocity with a 6000 u/s² ramp and low drag: ease in, long glide, ease out.
+  Keep them off shared arenas until the snapshot carries them; a host-only prop would desync a guest.
+- **The campaign has data crates.** `campaign.ts` authors them; `World.spawnCampaignData` adds them on the
+  breach, so the drill squad cannot break the objective before the assault. `dataTotal`/`dataKept` feed the
+  end-of-level score (kills, data, time vs par, damage taken, clean-sweep bonus) and the score, best score
+  and clean-sweep count persist in the save slot. Nothing campaign-shaped enters `Snapshot`.
+- **A compactor is arena data.** `ArenaPusherDef` owns the cycle: warning, travel, retract, the stop line,
+  thickness and the housing band. The arm is a moving wall: bodies are glued to its face (`ky = 0`) and
+  pinned on any ledge below the stop line. It must stop at a meaningful line (RECYCLING BIN stops on the
+  hole's rim), never at a place that cuts the last safe ground in half. A compactor arena ships with no
+  solid cover, because the plate would pin bodies against it instead of pushing them.
 
 ---
 

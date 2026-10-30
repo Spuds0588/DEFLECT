@@ -2,7 +2,57 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.38 open-wall arenas and THE LEDGE)
+Last updated: 2026-10-30 (v0.1.39 recycling bin compactor, destructible plates, campaign score)
+
+---
+
+## v0.1.39 — RECYCLING BIN compactor, destructive plates, campaign score (2026-10-30)
+
+### RECYCLING BIN (id 7)
+- [x] Trapezoid floor (`ArenaDef.slant`): narrow at the top, full width at the bottom; the flanks are
+      the same drop as the lip, drawn as void wedges with dashed diagonal edges
+- [x] Big bottom hole (695,786 → 1295,1046) with left and right ledges as the only survival ground
+- [x] Compaction arm: 30 s cycle, 2.6 s warning, a 98 u/s stroke that **stops on the hole's leading edge**
+      (`stop: 786`), then a slow 5 s climb. The plate is 130 thick and narrows with the trapezoid, so it
+      reads as a moving wall. Bodies are glued to its face (`ky = 0`) and pinned on the bottom ledges
+- [x] No solid cover in the arena; only breakable file boxes, so the arm never pins a body on a pillar
+- [x] File boxes drop back in during the quiet window (`FILE_PROP.dropEvery`), with a drop-in fall
+
+### File boxes (light debris)
+- [x] Boxes are movable debris: rounded, dashed outlines, no collision with bodies, and no overlap
+      (pairwise separation). A body shoves them, a lash launches them without deleting them (2 hp),
+      a guard bats them, shots and blasts shove them
+- [x] Easy-in/easy-out motion: a target velocity with a 6000 u/s² ramp and low drag, so a shove
+      accelerates and then glides instead of snapping to speed
+
+### Fall grace
+- [x] `fallT` grace (0.6 s) instead of an instant death at the lip, slant or hole edge: the body hangs,
+      stays steerable at 62% speed against a 74 u/s outward pull, and is saved if it gets back on the floor
+
+### Destructible plates + cracks
+- [x] Wedge's wall has structural health (`WEDGE.wallHp` 7). Shots chip 1, spears/brooms/bombs chip 2,
+      lashes chip 1, and blasts chip 2. At zero it breaks with `EV.WALL_BREAK` and a de-rez burst
+- [x] Three-stage crack read on the plate plus a hit shake; file boxes use the same crack helper
+- [x] Wedge's wall blocks every shot type (the lobbed shell is the one airborne exception), so it cannot
+      be shot through, and it still reflects
+- [ ] Destructible arena cover (pillars) is **not** built. A data record for destructible geometry
+      should land before any map assumes it
+
+### Campaign score
+- [x] Data crates authored in `campaign.ts`, spawned on the breach so the drill cannot break them
+- [x] `World.dataTotal` / `dataKept` / `campaignDamage` feed an end-of-level score: kills, data preserved,
+      time against par, damage taken, plus a 1500 clean-sweep bonus. Score, best and clean sweeps persist
+      in the save slot
+- [x] Result overlay held for 1.1 s after a death so the aftermath is visible before the buttons appear
+
+### Verification
+- [x] `tsc --noEmit` clean
+- [x] Headless arm checks: mid-arena body carried into the hole and dies at the rim; side bodies pinned and
+      alive; arm speed 98 u/s; no pillars
+- [x] Headless fall-grace checks: lip death at 0.6 s with no input, saved when steering back; hole death
+      at 0.6 s, saved when steering out
+- [x] Headless wall checks: 7 shots, hp 7 → 0, breaks on the seventh and blocks every one
+- [x] Headless campaign checks: 6 crates spawn on the breach, no pillar overlap, one broken leaves 5/6
 
 ---
 

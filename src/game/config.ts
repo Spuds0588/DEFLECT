@@ -71,6 +71,49 @@ export const CAMERA = {
   layoutSlowScale: 0.35,
 } as const;
 
+/**
+ * Breakable file boxes. Two ordinary shots (or two lashes) delete one, so a box is a
+ * one-beat piece of cover rather than a wall. Sizes live in the arena record.
+ */
+/**
+ * The beat between stepping over the void and the drop taking the body. During it the
+ * player can still steer, at reduced speed, against a slight outward pull: enough to walk
+ * or drift back over the lip if they react, never enough to feel like a free save.
+ */
+export const FALL = {
+  grace: 0.6,
+  control: 0.62,
+  pull: 74,
+} as const;
+
+export const FILE_PROP = {
+  hp: 2,
+  hitFlash: 0.18,
+  /** Seconds to fall in from the ceiling into the recycling bin. */
+  dropT: 0.62,
+  /** Height the box falls from while `dropT` runs. */
+  dropRise: 120,
+  /** Quiet time between boxes dropping into a compacted bin. */
+  dropEvery: 3.6,
+  /** Spare boxes a compactor arena keeps for the drop-in cycle. */
+  spare: 8,
+  /**
+   * Light debris handling. A box is shoved by a body, launched by a lash, batted by a
+   * guard. Low drag and a fast velocity ramp are the weight: it accelerates smoothly and
+   * coasts a long way instead of stopping in a few units.
+   */
+  drag: 2.4,
+  /** How hard the box accelerates toward its target velocity. 6000 is about 0.09 s ramp. */
+  accel: 6000,
+  bumpSpeed: 560,
+  launchSpeed: 980,
+  shotPush: 380,
+  guardPush: 760,
+  maxSpeed: 1400,
+  /** Stop treating tiny drift as motion, so boxes settle instead of creeping forever. */
+  restSpeed: 24,
+} as const;
+
 export const ARENA = {
   left: 48,
   right: 1232,
@@ -280,6 +323,10 @@ export const WEDGE = {
   wallOffset: 58,
   wallHalfLength: 46,
   wallThickness: 12,
+  /** Structural health: 7 caught shots, or 4 bombs, or a mix. It breaks before it expires. */
+  wallHp: 7,
+  /** Shake time after a hit, and the length of each crack step in the damage read. */
+  wallFlash: 0.16,
 } as const;
 
 export const FISHER = {
@@ -594,6 +641,17 @@ export const CAMPAIGN = {
   /** A campaign node keeps a tighter cadence than the endless sandbox. */
   sentryInterval: 14,
   wormInterval: 14,
+  /**
+   * End-of-level score. Data crates on the map are the objective the player is meant to
+   * protect: every one still standing at the clear pays, and losing none is a clean sweep.
+   */
+  scorePerKill: 120,
+  scorePerData: 300,
+  cleanSweepBonus: 1500,
+  /** Par time in seconds; beating it pays `scoreTimeRate` per second and slow runs cost the same. */
+  scoreParTime: 95,
+  scoreTimeRate: 6,
+  scorePerDamage: 80,
 } as const;
 
 export const GAUNTLET = {

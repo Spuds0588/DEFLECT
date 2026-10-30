@@ -1,11 +1,11 @@
-import { BOLT, BUG, CAMERA, CAMERA_ZOOM, CAMPAIGN, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { BOLT, BUG, CAMERA, CAMERA_ZOOM, CAMPAIGN, FILE_PROP, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
-import { drawGlyph, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
+import { drawGlyph, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
 import { P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
-import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type Lure, type Net, type Phase, type Pickup, type Player, type Projectile, type Sentry, type Virus, type Worm } from './types';
+import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type Lure, type Net, type Phase, type Pickup, type Player, type Projectile, type Prop, type Sentry, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
 
 export interface RenderState {
@@ -47,6 +47,13 @@ export interface RenderState {
   campaignBannerDur?: number;
   /** 0 drill, 1 breach/inbound, 2 cleared, 3 failed. */
   campaignBannerKind?: number;
+  /** Breakable file boxes. Local content; guests never receive these. */
+  props?: readonly Prop[];
+  /** Floor compactor: warning timer, the arm's leading edge, and the stop flash. */
+  pusherWarnT?: number;
+  pusherFlashT?: number;
+  pusherY?: number;
+  pusherActive?: boolean;
 }
 
 const FONT_TINY = '700 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -389,6 +396,8 @@ export class Renderer {
 
       this.drawArena(t, state.arena, intro);
       if (introDone) {
+        if (state.props) this.drawProps(state.props);
+        if (state.arena.pushers) this.drawPusher(state);
         if (state.firewalls) this.drawFirewalls(state.firewalls, state.arena, alpha, t);
         this.drawPlayerTrails(state, t);
         this.drawTrails(state, alpha);
@@ -1252,6 +1261,232 @@ export class Renderer {
     this.floorPatternArena = arena.id;
   }
 
+  /** Interior holes: the floor is missing, so the fill is dead black under a lit cut edge. */
+  private drawVoids(arena: ArenaDef, alpha: number): void {
+    const voids = arena.voids;
+    if (!voids) return;
+    const ctx = this.ctx;
+    ctx.save();
+    for (let i = 0; i < voids.length; i++) {
+      const r = voids[i];
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#010309';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.globalAlpha = 0.16 * alpha;
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 8;
+      ctx.strokeRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8);
+      ctx.globalAlpha = 0.6 * alpha;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      // A cut edge, not a shadow: a faint plate lip on the top side of the pit.
+      ctx.globalAlpha = 0.35 * alpha;
+      ctx.fillStyle = arena.accent;
+      ctx.fillRect(r.x + 2, r.y + 2, r.w - 4, 2);
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Breakable file boxes. A dark panel with a mark, one crack layer after the first hit,
+   * a shake while the hit flash runs, and a drop-in fall when the compactor feeds one back.
+   */
+  private drawProps(props: readonly Prop[]): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < props.length; i++) {
+      const b = props[i];
+      if (!b.active) continue;
+      const fall = b.dropT > 0 ? (b.dropT / FILE_PROP.dropT) * (b.dropT / FILE_PROP.dropT) * FILE_PROP.dropRise : 0;
+      const shake = b.hitFlash > 0 ? (b.hitFlash / FILE_PROP.hitFlash) * 2 : 0;
+      const x = b.x + (shake > 0 ? Math.sin(b.hitFlash * 140) * shake : 0);
+      const y = b.y - fall;
+      ctx.save();
+      if (fall > 0) {
+        const shadow = 1 - fall / FILE_PROP.dropRise;
+        ctx.globalAlpha = 0.24 * shadow;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(b.x + 4, b.y + b.h - 3, b.w - 8, 5);
+        ctx.globalAlpha = 1;
+      }
+      // A dashed, rounded outline says "light debris": it can be shoved and will move.
+      ctx.beginPath();
+      ctx.roundRect(x, y, b.w, b.h, 6);
+      ctx.fillStyle = '#1a242e';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.roundRect(x + 3, y + 3, b.w - 6, b.h - 6, 4);
+      ctx.fillStyle = 'rgba(255, 194, 77, 0.13)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.roundRect(x + 0.5, y + 0.5, b.w - 1, b.h - 1, 6);
+      ctx.strokeStyle = b.hitFlash > 0 ? '#fff4d4' : 'rgba(255, 194, 77, 0.8)';
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([5, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255, 231, 178, 0.92)';
+      drawSymbol(ctx, PROP_GLYPHS[b.kind] ?? PROP_GLYPHS[1], x + b.w * 0.5, y + b.h * 0.5, 11);
+      if (b.hp < FILE_PROP.hp) this.drawCracks(x + 1, y + 1, b.w - 2, b.h - 2, 1, 'rgba(4, 7, 11, 0.9)', i * 7 + b.kind);
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Damage cracks, drawn straight onto destructible plates and boxes. Stage 1 is a couple
+   * of hairline splits, 2 adds branches, 3 is a shattered lattice. Deterministic from the
+   * seed, so a box keeps the same crack pattern while it is alive.
+   */
+  private drawCracks(x: number, y: number, w: number, h: number, stage: number, color: string, seed: number): void {
+    if (stage <= 0) return;
+    const ctx = this.ctx;
+    let s = (seed * 1664525 + 1013904223) | 0;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineCap = 'square';
+    const lines = stage === 1 ? 2 : stage === 2 ? 4 : 7;
+    for (let i = 0; i < lines; i++) {
+      s = (s * 1664525 + 1013904223) | 0;
+      const ax = x + (((s >>> 8) & 1023) / 1023) * w;
+      s = (s * 1664525 + 1013904223) | 0;
+      const ay = y + (((s >>> 8) & 1023) / 1023) * h;
+      s = (s * 1664525 + 1013904223) | 0;
+      const bx = ax + (((s >>> 8) & 63) / 63 - 0.5) * (w * 0.8);
+      s = (s * 1664525 + 1013904223) | 0;
+      const by = ay + (((s >>> 8) & 63) / 63 - 0.5) * (h * 0.8);
+      ctx.globalAlpha = stage === 1 ? 0.55 : stage === 2 ? 0.72 : 0.9;
+      ctx.lineWidth = stage === 1 ? 1 : 1.4;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+      if (stage >= 2) {
+        // One short branch off the middle of each split.
+        ctx.beginPath();
+        ctx.moveTo((ax + bx) * 0.5, (ay + by) * 0.5);
+        ctx.lineTo((ax + bx) * 0.5 + (by - ay) * 0.28, (ay + by) * 0.5 - (bx - ax) * 0.28);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * The compactor. A housing band along the top edge, then a thick plate that descends as
+   * a moving wall. The plate narrows with the arena's trapezoid, so it always fills the
+   * bin's cross-section and reads as solid boundry rather than a sweep line.
+   */
+  private drawPusher(state: RenderState): void {
+    const cfg = state.arena.pushers;
+    if (!cfg) return;
+    const ctx = this.ctx;
+    const b = state.arena.bounds;
+    const accent = state.arena.accent;
+    const warn = state.pusherWarnT ?? 0;
+    const flash = state.pusherFlashT ?? 0;
+    const front = state.pusherY ?? b.top;
+    const band = cfg.band;
+    const w = b.right - b.left;
+    const slant = state.arena.slant ?? 0;
+    const k = Math.max(0, Math.min(1, (front - b.top) / (b.bottom - b.top)));
+    const inset = slant * (1 - k);
+    const topInset = slant;
+    ctx.save();
+
+    // Housing along the top edge: the machine the plate comes out of. It is inset to the
+    // trapezoid, so it never floats over the void beside the plate.
+    ctx.fillStyle = 'rgba(12, 17, 23, 0.97)';
+    ctx.fillRect(b.left + topInset, b.top, w - topInset * 2, band);
+    ctx.strokeStyle = accent;
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.left + topInset + 1, b.top + 1, w - topInset * 2 - 2, band - 2);
+    ctx.globalAlpha = 0.1;
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    for (let x = b.left + topInset; x < b.right - topInset; x += 64) {
+      ctx.moveTo(x, b.top + band);
+      ctx.lineTo(x + 32, b.top);
+      ctx.lineTo(x + 50, b.top);
+      ctx.lineTo(x + 18, b.top + band);
+    }
+    ctx.fill();
+
+    const h = front - b.top;
+    if (h > 1) {
+      // Plate body, clipped to the bin's trapezoid at this depth.
+      ctx.beginPath();
+      ctx.moveTo(b.left + topInset, b.top);
+      ctx.lineTo(b.right - topInset, b.top);
+      ctx.lineTo(b.right - inset, front);
+      ctx.lineTo(b.left + inset, front);
+      ctx.closePath();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#0a1016';
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      ctx.fillStyle = 'rgba(255, 194, 77, 0.03)';
+      ctx.fillRect(b.left, b.top, w, h);
+      // Diagonal hatching: machine steel, not empty screen.
+      ctx.strokeStyle = 'rgba(140, 190, 210, 0.07)';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      for (let x = b.left - h; x < b.right + h; x += 34) {
+        ctx.moveTo(x, front);
+        ctx.lineTo(x + h, b.top);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(120, 170, 190, 0.12)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let x = b.left + 48; x < b.right; x += 96) {
+        ctx.moveTo(x, b.top + band);
+        ctx.lineTo(x, front);
+      }
+      ctx.stroke();
+      // A hazard strip rides just behind the leading edge.
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.12;
+      ctx.fillRect(b.left, front - 26, w, 26);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Leading edge: a hard bright lip, plus the plate's own thickness shadow.
+      ctx.globalAlpha = 0.95;
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(b.left + inset, front);
+      ctx.lineTo(b.right - inset, front);
+      ctx.stroke();
+      ctx.globalAlpha = 0.26;
+      ctx.lineWidth = 18;
+      ctx.stroke();
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(b.left + inset, front, b.right - b.left - inset * 2, 5);
+      ctx.globalAlpha = 1;
+    }
+
+    if (warn > 0) {
+      const p = Math.min(1, 1 - warn / Math.max(0.01, cfg.warn));
+      ctx.globalAlpha = 0.22 + 0.62 * Math.abs(Math.sin(warn * 9));
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 3 + 7 * p;
+      ctx.beginPath();
+      ctx.moveTo(b.left, b.top + band);
+      ctx.lineTo(b.right, b.top + band);
+      ctx.stroke();
+    }
+    if (flash > 0) {
+      ctx.globalAlpha = Math.min(1, flash / 0.3) * 0.45;
+      ctx.fillStyle = accent;
+      ctx.fillRect(b.left, front - 7, w, 14);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   private drawArena(t: number, arena: ArenaDef, intro = INTRO_LEN): void {
     const ctx = this.ctx;
     const b = arena.bounds;
@@ -1357,21 +1592,28 @@ export class Renderer {
       }
       ctx.stroke();
     } else {
-      ctx.globalAlpha = 0.1;
-      ctx.lineWidth = 9;
+      // A wall is a wall. Three passes so the boundry never reads like a soft floor edge:
+      // a wide bleed, a thick solid body, then a bright white inner face.
+      ctx.globalAlpha = 0.16 * frameA;
+      ctx.lineWidth = 22;
       ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
-      ctx.globalAlpha = 0.3;
-      ctx.lineWidth = 2.5;
-      ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
-      ctx.globalAlpha = 0.55;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(b.left + 3.5, b.top + 3.5, b.right - b.left - 7, b.bottom - b.top - 7);
+      ctx.globalAlpha = 0.95 * frameA;
+      ctx.lineWidth = 5;
+      ctx.strokeRect(b.left + 2, b.top + 2, b.right - b.left - 4, b.bottom - b.top - 4);
+      ctx.globalAlpha = 0.9 * frameA;
+      ctx.strokeStyle = '#eaffff';
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(b.left + 5.5, b.top + 5.5, b.right - b.left - 11, b.bottom - b.top - 11);
+      ctx.strokeStyle = arena.accent;
+      ctx.globalAlpha = 0.35 * frameA;
+      ctx.lineWidth = 10;
+      ctx.strokeRect(b.left + 10, b.top + 10, b.right - b.left - 20, b.bottom - b.top - 20);
       ctx.globalAlpha = 1;
 
       // Corner brackets.
       const len = 26;
       const pad = 8;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.moveTo(b.left + pad, b.top + pad + len);
       ctx.lineTo(b.left + pad, b.top + pad);
@@ -1407,6 +1649,46 @@ export class Renderer {
     }
     ctx.restore();
 
+    // Floor holes sit under everything: a body over one is already falling.
+    this.drawVoids(arena, frameA);
+
+    // A trapezoid plate: the flanks outside the slant are void, so the floor reads narrow
+    // at the top and full width at the bottom. It is a drop, not a wall.
+    if (arena.slant) {
+      const s = arena.slant;
+      ctx.save();
+      ctx.fillStyle = 'rgba(2, 5, 9, 0.97)';
+      ctx.beginPath();
+      ctx.moveTo(b.left - 260, b.top - 260);
+      ctx.lineTo(b.left + s, b.top);
+      ctx.lineTo(b.left, b.bottom);
+      ctx.lineTo(b.left - 260, b.bottom + 260);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(b.right + 260, b.top - 260);
+      ctx.lineTo(b.right - s, b.top);
+      ctx.lineTo(b.right, b.bottom);
+      ctx.lineTo(b.right + 260, b.bottom + 260);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = arena.accent;
+      ctx.globalAlpha = 0.15 * frameA;
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(b.left + s, b.top);
+      ctx.lineTo(b.left, b.bottom);
+      ctx.moveTo(b.right - s, b.top);
+      ctx.lineTo(b.right, b.bottom);
+      ctx.stroke();
+      ctx.globalAlpha = 0.55 * frameA;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([30, 18]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     // Arena furniture.
     ctx.save();
     ctx.translate(0, -pillarDrop);
@@ -1429,10 +1711,20 @@ export class Renderer {
         ctx.lineTo(hx + 8, r.y + r.h - 8);
       }
       ctx.stroke();
-      ctx.globalAlpha = (0.75 + Math.sin(t * 1.6 + i) * 0.12) * pillarA;
+      // Cover is a blocker, so its rim is one of the brightest lines in the arena. The
+      // soft outer band separates it from the floor; the hard rim says "cannot pass".
+      ctx.globalAlpha = 0.18 * pillarA;
       ctx.strokeStyle = arena.accent;
-      ctx.lineWidth = 2.4;
+      ctx.lineWidth = 12;
+      ctx.strokeRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4);
+      ctx.globalAlpha = (0.92 + Math.sin(t * 1.6 + i) * 0.08) * pillarA;
+      ctx.lineWidth = 3.4;
       ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+      ctx.globalAlpha = 0.55 * pillarA;
+      ctx.strokeStyle = '#eaffff';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(r.x + 4, r.y + 4, r.w - 8, r.h - 8);
+      ctx.strokeStyle = arena.accent;
       ctx.globalAlpha = 0.32 * pillarA;
       ctx.lineWidth = 1;
       ctx.strokeRect(r.x + 7, r.y + 7, Math.max(0, r.w - 14), Math.max(0, r.h - 14));
@@ -1443,9 +1735,9 @@ export class Renderer {
       ctx.lineTo(r.x + 7, r.y + r.h - 7);
       ctx.stroke();
       // Top edge catches the light so cover separates from the animated floor.
-      ctx.globalAlpha = 0.75 * pillarA;
+      ctx.globalAlpha = 0.95 * pillarA;
       ctx.strokeStyle = '#c9f7ff';
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
       ctx.moveTo(r.x + 3, r.y + 2);
       ctx.lineTo(r.x + r.w - 3, r.y + 2);
@@ -2529,6 +2821,9 @@ export class Renderer {
       if (!wall.active) continue;
       const grow = Math.min(1, (wall.maxLife - wall.life) / 0.14);
       const fade = Math.min(1, wall.life / 0.4);
+      const shake = wall.hitFlash > 0 ? Math.sin(wall.hitFlash * 150) * (wall.hitFlash / WEDGE.wallFlash) * 3 : 0;
+      ctx.save();
+      ctx.translate(wall.nx * shake, wall.ny * shake);
       const arm = 16 * grow;
       const ax = wall.x1 + wall.nx * arm;
       const ay = wall.y1 + wall.ny * arm;
@@ -2563,6 +2858,32 @@ export class Renderer {
       ctx.stroke();
       ctx.strokeStyle = PROGRAM_COLORS.wedge;
 
+      // Damage read: the plate darkens and splits where it has been hit. No health bar;
+      // the cracks are the read, the way the hull segments are on a program.
+      const hurt = 1 - wall.hp / Math.max(1, wall.maxHp);
+      const stage = wall.hp < wall.maxHp ? 1 + Math.floor(hurt * 3) : 0;
+      if (stage > 0) {
+        const tx = wall.x2 - wall.x1;
+        const ty = wall.y2 - wall.y1;
+        const len = Math.hypot(tx, ty) || 1;
+        const ux = tx / len;
+        const uy = ty / len;
+        ctx.globalAlpha = Math.min(1, 0.5 + 0.15 * stage) * fade;
+        ctx.strokeStyle = '#3a1206';
+        ctx.lineWidth = stage >= 3 ? 2.4 : 1.6;
+        ctx.beginPath();
+        for (let c = 0; c < stage; c++) {
+          const f = 0.16 + 0.28 * c;
+          const cx = wall.x1 + tx * f;
+          const cy = wall.y1 + ty * f;
+          const jag = 5 + c * 2;
+          ctx.moveTo(cx - ux * 7 + wall.nx * jag, cy - uy * 7 + wall.ny * jag);
+          ctx.lineTo(cx + ux * 10 - wall.nx * jag, cy + uy * 10 - wall.ny * jag);
+        }
+        ctx.stroke();
+        ctx.strokeStyle = PROGRAM_COLORS.wedge;
+      }
+
       // End caps blink while the wall is about to drop.
       if (wall.life < 0.8) {
         ctx.globalAlpha = (0.5 + 0.5 * Math.sin(t * 18)) * (1 - wall.life / 0.8);
@@ -2574,6 +2895,7 @@ export class Renderer {
         ctx.lineTo(bx + wall.ny * 4, by - wall.nx * 4);
         ctx.stroke();
       }
+      ctx.restore();
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -4632,6 +4954,14 @@ export class Renderer {
       ctx.strokeRect(x0 + 5.5, y0 + 5.5, w - 11, h - 11);
     }
     ctx.globalAlpha = 1;
+    // Holes are the darkest thing on the map: a floor opening, not cover.
+    if (arena.voids) {
+      ctx.fillStyle = '#010309';
+      for (let i = 0; i < arena.voids.length; i++) {
+        const r = arena.voids[i];
+        ctx.fillRect(x0 + (r.x - b.left) * sx, y0 + (r.y - b.top) * sy, Math.max(2, r.w * sx), Math.max(2, r.h * sy));
+      }
+    }
     // Cover: brighter than the floor so it still reads at thumbnail size.
     ctx.fillStyle = COLORS.pillarFill;
     for (let i = 0; i < arena.pillars.length; i++) {

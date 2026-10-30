@@ -955,7 +955,16 @@ export class BotBrain {
     const ex = x + dx * reach;
     const ey = y + dy * reach;
     const b = arena.bounds;
-    return ex > b.left + 24 && ex < b.right - 24 && ey > b.top + 24 && ey < b.bottom - 24;
+    if (ex <= b.left + 24 || ex >= b.right - 24 || ey <= b.top + 24 || ey >= b.bottom - 24) return false;
+    const voids = arena.voids;
+    if (voids) {
+      // Landing over a hole is the same mistake as landing past the lip.
+      for (let i = 0; i < voids.length; i++) {
+        const r = voids[i];
+        if (ex > r.x - 8 && ex < r.x + r.w + 8 && ey > r.y - 8 && ey < r.y + r.h + 8) return false;
+      }
+    }
+    return true;
   }
 
   private avoidFurniture(me: Player, x: number, y: number, arena: ArenaDef): void {
@@ -977,6 +986,26 @@ export class BotBrain {
       if (me.x > b.right - lip) sx -= (me.x - (b.right - lip)) / 45;
       if (me.y < b.top + lip) sy += (b.top + lip - me.y) / 45;
       if (me.y > b.bottom - lip) sy -= (me.y - (b.bottom - lip)) / 45;
+    }
+
+    const voids = arena.voids;
+    if (voids) {
+      // Holes are not cover: the floor is missing, so steer around the rim instead of
+      // trying to walk the edge. A compactor slam can still slide a bot in.
+      for (let i = 0; i < voids.length; i++) {
+        const r = voids[i];
+        const cx = r.x + r.w * 0.5;
+        const cy = r.y + r.h * 0.5;
+        const dx = me.x - cx;
+        const dy = me.y - cy;
+        const d = Math.hypot(dx, dy) || 1;
+        // Start braking almost two body-lengths out: a bot at speed needs that much room to
+        // reverse before the rim, and the old 54 was not enough.
+        const reach = Math.max(r.w, r.h) * 0.5 + 96;
+        if (d >= reach) continue;
+        sx += (dx / d) * ((reach - d) / 22);
+        sy += (dy / d) * ((reach - d) / 22);
+      }
     }
 
     const aheadX = me.x + sx * 54;

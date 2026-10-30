@@ -282,7 +282,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.38 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.39 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -717,10 +717,28 @@ function selectArena(index: number): void {
   persistArenaPrefs();
   renderArenaPicker();
   if (mode === 'host' && hostNet) {
-    hostNet.setArena(arenaIndex);
+    const onlineIdx = onlineArenaIndex(arenaIndex);
+    if (onlineIdx !== arenaIndex) toast(`${ARENAS[arenaIndex].name} IS LOCAL ONLY // ARENA KEPT`, 'warn');
+    hostNet.setArena(onlineIdx);
     lobbyState = hostNet.getLobbyState();
     if (screen === 'lobby') renderLobby(lobbyState);
   }
+}
+
+/**
+ * Compactor arenas are local content. The slam is host-side world state and the match
+ * snapshot carries no pusher timer, so a guest would be shoved by nothing. Keep them out
+ * of hosted rooms and let training, VS BOTS and the gauntlet use them.
+ */
+function onlineArenaIndex(index: number): number {
+  const n = ARENAS.length;
+  const start = ((index % n) + n) % n;
+  if (!ARENAS[start].pushers) return start;
+  for (let i = 1; i < n; i++) {
+    const idx = (start + i) % n;
+    if (!ARENAS[idx].pushers) return idx;
+  }
+  return start;
 }
 
 function renderArenaPicker(): void {
@@ -1010,7 +1028,7 @@ function startCampaignLevel(): void {
   names[0] = getCallsign();
   for (let i = 1; i <= drill; i++) names[i] = BOT_NAMES[(i - 1) % BOT_NAMES.length];
   const botPrograms = botProgramList(drill);
-  world = new World('gauntlet', names, 0, arena, false, selectedProgram, drill, botPrograms, true);
+  world = new World('gauntlet', names, 0, arena, false, selectedProgram, drill, botPrograms, true, level.dataCrates);
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
   botBrains = new Array(MAX_PLAYERS).fill(null);
@@ -1271,7 +1289,7 @@ function updateBotSummary(): void {
 
 function cycleLobbyArena(): void {
   if (mode !== 'host' || !hostNet) return;
-  arenaIndex = (arenaIndex + 1) % ARENAS.length;
+  arenaIndex = onlineArenaIndex(arenaIndex + 1);
   persistArenaPrefs();
   renderArenaPicker();
   hostNet.setArena(arenaIndex);
@@ -1533,6 +1551,10 @@ function handleGameEvent(e: GameEvent, remote: boolean): void {
       break;
     case EV.FIREWALL:
       audio.dash();
+      break;
+    case EV.PUSHER:
+      // The compactor: a heavy low hit, not the full explosion cue.
+      audio.explode();
       break;
     case EV.THRALL:
       audio.eliminate();
@@ -1873,7 +1895,7 @@ function startHostMatch(): void {
     names[p.slot] = p.name;
   }
   lobbyState = state;
-  const arena = getArena(hostNet.getArenaIndex());
+  const arena = getArena(onlineArenaIndex(hostNet.getArenaIndex()));
   arenaIndex = arena.id;
   world = new World('match', names, 0, arena);
   hostNet.inputs[0] = localFrame;
@@ -2165,6 +2187,10 @@ function syncCountdownFlash(now: number): void {
   countdownEl.hidden = true;
 }
 
+/** Held after a death before the result overlay opens, so the aftermath is visible. */
+const DEATH_HOLD_MS = 1100;
+let deathHoldUntil = 0;
+
 function syncPhaseUi(state: RenderState): void {
   if (stress) {
     if (overlayKind !== 'leave') hideOverlayInternal();
@@ -2179,14 +2205,27 @@ function syncPhaseUi(state: RenderState): void {
       else if (phase === 'failed') audio.roundEnd();
       lastCampaignPhase = phase;
     }
-    if (world.campaignPhase === 'cleared' && overlayKind === 'none') showCampaignClearOverlay(world);
-    else if (world.campaignPhase === 'failed' && overlayKind === 'none') showCampaignFailOverlay(world);
+    const ending = world.campaignPhase === 'cleared' || world.campaignPhase === 'failed';
+    if (!ending) {
+      deathHoldUntil = 0;
+    } else if (overlayKind === 'none') {
+      // Let the last de-rez and the empty arena sit for a beat before the buttons land.
+      if (deathHoldUntil === 0) deathHoldUntil = performance.now() + DEATH_HOLD_MS;
+      if (performance.now() >= deathHoldUntil) {
+        if (world.campaignPhase === 'cleared') showCampaignClearOverlay(world);
+        else showCampaignFailOverlay(world);
+      }
+    }
     return;
   }
-  if (state.mode === 'gauntlet' && state.gauntletOver && overlayKind === 'none') {
-    showGauntletOverOverlay(state);
+  if (state.mode === 'gauntlet' && state.gauntletOver) {
+    if (overlayKind === 'none') {
+      if (deathHoldUntil === 0) deathHoldUntil = performance.now() + DEATH_HOLD_MS;
+      if (performance.now() >= deathHoldUntil) showGauntletOverOverlay(state);
+    }
     return;
   }
+  deathHoldUntil = 0;
   const phaseChanged =
     state.phase !== lastPhase ||
     state.round !== lastRound ||
@@ -2277,10 +2316,27 @@ function returnToGauntletSetup(): void {
   setTitleStatus('');
 }
 
+function scoreCampaign(w: World): { score: number; clean: boolean } {
+  const clean = w.dataTotal > 0 && w.dataKept === w.dataTotal;
+  const timeDelta = CAMPAIGN.scoreParTime - campaignPlaySeconds;
+  let score =
+    w.gauntletKills * CAMPAIGN.scorePerKill +
+    w.dataKept * CAMPAIGN.scorePerData +
+    timeDelta * CAMPAIGN.scoreTimeRate -
+    w.campaignDamage * CAMPAIGN.scorePerDamage;
+  if (clean) score += CAMPAIGN.cleanSweepBonus;
+  return { score: Math.max(0, Math.round(score)), clean };
+}
+
 function showCampaignClearOverlay(w: World): void {
   if (overlayKind === 'leave' || overlayKind === 'runover') return;
+  const { score, clean } = scoreCampaign(w);
+  let bestLine = '';
   if (!campaignSaved && campaignSlot >= 0) {
     const level = FIRST_CAMPAIGN_LEVEL;
+    const prev = loadStorySlots()[campaignSlot];
+    const bestScore = Math.max(prev?.bestScore ?? 0, score);
+    const cleanSweeps = (prev?.cleanSweeps ?? 0) + (clean ? 1 : 0);
     saveStoryProgress(campaignSlot, {
       program: selectedProgram,
       sector: level.sector,
@@ -2289,15 +2345,22 @@ function showCampaignClearOverlay(w: World): void {
       players: campaignPlayers,
       bots: campaignBots,
       playSeconds: Math.floor(campaignPlaySeconds),
+      bestScore,
+      cleanSweeps,
     });
     campaignSaved = true;
+    bestLine = ` // BEST ${bestScore}`;
+  } else if (campaignSlot >= 0) {
+    bestLine = ` // BEST ${loadStorySlots()[campaignSlot]?.bestScore ?? score}`;
   }
-  const saveLine = campaignSlot >= 0 ? 'SLOT SAVED' : 'NO SAVE SLOT';
+  const dataLine = w.dataTotal > 0 ? `DATA ${w.dataKept}/${w.dataTotal}` : 'NO DATA AT RISK';
   setOverlay(
     'runover',
     'CAMPAIGN // NODE CLEARED',
     'BUILD ROOT SECURED',
-    `${w.gauntletKills} THREATS DELETED // ${formatGauntletTime(campaignPlaySeconds)} // ${saveLine}`,
+    `${w.gauntletKills} KILLS // ${formatGauntletTime(campaignPlaySeconds)} // ${w.campaignDamage} DAMAGE TAKEN // ${dataLine}${
+      clean ? ' // CLEAN SWEEP' : ''
+    } // SCORE ${score}${bestLine}`,
     [
       { label: 'CONTINUE', primary: true, onClick: returnToStory },
       { label: 'REPLAY', onClick: startCampaignLevel },

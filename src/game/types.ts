@@ -112,7 +112,40 @@ export const EV = {
   VIRUS_KILL: 32,
   POWERUP: 33,
   HEAL: 34,
+  /** A floor compactor slammed; everything in the arena took a downward shove. */
+  PUSHER: 35,
+  PROP_HIT: 36,
+  PROP_BREAK: 37,
+  /** A deployed Wedge wall ran out of health and broke. */
+  WALL_BREAK: 38,
 } as const;
+
+/** Breakable file boxes. The renderer maps each to one glyph. */
+export const PROP = {
+  VIDEO: 0,
+  DOC: 1,
+  ZIP: 2,
+  AUDIO: 3,
+} as const;
+
+export interface Prop {
+  active: boolean;
+  kind: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  hp: number;
+  hitFlash: number;
+  /** Remaining drop-in animation. Above zero the box is falling and cannot be hit. */
+  dropT: number;
+  /** Light debris velocity: boxes are pushed, launched and batted around, never walls. */
+  vx: number;
+  vy: number;
+  /** Target velocity. The box eases toward it, so a shove ramps in instead of snapping. */
+  tx: number;
+  ty: number;
+}
 
 export interface Player {
   active: boolean;
@@ -227,6 +260,8 @@ export interface Player {
   netIndex: number;
   /** Seconds the deflect button has been held; feeds the shield wave. */
   chargeT: number;
+  /** Remaining seconds of the fall grace: over the void, about to drop. */
+  fallT: number;
   /** Remaining seconds of the held 180 degree guard. */
   guardT: number;
   /** Short lockout after the guard breaks or is released. */
@@ -561,6 +596,11 @@ export interface Barrier {
   life: number;
   maxLife: number;
   phase: number;
+  /** Structural health. Shots, lashes and blasts chip it; at zero the wall breaks. */
+  hp: number;
+  maxHp: number;
+  /** Damage shake timer, shared with props and any destructible environment. */
+  hitFlash: number;
 }
 
 /** Fisher's deployed web. A line segment that reflects shots and snares hostiles. */

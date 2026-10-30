@@ -54,6 +54,12 @@ export const POWERUP_COLORS = {
   path: '#63e8ff',
 } as const;
 
+/**
+ * One mark per breakable file box, indexed by `PROP` in types.ts. Monochrome marks only:
+ * a colour emoji ignores fillStyle and would drop a bitmap into a vector arena.
+ */
+export const PROP_GLYPHS = ['▶', '▤', '▦', '♫'] as const;
+
 export const THREAT_COLORS = {
   worm: '#ff3b3b',
   virus: '#ff54d8',
