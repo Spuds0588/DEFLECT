@@ -1,11 +1,11 @@
-import { ATOMIZE, BOLT, BUFFER, BUG, CAMERA, CAMERA_ZOOM, CAMPAIGN, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { ATOMIZE, BOLT, BUFFER, BUG, CAMERA, CAMERA_ZOOM, CAMPAIGN, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
 import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourglassMark, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
-import { P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
+import { P_COLOR_DANGER, P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
-import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type Lure, type Net, type Phase, type Pickup, type Player, type Projectile, type Prop, type Sentry, type Virus, type Worm } from './types';
+import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Player, type Projectile, type Prop, type Sentry, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
 import { beamReach } from './collision';
 
@@ -28,6 +28,8 @@ export interface RenderState {
   worms?: readonly Worm[];
   viruses?: readonly Virus[];
   firewalls?: readonly Firewall[];
+  /** Arena laser emitters. Local hazard content; absent on a guest view. */
+  emitters?: readonly LaserEmitter[];
   errors?: readonly CascadingError[];
   sentries?: readonly Sentry[];
   pickups?: readonly Pickup[];
@@ -431,6 +433,7 @@ export class Renderer {
         if (state.props) this.drawProps(state.props);
         if (state.arena.pushers) this.drawPusher(state);
         if (state.firewalls) this.drawFirewalls(state.firewalls, state.arena, alpha, t);
+        if (state.emitters) this.drawEmitters(state, t);
         this.drawOrbitFields(state, t);
         this.drawPlayerTrails(state, t);
         this.drawTrails(state, alpha);
@@ -2874,6 +2877,167 @@ export class Renderer {
   }
 
   /**
+   * Arena laser emitters: a wall housing, a converging gather, then a short red shaft.
+   * The shaft is drawn to `beamDist`, so the picture and the damage stop on the same
+   * surface. A caught beam stops at the guard, where the player's reflect star lands.
+   */
+  private drawEmitters(state: RenderState, t: number): void {
+    const list = state.emitters;
+    if (!list) return;
+    const ctx = this.ctx;
+    ctx.save();
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.rotate(e.angle);
+
+      // The bracket is the emitter's body, not a free-floating orb. Two prongs frame a
+      // red lens so the firing direction is readable even before the gather starts.
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#101820';
+      ctx.fillRect(-18, -14, 20, 28);
+      ctx.strokeStyle = 'rgba(255, 90, 76, 0.55)';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(-18.5, -14.5, 21, 29);
+      ctx.strokeStyle = 'rgba(255, 122, 100, 0.65)';
+      ctx.beginPath();
+      ctx.moveTo(-2, -12);
+      ctx.lineTo(8, -8);
+      ctx.moveTo(-2, 12);
+      ctx.lineTo(8, 8);
+      ctx.stroke();
+      ctx.fillStyle = '#2a0d0c';
+      ctx.beginPath();
+      ctx.arc(0, 0, 7.5, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = e.phase === 2 ? '#fff4ed' : '#ff5a4c';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.fillStyle = e.phase === 2 ? '#ffd9cf' : '#ff3b2e';
+      ctx.beginPath();
+      ctx.arc(0, 0, e.phase === 2 ? 4.6 : 2.6 + e.charge * 1.2, 0, TWO_PI);
+      ctx.fill();
+
+      // Gather. The dots walk inward as `charge` climbs, so the window reads as a
+      // power-up rather than a second warning bar. The ring gives the lens a pulse.
+      if (e.phase === 1) {
+        const charge = Math.min(1, Math.max(0, e.charge));
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#ff4a34';
+        ctx.globalAlpha = 0.14 + charge * 0.5;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 10 + (1 - charge) * 38, 0, TWO_PI);
+        ctx.stroke();
+
+        const dots = Math.max(4, EMITTER.gatherDots);
+        for (let k = 0; k < dots; k++) {
+          const spin = t * (0.7 + (k % 3) * 0.13) + k * 2.399;
+          const radial = (1 - charge) * (44 + (k % 5) * 7) + 3;
+          const px = Math.cos(spin) * radial;
+          const py = Math.sin(spin) * radial;
+          const size = 1.1 + charge * 2.1;
+          ctx.globalAlpha = 0.35 + charge * 0.6;
+          ctx.fillStyle = k % 3 === 0 ? '#ffd2c6' : '#ff3b2e';
+          ctx.beginPath();
+          ctx.arc(px, py, size, 0, TWO_PI);
+          ctx.fill();
+          if (k % 2 === 0) {
+            // A short radial streak makes the dot read as "inbound", not "orbiting".
+            ctx.globalAlpha = 0.18 + charge * 0.3;
+            ctx.strokeStyle = '#ff5a4c';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            ctx.lineTo(px * 1.22, py * 1.22);
+            ctx.stroke();
+          }
+        }
+        ctx.globalAlpha = 0.55 + charge * 0.4;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(0, 0, 1.4 + charge * 2.2, 0, TWO_PI);
+        ctx.fill();
+      }
+
+      if (e.phase === 2 && e.beamDist > 0) {
+        const flicker = 0.82 + 0.18 * Math.sin(t * 58 + i * 2.1);
+        const x0 = 8;
+        const x1 = Math.max(x0 + 6, e.beamDist);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'butt';
+        ctx.strokeStyle = '#ff3b2e';
+        ctx.beginPath();
+        ctx.moveTo(x0, 0);
+        ctx.lineTo(x1, 0);
+        ctx.globalAlpha = 0.06 * flicker;
+        ctx.lineWidth = EMITTER.halfWidth * 2 + 46;
+        ctx.stroke();
+        ctx.globalAlpha = 0.14 * flicker;
+        ctx.lineWidth = EMITTER.halfWidth * 2 + 22;
+        ctx.stroke();
+        ctx.globalAlpha = 0.34 * flicker;
+        ctx.lineWidth = EMITTER.halfWidth * 2 + 8;
+        ctx.stroke();
+        ctx.globalAlpha = 0.7 * flicker;
+        ctx.lineWidth = EMITTER.halfWidth * 2;
+        ctx.stroke();
+        ctx.globalAlpha = 0.42 * flicker;
+        ctx.lineWidth = EMITTER.halfWidth * 1.2;
+        ctx.stroke();
+        ctx.strokeStyle = '#fff1e8';
+        ctx.globalAlpha = 0.55 * flicker;
+        ctx.lineWidth = 5.6;
+        ctx.stroke();
+        ctx.globalAlpha = 0.95 * flicker;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Side rails: they give the shaft an edge against a bright floor, the same read
+        // as the player heavy beam at this narrower width.
+        ctx.strokeStyle = '#ff5a4c';
+        ctx.globalAlpha = 0.45 * flicker;
+        ctx.lineWidth = 1.1;
+        const rail = EMITTER.halfWidth + 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x0, -rail);
+        ctx.lineTo(x1, -rail);
+        ctx.moveTo(x0, rail);
+        ctx.lineTo(x1, rail);
+        ctx.stroke();
+
+        // Muzzle and impact. The impact sits where the damage line ended, so a beam
+        // stopped by a pillar visibly burns against that pillar.
+        ctx.fillStyle = '#ff5a4c';
+        ctx.globalAlpha = 0.5 * flicker;
+        ctx.beginPath();
+        ctx.arc(x0, 0, EMITTER.halfWidth + 6, 0, TWO_PI);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.globalAlpha = 0.9 * flicker;
+        ctx.beginPath();
+        ctx.arc(x0, 0, 3.4, 0, TWO_PI);
+        ctx.fill();
+        ctx.fillStyle = '#ff5a4c';
+        ctx.globalAlpha = 0.75 * flicker;
+        ctx.beginPath();
+        ctx.arc(x1, 0, EMITTER.halfWidth * 0.7, 0, TWO_PI);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.globalAlpha = 0.9 * flicker;
+        ctx.beginPath();
+        ctx.arc(x1, 0, 5.4, 0, TWO_PI);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+  }
+
+  /**
    * Side sparks while a heavy beam is live: little streaks peel off both edges of the
    * shaft and fade, plus a spray at the surface it stopped on. Emitted once per frame,
    * never once per split pane.
@@ -2930,6 +3094,51 @@ export class Renderer {
           p.slot,
           4.5,
         );
+      }
+    }
+
+    // Arena emitter shafts use their own red so the hazard is never mistaken for a
+    // player's program color. Sparks peel off both rails, and the stopped end sprays.
+    const emitters = state.emitters;
+    if (emitters) {
+      for (let i = 0; i < emitters.length; i++) {
+        const e = emitters[i];
+        if (e.phase !== 2 || e.beamDist <= 0) continue;
+        const ax = Math.cos(e.angle);
+        const ay = Math.sin(e.angle);
+        const sideX = -ay;
+        const sideY = ax;
+        for (let k = 0; k < 3; k++) {
+          const along = 14 + Math.random() * Math.max(1, e.beamDist - 24);
+          const edge = EMITTER.halfWidth + 2 + Math.random() * 8;
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          const out = 45 + Math.random() * 120;
+          fx.particles.spawn(
+            0,
+            e.x + ax * along + sideX * edge * dir,
+            e.y + ay * along + sideY * edge * dir,
+            sideX * out * dir + ax * (35 + Math.random() * 60),
+            sideY * out * dir + ay * (35 + Math.random() * 60),
+            0.1 + Math.random() * 0.16,
+            1.1 + Math.random() * 1.7,
+            P_COLOR_DANGER,
+            5,
+          );
+        }
+        if (!e.caught && e.beamDist < EMITTER.range) {
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          fx.particles.spawn(
+            0,
+            e.x + ax * e.beamDist,
+            e.y + ay * e.beamDist,
+            -ax * (80 + Math.random() * 80) + sideX * (50 + Math.random() * 80) * dir,
+            -ay * (80 + Math.random() * 80) + sideY * (50 + Math.random() * 80) * dir,
+            0.14 + Math.random() * 0.18,
+            1.3 + Math.random() * 1.8,
+            P_COLOR_DANGER,
+            4.5,
+          );
+        }
       }
     }
   }
@@ -5856,6 +6065,14 @@ export class Renderer {
       }
       for (let i = 0; i < tr.lifts.length; i++) {
         ctx.strokeRect(x0 + (tr.lifts[i].x - b.left) * sx - 2, y0 + (tr.lifts[i].y - b.top) * sy - 2, 4, 4);
+      }
+    }
+    // Emitters are a fixed hazard, so the minimap marks them as red wall studs.
+    if (state.arena.emitters) {
+      ctx.fillStyle = '#ff5a4c';
+      for (let i = 0; i < state.arena.emitters.length; i++) {
+        const e = state.arena.emitters[i];
+        ctx.fillRect(x0 + (e.x - b.left) * sx - 1.5, y0 + (e.y - b.top) * sy - 1.5, 3, 3);
       }
     }
     if (state.firewalls) {

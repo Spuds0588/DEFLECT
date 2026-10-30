@@ -15,7 +15,7 @@ there is no runtime fetch, which keeps snapshots, bot determinism and the PWA ca
 | `programs.json` | `WEDGE`, `FISHER`, `SWEEP`, `TOXIC`, `KABOOM`, `BUFFER`, `ATOMIZE` kits |
 | `threats.json` | `GAUNTLET` wave pacing, `WORM`, `VIRUS`, `SENTRY`, `CASCADING_ERROR`, `THRALL`, `FIREWALL` |
 | `campaign.json` | `CAMPAIGN` node pacing, drill/breach beat and score weights |
-| `world.json` | `CAMERA`, `FALL`, `FILE_PROP`, `ARENA`, `TRAVERSE`, `POWERUP`, `ROUND`, `TRAINING`, `NET`, `ATTRACT` |
+| `world.json` | `CAMERA`, `FALL`, `FILE_PROP`, `ARENA`, `TRAVERSE`, `EMITTER`, `POWERUP`, `ROUND`, `TRAINING`, `NET`, `ATTRACT` |
 
 ## Units
 
@@ -41,6 +41,8 @@ break while tuning:
 
 - Bomb types 8 and 9 are never deflectable; every deflect/guard branch must exclude them.
 - A guard reflection leaves at `PLAYER.laserReflectAngle` and never returns to the caster.
+- Arena emitters are local gauntlet/training hazards; a hosted match never arms them. Their guard return
+  follows the guard's facing, not `PLAYER.laserReflectAngle` (D27).
 - Health-segment hulls must clear the core mark (see D4); do not shrink a `coreScale` to fit a bigger
   number. Atomize's orbit hull keeps its inner edge at `0.55r`; do not narrow the ovals.
 - Atomize's type 11 electron uses `homing` as its own seek flag. Only type 0 runs the PATHFIND powerup's

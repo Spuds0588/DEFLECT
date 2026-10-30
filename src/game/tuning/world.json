@@ -116,6 +116,19 @@
     "inputHz": 60,
     "lobbyBroadcastMs": 250
   },
+  "EMITTER": {
+    "period": 7,
+    "gather": 2.4,
+    "duration": 0.42,
+    "damage": 1,
+    "halfWidth": 20,
+    "range": 2400,
+    "knockback": 420,
+    "reflectDamage": 2,
+    "reflectRange": 1200,
+    "reflectKnockback": 620,
+    "gatherDots": 12
+  },
   "ATTRACT": {
     "idle": 24,
     "wave": 72,

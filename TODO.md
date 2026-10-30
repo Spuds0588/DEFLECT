@@ -2,7 +2,31 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.53 friendly-fire run rule)
+Last updated: 2026-10-30 (v0.1.54 arena laser emitters)
+
+---
+
+## v0.1.54 — Arena laser emitters: gather, fire, full-guard return (2026-10-30)
+
+- [x] `ArenaDef.emitters` data plus the first fixtures: CROSSROADS (two cross-lane beams on the central
+      blocks), THE RING (top/bottom gates) and MAINFRAME (two mid-map lanes). RECYCLING BIN keeps its
+      compactor as the only floor hazard
+- [x] `EMITTER` tuning in `world.json`: 2.4 s gather, 0.42 s live shaft, 7 s period, staggered offsets;
+      1 direct damage and 420 shove, 2 reflected damage and 620 shove
+- [x] `World.updateEmitters` runs only in training/gauntlet practice. A hosted match leaves every fixture
+      idle, and nothing enters `Snapshot`/`NetView`
+- [x] Direct shaft uses `beamReach` and line of sight, burns a player once per pass and records
+      `SRC.EMITTER`; cover stops the draw and the damage on the same surface
+- [x] A raised guard facing the lens catches the shaft. The return leaves along the guard's facing (target
+      lock aims it at the locked enemy), is one `damageBeamLine` pass and skips the guard
+- [x] Renderer: wall bracket and red lens, converging gather dots with radial streaks, layered red shaft,
+      muzzle/impact flares, red side sparks, and red emitter studs on the arena preview and minimap
+- [x] Placement check: no lane crosses the local start point. THE RING was moved off its side-gate spawn
+      pair to the top/bottom gates; MAINFRAME's lanes sit clear of the y=720 spawn
+- [x] Docs: AGENTS D27 and the D22/D27 cross-reference, README arena section, tuning README, this entry;
+      build stamped 0.1.54
+- [x] `npm run build` clean; headless check covers timing, one-hit-per-pass, guard catch and return damage,
+      match dormancy, every authored lane and every local start point
 
 ---
 

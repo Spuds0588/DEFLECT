@@ -75,6 +75,8 @@ export const SRC = {
   DRONE: 7,
   /** No body: the floor ended. The death camera falls through to the nearest player. */
   VOID: 8,
+  /** Arena laser emitter. No body, so the death camera falls through like a firewall. */
+  EMITTER: 9,
 } as const;
 
 export const EV = {
@@ -615,6 +617,27 @@ export interface Sentry {
   orbitR: number;
   orbitDir: number;
   orbitHitCd: number;
+}
+
+export interface LaserEmitter {
+  x: number;
+  y: number;
+  /** Firing direction. 0 points right, PI/2 points down. */
+  angle: number;
+  /** Phase offset in cycles (0..1), so a period change keeps the pairing staggered. */
+  offset: number;
+  /** 0 idle, 1 gathering, 2 firing. */
+  phase: number;
+  /** 0..1 gather progress; 1 while the beam is live. */
+  charge: number;
+  /** Distance from the lens to the first solid surface. */
+  beamDist: number;
+  /** A guard caught this beam; the shaft stops at the shield. */
+  caught: boolean;
+  /** A guard already reflected this pass, so the shaft never hits twice. */
+  spent: boolean;
+  /** One bit per slot already burned by this pass. */
+  hitPlayers: number;
 }
 
 export interface Firewall {

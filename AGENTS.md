@@ -768,6 +768,9 @@ The guard draws the deflected shaft for `PLAYER.laserReflectFlash` (`beamReflect
 the `EV.DEFLECT` event, so an online guest gets the flare and sound but not the drawn shaft. Do not turn
 the beam into a projectile to reuse deflect code; its occluders are geometry, not bodies.
 
+Arena emitters reuse the same guard catch and visual fields, but their return leaves along the guard's
+facing instead of this 37° glance. See D27.
+
 ### D23 — Title attract demo (built 2026-10-30)
 When the hub sits idle for `ATTRACT.idle` (24 s) the title hands the screen to a **bot-run gauntlet**
 attract demo: a random program, a random arena, and a run seeded `ATTRACT.wave` (72) waves in so every
@@ -889,6 +892,45 @@ path never touches the core mark; `coreScale` is `0.82` so the lashes keep clear
 All numbers live in `tuning/programs.json` under `GHOST`. The kit is local-only like every other program;
 it adds no `Snapshot` fields and online still runs Probe.
 
+### D27 — Arena laser emitters are local hazards with a full-shield return (built 2026-10-30)
+
+`ArenaDef.emitters` is the data for wall-mounted laser fixtures: `{ x, y, angle, offset? }`, where `angle`
+is the firing direction and `offset` is a phase in cycles (0..1) for the shared clock. `World.emitters` is
+built once from that list. The first fixtures are on CROSSROADS, THE RING and MAINFRAME; RECYCLING BIN has
+none because the compactor already owns that floor. All numbers live in `EMITTER` in `tuning/world.json`.
+
+- **Cycle**: gather for `EMITTER.gather` (2.4 s), fire for `duration` (0.42 s), rest for the remainder
+  of `period` (7 s). A pair with offsets 0 and 0.5 alternates instead of firing together, and the phase
+  stays staggered when `period` is tuned. The short live window is deliberate: the beam is a dodge beat,
+  not a sustained wall the player must leave the arena to avoid.
+- **Local only**: `updateEmitters` runs in training and gauntlet practice and returns in `match`, so a
+  hosted room never arms an emitter even when the map carries one. No emitter state enters `Snapshot` or
+  `NetView`; do not add it without a protocol decision.
+- **Direct pass**: the shaft starts at the lens, uses `beamReach` so pillars, deployed walls, the
+  compactor plate and a walled bound stop both the draw and the damage, and lights every player in the
+  corridor for `EMITTER.damage` (1) with `EMITTER.knockback`. It burns a body once per pass, respects
+  line of sight, and skips iframes, pad/lift travel and cloak. A death records `SRC.EMITTER`, which has no
+  body, so the death camera falls through like a firewall. The direct shaft is a player hazard; it does
+  not damage threat families.
+- **Guard return**: a raised guard anywhere in the corridor, facing the lens (front half-plane, same rule
+  as a projectile catch), catches the shaft. The direct line stops at the shield and the return leaves
+  along the guard's `facing`, **not** the heavy beam's 0.65 rad glance. That is what lets target lock send
+  the beam at a locked enemy. The return is one `damageBeamLine` pass at `EMITTER.reflectDamage` (2) and
+  `EMITTER.reflectKnockback`, range `EMITTER.reflectRange` (1200), and skips the guard, so a catch can
+  never hit its owner. It can hit threats, the training drone and other players. A second guard is not a
+  reflection chain; this is one catch and one return.
+- **Drawing**: a dark wall bracket with two prongs and a red lens; during the gather, red dots and short
+  radial streaks fall inward, with a shrinking ring. The live shaft is stacked red layers with a hot white
+  core, side rails, a muzzle flare and an impact flare, all clipped to `beamDist`. Red side sparks come
+  from `Renderer.emitLaserSparks`, not from `World.step`. The arena card preview and the minimap mark
+  every emitter, so a player can see the lane before the first shot. Never draw the hazard in a player
+  program color.
+- **Placement**: mount on a solid face and fire into open floor. Do not put a lane over the local start
+  point or a required route. THE RING fires through its top and bottom gates because its side gates hold
+  the spawn pair; MAINFRAME offsets its two lanes clear of the y=720 spawn line. Check the spawn ring
+  whenever an emitter is added, and do not add emitters to an arena whose only cover makes the lane
+  unavoidable.
+
 ---
 
 ## 3. Architecture
@@ -903,7 +945,7 @@ src/game/config.ts    typed facade over tuning JSON + engine limits and palette;
 src/game/programs.ts  roster: program ids, names, hues, core glyphs, signature skills
 src/game/campaign.ts  first playable campaign node: level identity, arena blockout, sector link
 src/game/road.ts      campaign route plate for the between-level transition (parked, not mounted)
-src/game/arenas.ts    seven arena layouts (MAINFRAME multi-district, THE LEDGE open-edged), spawns, previews
+src/game/arenas.ts    eight arena layouts (MAINFRAME multi-district, THE LEDGE open-edged), spawns, previews
 src/game/nav.ts       per-arena 20u navigation grid + reusable A* workspace for bots
 src/game/bot.ts       local bot brains: tiers, styles, same InputFrame as a human
 src/game/powerups.ts  local pickup ids, labels, colors, durations and weighted roll

@@ -76,6 +76,7 @@ export const CAMERA = worldJson.CAMERA;
 export const FALL = worldJson.FALL;
 export const FILE_PROP = worldJson.FILE_PROP;
 export const ARENA = worldJson.ARENA;
+export const EMITTER = worldJson.EMITTER;
 export const TRAVERSE = worldJson.TRAVERSE;
 export const POWERUP = worldJson.POWERUP;
 export const ROUND = worldJson.ROUND;

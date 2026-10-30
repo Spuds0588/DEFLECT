@@ -173,6 +173,22 @@ instant: for 0.6 s the body hangs over the drop with reduced steering, so a quic
 you. File boxes are light debris rather than cover, and Wedge's deployed wall is solid to shots with its own
 health: chip it and it cracks, then breaks.
 
+### Laser emitters
+
+`CROSSROADS`, `THE RING` and `MAINFRAME` mount red laser fixtures in local training, gauntlet and
+campaign runs. Each one gathers for 2.4 s, with red dots falling inward toward the lens and a shrinking
+ring, then fires a short vertical or horizontal beam. The shaft stops on pillars, deployed walls, the
+compactor plate and a walled arena's bounds; cover is real. A player caught in it loses one segment and
+is shoved along the beam.
+
+Face the lens with the guard raised (`B`) to catch the shaft. The return leaves along your facing, so a
+held target lock sends it straight at the locked enemy; without a lock it goes back down the lane. The
+reflected beam hits harder than the direct one and can cut threats, the training drone or another
+player. It is the intended way to turn an arena emitter into a boss-fight weapon.
+
+A hosted match never arms the emitters: they are local content, like the compactor and file boxes, and
+nothing about them enters a snapshot.
+
 ## Training and bot practice
 
 `SINGLE PLAYER → TRAINING → program` walks through the arena grid (navigate all four directions), bot count

@@ -7,6 +7,7 @@ import {
   CAMERA_ZOOM,
   CAMPAIGN,
   CASCADING_ERROR,
+  EMITTER,
   FISHER,
   GHOST,
   MINE,
@@ -68,6 +69,7 @@ import {
   type GameEvent,
   type GameMode,
   type InputFrame,
+  type LaserEmitter,
   type Lure,
   type Net,
   type Phase,
@@ -113,6 +115,8 @@ export class World {
   readonly worms: Worm[];
   readonly viruses: Virus[];
   readonly firewalls: Firewall[];
+  /** Arena laser emitters. Local hazard content; hosted matches never arm them. */
+  readonly emitters: LaserEmitter[];
   readonly errors: CascadingError[];
   readonly sentries: Sentry[];
   readonly pickups: Pickup[];
@@ -180,6 +184,8 @@ export class World {
   private wormSpawnT: number = GAUNTLET.wormSpawnDelay;
   private virusSpawnT: number = GAUNTLET.virusSpawnDelay;
   private firewallSpawnT: number = GAUNTLET.firewallSpawnDelay;
+  /** Shared clock for arena emitters. `offset` per emitter staggers the beams. */
+  private emitterT = 0;
   private sentrySpawnT: number = SENTRY.spawnDelay;
   private sentryPack = 0;
   /** Sentry packs land one silhouette at a time instead of all at once. */
@@ -343,6 +349,27 @@ export class World {
         });
       }
     }
+    // Matches never build the fixtures at all. A host and guest would otherwise draw
+    // different arenas when a map carries local hazard hardware.
+    this.emitters = [];
+    const emitterDefs = mode === 'match' ? null : arena.emitters;
+    if (emitterDefs) {
+      for (let i = 0; i < emitterDefs.length; i++) {
+        const d = emitterDefs[i];
+        this.emitters.push({
+          x: d.x,
+          y: d.y,
+          angle: d.angle,
+          offset: d.offset ?? 0,
+          phase: 0,
+          charge: 0,
+          beamDist: 0,
+          caught: false,
+          spent: false,
+          hitPlayers: 0,
+        });
+      }
+    }
     this.events = new Array(EVENT_CAPACITY);
     for (let i = 0; i < EVENT_CAPACITY; i++) this.events[i] = { kind: 0, slot: 0, x: 0, y: 0, power: 0, dirX: 0, dirY: 0 };
 
@@ -418,6 +445,16 @@ export class World {
     this.wormSpawnT = GAUNTLET.wormSpawnDelay;
     this.virusSpawnT = GAUNTLET.virusSpawnDelay;
     this.firewallSpawnT = GAUNTLET.firewallSpawnDelay;
+    this.emitterT = 0;
+    for (let i = 0; i < this.emitters.length; i++) {
+      const e = this.emitters[i];
+      e.phase = 0;
+      e.charge = 0;
+      e.beamDist = 0;
+      e.caught = false;
+      e.spent = false;
+      e.hitPlayers = 0;
+    }
     this.sentrySpawnT = SENTRY.spawnDelay;
     this.sentryPack = 0;
     this.sentryQueueCount = 0;
@@ -806,6 +843,7 @@ export class World {
     const canAct = this.phase === 'live' || this.phase === 'practice';
     if (this.mode === 'gauntlet') this.driveThrall(dt);
     if (this.arena.pushers && canAct) this.tickPusher(dt);
+    if (this.emitters.length > 0 && canAct) this.updateEmitters(dt);
 
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
@@ -1924,17 +1962,19 @@ export class World {
     reach: number,
     skipA: number,
     skipB: number,
+    damage: number = PLAYER.laserDamage,
+    force: number = PLAYER.laserKnockback,
   ): void {
     for (let i = 0; i < this.players.length; i++) {
       if (i === skipA || i === skipB) continue;
       const target = this.players[i];
       if (!target.active || !target.alive || target.iframes > 0 || phased(target)) continue;
       if (!this.beamLineHits(ox, oy, dx, dy, reach, target.x, target.y, PLAYER.radius)) continue;
-      this.damagePlayer(target, PLAYER.laserDamage, ownerSlot, dx, dy, PLAYER.laserKnockback);
+      this.damagePlayer(target, damage, ownerSlot, dx, dy, force);
     }
 
     if (this.mode === 'training' && this.drone.active && this.beamLineHits(ox, oy, dx, dy, reach, this.drone.x, this.drone.y, this.drone.radius)) {
-      this.damageDrone(PLAYER.laserDamage, ownerSlot);
+      this.damageDrone(damage, ownerSlot);
     }
 
     if (this.mode !== 'gauntlet') return;
@@ -1953,22 +1993,22 @@ export class World {
         }
       }
       if (!hit) continue;
-      this.damageWorm(w, PLAYER.laserDamage, ownerSlot, dx, dy);
+      this.damageWorm(w, damage, ownerSlot, dx, dy);
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
       if (!v.active || !this.beamLineHits(ox, oy, dx, dy, reach, v.x, v.y, v.radius)) continue;
-      this.damageVirus(v, PLAYER.laserDamage, ownerSlot, dx, dy, PLAYER.laserKnockback * 0.4);
+      this.damageVirus(v, damage, ownerSlot, dx, dy, force * 0.4);
     }
     for (let i = 0; i < this.sentries.length; i++) {
       const s = this.sentries[i];
       if (!s.active || !this.beamLineHits(ox, oy, dx, dy, reach, s.x, s.y, s.radius)) continue;
-      this.damageSentry(s, PLAYER.laserDamage, ownerSlot, dx, dy, PLAYER.laserKnockback);
+      this.damageSentry(s, damage, ownerSlot, dx, dy, force);
     }
     for (let i = 0; i < this.errors.length; i++) {
       const e = this.errors[i];
       if (!e.active || !this.beamLineHits(ox, oy, dx, dy, reach, e.x, e.y, CASCADING_ERROR.blockSize * 0.5)) continue;
-      this.damageError(e, PLAYER.laserDamage, ownerSlot, dx, dy);
+      this.damageError(e, damage, ownerSlot, dx, dy);
     }
   }
 
@@ -1982,6 +2022,162 @@ export class World {
     // resolved by the reflection.
     if (reach < solidReach) return;
     this.damageBeamLine(p.slot, p.x, p.y, dirX, dirY, reach, p.slot, -1);
+  }
+
+  /**
+   * Arena emitters run on one shared clock. Each one gathers, flashes its beam for a
+   * fraction of a second, then rests. `offset` makes a pair alternate instead of firing
+   * together, so a boss lane is a rhythm rather than a wall of light. Hosted matches
+   * never arm them: the snapshot carries no emitter state.
+   */
+  private updateEmitters(dt: number): void {
+    if (this.mode === 'match') return;
+    this.emitterT += dt;
+    const gather = EMITTER.gather;
+    const live = gather + EMITTER.duration;
+    for (let i = 0; i < this.emitters.length; i++) {
+      const e = this.emitters[i];
+      let cycle = (this.emitterT + e.offset * EMITTER.period) % EMITTER.period;
+      if (cycle < 0) cycle += EMITTER.period;
+      if (cycle < gather) {
+        // The gather is a visible promise: the dots converge for the whole window so
+        // both the lens and the firing direction are readable before the flash.
+        e.phase = 1;
+        e.charge = cycle / gather;
+      } else if (cycle < live) {
+        if (e.phase !== 2) this.fireEmitter(e);
+        // A deployed wall or a moving compactor can enter the lane during the flash.
+        // Keep the drawn shaft and the damage line on the current surface.
+        else if (!e.caught) e.beamDist = this.emitterReach(e);
+        e.phase = 2;
+        e.charge = 1;
+        if (!e.spent) this.resolveEmitterBeam(e);
+      } else {
+        e.phase = 0;
+        e.charge = 0;
+        e.caught = false;
+        e.spent = false;
+        e.beamDist = 0;
+        e.hitPlayers = 0;
+      }
+    }
+  }
+
+  /** Surface distance from one emitter lens, shared by the fire and live-refresh paths. */
+  private emitterReach(e: LaserEmitter): number {
+    return beamReach(
+      this.arena,
+      this.barriers,
+      this.pusherActive,
+      this.pusherY,
+      e.x,
+      e.y,
+      Math.cos(e.angle),
+      Math.sin(e.angle),
+      EMITTER.range,
+    );
+  }
+
+  /** Snapshot the surface distance on the frame the beam goes live. */
+  private fireEmitter(e: LaserEmitter): void {
+    e.phase = 2;
+    e.charge = 1;
+    e.caught = false;
+    e.spent = false;
+    e.hitPlayers = 0;
+    e.beamDist = this.emitterReach(e);
+  }
+
+  /**
+   * One live pass. A raised guard in the corridor catches the shaft and returns it along
+   * its own facing, so target lock can send the reflected beam at an enemy. The guard is
+   * skipped by its own return, exactly like a player-heavy reflection.
+   */
+  private resolveEmitterBeam(e: LaserEmitter): void {
+    const ax = Math.cos(e.angle);
+    const ay = Math.sin(e.angle);
+    let guard: Player | null = null;
+    let guardDist = Infinity;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.guardT <= 0 || p.iframes > 0 || p.travelT > 0 || phased(p)) continue;
+      const gx = p.x - e.x;
+      const gy = p.y - e.y;
+      const forward = gx * ax + gy * ay;
+      if (forward <= 0 || forward >= e.beamDist) continue;
+      if (Math.abs(gy * ax - gx * ay) > EMITTER.halfWidth + PLAYER.radius) continue;
+      // The shield covers the front half-plane, so the guard has to face the lens.
+      if (-(ax * Math.cos(p.facing) + ay * Math.sin(p.facing)) <= 0.05) continue;
+      if (this.lineBlocked(e.x, e.y, p.x, p.y)) continue;
+      if (forward < guardDist) {
+        guard = p;
+        guardDist = forward;
+      }
+    }
+
+    if (guard) {
+      // Bodies between the lens and the shield still eat the direct pass. The guard is
+      // skipped: the catch is the shield, not a hit that happens to land on its frame.
+      this.damageEmitterLine(e, ax, ay, guardDist, guard.slot);
+      e.caught = true;
+      e.spent = true;
+      e.beamDist = guardDist;
+
+      // Lock holds `facing` on the enemy, so a locked guard returns the shaft straight at
+      // it. Without a lock this is the shield's own facing: back down the beam.
+      const out = guard.facing;
+      const rx = Math.cos(out);
+      const ry = Math.sin(out);
+      const reflectReach = beamReach(
+        this.arena,
+        this.barriers,
+        this.pusherActive,
+        this.pusherY,
+        guard.x,
+        guard.y,
+        rx,
+        ry,
+        EMITTER.reflectRange,
+      );
+      guard.beamReflectT = PLAYER.laserReflectFlash;
+      guard.beamReflectFacing = out;
+      guard.beamReflectDist = reflectReach;
+      this.emit(EV.DEFLECT, guard.slot, guard.x, guard.y, 2, rx, ry);
+      this.damageBeamLine(
+        guard.slot,
+        guard.x,
+        guard.y,
+        rx,
+        ry,
+        reflectReach,
+        guard.slot,
+        -1,
+        EMITTER.reflectDamage,
+        EMITTER.reflectKnockback,
+      );
+      return;
+    }
+
+    this.damageEmitterLine(e, ax, ay, e.beamDist);
+  }
+
+  /** Every player in the emitter corridor, once per pass. Cover cuts the line. */
+  private damageEmitterLine(e: LaserEmitter, ax: number, ay: number, reach: number, skipSlot = -1): void {
+    for (let i = 0; i < this.players.length; i++) {
+      if (i === skipSlot) continue;
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.iframes > 0 || p.travelT > 0 || phased(p)) continue;
+      const bit = 1 << p.slot;
+      if ((e.hitPlayers & bit) !== 0) continue;
+      const px = p.x - e.x;
+      const py = p.y - e.y;
+      const forward = px * ax + py * ay;
+      if (forward < 0 || forward > reach) continue;
+      if (Math.abs(py * ax - px * ay) > EMITTER.halfWidth + PLAYER.radius) continue;
+      if (this.lineBlocked(e.x, e.y, p.x, p.y)) continue;
+      e.hitPlayers |= bit;
+      this.damagePlayer(p, EMITTER.damage, -1, ax, ay, EMITTER.knockback, SRC.EMITTER);
+    }
   }
 
   private updateLock(p: Player, input: InputFrame | null, canAct: boolean, dt: number): void {

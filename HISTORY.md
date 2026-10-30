@@ -2619,3 +2619,39 @@ value.
 
 **Next:** playtest whether off makes the wave ramp too hard on wide arenas; if so, lower early sentry
 cadence or raise the drop rate rather than reverting the rule.
+
+## 2026-10-30 — Arena laser emitters (v0.1.54)
+
+**Goal:** turn the improved heavy-laser presentation into an arena hazard: a fixture that gathers in
+plain sight, fires on an interval, stops on cover, and can be caught by a raised guard and sent at a
+locked enemy.
+
+**Changes:**
+- `ArenaDef.emitters` (`ArenaEmitterDef`: position, firing angle, optional stagger). CROSSROADS gets two
+  cross-lane fixtures on the central blocks, THE RING gets top/bottom gate beams, and MAINFRAME gets two
+  mid-map lanes. RECYCLING BIN keeps the compactor as its only hazard.
+- `EMITTER` in `tuning/world.json`: 2.4 s gather, 0.42 s live shaft, 7 s period; 1 direct damage and 420
+  shove; 2 reflected damage, 620 shove and 1200 range; 12 gather dots.
+- `World.emitters` and `updateEmitters` run in training/gauntlet practice only. A hosted match leaves
+  every fixture idle. No `Snapshot`/`NetView` fields.
+- The direct shaft uses `beamReach` and a line-of-sight test, burns each player once per pass, and records
+  `SRC.EMITTER`. The reach refreshes during the live window so a deployed wall or moving compactor cannot
+  be drawn through. A guard facing the lens catches the shaft and returns it along its own `facing`; lock
+  therefore aims the return at the locked enemy. The return is one `damageBeamLine` pass at 2 damage and
+  skips the guard, so it cannot hit its own shield.
+- Renderer: wall bracket and red lens, converging dots with radial streaks, a shrinking gather ring,
+  layered red shaft with a hot core and rails, muzzle and impact flares, red side sparks, and red emitter
+  marks on the arena preview and minimap.
+- Placement: THE RING's first pass fired through the side gates, which are the spawn pair, and the
+  MAINFRAME lanes sat on the y=720 spawn line. Both were moved. The headless check now fails if a local
+  start point is inside an emitter corridor.
+
+**Verification:** `npm run build` clean. A temporary headless check covered the gather timing, a single
+burn per pass, the guard catch with no self-damage, the reflected two-damage hit on a target at the
+aimed angle, match dormancy, every authored lane clearing its mount, and every local start point outside
+the lanes. In the browser, `?gauntlet=1&arena=0` and `arena=2` reached a live beam and showed no renderer
+exceptions after the first hot-reload stale-class error was cleared by a full reload.
+
+**Next:** playtest the 2.4 s gather and 7 s period in a campaign run. If the lanes read as unavoidable
+on a wide camera, widen the vertical spacing between a pair before shortening the gather; the telegraph
+is the only fair warning.

@@ -64,6 +64,20 @@ export interface ArenaPusherDef {
 }
 
 /**
+ * A wall-mounted laser emitter. It gathers for a beat, then fires a straight beam that
+ * stops on cover and can be caught by a raised guard. Local content: hosted rooms leave
+ * them idle, because the snapshot carries no emitter state.
+ */
+export interface ArenaEmitterDef {
+  x: number;
+  y: number;
+  /** 0 points right, PI/2 points down. The beam leaves the lens along this angle. */
+  angle: number;
+  /** Phase offset in cycles (0..1). Two emitters at 0 and 0.5 alternate. */
+  offset?: number;
+}
+
+/**
  * A breakable file box. Bodies step over it; shots and lashes delete it in one or two
  * hits. Kind is a `PROP` id, which picks the mark on the box.
  */
@@ -113,6 +127,8 @@ export interface ArenaDef {
   slant?: number;
   /** Timed compactor plate. Absent means the floor is quiet. */
   pushers?: ArenaPusherDef;
+  /** Wall-mounted laser emitters. Local content like powerups; no snapshot fields. */
+  emitters?: ArenaEmitterDef[];
   /** Breakable file boxes. Local content like powerups; no snapshot fields. */
   props?: ArenaPropDef[];
   /** Multi-deck floor content. Absent means a flat arena. */
@@ -148,6 +164,12 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 1155, y: 483, w: 208, h: 128 },
     ],
     spawns: perimeterSpawns,
+    // Mounted on the central blocks, firing out along the two cross lanes. The north
+    // block's west face and the south block's east face put each beam in open floor.
+    emitters: [
+      { x: 923, y: 315, angle: Math.PI, offset: 0 },
+      { x: 1067, y: 779, angle: 0, offset: 0.5 },
+    ],
   },
   {
     id: 1,
@@ -208,6 +230,13 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 291, y: 835 },
       { x: 243, y: 547 },
       { x: 291, y: 259 },
+    ],
+    // Beams down the ring's top and bottom gates. The side gates hold the spawn pair,
+    // so firing through them would sweep a player standing on their own spawn; the
+    // vertical lane keeps the middle hot without camping either start point.
+    emitters: [
+      { x: 995, y: 56, angle: Math.PI / 2, offset: 0 },
+      { x: 995, y: 1038, angle: -Math.PI / 2, offset: 0.5 },
     ],
   },
   {
@@ -288,6 +317,12 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 230, y: 1240 },
       { x: 120, y: 720 },
       { x: 230, y: 260 },
+    ],
+    // One emitter on each side of the central bus, firing down the long mid-map lanes.
+    // Boss rooms get a readable crossfire instead of a beam through a spawn point.
+    emitters: [
+      { x: 1172, y: 664, angle: Math.PI, offset: 0 },
+      { x: 1388, y: 776, angle: 0, offset: 0.5 },
     ],
   },
   {
@@ -549,6 +584,25 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     const h = r.h * sy;
     ctx.fillRect(x, y, w, h);
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  }
+
+  // Emitters are the one arena fixture a player must spot before the fight starts.
+  if (arena.emitters) {
+    ctx.fillStyle = '#ff5a4c';
+    ctx.strokeStyle = '#ff5a4c';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < arena.emitters.length; i++) {
+      const e = arena.emitters[i];
+      const ex = mapX(e.x);
+      const ey = mapY(e.y);
+      ctx.beginPath();
+      ctx.arc(ex, ey, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex + Math.cos(e.angle) * 7, ey + Math.sin(e.angle) * 7);
+      ctx.stroke();
+    }
   }
 
   const cx = mapX((bounds.left + bounds.right) * 0.5);
