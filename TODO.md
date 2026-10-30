@@ -2,7 +2,39 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.34 campaign node)
+Last updated: 2026-10-30 (v0.1.35 drill squad + camera framing)
+
+---
+
+## v0.1.35 — Drill squad in reach, framed camera (2026-10-30)
+
+### Campaign
+- [x] The drill squad forms an arc `CAMPAIGN.drillRing` (250) in front of the player, spread by
+      `drillSpread` (0.72 rad), instead of taking the arena spawn ring. Knockdowns respawn on that arc;
+      the player keeps the gauntlet spawn so a drill death lands back in the spar
+- [x] Placement tries outward rings, then tighter ones, then the nearest clear arena spawn, so a small
+      island or a corner spawn never drops a body in cover or on top of the player
+
+### Camera
+- [x] Follow camera leans toward nearby live bodies: other players, the training drone, worms, viruses,
+      sentries and cascading-error blocks. Distance-weighted mean offset inside `CAMERA.focusRange`, capped
+      at `CAMERA.maxBias`. Opposing bodies cancel out; a body across the arena is ignored
+- [x] The local anchor is clamped to the middle band of the view (`CAMERA.edgeMargin`) so the pull cannot
+      walk the player off-screen. Arena bounds still win at a wall. Follow rate slowed from 9 to 6.2
+- [x] All numbers in a `CAMERA` block in `config.ts`; no dynamic zoom (screen-wide kit numbers assume
+      `CAMERA_ZOOM`)
+
+### Verification
+- [x] Headless: 1–3 drill bots land 250 units from the player and clear of cover on all six arenas;
+      timeline drill 18.0 s → breach 21.4 s → 10 kills clears; an idle player fails at 36 s
+- [x] Browser: drill with both bots in the fight, SPARRING DRILL and BREACH WAVE banners, camera measured
+      leaning toward a staged sentry 350 units out (player at 0.39 of the view, sentry at 0.90)
+- [x] `npx tsc --noEmit` and `npm run build` clean; `npm run bench` unchanged
+
+### Next
+- [ ] Playtest the pull in 1v1, 1v3 and gauntlet; tune `CAMERA.focusRange` and `CAMERA.maxBias`
+- [ ] Revisit dynamic zoom only if a match regularly spreads beyond one screen; it would also need the
+      Sweep heavy and sentry pack window moved off the fixed `CAMERA_ZOOM`
 
 ---
 

@@ -511,7 +511,10 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
 
 - **Drill**: 18 s of sparring against the run's bot squad, using the same `BotBrain` inputs as training and
   VS BOTS. A `NO BOTS` run still gets one instructor so the drill has a partner. Death on either side
-  respawns on the training timer. No threats exist yet.
+  respawns on the training timer. The squad forms an arc `CAMPAIGN.drillRing` in front of the player and
+  respawns on that arc, so the drill is a spar in arm's reach instead of a cross-map jog; the ring steps
+  outward, then inward, and falls back to the nearest clear arena spawn on a small island. The player
+  keeps the gauntlet spawn so a drill knockdown respawns inside the spar. No threats exist yet.
 - **Breach**: a 3.4 s `SYSTEM BREACH` warning. The squad de-rezzes, live projectiles clear, and the local
   player is healed to full for the assault. The squad is gone for the rest of the node.
 - **Assault**: the opening sentry pack lands on the breach beat, then worms arrive, then a new pack every
@@ -633,8 +636,15 @@ public/               manifest, generated icons, service worker
 
 ### Renderer
 
-- Single canvas, DPR-aware, letterboxed to 16:9, integer-ish scale. `MAINFRAME` is larger than one
-  viewport and uses a follow camera with a small dead zone.
+- Single canvas, DPR-aware, letterboxed to 16:9, integer-ish scale. Every arena is wider than the view,
+  so the camera pans and follows the local avatar.
+- Camera framing: the local avatar is the anchor. Other live players, the training drone, worms, viruses,
+  sentries and cascading-error blocks inside `CAMERA.focusRange` pull the frame toward the group by a
+  distance-weighted mean offset, capped at `CAMERA.maxBias`. A body across the arena does not count, and
+  a brawl on every side cancels out. The anchor is then clamped to the middle band of the view
+  (`CAMERA.edgeMargin`), unless the arena bound already pins the camera. All numbers live in `CAMERA` in
+  `config.ts`; do not make the view follow the group centroid without the anchor clamp, and do not add a
+  dynamic zoom (screen-wide kit numbers in `SWEEP` assume the fixed `CAMERA_ZOOM`).
 - Dark background, grid, arena frame, corner brackets, and the active arena's pillars.
 - Each arena supplies an accent and a floor signature (cross, square, rings, chevrons). The title
   picker draws the same geometry into small preview canvases; no separate art path.

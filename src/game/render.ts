@@ -1,4 +1,4 @@
-import { BOLT, BUG, CAMERA_ZOOM, CAMPAIGN, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { BOLT, BUG, CAMERA, CAMERA_ZOOM, CAMPAIGN, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
 import { drawGlyph, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
@@ -169,6 +169,10 @@ export class Renderer {
   private camY = 0;
   private camReady = false;
   private camArena = -1;
+  /** Per-frame camera pull scratch: total weight and weighted offset from the anchor. */
+  private camPullW = 0;
+  private camPullX = 0;
+  private camPullY = 0;
   private lastRenderT = 0;
   private introT = INTRO_LEN;
   private introActive = false;
@@ -325,6 +329,18 @@ export class Renderer {
     this.drawTravelOverlay(state);
   }
 
+  /** Weighted pull of one body on the camera. `updateCamera` resets the scratch each frame. */
+  private addCameraFocus(x: number, y: number, anchorX: number, anchorY: number): void {
+    const dx = x - anchorX;
+    const dy = y - anchorY;
+    const d = Math.hypot(dx, dy);
+    if (d > CAMERA.focusRange) return;
+    const w = 1 - d / CAMERA.focusRange;
+    this.camPullW += w;
+    this.camPullX += dx * w;
+    this.camPullY += dy * w;
+  }
+
   private updateCamera(state: RenderState, alpha: number, dt: number): void {
     const arena = state.arena;
     const b = arena.bounds;
@@ -338,9 +354,62 @@ export class Renderer {
     );
     let focusX = (b.left + b.right) * 0.5;
     let focusY = (b.top + b.bottom) * 0.5;
+    let anchorX = focusX;
+    let anchorY = focusY;
     if (local && local.active) {
-      focusX = lerp(local.prevX, local.x, alpha);
-      focusY = lerp(local.prevY, local.y, alpha);
+      anchorX = lerp(local.prevX, local.x, alpha);
+      anchorY = lerp(local.prevY, local.y, alpha);
+      focusX = anchorX;
+      focusY = anchorY;
+    }
+
+    // Nearby bodies lead the frame. The mean offset is damped so one threat behind the
+    // player opens the view, while a brawl around them leaves the frame on the player.
+    if (local && local.active && local.alive) {
+      this.camPullW = 0;
+      this.camPullX = 0;
+      this.camPullY = 0;
+      for (let i = 0; i < state.players.length; i++) {
+        if (i === state.localSlot) continue;
+        const p = state.players[i];
+        if (!p.active || !p.alive) continue;
+        this.addCameraFocus(p.x, p.y, anchorX, anchorY);
+      }
+      const drone = state.drone;
+      if (drone && drone.active) this.addCameraFocus(drone.x, drone.y, anchorX, anchorY);
+      const worms = state.worms;
+      if (worms) {
+        for (let i = 0; i < worms.length; i++) {
+          const w = worms[i];
+          if (w.active) this.addCameraFocus(w.x, w.y, anchorX, anchorY);
+        }
+      }
+      const viruses = state.viruses;
+      if (viruses) {
+        for (let i = 0; i < viruses.length; i++) {
+          const v = viruses[i];
+          if (v.active) this.addCameraFocus(v.x, v.y, anchorX, anchorY);
+        }
+      }
+      const sentries = state.sentries;
+      if (sentries) {
+        for (let i = 0; i < sentries.length; i++) {
+          const s = sentries[i];
+          if (s.active) this.addCameraFocus(s.x, s.y, anchorX, anchorY);
+        }
+      }
+      const errors = state.errors;
+      if (errors) {
+        for (let i = 0; i < errors.length; i++) {
+          const e = errors[i];
+          if (e.active) this.addCameraFocus(e.x, e.y, anchorX, anchorY);
+        }
+      }
+      if (this.camPullW > 0.001) {
+        const pull = Math.min(1, this.camPullW * CAMERA.groupPull) * CAMERA.maxBias;
+        focusX += (this.camPullX / this.camPullW) * pull;
+        focusY += (this.camPullY / this.camPullW) * pull;
+      }
     }
 
     let targetX: number;
@@ -354,6 +423,25 @@ export class Renderer {
     if (spanY <= viewH) targetY = (b.top + b.bottom - viewH) * 0.5;
     else targetY = Math.max(b.top, Math.min(b.bottom - viewH, focusY - viewH * 0.5));
 
+    // The anchor never leaves the middle band of the view. Without this the pull could
+    // push the player's own body toward the frame edge while it leads the fight.
+    if (spanX > viewW) {
+      const margin = viewW * CAMERA.edgeMargin;
+      const minX = anchorX - (viewW - margin);
+      const maxX = anchorX - margin;
+      if (targetX < minX) targetX = minX;
+      else if (targetX > maxX) targetX = maxX;
+      targetX = Math.max(b.left, Math.min(b.right - viewW, targetX));
+    }
+    if (spanY > viewH) {
+      const margin = viewH * CAMERA.edgeMargin;
+      const minY = anchorY - (viewH - margin);
+      const maxY = anchorY - margin;
+      if (targetY < minY) targetY = minY;
+      else if (targetY > maxY) targetY = maxY;
+      targetY = Math.max(b.top, Math.min(b.bottom - viewH, targetY));
+    }
+
     if (padSwap || !this.camReady || this.camArena !== arena.id) {
       this.camX = targetX;
       this.camY = targetY;
@@ -361,7 +449,7 @@ export class Renderer {
       this.camArena = arena.id;
       return;
     }
-    const k = 1 - Math.exp(-9 * dt);
+    const k = 1 - Math.exp(-CAMERA.follow * dt);
     this.camX += (targetX - this.camX) * k;
     this.camY += (targetY - this.camY) * k;
   }

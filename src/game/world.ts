@@ -355,14 +355,64 @@ export class World {
       }
       if (p.active) count++;
     }
+    // Keep a valid arena-ring respawn point for every active slot, then pull the squad
+    // into arm's reach so the drill is a spar, not a cross-map jog. Slot 0 keeps the
+    // gauntlet spawn it already holds, so a drill knockdown respawns inside the spar.
     computeSpawns(Math.max(1, count), this.arena, this.spawnX, this.spawnY);
-    for (let i = 0; i < this.players.length; i++) {
+    const player = this.players[0];
+    this.spawnX[0] = player.x;
+    this.spawnY[0] = player.y;
+    for (let i = 1; i <= this.botSlots; i++) {
       const p = this.players[i];
       if (!p.active) continue;
-      const sx = this.spawnX[i];
-      const sy = this.spawnY[i];
-      clearPlayerForSpawn(p, sx, sy, Math.atan2(this.centerY - sy, this.centerX - sx));
+      this.drillSlotPos(i - 1, player);
+      const sx = this.spawnTmpX[i - 1];
+      const sy = this.spawnTmpY[i - 1];
+      clearPlayerForSpawn(p, sx, sy, Math.atan2(player.y - sy, player.x - sx));
     }
+  }
+
+  /**
+   * Drill formation slot `k`: an arc facing arena centre, `drillRing` out from the player.
+   * Candidates walk outward until one clears cover; the arena ring stays the fallback.
+   */
+  private drillSlotPos(k: number, leader: Player): void {
+    const n = Math.max(1, this.botSlots);
+    const base = Math.atan2(this.centerY - leader.y, this.centerX - leader.x);
+    const a = base + (k - (n - 1) * 0.5) * CAMPAIGN.drillSpread;
+    const cos = Math.cos(a);
+    const sin = Math.sin(a);
+    const minSep = PLAYER.radius * 2.2;
+    let x = leader.x + cos * minSep * 2;
+    let y = leader.y + sin * minSep * 2;
+    // Outward arcs first, then tighter rings for a small island or a corner spawn.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const step = attempt === 0 ? 0 : attempt === 1 ? 58 : attempt === 2 ? 116 : attempt === 3 ? -90 : attempt === 4 ? -140 : -175;
+      const r = CAMPAIGN.drillRing + step;
+      if (r < minSep) continue;
+      const cx = leader.x + cos * r;
+      const cy = leader.y + sin * r;
+      if (Math.hypot(cx - leader.x, cy - leader.y) < minSep) continue;
+      if (!this.pointClearOfCover(cx, cy, PLAYER.radius + 8)) continue;
+      x = cx;
+      y = cy;
+      this.spawnTmpX[k] = x;
+      this.spawnTmpY[k] = y;
+      return;
+    }
+    // Last resort: the nearest arena spawn that is clear and not on top of the leader.
+    let best = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < this.arena.spawns.length; i++) {
+      const s = this.arena.spawns[i];
+      const d = Math.hypot(s.x - leader.x, s.y - leader.y);
+      if (d < minSep || d >= best) continue;
+      if (!this.pointClearOfCover(s.x, s.y, PLAYER.radius + 8)) continue;
+      best = d;
+      x = s.x;
+      y = s.y;
+    }
+    this.spawnTmpX[k] = x;
+    this.spawnTmpY[k] = y;
   }
 
   /** Advances the campaign script. The threat simulation waits for the assault phase. */
@@ -4057,8 +4107,14 @@ export class World {
   }
 
   private respawnTrainingPlayer(p: Player): void {
-    const sx = this.spawnX[p.slot];
-    const sy = this.spawnY[p.slot];
+    let sx = this.spawnX[p.slot];
+    let sy = this.spawnY[p.slot];
+    // A drill partner comes back on the sparring arc, not across the arena.
+    if (this.campaign && this.campaignPhase === 'drill' && p.slot > 0) {
+      this.drillSlotPos(p.slot - 1, this.players[0]);
+      sx = this.spawnTmpX[p.slot - 1];
+      sy = this.spawnTmpY[p.slot - 1];
+    }
     clearPlayerForSpawn(p, sx, sy, Math.atan2(this.centerY - sy, this.centerX - sx));
     p.thrall = false;
     if (this.mode === 'gauntlet') p.iframes = 0.9;

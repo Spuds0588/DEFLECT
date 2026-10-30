@@ -1949,3 +1949,38 @@ two drill bots. `npx tsc --noEmit`, `npm run build` and `npm run bench` clean.
 
 **Next:** add the next node and the between-level route beat; add team rules before bot companions can
 fight beside the player instead of serving as the drill squad; playtest drill length and the 10-kill target.
+
+## 2026-10-30 — Drill squad in reach, camera framing (v0.1.35)
+
+**Goal:** the campaign drill should start as a spar instead of a walk, and the follow camera should stop
+losing nearby enemies and players at the edge of the view.
+
+**Changes:**
+- World: the campaign drill squad now spawns on an arc `CAMPAIGN.drillRing` (250) in front of the player,
+  spread by `drillSpread` (0.72 rad), instead of taking the arena spawn ring. Drill knockdowns respawn on
+  the same arc, and the player keeps the gauntlet spawn (spawn ring slot 0 is overwritten with it) so a
+  drill death puts them back inside the spar rather than across the map.
+- World: `drillSlotPos` steps outward (250/308/366), then inward (160/110/75), then takes the nearest
+  clear arena spawn; every candidate must clear cover and keep `PLAYER.radius * 2.2` from the player.
+  Verified across all six arenas with 1–3 bots.
+- Renderer: `updateCamera` now pulls the frame toward nearby live bodies — other players, the training
+  drone, worms, viruses, sentries and cascading-error blocks inside `CAMERA.focusRange` (640). The pull is
+  a distance-weighted mean offset capped at `CAMERA.maxBias` (0.5) and `CAMERA.groupPull` (1.7), so a
+  threat behind the player opens the view while a surround cancels out. The anchor (local avatar) is then
+  clamped to the middle band `CAMERA.edgeMargin` (0.3), unless an arena bound pins the camera first.
+  Follow rate dropped from a flat 9 to `CAMERA.follow` (6.2) so the lead reads as a pan, not a snap.
+- Config: new `CAMERA` block. No dynamic zoom: `SWEEP` heavy numbers and the sentry pack window are built
+  from the fixed `CAMERA_ZOOM`, so a zooming camera would need those moved first. Recorded in AGENTS.md.
+- Bumped to v0.1.35 and refreshed the service worker cache. `package-lock.json` had been stuck at 0.1.27;
+  it now matches `package.json`.
+
+**Verification:** headless probe — 1–3 drill bots sit 250 units from the player and clear of cover on
+CROSSROADS, GRID ZERO, THE RING, SWITCHBACK, MAINFRAME and TRANSIT; the campaign timeline still runs
+drill 18.0 s → breach 21.4 s → assault, a seek-and-fire player reaches 10 kills and the node clears, and an
+idle player fails in the assault at 36 s. Browser at 1440×900: drill with both bots in the fight, the
+SPARRING DRILL and BREACH WAVE banners, and a staged sentry 350 units to the player's right pulled the
+camera so the player sat at 0.39 of the view and the sentry at 0.90 (no pull would have put the player at
+0.50 and the sentry at 1.00, off-screen). `npx tsc --noEmit`, `npm run build` and `npm run bench` clean.
+
+**Next:** playtest the pull in 1v1, 1v3 and gauntlet and tune `focusRange`/`maxBias`; dynamic zoom stays
+deferred behind the fixed-zoom kit numbers; add the next campaign node.

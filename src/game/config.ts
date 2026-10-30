@@ -8,6 +8,23 @@ export const VIEW_H = 720;
 /** World units per screen pixel. Higher = closer camera. */
 export const CAMERA_ZOOM = 1.28;
 
+/**
+ * Follow-camera framing. The local avatar is the anchor; nearby bodies pull the view
+ * toward the fight so a threat at the player's back does not sit off-screen.
+ */
+export const CAMERA = {
+  /** Only bodies inside this radius of the anchor pull the view. */
+  focusRange: 640,
+  /** Full pull moves the frame this fraction of the group's mean offset. */
+  maxBias: 0.5,
+  /** Group weight counted as a full pull; a body at half range is already most of it. */
+  groupPull: 1.7,
+  /** The anchor never enters the outer 30% of the view, whatever the pull. */
+  edgeMargin: 0.3,
+  /** Follow rate, 1/s. Lower is calmer; the old fixed follow was 9. */
+  follow: 6.2,
+} as const;
+
 export const ARENA = {
   left: 48,
   right: 1232,
@@ -518,6 +535,9 @@ export const CAMPAIGN = {
   /** A NO BOTS run still drills against one instructor. */
   minDrillBots: 1,
   maxDrillBots: 3,
+  /** The squad forms an arc this far from the player, spread across this many radians. */
+  drillRing: 250,
+  drillSpread: 0.72,
   /** Worms are already unlocked when the assault starts, then a new wave every interval. */
   waveStart: 3,
   waveSeconds: 14,
