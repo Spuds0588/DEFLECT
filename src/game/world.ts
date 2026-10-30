@@ -8120,9 +8120,10 @@ export class World {
     // Enemy fire is not a friendly-fire-free laser tag beam. A missed sentry shot can
     // chew through a worm, a virus, or an error block. Sentries ignore their own pack,
     // because a projectile has no source silhouette to exclude safely. The run can
-    // turn the crossfire off, in which case hostile fire only threatens players.
+    // turn the crossfire off, in which case enemy fire only threatens players.
     const hostile = proj.owner < 0 && proj.type >= 3;
-    if (hostile && !this.friendlyFire) return false;
+    // The infested thrall lives on slot 1, so its shots are enemy fire too.
+    if ((hostile || proj.owner === 1) && !this.friendlyFire) return false;
 
     // Player bolts can shoot down hostile shots and homing missiles. This is the
     // intended answer when a missile is too close to swat or too far to outrun.

@@ -2599,9 +2599,10 @@ lengthen the cardinal tips or add four short cardinal ticks between the star and
 sandbox default.
 
 **Changes:**
-- `World.friendlyFire` defaults to true. `projectileHitsGauntlet` returns early for a hostile projectile
-  (`owner < 0`, `type >= 3`) when the rule is off, so it passes through worms, viruses and error blocks
-  and only threatens players. Player shots, mines, spears and hourglasses still hit every threat family.
+- `World.friendlyFire` defaults to true. `projectileHitsGauntlet` returns early for enemy fire (hostile
+  AI shots with `owner < 0` / `type >= 3`, and the slot-1 thrall's bolts) when the rule is off, so it
+  passes through worms, viruses and error blocks and only threatens players. Player shots, mines, spears
+  and hourglasses still hit every threat family.
 - The rule is set once when the run is created: `startGauntlet` and `startCampaignLevel` copy the saved
   preference onto the world. Training, VS BOTS, online matches and the attract demo keep the default on.
 - `FRIENDLY FIRE` is a row in GAUNTLET run setup and the CAMPAIGN save-slot stage, so both new and resumed

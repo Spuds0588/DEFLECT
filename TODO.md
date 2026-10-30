@@ -8,11 +8,12 @@ Last updated: 2026-10-30 (v0.1.53 friendly-fire run rule)
 
 ## v0.1.53 — Friendly fire is a gauntlet/campaign run rule (2026-10-30)
 
-- [x] `World.friendlyFire` (default on) gates hostile projectile damage to worms, viruses and error blocks.
-      Off, an enemy shot passes through rival threat families and only threatens players
+- [x] `World.friendlyFire` (default on) gates enemy-fire damage to worms, viruses and error blocks:
+      hostile AI shots and the slot-1 thrall's bolts. Off, they pass through rival threat families and
+      only threaten players
 - [x] `FRIENDLY FIRE` toggle in GAUNTLET run setup and the CAMPAIGN save-slot stage; the shared setting
       persists as `deflect.friendlyFire` and both stages read it, so a resumed run can change it too
-- [x] Only hostile fire is gated. Firewalls stay environmental, worm/virus feeding and player shots are
+- [x] Only enemy fire is gated. Firewalls stay environmental, worm/virus feeding and player shots are
       unchanged, and sentry packs still ignore each other
 - [x] Local-only; no snapshot, networking or renderer change
 - [x] Docs: AGENTS D9, README, this entry; build stamped 0.1.53
