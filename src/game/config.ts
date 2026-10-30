@@ -357,6 +357,48 @@ export const TOXIC = {
 } as const;
 
 /**
+ * KABOOM.EXE: a slow bomb thrower. The ranged shell drifts in with a deliberately
+ * small blast, the skill lobs one heavy shell that lands at `lobRange`, and the power
+ * carpets a shallow rectangle ahead with five overlapping blasts. Every bomb damages
+ * through area only: there is no direct-hit bonus, so cover that cuts the blast cuts
+ * the damage.
+ */
+export const KABOOM = {
+  /** Ranged: one slow shell per throw, no stream. */
+  bombCost: 16,
+  bombDamage: 1,
+  /** Projectile hit radius and the blast it leaves behind. */
+  bombRadius: 9,
+  bombBlast: 52,
+  bombSpeed: 250,
+  bombTtl: 1.9,
+  bombKnockback: 520,
+  attackCooldown: 0.9,
+  /** Skill: a heavy shell thrown in an arc, timed so it lands at `lobRange`. */
+  lobTime: 0.62,
+  lobRange: 300,
+  lobRadius: 14,
+  lobDamage: 2,
+  lobBlast: 116,
+  lobKnockback: 900,
+  /** Power: five shells in a shallow row, each blast overlapping the next. */
+  clusterCost: 55,
+  clusterChargeTime: 0.85,
+  clusterCooldown: 8,
+  clusterCount: 5,
+  clusterRange: 300,
+  /** Half-angle of the fan, so five shells land in a row about 150 units wide. */
+  clusterSpread: 0.24,
+  clusterTime: 0.6,
+  /** Seconds between shells in the power's spray, left to right. */
+  clusterStagger: 0.07,
+  clusterRadius: 8,
+  clusterDamage: 1,
+  clusterBlast: 66,
+  clusterKnockback: 620,
+} as const;
+
+/**
  * Timed proximity mine. The old heavy bomb was replaced after the designer called it
  * overpowered: the mine cannot be thrown across the map, must be armed, and gives
  * opponents time to read and avoid it.
@@ -383,7 +425,7 @@ export const MINE = {
 export const BUG = {
   cost: 35,
   /** A static wall is stronger than a shove, so its slot in the table is longer. */
-  cooldown: [4.5, 5, 7, 8, 9, 8, 6, 7],
+  cooldown: [4.5, 5, 7, 8, 9, 8, 6, 7, 7.5],
   trapRadius: 62,
   trapDuration: 2.2,
   trapSlow: 0.42,

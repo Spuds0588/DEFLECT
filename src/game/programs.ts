@@ -11,6 +11,7 @@ export const PROGRAM_ID = {
   FISHER: 2,
   SWEEP: 3,
   TOXIC: 4,
+  KABOOM: 5,
 } as const;
 
 export interface ProgramDef {
@@ -36,6 +37,11 @@ export interface ProgramDef {
    * the empty space out to the hull as long as it never touches the health segments.
    */
   glyphRadius?: number;
+  /**
+   * Optional font family for `glyph`. Wingdings is used by Kaboom's bomb (`M`). When
+   * the family is missing, `drawProgramMark` falls back to a drawn bomb.
+   */
+  symbolFont?: string;
   bugKind: number;
 }
 
@@ -98,6 +104,21 @@ export const PROGRAMS: readonly ProgramDef[] = [
     glyph: '☠',
     coreScale: 1.0,
     bugKind: 7,
+  },
+  {
+    id: PROGRAM_ID.KABOOM,
+    name: 'KABOOM.EXE',
+    role: 'BOMBER',
+    note: 'SLOW BOMBS // LOB // BLAST ROW',
+    color: PROGRAM_COLORS.kaboom,
+    /**
+     * Wingdings 'M' is the bomb. The font is checked at draw time; a host without
+     * Wingdings gets the vector bomb so the core never reads as a letter.
+     */
+    glyph: 'M',
+    symbolFont: 'Wingdings',
+    coreScale: 0.98,
+    bugKind: 8,
   },
 ];
 

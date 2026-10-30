@@ -19,7 +19,7 @@ import { ACTION, EV, type GameEvent, type InputFrame, type LobbyPlayer, type Lob
 import { World } from './game/world';
 import { GuestNet, HostNet, NetView, type Snapshot } from './net/net';
 import { clearChildren, drawAvatar, el, toast } from './ui/dom';
-import { drawSymbol, pathProgramFrame, pathProgramHealth, randomCallsign, sanitizeName, slotColor } from './game/identity';
+import { drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, randomCallsign, sanitizeName, slotColor } from './game/identity';
 
 type Screen = 'title' | 'lobby' | 'game' | 'settings' | 'howto';
 type SettingsTab = 'feedback' | 'audio' | 'system';
@@ -246,7 +246,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.31 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.32 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -854,7 +854,7 @@ function drawProgramPortrait(canvas: HTMLCanvasElement, programId: number): void
   ctx.globalAlpha = 0.95;
   ctx.fillStyle = def.color;
   // Wide multi-line marks use a larger poster footprint so their rows stay legible.
-  drawSymbol(ctx, def.glyph, 0, 0, 10 * ((def.glyphRadius ?? 0.51) / 0.51));
+  drawProgramMark(ctx, programId, def.glyph, def.symbolFont, 0, 0, 10 * ((def.glyphRadius ?? 0.51) / 0.51));
   ctx.restore();
 
   // Signature accent ticks below the mark so each card has a kit silhouette hint.

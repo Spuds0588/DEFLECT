@@ -299,8 +299,13 @@ export interface Player {
 export interface Projectile {
   active: boolean;
   serial: number;
-  /** 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile, 5 Fisher spear, 6 Sweep broom. */
-  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  /**
+   * 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile, 5 Fisher spear,
+   * 6 Sweep broom, 7 Toxic needle, 8 Kaboom bomb, 9 Kaboom lobbed bomb. Types 8/9
+   * explode on contact and are never deflected, so every `type >= 3` deflect branch
+   * must exclude them explicitly.
+   */
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;
@@ -315,6 +320,11 @@ export interface Projectile {
   fuse: number;
   grace: number;
   armed: boolean;
+  /** Bombs only: radius and shove of the blast when the shell detonates. 0 otherwise. */
+  blastRadius: number;
+  blastKnockback: number;
+  /** Arcing bombs only: flight time, used by the renderer to lift the sprite. 0 otherwise. */
+  arcDur: number;
   /** Pathfinding powerup bolt: axis-aligned target seeking. */
   homing: boolean;
   /** 0 horizontal, 1 vertical. */

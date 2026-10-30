@@ -2,7 +2,60 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-29 (v0.1.27 SWEEP.EXE and the IN TESTING build label)
+Last updated: 2026-10-30 (v0.1.32 KABOOM.EXE)
+
+---
+
+## v0.1.32 — KABOOM.EXE and the carpet spray (2026-10-30)
+
+### Identity
+- [x] `KABOOM.EXE` is in `PROGRAMS` (id 5, role `BOMBER`) with `PROGRAM_COLORS.kaboom` `#ff5a3d`
+- [x] Hull is a square made of four inward triangles: three health segments and one frame-only triangle,
+      with `coreScale 0.98`; checked at full and one-segment health
+- [x] Core and shells use the Wingdings bomb when the family is installed, otherwise `drawBombMark` draws
+      a vector shell so the mark never reads as a letter
+- [x] `hasSymbolFont` no longer trusts `document.fonts.check` alone: a missing system family reports true
+      in Chrome, so glyph advances are compared with a definitely-missing family
+
+### Kit
+- [x] Ranged: one slow shell (type 8, 250 u/s), no direct damage, 52-radius blast for 1 damage and a 520
+      shove; it detonates on a body, on cover, or at the end of its fuse
+- [x] Skill: a heavy lobbed shell (type 9, 0.62 s arc, 300 range) that flies over pillars, lands, and
+      detonates for 2 damage in a 116-radius blast
+- [x] Power: five lobbed shells in a shallow fan, released left to right every 0.07 s, each with its own
+      66-radius blast; the row lands about 150 units wide
+- [x] Bombs are never deflectable: the guard, swing, shield wave, Wedge plow/bash and Fisher net all skip
+      types 8/9 instead of converting them to bolts
+- [x] Shared area damage: `explodeMine` now calls `explodeBlast`, so mines and bombs use one cover-aware
+      damage path for players, the drone and every gauntlet threat family
+- [x] Readiness dock: single-shot ammo, a fused bomb for the skill, a three-shell row for the carpet, and
+      the carpet cooldown
+- [x] Kaboom bots lob when the target sits between 90 and `lobRange + 60`; the generic heavy hold builds
+      the carpet
+
+### Verification
+- [x] Headless probe: ranged shell spawns type 8 with a 52 blast and 250 speed and clears on detonation; a
+      body at 200 and another at +60 both lose health, the near body slides 53 units, and the caster is
+      never caught by their own blast
+- [x] Headless probe: the lob spawns type 9 with `arcDur` 0.62 and a 116 blast, lands on its beat and takes
+      the target from 3 to 1 health
+- [x] Headless probe: the power spawns five shells, starts its 8 s cooldown, catches all three standing
+      bodies in the row, and leaves the caster untouched; a shell that reaches cover dies there and the
+      body behind the pillar takes no damage
+- [x] `?autoplay=3`: slot 0 ran KABOOM.EXE and the log caught all five type-9 shells alive together,
+      spread 40+ units apart from the stagger, with no console errors
+- [x] Browser 1920×1080: the program card, arena hull and a shell in flight render; the vector bomb mark
+      reads on a host without Wingdings
+- [x] `npx tsc --noEmit`, `npm run build` and `npm run bench` clean
+
+### Next
+- [ ] Playtest the carpet's 0.07 s stagger and 150-unit width; tune `clusterStagger`, `clusterSpread` and
+      `clusterBlast` together rather than adding damage
+- [ ] Decide whether Kaboom's shells should be visible online; that needs a snapshot/protocol change like
+      every other kit
+- [ ] A host with Wingdings installed should be checked so the `M` bomb path is exercised, not just the
+      vector fallback
+- [ ] Give destructible cover a bomb reaction once arena hazards are in scope
 
 ---
 

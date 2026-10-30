@@ -9,6 +9,7 @@ import {
   FIREWALL,
   WEDGE,
   GAUNTLET,
+  KABOOM,
   MAX_EVENTS,
   MAX_PLAYERS,
   PLAYER,
@@ -656,6 +657,25 @@ export class World {
             if (p.laserChargeT >= TOXIC.streamChargeTime) this.startToxicStream(p);
           } else if (p.laserChargeT >= TOXIC.streamChargeTime) {
             this.startToxicStream(p);
+          } else {
+            if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            p.laserChargeHeld = false;
+            p.laserChargeT = 0;
+            p.chargeT = 0;
+            p.chargeHeld = false;
+          }
+        } else if (p.program === PROGRAM_ID.KABOOM) {
+          // The charge builds the carpet, then commits it. Release at full charge still
+          // fires, so the heavy never swallows a completed wind-up.
+          if (canAct && heavyHeld) {
+            p.laserChargeT += dt;
+            if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+              p.facing = Math.atan2(input.my, input.mx);
+            }
+            p.laserFacing = p.facing;
+            if (p.laserChargeT >= KABOOM.clusterChargeTime) this.throwBombCluster(p);
+          } else if (p.laserChargeT >= KABOOM.clusterChargeTime) {
+            this.throwBombCluster(p);
           } else {
             if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
             p.laserChargeHeld = false;
@@ -1735,6 +1755,28 @@ export class World {
       return;
     }
 
+    if (p.program === PROGRAM_ID.KABOOM) {
+      // One slow shell per throw. No stream: the blast is the payoff, so a miss costs
+      // the whole beat instead of one shard from a burst.
+      if (p.autoFireT > 0 || p.energy < KABOOM.bombCost) return;
+      if (!this.spawnProjectile(
+        p,
+        0,
+        KABOOM.bombTtl,
+        KABOOM.bombSpeed,
+        false,
+        KABOOM.bombRadius,
+        KABOOM.bombDamage,
+        8,
+        KABOOM.bombBlast,
+        KABOOM.bombKnockback,
+      )) return;
+      p.energy -= KABOOM.bombCost;
+      p.autoFireT = KABOOM.attackCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
     if (p.program === PROGRAM_ID.TOXIC) {
       // A cheap needle stream. The direct hit is small; the venom is the payload.
       if (p.autoFireT > 0 || p.energy < TOXIC.needleCost) return;
@@ -1787,6 +1829,7 @@ export class World {
     if (p.program === PROGRAM_ID.FISHER) return FISHER.netCost;
     if (p.program === PROGRAM_ID.SWEEP) return SWEEP.powerCost;
     if (p.program === PROGRAM_ID.TOXIC) return TOXIC.streamCost;
+    if (p.program === PROGRAM_ID.KABOOM) return KABOOM.clusterCost;
     return PLAYER.laserCost;
   }
 
@@ -2058,6 +2101,7 @@ export class World {
     for (let i = 0; i < this.projectiles.length; i++) {
       const proj = this.projectiles[i];
       if (!proj.active || proj.owner === p.slot || proj.type === 1 || proj.type === 2) continue;
+      if (proj.type === 8 || proj.type === 9) continue;
       const dx = proj.x - p.x;
       const dy = proj.y - p.y;
       const forward = dx * cos + dy * sin;
@@ -2215,6 +2259,7 @@ export class World {
     for (let i = 0; i < this.projectiles.length; i++) {
       const proj = this.projectiles[i];
       if (!proj.active || proj.owner === p.slot || proj.type === 1 || proj.type === 2) continue;
+      if (proj.type === 8 || proj.type === 9) continue;
       const dx = proj.x - p.x;
       const dy = proj.y - p.y;
       const rr = radius + proj.radius;
@@ -2933,6 +2978,7 @@ export class World {
     for (let i = 0; i < this.nets.length; i++) {
       const net = this.nets[i];
       if (!net.active || proj.owner === net.owner || proj.type === 1 || proj.type === 2) continue;
+      if (proj.type === 8 || proj.type === 9) continue;
       const rr = FISHER.netWidth + proj.radius;
       const rr2 = rr * rr;
       let hit = false;
@@ -3062,6 +3108,8 @@ export class World {
       this.startFan(p);
     } else if (p.bugKind === 7) {
       this.startToxicSpray(p);
+    } else if (p.bugKind === 8) {
+      this.throwSkillBomb(p);
     } else if (p.bugKind === 4) {
       // Wedge's signature bug: a static bracket wall behind him. Refuse a wall that
       // would land inside cover and hand the energy back rather than eat the button.
@@ -3074,6 +3122,76 @@ export class World {
       this.spawnLure(p);
     }
     this.emit(EV.BUG, p.slot, p.x, p.y, p.bugKind, Math.cos(p.facing), Math.sin(p.facing));
+  }
+
+  /**
+   * Kaboom's skill: one heavy shell thrown in an arc. It flies over cover, lands at
+   * `lobRange`, and detonates on the landing frame or on the first body it meets.
+   */
+  private throwSkillBomb(p: Player): void {
+    if (!p.alive) return;
+    const speed = KABOOM.lobRange / KABOOM.lobTime;
+    const fired = this.spawnProjectile(
+      p,
+      0,
+      KABOOM.lobTime,
+      speed,
+      false,
+      KABOOM.lobRadius,
+      KABOOM.lobDamage,
+      9,
+      KABOOM.lobBlast,
+      KABOOM.lobKnockback,
+      KABOOM.lobTime,
+    );
+    if (!fired) {
+      // Muzzle inside cover: hand the skill back instead of eating the button.
+      p.bugCd = 0;
+      p.energy = Math.min(PLAYER.energyMax, p.energy + BUG.cost);
+      return;
+    }
+    this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+  }
+
+  /**
+   * Kaboom's power: five shells thrown as one short spray, left to right. Each shell
+   * waits its turn at the muzzle (`launchDelay`), so the row reads as a continuous
+   * string of bombs instead of five orbs appearing on the same frame.
+   */
+  private throwBombCluster(p: Player): void {
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    if (!p.alive) return;
+    const count = KABOOM.clusterCount;
+    let fired = 0;
+    for (let i = 0; i < count; i++) {
+      const lane = count > 1 ? (i / (count - 1)) * 2 - 1 : 0;
+      if (this.spawnProjectile(
+        p,
+        lane * KABOOM.clusterSpread,
+        KABOOM.clusterTime,
+        KABOOM.clusterRange / KABOOM.clusterTime,
+        false,
+        KABOOM.clusterRadius,
+        KABOOM.clusterDamage,
+        9,
+        KABOOM.clusterBlast,
+        KABOOM.clusterKnockback,
+        KABOOM.clusterTime,
+        i * KABOOM.clusterStagger,
+      )) fired++;
+    }
+    if (fired === 0) return;
+    p.energy = Math.max(0, p.energy - KABOOM.clusterCost);
+    p.laserCd = KABOOM.clusterCooldown;
+    p.lockActive = false;
+    p.lockKind = 0;
+    p.lockId = -1;
+    p.comboStage = 0;
+    p.comboT = 0;
+    this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
   }
 
   /** Drops a timed proximity mine at the player's feet. No throw, no travel. */
@@ -3165,6 +3283,10 @@ export class World {
     radius: number = BOLT.radius,
     damage: number = BOLT.damage,
     type: Projectile['type'] = 0,
+    blastRadius = 0,
+    blastKnockback = 0,
+    arcDur = 0,
+    launchDelay = 0,
   ): boolean {
     let proj: Projectile | null = null;
     for (let i = 0; i < this.projectiles.length; i++) {
@@ -3204,7 +3326,7 @@ export class World {
     proj.deflects = 0;
     proj.bounces = 0;
     proj.fuse = ttl;
-    proj.grace = 0;
+    proj.grace = launchDelay;
     proj.armed = false;
     proj.homing = homing;
     proj.pathAxis = 0;
@@ -3214,6 +3336,9 @@ export class World {
     proj.hitErrors = 0;
     proj.hitSentries = 0;
     proj.hitDrone = false;
+    proj.blastRadius = blastRadius;
+    proj.blastKnockback = blastKnockback;
+    proj.arcDur = arcDur;
     proj.trailHead = 0;
     proj.trailCount = 0;
     return true;
@@ -3229,6 +3354,8 @@ export class World {
       if (p.guardT <= 0) break;
       const proj = this.projectiles[i];
       if (!proj.active || proj.type === 1 || proj.type === 2 || proj.owner === p.slot) continue;
+      // Bombs are shells, not shots: a guard cannot send one back.
+      if (proj.type === 8 || proj.type === 9) continue;
       const dx = proj.x - p.x;
       const dy = proj.y - p.y;
       const dist = Math.hypot(dx, dy);
@@ -3285,6 +3412,7 @@ export class World {
     for (let i = 0; i < this.projectiles.length; i++) {
       const proj = this.projectiles[i];
       if (!proj.active) continue;
+      if (proj.type === 8 || proj.type === 9) continue;
       const dx = proj.x - p.x;
       const dy = proj.y - p.y;
       const distSq = dx * dx + dy * dy;
@@ -3380,6 +3508,43 @@ export class World {
           continue;
         }
         this.applyTrapSlow(proj);
+        continue;
+      }
+
+      if (proj.type === 8 || proj.type === 9) {
+        // Bombs do not damage on touch: they detonate and the blast does the work, so
+        // cover that cuts the blast cuts the damage too. The lobbed shell ignores
+        // pillars in flight, because it is in the air until it lands.
+        // A bomb can also wait its turn at the muzzle: the power's carpet is released
+        // as a string, and the delay is carried in `grace` before the fuse starts.
+        if (proj.grace > 0) {
+          proj.grace = Math.max(0, proj.grace - dt);
+          continue;
+        }
+        proj.fuse -= dt;
+        if (proj.fuse <= 0) {
+          this.detonateBomb(proj);
+          continue;
+        }
+        const bombSpeed = Math.hypot(proj.vx, proj.vy);
+        const bombSteps = Math.max(1, Math.min(20, Math.ceil((bombSpeed * dt) / 6)));
+        const bombDt = dt / bombSteps;
+        for (let s = 0; s < bombSteps; s++) {
+          proj.x += proj.vx * bombDt;
+          proj.y += proj.vy * bombDt;
+          this.bounceWalls(proj);
+          if (!proj.active) break;
+          if (proj.type === 8) {
+            this.bouncePillars(proj);
+            if (!proj.active) break;
+          }
+          this.bounceBarriers(proj);
+          if (!proj.active) break;
+          this.netBlocksProjectile(proj);
+          if (this.wallBlocksProjectile(proj)) break;
+          if (this.bombTouchesBody(proj)) break;
+        }
+        if (!proj.active || this.bombTouchesBody(proj)) this.detonateBomb(proj);
         continue;
       }
 
@@ -3513,8 +3678,9 @@ export class World {
       bounced = true;
     }
     if (!bounced) return;
-    if (proj.type === 5 || proj.type === 6) {
-      // Spear and thrown broom are committed lines, not ricochets. They die on geometry.
+    if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9) {
+      // Spear, thrown broom and every bomb are committed lines, not ricochets. They
+      // die on geometry; the bomb branch turns that death into a detonation.
       proj.active = false;
       this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
       return;
@@ -3552,7 +3718,7 @@ export class World {
       const ny = wall.ny * side;
       proj.x = px + nx * (rr + 0.5);
       proj.y = py + ny * (rr + 0.5);
-      if (proj.type === 5 || proj.type === 6) {
+      if (proj.type === 5 || proj.type === 6 || proj.type === 8) {
         proj.active = false;
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
         return;
@@ -3578,7 +3744,7 @@ export class World {
   private bouncePillars(proj: Projectile): void {
     for (let i = 0; i < this.arena.pillars.length; i++) {
       if (!circleRect(proj.x, proj.y, proj.radius, this.arena.pillars[i], hitScratch)) continue;
-      if (proj.type === 5 || proj.type === 6) {
+      if (proj.type === 5 || proj.type === 6 || proj.type === 8) {
         proj.active = false;
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
         return;
@@ -3905,12 +4071,19 @@ export class World {
     return false;
   }
 
-  private explodeMine(proj: Projectile, sourceSlot: number): void {
-    if (!proj.active) return;
-    proj.active = false;
-    const x = proj.x;
-    const y = proj.y;
-    this.emit(EV.EXPLODE, sourceSlot, x, y, MINE.blastRadius);
+  /**
+   * One blast, shared by mines and bombs. Cover is real: a body behind a pillar takes
+   * nothing, which is why a lobbed bomb landing behind cover does not clear it.
+   */
+  private explodeBlast(
+    x: number,
+    y: number,
+    radius: number,
+    damage: number,
+    sourceSlot: number,
+    knockback: number,
+  ): void {
+    this.emit(EV.EXPLODE, sourceSlot, x, y, radius);
 
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
@@ -3918,18 +4091,18 @@ export class World {
       const dx = p.x - x;
       const dy = p.y - y;
       const dist = Math.hypot(dx, dy);
-      if (dist > MINE.blastRadius + PLAYER.radius) continue;
+      if (dist > radius + PLAYER.radius) continue;
       if (this.lineBlocked(x, y, p.x, p.y)) continue;
       const nx = dist > 0.001 ? dx / dist : 1;
       const ny = dist > 0.001 ? dy / dist : 0;
-      const falloff = 1 - 0.6 * Math.min(1, dist / MINE.blastRadius);
-      this.damagePlayer(p, MINE.blastDamage, sourceSlot, nx, ny, MINE.knockback * falloff);
+      const falloff = 1 - 0.6 * Math.min(1, dist / radius);
+      this.damagePlayer(p, damage, sourceSlot, nx, ny, knockback * falloff);
     }
 
     if (this.mode === 'training' && this.drone.active) {
       const dist = Math.hypot(this.drone.x - x, this.drone.y - y);
-      if (dist <= MINE.blastRadius + this.drone.radius && !this.lineBlocked(x, y, this.drone.x, this.drone.y)) {
-        this.damageDrone(MINE.blastDamage, sourceSlot);
+      if (dist <= radius + this.drone.radius && !this.lineBlocked(x, y, this.drone.x, this.drone.y)) {
+        this.damageDrone(damage, sourceSlot);
       }
     }
 
@@ -3940,11 +4113,11 @@ export class World {
         const dx = s.x - x;
         const dy = s.y - y;
         const dist = Math.hypot(dx, dy);
-        if (dist > MINE.blastRadius + s.radius) continue;
+        if (dist > radius + s.radius) continue;
         if (this.lineBlocked(x, y, s.x, s.y)) continue;
         const nx = dist > 0.001 ? dx / dist : 1;
         const ny = dist > 0.001 ? dy / dist : 0;
-        this.damageSentry(s, MINE.blastDamage, sourceSlot, nx, ny);
+        this.damageSentry(s, damage, sourceSlot, nx, ny);
       }
       for (let i = 0; i < this.worms.length; i++) {
         const w = this.worms[i];
@@ -3952,11 +4125,11 @@ export class World {
         const dx = w.x - x;
         const dy = w.y - y;
         const dist = Math.hypot(dx, dy);
-        if (dist > MINE.blastRadius + WORM.headRadius) continue;
+        if (dist > radius + WORM.headRadius) continue;
         if (this.lineBlocked(x, y, w.x, w.y)) continue;
         const nx = dist > 0.001 ? dx / dist : 1;
         const ny = dist > 0.001 ? dy / dist : 0;
-        this.damageWorm(w, MINE.blastDamage, sourceSlot, nx, ny);
+        this.damageWorm(w, damage, sourceSlot, nx, ny);
       }
       for (let i = 0; i < this.viruses.length; i++) {
         const v = this.viruses[i];
@@ -3964,26 +4137,107 @@ export class World {
         const dx = v.x - x;
         const dy = v.y - y;
         const dist = Math.hypot(dx, dy);
-        if (dist > MINE.blastRadius + v.radius) continue;
+        if (dist > radius + v.radius) continue;
         if (this.lineBlocked(x, y, v.x, v.y)) continue;
         const nx = dist > 0.001 ? dx / dist : 1;
         const ny = dist > 0.001 ? dy / dist : 0;
-        this.damageVirus(v, MINE.blastDamage, sourceSlot, nx, ny);
+        this.damageVirus(v, damage, sourceSlot, nx, ny);
       }
       for (let i = 0; i < this.errors.length; i++) {
         const e = this.errors[i];
         if (!e.active) continue;
-        const radius = CASCADING_ERROR.blockSize * 0.5;
+        const blockR = CASCADING_ERROR.blockSize * 0.5;
         const dx = e.x - x;
         const dy = e.y - y;
         const dist = Math.hypot(dx, dy);
-        if (dist > MINE.blastRadius + radius) continue;
+        if (dist > radius + blockR) continue;
         if (this.lineBlocked(x, y, e.x, e.y)) continue;
         const nx = dist > 0.001 ? dx / dist : 1;
         const ny = dist > 0.001 ? dy / dist : 0;
-        this.damageError(e, MINE.blastDamage, sourceSlot, nx, ny);
+        this.damageError(e, damage, sourceSlot, nx, ny);
       }
     }
+  }
+
+  private explodeMine(proj: Projectile, sourceSlot: number): void {
+    if (!proj.active) return;
+    proj.active = false;
+    this.explodeBlast(proj.x, proj.y, MINE.blastRadius, MINE.blastDamage, sourceSlot, MINE.knockback);
+  }
+
+  /** A bomb shell carries its own blast; a second call on the same shell does nothing. */
+  private detonateBomb(proj: Projectile): void {
+    const radius = proj.blastRadius;
+    if (radius <= 0) return;
+    const damage = proj.damage;
+    const knockback = proj.blastKnockback;
+    const owner = proj.owner;
+    const x = proj.x;
+    const y = proj.y;
+    proj.active = false;
+    proj.blastRadius = 0;
+    this.explodeBlast(x, y, radius, damage, owner, knockback);
+  }
+
+  /**
+   * Touch test for bombs. It does no damage: a bomb only needs to know that it has
+   * arrived so the blast can resolve once against everything in radius.
+   */
+  private bombTouchesBody(proj: Projectile): boolean {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.slot === proj.owner || p.iframes > 0 || p.ghostT > 0) continue;
+      const dx = proj.x - p.x;
+      const dy = proj.y - p.y;
+      const rr = proj.radius + PLAYER.radius;
+      if (dx * dx + dy * dy <= rr * rr) return true;
+    }
+    if (this.mode === 'training' && this.drone.active) {
+      const dx = proj.x - this.drone.x;
+      const dy = proj.y - this.drone.y;
+      const rr = proj.radius + this.drone.radius;
+      if (dx * dx + dy * dy <= rr * rr) return true;
+    }
+    if (this.mode !== 'gauntlet' || proj.owner === 1) return false;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const dx = proj.x - s.x;
+      const dy = proj.y - s.y;
+      const rr = proj.radius + s.radius;
+      if (dx * dx + dy * dy <= rr * rr) return true;
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const dx = proj.x - v.x;
+      const dy = proj.y - v.y;
+      const rr = proj.radius + v.radius;
+      if (dx * dx + dy * dy <= rr * rr) return true;
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const dx = proj.x - e.x;
+      const dy = proj.y - e.y;
+      const rr = proj.radius + CASCADING_ERROR.blockSize * 0.5;
+      if (dx * dx + dy * dy <= rr * rr) return true;
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const hdx = proj.x - w.x;
+      const hdy = proj.y - w.y;
+      const hr = proj.radius + WORM.headRadius;
+      if (hdx * hdx + hdy * hdy <= hr * hr) return true;
+      for (let s = 0; s < w.segCount; s++) {
+        const sdx = proj.x - w.segX[s];
+        const sdy = proj.y - w.segY[s];
+        const sr = proj.radius + WORM.segmentRadius;
+        if (sdx * sdx + sdy * sdy <= sr * sr) return true;
+      }
+    }
+    return false;
   }
 
   private damageDrone(amount: number, sourceSlot: number): void {

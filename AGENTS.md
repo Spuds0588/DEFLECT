@@ -89,10 +89,10 @@ happens.
 Offline play identifies by **program**, not by slot. Each program owns a hue (`PROGRAM_COLORS`) and a
 silhouette from `pathProgramHealth` in `src/game/identity.ts`: Probe is a cyan scan ring with `◎`, Wedge
 an amber diamond with `▣`, Fisher an indigo hex reel with `≈`, Sweep a lime octagon with `✷`, Toxic a green six-point star
-with `☠`. The select screen and the arena share that
+with `☠`, Kaboom a red-orange square built from four inward triangles with a bomb at the center. The select screen and the arena share that
 shape and glyph, so a program reads the same in the roster, intro and fight.A program's `glyph` may be a single character, a multi-character text combo, Unicode dingbats/wingdings, or a multi-line ASCII picture; `drawSymbol` scales it to the core and portrait, strips common indentation, and measures the real advance against the symbol font stack (`ui-monospace` first, then `Segoe UI Symbol`, `Noto Sans Symbols 2`, `Apple Symbols`, Wingdings, Webdings) so a wide mark shrinks instead of spilling through the hull. Prefer direction-neutral marks: a pointing glyph at the core reads as facing. Each program also owns `coreScale` so a tight hull keeps clearance from its
 rotating health segments: Probe `1.12`, Wedge `0.88` (the diamond's sides are the tightest core), Fisher
-`1.10`, Sweep `1.06`. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
+`1.10`, Sweep `1.06`, Toxic `1.0`, Kaboom `0.98`. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
 uses the empty space between the core disc and the hull, with tighter row spacing and a narrower width
 budget; a single glyph keeps the default 0.51. The low-health core keeps a scale floor
 (`0.78 + 0.22 * coreHp`) so the mark stays visible while the hull ghosts carry the damage read. Check a
@@ -100,6 +100,8 @@ new program at full and one-segment health; the mark must not touch the bright h
 
 A four-sided hull cannot be split into three equal corner pieces, so Wedge draws one bracket per health
 segment at three corners, a short frame-weight tab at the fourth corner, and a thin rim around the square.
+Kaboom uses the same four-corner rule with a different piece: his square is four inward-facing triangles,
+three bright health segments and one thin frame-only triangle.
 The tab and rim keep the silhouette closed at full health without counting as a health segment; keep them
 below the health stroke weight. Do not revert to equal perimeter slices on the diamond, which cut through
 corners and read as arbitrary chunks. A five-sided hull has the same problem in a milder form: its slices
@@ -469,6 +471,35 @@ segments cut cleanly with no frame rim; the trim is half an edge at each segment
 Venom on gauntlet threat families is not modelled; the spray and jet damage them, but worms, viruses,
 sentries and error blocks cannot be poisoned yet. Do not add poison fields to `Snapshot`; the kit is
 local-only like every other program.
+
+### D16 — Kaboom.exe: bombs, lob and a carpet spray (built 2026-10-30)
+
+`KABOOM.EXE` is the roster's **bomber** (id 5, `BOMBER`). Identity: `PROGRAM_COLORS.kaboom`
+(`#ff5a3d`), a hull of four inward-facing triangles that reads as a square made of triangles, and a bomb
+core. Three triangles are health segments and the fourth is frame only, the same four-corner compromise
+Wedge makes. The center mark and every shell use the Wingdings bomb (`M`) when the family is really
+installed; on a host without Wingdings, `drawBombMark` draws a vector shell instead so the core never
+reads as a letter. `document.fonts.check` alone reports true for missing system families, so
+`hasSymbolFont` also compares glyph advances against a definitely-missing family.
+
+- **Ranged**: one slow bomb (type 8, 250 u/s, 1.9 s life). It does no direct-hit damage: it explodes on a
+  body, on cover, or at the end of its fuse, and the blast (52 radius, 1 damage, 520 shove) does the work.
+  Cover is real for the blast, so a shell that lands behind a pillar clears nothing.
+- **Skill**: a heavy bomb lobbed in an arc (type 9, `lobTime` 0.62 s, `lobRange` 300) that flies over
+  pillars, lands at the target distance, and detonates for 2 damage in a 116 blast. It also explodes on
+  the first body it meets.
+- **Power**: five lobbed shells in a shallow fan (`clusterSpread` 0.24 rad) that land as a row about 150
+  units wide. They are released left to right with `clusterStagger` 0.07 s between shells, carried in the
+  projectile's `grace` field, so the power reads as a continuous string or spray rather than five orbs
+  appearing on one frame. Each shell has its own 66 blast and 1 damage; overlapping blasts are intended.
+- Bombs are **not deflectable**: every `proj.type >= 3` deflect/guard/net branch must exclude types 8 and
+  9 explicitly, or a caught shell would turn into a bolt. A bomb that hits cover dies there and detonates
+  on the same frame.
+- Bots lob when a target sits between 90 and `lobRange + 60`; the generic heavy hold builds the carpet.
+  The kit is local-only like every other program; do not add bombs to `Snapshot` fields.
+
+All numbers live in the `KABOOM` block in `config.ts`.
+
 
 ---
 

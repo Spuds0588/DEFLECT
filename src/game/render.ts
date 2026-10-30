@@ -1,7 +1,7 @@
-import { BOLT, BUG, CAMERA_ZOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { BOLT, BUG, CAMERA_ZOOM, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
-import { drawGlyph, drawSymbol, pathProgramFrame, pathProgramHealth, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
+import { drawGlyph, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
 import { P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
@@ -1464,7 +1464,7 @@ export class Renderer {
       const y = lerp(p.prevY, p.y, alpha);
       // The thrown broom head and the venom needle are solid objects, not bolts: no
       // motion tail. Their bodies are drawn with the rest of the projectile shapes.
-      if (p.type !== 6 && p.type !== 7) {
+      if (p.type !== 6 && p.type !== 7 && p.type !== 8 && p.type !== 9) {
         this.pushTrail(p, x, y);
         if (p.trailCount >= 2) {
       // Hostile shots get a short tail so the screen does not fill with long lines.
@@ -1752,6 +1752,8 @@ export class Renderer {
     for (let i = 0; i < state.projectiles.length; i++) {
       const p = state.projectiles[i];
       if (!p.active) continue;
+      // A bomb still waiting its turn in the power's spray is not on the field yet.
+      if ((p.type === 8 || p.type === 9) && p.grace > 0) continue;
       const x = lerp(p.prevX, p.x, alpha);
       const y = lerp(p.prevY, p.y, alpha);
       const hostile = p.owner < 0 && p.type >= 3;
@@ -1821,6 +1823,33 @@ export class Renderer {
         ctx.globalAlpha = 0.95;
         ctx.rotate(angle);
         drawSymbol(ctx, '†', 0, 0, p.radius * 1.9, 1);
+        ctx.restore();
+      } else if (p.type === 8 || p.type === 9) {
+        // Kaboom's shell: the bomb mark upright on the ground plane, a live fuse spark,
+        // and, for a lobbed shell, a short arc lift plus its landing shadow.
+        const prog = programDef(PROGRAM_ID.KABOOM);
+        const arcPct = p.arcDur > 0 ? 1 - Math.max(0, Math.min(1, p.fuse / p.arcDur)) : 1;
+        const lift = p.arcDur > 0 ? Math.sin(Math.PI * arcPct) * 54 : 0;
+        const coreR = p.type === 9 ? p.radius * 1.5 : p.radius * 1.15;
+        if (lift > 1) {
+          ctx.globalAlpha = 0.24;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.ellipse(x, y + 4, p.radius * 1.2, p.radius * 0.44, 0, 0, TWO_PI);
+          ctx.fill();
+        }
+        ctx.save();
+        ctx.translate(x, y - lift);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, coreR * 1.6, 0, TWO_PI);
+        ctx.fill();
+        ctx.globalAlpha = 0.96;
+        drawProgramMark(ctx, PROGRAM_ID.KABOOM, prog.glyph, prog.symbolFont, 0, 0, coreR, prog.coreScale);
+        const spark = 0.5 + 0.5 * Math.sin(t * 22 + p.serial);
+        ctx.fillStyle = '#fff6e0';
+        ctx.fillRect(coreR * 0.55, -coreR * 1.3, 2 + spark * 2, 2 + spark * 2);
         ctx.restore();
       } else if (p.type >= 3) {
         const angle = Math.atan2(p.vy, p.vx);
@@ -2734,7 +2763,7 @@ export class Renderer {
         drawGlyph(ctx, slotGlyph(p.slot), 0, 0, PLAYER.radius * 0.51);
       } else {
         const glyph = programDef(p.program);
-        drawSymbol(ctx, glyph.glyph, 0, 0, PLAYER.radius * (glyph.glyphRadius ?? 0.51), glyph.coreScale);
+        drawProgramMark(ctx, p.program, glyph.glyph, glyph.symbolFont, 0, 0, PLAYER.radius * (glyph.glyphRadius ?? 0.51), glyph.coreScale);
       }
       ctx.restore();
 
@@ -3104,11 +3133,12 @@ export class Renderer {
     ctx.stroke();
 
     // 1. Ranged ammo: one dot per shot left in the program's string.
-    const ammoMax =
-      p.program === PROGRAM_ID.WEDGE ? 3 : p.program === PROGRAM_ID.FISHER || p.program === PROGRAM_ID.SWEEP ? 1 : BOLT.burstCount;
+    const singleShot =
+      p.program === PROGRAM_ID.FISHER || p.program === PROGRAM_ID.SWEEP || p.program === PROGRAM_ID.KABOOM;
+    const ammoMax = p.program === PROGRAM_ID.WEDGE ? 3 : singleShot ? 1 : BOLT.burstCount;
     const ammo = p.program === PROGRAM_ID.WEDGE
       ? p.stringLeft > 0 ? p.stringLeft : p.burstCd <= 0 ? 3 : 0
-      : p.program === PROGRAM_ID.FISHER || p.program === PROGRAM_ID.SWEEP
+      : singleShot
         ? p.autoFireT <= 0 ? 1 : 0
         : p.burstLeft;
     const dotGap = ammoMax > 3 ? 5 : 5.6;
@@ -3190,6 +3220,13 @@ export class Renderer {
       ctx.moveTo(4, -3);
       ctx.lineTo(6, 0);
       ctx.lineTo(4, 3);
+    } else if (p.bugKind === 8) {
+      // Lobbed shell: a bomb body with a lit fuse, not a blast ring.
+      ctx.arc(0, 0.8, 4.4, 0, TWO_PI);
+      ctx.moveTo(2.6, -2.6);
+      ctx.lineTo(5, -5);
+      ctx.moveTo(5, -5);
+      ctx.lineTo(6.6, -4.4);
     } else {
       // Lure beacon: a center pulse with two open arcs, not a closed ring. The
       // closed ring plus dot is Probe's core mark (`◎`) and would collide with it.
@@ -3214,14 +3251,19 @@ export class Renderer {
         ? FISHER.netCooldown
         : p.program === PROGRAM_ID.SWEEP
           ? SWEEP.powerCooldown
-          : PLAYER.laserCooldown;
+          : p.program === PROGRAM_ID.KABOOM
+            ? KABOOM.clusterCooldown
+            : PLAYER.laserCooldown;
     const heavyColor = p.program === PROGRAM_ID.WEDGE
       ? PROGRAM_COLORS.wedge
       : p.program === PROGRAM_ID.FISHER
         ? PROGRAM_COLORS.fisher
         : p.program === PROGRAM_ID.SWEEP ? PROGRAM_COLORS.sweep : color;
     const heavyLive =
-      p.laserT > 0 || p.wedgeT > 0 || p.broT > 0 || (p.program === PROGRAM_ID.SWEEP && p.laserChargeHeld);
+      p.laserT > 0 ||
+      p.wedgeT > 0 ||
+      p.broT > 0 ||
+      ((p.program === PROGRAM_ID.SWEEP || p.program === PROGRAM_ID.KABOOM) && p.laserChargeHeld);
     ctx.save();
     ctx.translate(heavyX, cy);
     ctx.globalAlpha = heavyLive ? 0.98 : heavyReady ? 0.85 : 0.24;
@@ -3252,6 +3294,15 @@ export class Renderer {
       ctx.moveTo(-4, 6);
       ctx.lineTo(0, 1.5);
       ctx.lineTo(4, 6);
+    } else if (p.program === PROGRAM_ID.KABOOM) {
+      // Carpet: three shells over one blast line. The skill beside it is a single
+      // shell with a fuse, so the two bomb ideas never share one mark.
+      ctx.moveTo(-6, 5.4);
+      ctx.lineTo(6, 5.4);
+      for (let b = -1; b <= 1; b++) {
+        ctx.moveTo(b * 4.2 + 1.7, -1.6);
+        ctx.arc(b * 4.2, -1.6, 1.7, 0, TWO_PI);
+      }
     } else {
       ctx.moveTo(0, -5.5);
       ctx.lineTo(0, 5.5);
@@ -3512,7 +3563,7 @@ export class Renderer {
         drawGlyph(ctx, slotGlyph(p.slot), x, y + 1, PLAYER.radius * 0.51);
       } else {
         const glyph = programDef(p.program);
-        drawSymbol(ctx, glyph.glyph, x, y + 1, PLAYER.radius * (glyph.glyphRadius ?? 0.51), glyph.coreScale);
+        drawProgramMark(ctx, p.program, glyph.glyph, glyph.symbolFont, x, y + 1, PLAYER.radius * (glyph.glyphRadius ?? 0.51), glyph.coreScale);
       }
     }
 

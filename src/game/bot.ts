@@ -1,4 +1,4 @@
-import { BOLT, BUG, FISHER, PLAYER, TOXIC, WEDGE, type Rect } from './config';
+import { BOLT, BUG, FISHER, KABOOM, PLAYER, TOXIC, WEDGE, type Rect } from './config';
 import { PROGRAM_ID } from './programs';
 import { arenaSolids, type ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
@@ -329,6 +329,28 @@ export class BotBrain {
       out.my = Math.sin(aim) * 0.8;
       out.pressed |= ACTION.CANDLE;
       this.candleCd = this.rng.range(4.5, 6.5);
+      return;
+    }
+
+    // Kaboom's lob is a medium-range commitment: drop the heavy shell on the target
+    // rather than at his own feet, where the blast would catch him too.
+    if (
+      me.program === PROGRAM_ID.KABOOM &&
+      this.candleCd <= 0 &&
+      me.bugCd <= 0 &&
+      me.energy >= BUG.cost &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.laserT <= 0 &&
+      !me.laserChargeHeld &&
+      !blocked &&
+      dist > 90 &&
+      dist < KABOOM.lobRange + 60
+    ) {
+      out.mx = Math.cos(aim) * 0.55;
+      out.my = Math.sin(aim) * 0.55;
+      out.pressed |= ACTION.CANDLE;
+      this.candleCd = this.rng.range(5, 7);
       return;
     }
 

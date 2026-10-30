@@ -1848,3 +1848,40 @@ ghosts, the narrow jet stopping at cover, and the circle spray.
 
 **Next:** playtest the jet's turn rate and duration, decide whether gauntlet threats should carry venom,
 and give the jet a wind-up tell.
+
+## 2026-10-30 — Kaboom.exe and the carpet spray
+
+**Goal:** stand up the sixth program, then make the five-bomb power read as one continuous string or spray
+instead of five shells appearing on the same frame.
+
+**Changes**
+- `KABOOM.EXE` added (id 5, `BOMBER`) with `PROGRAM_COLORS.kaboom` `#ff5a3d`, a square hull made of four
+  inward triangles and a bomb core at `coreScale 0.98`. Three triangles are health segments, the fourth is
+  frame only, the same four-corner compromise Wedge uses.
+- The core and every shell draw the Wingdings bomb (`M`) when the family is genuinely installed. On this
+  Linux host it is not, so a vector bomb is drawn instead. `document.fonts.check('16px Wingdings')` returns
+  true even when the family is missing, so `hasSymbolFont` now also compares `M`, `Z` and the PUA bomb
+  advance against a definitely-missing family and falls back when they match.
+- Ranged: slow shell (type 8, 250 u/s, 1.9 s fuse) that does no direct-hit damage. It detonates on a body,
+  cover, or fuse end for a 52-radius blast, 1 damage and a 520 shove. `explodeMine` was split into a shared
+  `explodeBlast`, so mines and bombs use the same cover-aware damage path for players, the drone and all
+  gauntlet threats.
+- Skill: a heavy lobbed shell (type 9, 0.62 s arc, 300 range) that ignores pillars in flight and detonates
+  on landing or contact for 2 damage in a 116 blast.
+- Power: five lobbed shells in a shallow fan (`clusterSpread` 0.24 rad). Each shell waits `clusterStagger`
+  0.07 s before its fuse starts, carried in the projectile's `grace` field, so the row streams out left to
+  right over 0.28 s. Five 66-radius, 1-damage blasts land about 150 units wide.
+- Bombs are not shots: the swing, guard, shield wave, Wedge bash/plow and Fisher net all skip types 8/9.
+  Before that rule, a caught bomb would have been rewritten to a bolt by the shared `type >= 3` branch.
+- Readiness dock: Kaboom is a single-shot ammo cell, the skill is a fused bomb, the heavy is a three-shell
+  row, and the heavy cooldown uses `clusterCooldown`.
+- Kaboom bots lob at 90 to `lobRange + 60`; the generic heavy hold builds the carpet. Bumped to v0.1.32.
+
+**Verification:** `npx tsc --noEmit` and `npm run build` clean. Headless probe covered shell spawn/radius/
+speed, two bodies in one blast, blast slide, self-immunity, lob arc and landing damage, five-shell power,
+cooldown, three-body carpet and cover cutting the blast. `?autoplay=3` caught all five type-9 shells alive
+together on slot 0 with 40+ units between them, confirming the stagger. Browser at 1920×1080 confirmed the
+program card, hull, vector bomb mark and a shell in flight, with no console errors. `npm run bench` clean.
+
+**Next:** playtest the 0.07 s stagger and 150-unit row; check the Wingdings path on a host that has the
+font; decide whether bombs should ever be networked.

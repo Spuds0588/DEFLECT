@@ -39,6 +39,7 @@ export const PROGRAM_COLORS = {
   fisher: '#8a7dff',
   sweep: '#b8ff3a',
   toxic: '#3dff6e',
+  kaboom: '#ff5a3d',
   lure: '#7dffd4',
 } as const;
 
@@ -117,14 +118,104 @@ const SYMBOL_LINES = new Map<string, string[]>();
 /** Font strings are cached by half-pixel size; draw() must not build strings per frame. */
 const SYMBOL_FONT_CACHE = new Map<number, string>();
 
-export function symbolFont(px: number): string {
+export function symbolFont(px: number, family = ''): string {
   const size = Math.round(px * 2) / 2;
+  // A program may name its own symbol family (Wingdings for Kaboom's bomb). Cache
+  // those separately from the shared stack so the hot path still builds no strings.
+  if (family) return `700 ${size}px ${family}`;
   let font = SYMBOL_FONT_CACHE.get(size);
   if (font === undefined) {
     font = `700 ${size}px ${SYMBOL_FONT}`;
     SYMBOL_FONT_CACHE.set(size, font);
   }
   return font;
+}
+
+/**
+ * True when a named symbol font is actually installed in this browser.
+ * `document.fonts.check` alone is not enough: Chrome reports true for a system
+ * family it cannot resolve. So the family's glyph advances are compared with a
+ * definitely-missing family; identical metrics mean the name fell back.
+ */
+const FONT_READY = new Map<string, boolean>();
+const MISSING_FONT = '__deflect_missing_font__';
+let probeCtx: CanvasRenderingContext2D | null = null;
+
+function probeAdvance(family: string): number {
+  if (typeof document === 'undefined') return 0;
+  if (!probeCtx) probeCtx = document.createElement('canvas').getContext('2d');
+  if (!probeCtx) return 0;
+  probeCtx.font = `100px ${family}`;
+  const m = probeCtx.measureText('M').width;
+  const z = probeCtx.measureText('Z').width;
+  const pua = probeCtx.measureText('\uF04D').width;
+  return m * 31 + z * 17 + pua;
+}
+
+export function hasSymbolFont(family: string): boolean {
+  if (!family) return false;
+  const hit = FONT_READY.get(family);
+  if (hit !== undefined) return hit;
+  let ready = false;
+  try {
+    ready = typeof document !== 'undefined' && document.fonts.check(`16px ${family}`);
+    if (ready) ready = probeAdvance(family) !== probeAdvance(MISSING_FONT);
+  } catch {
+    ready = false;
+  }
+  FONT_READY.set(family, ready);
+  return ready;
+}
+
+/**
+ * A vector bomb, used for Kaboom when Wingdings is not installed. A typed 'M' in a
+ * missing family would read as a letter, so the core falls back to a drawn shell:
+ * a round body, a lit fuse and a spark, all in the caller's current fill color.
+ */
+export function drawBombMark(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
+  const bodyR = r * 0.64;
+  const bodyY = cy + r * 0.14;
+  ctx.beginPath();
+  ctx.arc(cx, bodyY, bodyR, 0, Math.PI * 2);
+  ctx.fill();
+  // A bright inner rim keeps the sphere from reading as a flat dot at the small
+  // projectile size. Never punch destination-out here: callers draw additively and
+  // that would erase the world behind the bomb.
+  ctx.save();
+  ctx.globalAlpha *= 0.55;
+  ctx.lineWidth = Math.max(1, r * 0.1);
+  ctx.beginPath();
+  ctx.arc(cx, bodyY, bodyR * 0.7, -2.5, -0.8);
+  ctx.stroke();
+  ctx.restore();
+  // Fuse: a short kinked stem out of the top-right shoulder.
+  ctx.lineWidth = Math.max(1.2, r * 0.2);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx + bodyR * 0.52, bodyY - bodyR * 0.62);
+  ctx.lineTo(cx + bodyR * 0.92, bodyY - bodyR * 1.02);
+  ctx.lineTo(cx + r * 1.02, bodyY - bodyR * 0.88);
+  ctx.stroke();
+  // Spark: a hard square, matching the digital dust and shard language.
+  ctx.fillRect(cx + r * 0.9, bodyY - bodyR * 1.28, Math.max(2, r * 0.26), Math.max(2, r * 0.26));
+}
+
+/** Draws a program's core mark, including Kaboom's missing-font fallback. */
+export function drawProgramMark(
+  ctx: CanvasRenderingContext2D,
+  programId: number,
+  glyph: string,
+  symbolFamily: string | undefined,
+  cx: number,
+  cy: number,
+  r: number,
+  fontScale = 1,
+): void {
+  if (programId === 5 && !hasSymbolFont(symbolFamily ?? '')) {
+    drawBombMark(ctx, cx, cy, r);
+    return;
+  }
+  drawSymbol(ctx, glyph, cx, cy, r, fontScale, symbolFamily);
 }
 
 export function slotSymbol(slot: number): string {
@@ -160,6 +251,8 @@ export function programHullSides(programId: number): number {
   // Toxic's six-point star has twelve equal edges, so three segments of four edges
   // each fall exactly on two points apiece.
   if (programId === 4) return 12;
+  // Kaboom's square is built from four triangles; the custom path lives below.
+  if (programId === 5) return 4;
   return 0;
 }
 
@@ -182,6 +275,24 @@ export function pathProgramHealth(
   const twoPi = Math.PI * 2;
   const sides = programHullSides(programId);
   ctx.beginPath();
+  // Kaboom's square is four inward-pointing triangles, one per side. Three are health
+  // segments; `pathProgramFrame` keeps the fourth side closed at frame weight.
+  if (programId === 5) {
+    const sideLen = 2 * r * Math.sin(Math.PI / 4);
+    const apex = r * 0.64;
+    for (let seg = 0; seg < freshSegments; seg++) {
+      const a = spin + seg * (twoPi / 4);
+      const bx = cx + Math.cos(a) * r;
+      const by = cy + Math.sin(a) * r;
+      const tx = -Math.sin(a) * sideLen * 0.5;
+      const ty = Math.cos(a) * sideLen * 0.5;
+      ctx.moveTo(bx - tx, by - ty);
+      ctx.lineTo(cx + Math.cos(a) * apex, cy + Math.sin(a) * apex);
+      ctx.lineTo(bx + tx, by + ty);
+      ctx.closePath();
+    }
+    return;
+  }
   // Toxic's hull is a pointed star rather than a regular polygon. Every edge is the
   // same length by symmetry, so equal perimeter slices are exact: three runs of four
   // edges, each covering two points.
@@ -290,6 +401,22 @@ export function pathProgramFrame(
   r: number,
   spin: number,
 ): void {
+  if (programId === 5) {
+    // Fourth side of the square: frame only, never a segment.
+    const sideLen = 2 * r * Math.sin(Math.PI / 4);
+    const apex = r * 0.64;
+    const a = spin + 3 * (Math.PI / 2);
+    const bx = cx + Math.cos(a) * r;
+    const by = cy + Math.sin(a) * r;
+    const tx = -Math.sin(a) * sideLen * 0.5;
+    const ty = Math.cos(a) * sideLen * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(bx - tx, by - ty);
+    ctx.lineTo(cx + Math.cos(a) * apex, cy + Math.sin(a) * apex);
+    ctx.lineTo(bx + tx, by + ty);
+    ctx.closePath();
+    return;
+  }
   if (programHullSides(programId) !== 4) return;
   const quarter = Math.PI / 2;
   ctx.beginPath();
@@ -325,14 +452,15 @@ function widestLine(lines: string[]): string {
 }
 
 /** Width of `text` in ems at any size. Measured once per line, never per frame. */
-function emAdvance(ctx: CanvasRenderingContext2D, text: string): number {
-  const hit = SYMBOL_ADVANCE.get(text);
+function emAdvance(ctx: CanvasRenderingContext2D, text: string, family = ''): number {
+  const key = family ? `${family}|${text}` : text;
+  const hit = SYMBOL_ADVANCE.get(key);
   if (hit !== undefined) return hit;
   ctx.save();
-  ctx.font = symbolFont(100);
+  ctx.font = symbolFont(100, family);
   const advance = ctx.measureText(text).width / 100;
   ctx.restore();
-  SYMBOL_ADVANCE.set(text, advance);
+  SYMBOL_ADVANCE.set(key, advance);
   return advance;
 }
 
@@ -350,6 +478,7 @@ export function drawSymbol(
   cy: number,
   r: number,
   fontScale = 1,
+  fontFamily = '',
 ): void {
   let lines = SYMBOL_LINES.get(symbol);
   if (!lines) {
@@ -391,7 +520,7 @@ export function drawSymbol(
   // the same footprint as one glyph; a single glyph keeps its scaled font size.
   // A multi-line picture is wider by nature, so it gets a slightly tighter width
   // budget and closer rows: a wide ASCII mark must not cross the health hull.
-  const advance = emAdvance(ctx, widestLine(lines));
+  const advance = emAdvance(ctx, widestLine(lines), fontFamily);
   const widthFit = (r * (multi ? 1.78 : 2.15)) / Math.max(0.2, advance);
   const rowGap = multi ? 0.8 : 1.05;
   const heightFit = (r * 2.05) / (lines.length * rowGap);
@@ -403,7 +532,7 @@ export function drawSymbol(
   ctx.save();
   ctx.translate(cx, cy + 1);
   ctx.scale(scale, scale);
-  ctx.font = symbolFont(base);
+  ctx.font = symbolFont(base, fontFamily);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const lineH = base * rowGap;
