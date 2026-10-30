@@ -2,7 +2,40 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.56 kiosk demo)
+Last updated: 2026-10-30 (v0.1.57 touch framework)
+
+---
+
+## v0.1.57 — Phone touch layout and local input assists (2026-10-30)
+
+### Built
+- [x] `src/ui/touch.ts`: a bottom-left DOM stick with a 0.18 deadzone and three hold-capable
+      bottom-right buttons. SHIELD is `ACTION.SWING` (tap lash, hold guard), SKILL is `ACTION.CANDLE`
+      (tap skill, hold power) and DASH is `ACTION.DASH` (tap dodge, hold charged). Pointer up, cancel,
+      blur and a hidden tab release every held touch
+- [x] The layer only shows in a live local/guest game with no overlay or loading intro; menus,
+      attract/kiosk and the stress bench hide it. GAME UI does not remove it (it is input, not readout);
+      the pause button opens the normal leave overlay and STAY restores the controls
+- [x] `touchMode` comes from a coarse pointer; `?touch=1` forces it and `?touch=0` suppresses it
+- [x] Settings > `CONTROLS`: persisted `AUTO LOCK` (`deflect.autoLock`) and `AUTO ATTACK`
+      (`deflect.autoAttack`); both default on for touch and off for keyboard/pad, reset follows the device
+- [x] Auto lock holds the normal lock; auto attack writes LOCK and uses `AUTO_ATTACK.meleeRange` /
+      `rangedRange` from `tuning/player.json` to choose the lash or ranged fire. It never overrides a
+      held manual action, an active swing/guard/dash/heavy or an armed jump-scare
+- [x] Touch HUD: readiness docks move to the top centre; the shared minimap is hidden. Stick and buttons
+      use safe-area insets. No Touch state enters `World`, `Snapshot` or a room
+- [x] `HOW TO PLAY` gets a touch table; README controls and QA hooks updated; build stamped 0.1.57
+- [x] `npx tsc --noEmit` and `npm run build` clean. Browser at a 843×390 viewport: stick moved the local
+      avatar, guard rose and released, the pause overlay hid and restored the layer, auto lock acquired a
+      visible bot, auto attack fired, and `?touch=0` left both assists off
+
+### Next
+- [ ] Physical iPhone and Android pass: thumb reach, safe-area spacing, one-handed play, pointer cancel
+      when a call or notification takes the page
+- [ ] Decide whether touch needs a manual lock-cycle control when AUTO LOCK is off
+- [ ] Tune the three touch button positions from real thumbs; the current 2×2 grid leaves the top-left
+      cell empty
+- [ ] Landscape is the assumed phone pose; portrait is usable but not laid out for it
 
 ---
 
@@ -1693,7 +1726,8 @@ The 8-player cap stands as a product decision; the real test is still eight actu
 - [ ] Snapshot delta compression or binary encoding if the 8P worst case causes trouble
 - [ ] Self-hosted PeerJS broker option before public release
 - [ ] Tauri shell spike (wrap the built PWA, window config, no Rust logic yet)
-- [ ] Mobile/touch fallback investigation (PWA audience) — decide before adding
+- [x] Mobile/touch fallback investigation (PWA audience): first pass built as v0.1.57 (D28). Physical
+      phone QA and thumb tuning remain before calling it a mobile release
 
 ## Arena traversal — bridges, pads and lifts (built 2026-10-29)
 

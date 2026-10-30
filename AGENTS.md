@@ -40,6 +40,8 @@ comes from the movement vector:
 - Keyboard: 8 directions. Standing still keeps your last facing.
 - Gamepad: analog stick direction, deadzone **0.2**. Partial tilt moves slower but still sets facing.
 - Mouse: buttons only. The mouse never sets facing. "WASD + mouse" play means mouse buttons are actions.
+- Touch: the on-screen stick writes the same movement vector, deadzone and facing rule as a keyboard or
+  pad. The action buttons write ordinary action bits; there is no second stick and no touch-only aim.
 
 Consequences that are part of the design, not bugs:
 
@@ -365,17 +367,17 @@ arrow or readiness marks. Match state (round, timer, score pips) stays in the bo
 minimap is one shared map: lower-left for a solo view, top-centre when the view is split or more than one
 local is active.
 
-The DOM settings screen is tabbed: `FEEDBACK`, `AUDIO`, `SYSTEM`. Persisted options are
-callsign, hit rotation, impact flash, scanlines, minimap, **game UI**, master volume, soundtrack, SFX,
-menu sounds, mute, and arena/bot preferences. New feedback options belong in the Feedback tab, not
+The DOM settings screen is tabbed: `FEEDBACK`, `CONTROLS`, `AUDIO`, `SYSTEM`. Persisted options are
+callsign, hit rotation, impact flash, scanlines, minimap, **game UI**, auto lock, auto attack, master
+volume, soundtrack, SFX, menu sounds, mute, and arena/bot preferences. New feedback options belong in the Feedback tab, not
 beside the title menu. The minimap is a small edge-anchored overlay showing cover, every local player
 and every local threat family; it is off only by explicit player choice. `GAME UI` hides the whole
 canvas UI layer (match strip, wave banners, readiness docks, minimap) for a clean capture without
 changing the avatar's own health or lock marks; `?ui=0` does the same for one load and does not persist.
 
 `HOW TO PLAY` is a top-level title option and the only home for control and kit explanations. It detects
-connected gamepads and draws either a gamepad table or a keyboard/mouse table; the pad name may appear in
-that screen's header. It carries a short rules section, the program roster and clip tiles that are
+connected gamepads and draws a gamepad, touch or keyboard/mouse table; the pad name may appear in that
+screen's header. A phone gets the touch table instead of a keyboard table. It carries a short rules section, the program roster and clip tiles that are
 placeholders until recorded gameplay clips exist. Keep the explanation here rather than in the other
 menu stages: title menus list options, not instructions.
 
@@ -941,6 +943,36 @@ none because the compactor already owns that floor. All numbers live in `EMITTER
   whenever an emitter is added, and do not add emitters to an arena whose only cover makes the lane
   unavoidable.
 
+### D28 — Phone touch layout and local input assists (built 2026-10-30)
+
+This is the first mobile framework, not a second control system. `touchMode` turns on for a coarse
+pointer and can be forced with `?touch=1` or suppressed with `?touch=0`. It is presentation and local
+input only; no touch state enters `World`, `Snapshot` or a room.
+
+- `src/ui/touch.ts` owns a DOM stick at the bottom left and three hold-capable buttons at the bottom
+  right: **SHIELD** (`ACTION.SWING`), **SKILL** (`ACTION.CANDLE`) and **DASH** (`ACTION.DASH`). The stick
+  has a 0.18 deadzone and writes the same movement vector as a pad. Buttons write ordinary held and
+  pressed bits, so the simulation cannot tell a phone from a controller. Pointer up, cancel, blur and a
+  hidden tab release every held touch.
+- The layer only exists during a live local or guest game, with no overlay and no loading intro.
+  Menus, the attract/kiosk demo and the stress bench hide it and release the stick. It is input, not
+  readout UI, so `GAME UI` and `?ui=0` do not remove it; without the controls a phone has no way to move.
+  The pause button opens the ordinary leave overlay, and STAY restores the layer.
+- Settings > Controls stores `deflect.autoLock` and `deflect.autoAttack`. Both default **on** for a
+  touch device and **off** for a keyboard/pad session; an explicit saved value wins, and RESET DEFAULTS
+  follows the current device. Auto lock holds the ordinary target lock. Auto attack writes LOCK and,
+  once a target is active, presses melee inside `AUTO_ATTACK.meleeRange` or holds ranged fire inside
+  `AUTO_ATTACK.rangedRange`. It never overrides a held manual action, an active swing/guard/dash, an
+  armed jump-scare or a running heavy. This is a local input assist, not bot AI; a guest can only
+  assist against player targets because snapshots carry no other bodies.
+- The touch layout is renderer/HUD only: `Renderer.touchLayout` moves the readiness docks to the top
+  centre and suppresses the minimap. The avatar's own health, lock and action marks are unchanged. The
+  stick and buttons use `env(safe-area-inset-*)`, so a notched phone keeps clear of the glass edge.
+  Menus remain the existing DOM screens.
+- Not included: a second stick, a touch cycle-lock button, a mobile-only menu, portrait-specific
+  layout work, haptics or a local same-screen second player. Keep assist tuning in `AUTO_ATTACK` in
+  `tuning/player.json`; do not scatter touch ranges through `main.ts`.
+
 ---
 
 ## 3. Architecture
@@ -973,6 +1005,7 @@ src/game/render.ts    canvas renderer, camera framing/grouping, HUD, in-world FX
 src/game/particles.ts pooled particle system
 src/net/net.ts        PeerJS host/guest sessions, snapshot interpolation
 src/ui/dom.ts         small DOM helpers / screen manager
+src/ui/touch.ts       DOM touch stick and action buttons; ordinary InputFrame bits only
 scripts/gen-icons.mjs PWA icon generator (pure Node, zlib PNG encoder, no deps)
 scripts/bench.ts      headless simulation benchmark (ms per 60 Hz tick)
 CAMPAIGN.md           campaign topology, map handoff and open rules decisions
@@ -1245,7 +1278,8 @@ without two real clients.
 
 Networked bot slots, PvPvE enemies **inside competitive matches**, arena hazards/rails/switches/power-ups,
 destructible geometry, cosmetics/customization, accounts/persistence, spectators, teams, ranking, Tauri
-packaging, self-hosted networking, mobile touch controls, replays. Local test bots (`src/game/bot.ts`)
+packaging, self-hosted networking, replays. The phone touch layer (D28) is a first-pass framework,
+not a promise of a tuned mobile release. Local test bots (`src/game/bot.ts`)
 and the local GAUNTLET sandbox (`World` gauntlet mode) are in scope; they do not change this list into a
 promise of online bots or networked PvE.
 

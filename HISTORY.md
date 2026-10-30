@@ -2710,3 +2710,47 @@ on Escape, and the title card stayed hidden there.
 **Next:** capture a full loop for a store page and watch a long session for audio/CPU drift. The demo
 inherits the attract pilot's camera and refill behavior, so any feel issue there belongs to the pilot,
 not this boot.
+
+## 2026-10-30 — Phone touch layout and local input assists (v0.1.57)
+
+**Goal:** start the mobile/phone framework: a touch control layer, auto-lock and auto-attack assists, a
+settings home for both, and a HUD arrangement that survives a phone in landscape.
+
+**Changes:**
+- `src/ui/touch.ts` is a DOM-only `TouchControls` layer. A bottom-left stick writes the ordinary
+  movement vector (0.18 deadzone, facing comes from movement exactly as with a keyboard or pad). Three
+  bottom-right buttons write the ordinary action bits and support hold: SHIELD = `SWING` (tap lash, hold
+  guard/reflect), SKILL = `CANDLE` (tap skill, hold power), DASH = `DASH` (tap dodge, hold charged).
+  Pointer up, pointer cancel, window blur and a hidden tab release every held input, so a button cannot
+  stick across a screen change.
+- `touchMode` is on for `(pointer: coarse)`; `?touch=1` forces it for desktop QA and `?touch=0`
+  suppresses it. The layer only appears during a live local or guest game with no overlay or loading
+  intro. Menus, the attract/kiosk demo and the stress bench hide it; GAME UI and `?ui=0` do not remove
+  it because it is input, not readout. The top-right pause button opens the usual leave overlay; STAY
+  restores the controls.
+- Settings gains a `CONTROLS` tab between FEEDBACK and AUDIO with persisted `AUTO LOCK`
+  (`deflect.autoLock`) and `AUTO ATTACK` (`deflect.autoAttack`). Both default on for touch and off for
+  keyboard/pad; an explicit saved choice wins, and RESET DEFAULTS follows the current device.
+- `applyInputAssist` writes ordinary lock/attack bits into the local frame. Auto lock holds `ACTION.LOCK`.
+  Auto attack also holds lock and, once a target is active, taps melee within `AUTO_ATTACK.meleeRange`
+  (92) or holds ranged fire within `AUTO_ATTACK.rangedRange` (520); both live in `tuning/player.json`.
+  It never overrides a held manual action, an active swing/guard/dash/heavy or an armed jump-scare. A
+  guest assist reads only player targets, because that is all a snapshot carries.
+- `Renderer.touchLayout` moves the readiness docks to the top centre and drops the minimap for the touch
+  layout. The stick, buttons and pause use `env(safe-area-inset-*)`. No touch or assist state enters
+  `World`, `Snapshot` or a room.
+- `HOW TO PLAY` gains a touch table and the header reports `TOUCH`; README lists the layout, settings and
+  URL hooks. Build stamped 0.1.57 in the title, Settings > System, the console log and the service
+  worker cache.
+
+**Verification:** `npx tsc --noEmit` and `npm run build` clean. In the running dev build at 843×390:
+`touchMode`, `Renderer.touchLayout` and the three buttons were live; the stick moved the avatar and
+released to zero; a shield press raised a 0.18 s guard and released into the 0.28 s cooldown; the pause
+button opened `LEAVE TRAINING?`, hid the layer, and STAY restored it; a bot appeared, auto lock became
+active and auto attack fired (bot at 1 hp, three live projectiles, `autoFireT` cycling); `?touch=0` left
+both assists off, and toggling both in `SETTINGS > CONTROLS` persisted them across a reload. The touch
+layout hid the minimap and the canvas dock was centered. Physical phone and pointer-cancel behavior are
+not tested; the browser run used synthetic pointer events.
+
+**Next:** run the layer on an actual iPhone and Android phone, tune thumb reach and the 2×2 button grid,
+and decide whether AUTO LOCK off needs a manual lock-cycle control. Portrait is usable but not laid out.

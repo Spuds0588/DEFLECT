@@ -109,6 +109,10 @@
     "wallThickness": 7,
     "ghostDuration": 2.4
   },
+  "AUTO_ATTACK": {
+    "meleeRange": 92,
+    "rangedRange": 520
+  },
   "MINE": {
     "radius": 9,
     "cost": 35,

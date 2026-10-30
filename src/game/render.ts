@@ -291,6 +291,8 @@ export class Renderer {
    * avatar (health segments, lock reticle) are not UI and stay.
    */
   showUi = true;
+  /** Touch layout: readiness moves to the top centre and the minimap gives way. */
+  touchLayout = false;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -528,7 +530,7 @@ export class Renderer {
     // the whole screen rather than to one pane.
     if (introDone && this.showUi) {
       this.drawReadinessDocks(state);
-      if (this.showMinimap) this.drawMinimap(state, t, this.localMask, this.localCount > 1);
+      if (this.showMinimap && !this.touchLayout) this.drawMinimap(state, t, this.localMask, this.localCount > 1);
     }
   }
 
@@ -5209,6 +5211,20 @@ export class Renderer {
     const margin = 12;
     const w = DOCK_W;
     const h = DOCK_H;
+    // A phone holds the action buttons at the bottom corners, so the local readiness
+    // row moves to the top centre and the shared minimap is dropped for this layout.
+    if (this.touchLayout) {
+      const gap = 10;
+      const total = count * w + Math.max(0, count - 1) * gap;
+      const startX = (VIEW_W - total) * 0.5;
+      for (let i = 0; i < count; i++) {
+        const slot = this.localList[i];
+        const p = state.players[slot];
+        if (!p || !p.active || !p.alive) continue;
+        this.drawReadiness(state, slot, startX + i * (w + gap), margin);
+      }
+      return;
+    }
     for (let i = 0; i < count; i++) {
       const slot = this.localList[i];
       const p = state.players[slot];

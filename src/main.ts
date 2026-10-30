@@ -1,4 +1,4 @@
-import { ATTRACT, CAMERA, CAMPAIGN, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
+import { ATTRACT, AUTO_ATTACK, CAMERA, CAMPAIGN, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
 import { CAMPAIGN_LEVELS, FIRST_CAMPAIGN_LEVEL } from './game/campaign';
 import { ARENAS, drawArenaPreview, getArena } from './game/arenas';
 import { BOT_NAMES, BOT_TIERS, BOT_TIER_LABELS, BotBrain, type BotTier } from './game/bot';
@@ -20,10 +20,11 @@ import { ACTION, EV, type GameEvent, type InputFrame, type LobbyPlayer, type Lob
 import { World } from './game/world';
 import { GuestNet, HostNet, NetView, type Snapshot } from './net/net';
 import { clearChildren, drawAvatar, el, toast } from './ui/dom';
+import { TouchControls } from './ui/touch';
 import { drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, randomCallsign, sanitizeName, slotColor } from './game/identity';
 
 type Screen = 'title' | 'lobby' | 'game' | 'settings' | 'howto';
-type SettingsTab = 'feedback' | 'audio' | 'system';
+type SettingsTab = 'feedback' | 'controls' | 'audio' | 'system';
 type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'gauntlet' | 'campaign';
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
@@ -36,6 +37,8 @@ const howtoDeviceTitle = el('howto-device-title');
 const howtoDeviceName = el('howto-device-name');
 const howtoControlsPad = el('howto-controls-pad');
 const howtoControlsKeys = el('howto-controls-keys');
+const howtoControlsTouch = el('howto-controls-touch');
+const howtoTouchNote = el('howto-touch-note');
 const howtoPrograms = el('howto-programs');
 const settingsMuteBtn = el<HTMLButtonElement>('btn-settings-mute');
 const lobbyScreen = el('screen-lobby');
@@ -99,6 +102,8 @@ const menuVolumeValue = el('menu-volume-value');
 const scanlinesBtn = el<HTMLButtonElement>('btn-scanlines');
 const minimapBtn = el<HTMLButtonElement>('btn-minimap');
 const uiBtn = el<HTMLButtonElement>('btn-ui');
+const autoLockBtn = el<HTMLButtonElement>('btn-auto-lock');
+const autoAttackBtn = el<HTMLButtonElement>('btn-auto-attack');
 const resetSettingsBtn = el<HTMLButtonElement>('btn-settings-reset');
 const testFeedbackBtn = el<HTMLButtonElement>('btn-test-feedback');
 const menuHub = el('menu-hub');
@@ -204,6 +209,21 @@ let campaignSaved = false;
 let campaignPlaySeconds = 0;
 let lastCampaignPhase = '';
 
+const touchControlsEl = el('touch-controls');
+const touchStickEl = el('touch-stick');
+const touchStickKnob = el('touch-stick-knob');
+const touchMenuBtn = el<HTMLButtonElement>('touch-menu');
+const touchControls = new TouchControls(touchControlsEl, touchStickEl, touchStickKnob);
+/** `?touch=1` forces the phone layout; `?touch=0` suppresses it. */
+const touchParam = new URLSearchParams(location.search).get('touch');
+const coarsePointer =
+  typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+const touchMode = touchParam === '1' || (touchParam !== '0' && coarsePointer);
+/** Auto-assists default on for a phone and off for a keyboard/pad session. */
+let autoLock = touchMode;
+let autoAttack = touchMode;
+let touchVisible = false;
+
 const localFrame: InputFrame = { mx: 0, my: 0, held: 0, pressed: 0 };
 let trainingInputs: (InputFrame | null)[] = [localFrame];
 let stressInputs: InputFrame[] = [];
@@ -303,6 +323,9 @@ function boot(): void {
       slowMo: () => slowMoT,
       attract: () => attract,
       demo: () => demo,
+      touch: () => touchVisible,
+      assist: () => ({ autoLock, autoAttack, touchMode }),
+      frame: () => localFrame,
     };
   }
   if (demoMode) {
@@ -318,7 +341,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.56 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.57 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -403,6 +426,15 @@ function bindUi(): void {
   });
   uiBtn.addEventListener('click', () => {
     applyUi(uiBtn.getAttribute('aria-pressed') !== 'true', true);
+  });
+  autoLockBtn.addEventListener('click', () => {
+    applyAutoLock(autoLockBtn.getAttribute('aria-pressed') !== 'true', true);
+  });
+  autoAttackBtn.addEventListener('click', () => {
+    applyAutoAttack(autoAttackBtn.getAttribute('aria-pressed') !== 'true', true);
+  });
+  touchMenuBtn.addEventListener('click', () => {
+    if (screen === 'game' && overlayKind === 'none') openLeave();
   });
   testFeedbackBtn.addEventListener('click', () => {
     audio.hit();
@@ -620,6 +652,8 @@ function loadSettings(): void {
   let scanlines = true;
   let minimap = true;
   let ui = true;
+  let autoLockOn = touchMode;
+  let autoAttackOn = touchMode;
   try {
     const rawRotation = localStorage.getItem('deflect.hitRotation');
     const savedRotation = rawRotation === null ? NaN : Number(rawRotation);
@@ -630,6 +664,10 @@ function loadSettings(): void {
     scanlines = localStorage.getItem('deflect.scanlines') !== '0';
     minimap = localStorage.getItem('deflect.minimap') !== '0';
     ui = localStorage.getItem('deflect.ui') !== '0';
+    // A phone starts with both assists on; a keyboard/pad session starts with them off
+    // so the default one-stick feel is unchanged. An explicit save always wins.
+    autoLockOn = localStorage.getItem('deflect.autoLock') === null ? touchMode : localStorage.getItem('deflect.autoLock') !== '0';
+    autoAttackOn = localStorage.getItem('deflect.autoAttack') === null ? touchMode : localStorage.getItem('deflect.autoAttack') !== '0';
   } catch {
     /* storage disabled: defaults */
   }
@@ -638,6 +676,8 @@ function loadSettings(): void {
   applyScanlines(scanlines, false);
   applyMinimap(minimap, false);
   applyUi(ui, false);
+  applyAutoLock(autoLockOn, false);
+  applyAutoAttack(autoAttackOn, false);
   applyVolume(audio.volume, false);
   applyMusicVolume(audio.musicVolume, false);
   applySfxVolume(audio.sfxVolume, false);
@@ -740,6 +780,30 @@ function applyUi(on: boolean, persist: boolean): void {
   }
 }
 
+function applyAutoLock(on: boolean, persist: boolean): void {
+  autoLock = on;
+  autoLockBtn.textContent = `AUTO LOCK: ${on ? 'ON' : 'OFF'}`;
+  autoLockBtn.setAttribute('aria-pressed', String(on));
+  if (!persist) return;
+  try {
+    localStorage.setItem('deflect.autoLock', on ? '1' : '0');
+  } catch {
+    /* storage disabled */
+  }
+}
+
+function applyAutoAttack(on: boolean, persist: boolean): void {
+  autoAttack = on;
+  autoAttackBtn.textContent = `AUTO ATTACK: ${on ? 'ON' : 'OFF'}`;
+  autoAttackBtn.setAttribute('aria-pressed', String(on));
+  if (!persist) return;
+  try {
+    localStorage.setItem('deflect.autoAttack', on ? '1' : '0');
+  } catch {
+    /* storage disabled */
+  }
+}
+
 function resetSettings(): void {
   applyHitRotation(1, true);
   applyFlash(1, true);
@@ -750,6 +814,8 @@ function resetSettings(): void {
   applyScanlines(true, true);
   applyMinimap(true, true);
   applyUi(true, true);
+  applyAutoLock(touchMode, true);
+  applyAutoAttack(touchMode, true);
   toast('SETTINGS RESTORED TO DEFAULTS');
 }
 
@@ -1402,6 +1468,76 @@ function cycleLobbyArena(): void {
   toast(`ARENA // ${getArena(arenaIndex).name}`);
 }
 
+// Touch layout and local assists ------------------------------------------------------------
+
+/**
+ * The touch layer only exists during a live local/guest game. It is input, not readout
+ * UI, so GAME UI and `?ui=0` leave it alone. Menus, overlays, the attract demo and the
+ * stress bench hide it, and hiding releases any held touch so a button cannot stick
+ * across a screen change.
+ */
+function syncTouchUi(): void {
+  const want =
+    touchMode &&
+    screen === 'game' &&
+    (!!world || !!guestView) &&
+    !attract &&
+    !stress &&
+    overlayKind === 'none' &&
+    !loading;
+  if (want !== touchVisible) {
+    touchVisible = want;
+    touchControls.setEnabled(want);
+    document.body.classList.toggle('touch-ui', want);
+  }
+  renderer.touchLayout = want;
+}
+
+/**
+ * Local input assistance. It writes ordinary lock and attack bits into the local
+ * frame, so the host sim and a guest packet see the same input a human produces.
+ * Auto-attack never overrides a manual action and never triggers an armed jump-scare.
+ */
+function applyInputAssist(frame: InputFrame): void {
+  if (!autoLock && !autoAttack) return;
+  if (screen !== 'game' || loading || overlayKind !== 'none') return;
+  const state: RenderState | null = guestView ?? world;
+  if (!state) return;
+  const p = state.players[localSlot];
+  if (!p || !p.active || !p.alive) return;
+
+  if (autoLock || autoAttack) frame.held |= ACTION.LOCK;
+  if (!autoAttack || !p.lockActive) return;
+  // A held manual attack, guard, skill or dash owns the frame. The shield button is
+  // also the melee button, so this is what keeps a raised guard from auto-firing.
+  if ((frame.held & (ACTION.SWING | ACTION.BOLT | ACTION.CANDLE | ACTION.DASH)) !== 0) return;
+  if (p.swingPhase !== 0 || p.dashT > 0 || p.guardT > 0 || p.guardCd > 0) return;
+  if (p.scareT > 0 || p.laserChargeHeld || p.laserT > 0 || p.netDrawing || p.orbitT > 0) return;
+
+  let tx = 0;
+  let ty = 0;
+  if (world) {
+    if (!world.readLockTarget(p)) return;
+    tx = world.assistTarget.x;
+    ty = world.assistTarget.y;
+  } else if (guestView && p.lockKind === 1) {
+    // A snapshot only carries players. That is the whole target set online.
+    const target = guestView.players[p.lockId];
+    if (!target || !target.active || !target.alive) return;
+    tx = target.x;
+    ty = target.y;
+  } else {
+    return;
+  }
+
+  const dist = Math.hypot(tx - p.x, ty - p.y);
+  if (dist <= AUTO_ATTACK.meleeRange) {
+    frame.pressed |= ACTION.SWING;
+  } else if (dist <= AUTO_ATTACK.rangedRange) {
+    frame.held |= ACTION.BOLT;
+  }
+}
+
 // Loop -------------------------------------------------------------------------------------
 
 function loop(now: number): void {
@@ -1413,6 +1549,7 @@ function loop(now: number): void {
   if (rawDt > 0) fps += (1 / rawDt - fps) * 0.05;
 
   const wasGame = screen === 'game';
+  syncTouchUi();
   input.poll();
   const menuEdges = input.readMenuEdges();
   if (
@@ -1433,13 +1570,31 @@ function loop(now: number): void {
   }
 
   const sampled = input.sample();
-  if (sampled.pressed !== 0 || sampled.held !== 0 || sampled.mx !== 0 || sampled.my !== 0) {
+  const touchFrame = touchControls.sample();
+  const touchMoved = touchControls.isStickActive && (touchFrame.mx !== 0 || touchFrame.my !== 0);
+  if (
+    sampled.pressed !== 0 ||
+    sampled.held !== 0 ||
+    sampled.mx !== 0 ||
+    sampled.my !== 0 ||
+    touchFrame.pressed !== 0 ||
+    touchFrame.held !== 0 ||
+    touchMoved
+  ) {
     noteUserActivity();
   }
   localFrame.mx = sampled.mx;
   localFrame.my = sampled.my;
   localFrame.held = sampled.held;
   localFrame.pressed |= sampled.pressed;
+  if (touchVisible && touchControls.isStickActive) {
+    localFrame.mx = touchFrame.mx;
+    localFrame.my = touchFrame.my;
+  }
+  if (touchVisible) {
+    localFrame.held |= touchFrame.held;
+    localFrame.pressed |= touchFrame.pressed;
+  }
 
   // A menu confirm (A) is also the dash button. Drop the first frame after entering
   // a match so selecting a mode never starts with an accidental dash.
@@ -1451,6 +1606,7 @@ function loop(now: number): void {
   }
 
   updateLoadSequence(now);
+  if (screen === 'game' && !loading && overlayKind === 'none') applyInputAssist(localFrame);
 
   if (screen === 'game' && (world || guestView)) {
     if (!loading) stepSession(now, dt);
@@ -2346,7 +2502,7 @@ function openHowToPlay(): void {
 
 /**
  * The controls page shows one input device at a time. A connected pad wins the couch
- * layout; with no pad, the keyboard and mouse table is the only thing worth showing.
+ * layout; otherwise a phone gets the touch table and a desktop gets keyboard/mouse.
  */
 function syncHowToDevice(): void {
   let padName = '';
@@ -2361,10 +2517,13 @@ function syncHowToDevice(): void {
     }
   }
   const gamepad = padName.length > 0;
+  const touch = !gamepad && touchMode;
   howtoControlsPad.hidden = !gamepad;
-  howtoControlsKeys.hidden = gamepad;
-  howtoDeviceTitle.textContent = gamepad ? 'GAMEPAD' : 'KEYBOARD + MOUSE';
-  howtoDeviceName.textContent = gamepad ? padName : 'DETECTED';
+  howtoControlsKeys.hidden = gamepad || touch;
+  howtoControlsTouch.hidden = !touch;
+  howtoTouchNote.hidden = !touch;
+  howtoDeviceTitle.textContent = gamepad ? 'GAMEPAD' : touch ? 'TOUCH' : 'KEYBOARD + MOUSE';
+  howtoDeviceName.textContent = gamepad ? padName : touch ? 'ON-SCREEN CONTROLS' : 'DETECTED';
 }
 
 function setScreen(next: Screen): void {

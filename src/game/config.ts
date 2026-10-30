@@ -53,6 +53,8 @@ export const PLAYER = {
 export const BOLT = playerJson.BOLT;
 export const BUG = playerJson.BUG;
 export const MINE = playerJson.MINE;
+/** Local input assist: distance where auto-attack switches from ranged to melee. */
+export const AUTO_ATTACK = playerJson.AUTO_ATTACK;
 
 // --- Program kits ----------------------------------------------------------
 

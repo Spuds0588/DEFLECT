@@ -2308,6 +2308,19 @@ export class World {
     }
   }
 
+  /**
+   * Local input assist reads the current lock target into this reusable point. It is
+   * not simulation state: nothing here enters a snapshot, and the input layer owns the
+   * actual lock bit. Returns false if the target is gone.
+   */
+  readonly assistTarget = { x: 0, y: 0 };
+  readLockTarget(p: Player): boolean {
+    if (!this.lockTargetPos(p)) return false;
+    this.assistTarget.x = this.lockTX;
+    this.assistTarget.y = this.lockTY;
+    return true;
+  }
+
   /** Reads the current lock target into lockTX/lockTY. Returns false if it is gone. */
   private lockTargetPos(p: Player): boolean {
     if (p.lockKind === 1) {

@@ -29,7 +29,7 @@
 ██████╔╝███████╗██║     ███████╗███████╗╚██████╗   ██║   
 ╚═════╝ ╚══════╝╚═╝     ╚══════╝╚══════╝ ╚═════╝   ╚═╝   </pre><span class="caret" aria-hidden="true">_</span>
             </h1>
-            <p class="console-version">v0.1.56 <span class="build-tag">IN TESTING</span></p>
+            <p class="console-version">v0.1.57 <span class="build-tag">IN TESTING</span></p>
           </header>
 
           <div class="console-shell">
@@ -256,6 +256,18 @@
                 <div class="ctrl"><span>LOCK TARGET</span><b>Q</b></div>
                 <div class="ctrl"><span>MENU</span><b>ESC</b></div>
               </div>
+              <div id="howto-controls-touch" class="controls-grid" hidden>
+                <div class="ctrl"><span>MOVE + FACE</span><b>LEFT STICK</b></div>
+                <div class="ctrl"><span>RANGED ATTACK</span><b>AUTO ON LOCK</b></div>
+                <div class="ctrl"><span>MELEE ATTACK</span><b>TAP SHIELD</b></div>
+                <div class="ctrl"><span>SHIELD / REFLECT</span><b>HOLD SHIELD</b></div>
+                <div class="ctrl"><span>SKILL</span><b>TAP SKILL</b></div>
+                <div class="ctrl"><span>POWER ATTACK</span><b>HOLD SKILL</b></div>
+                <div class="ctrl"><span>DASH</span><b>TAP / HOLD DASH</b></div>
+                <div class="ctrl"><span>LOCK TARGET</span><b>AUTO</b></div>
+                <div class="ctrl"><span>MENU</span><b>TOP RIGHT</b></div>
+              </div>
+              <p id="howto-touch-note" class="howto-note" hidden>AUTO LOCK AND AUTO ATTACK LIVE IN SETTINGS &gt; CONTROLS.</p>
             </section>
 
             <section class="panel howto-panel">
@@ -305,6 +317,7 @@
 
           <nav id="settings-tabs" class="settings-tabs" role="tablist" aria-label="Settings sections">
             <button class="settings-tab active" data-settings-tab="feedback" data-nav role="tab" aria-selected="true">FEEDBACK</button>
+            <button class="settings-tab" data-settings-tab="controls" data-nav role="tab" aria-selected="false">CONTROLS</button>
             <button class="settings-tab" data-settings-tab="audio" data-nav role="tab" aria-selected="false">AUDIO</button>
             <button class="settings-tab" data-settings-tab="system" data-nav role="tab" aria-selected="false">SYSTEM</button>
           </nav>
@@ -346,6 +359,28 @@
                     <span>TEST WITHOUT DYING</span>
                   </div>
                   <button id="btn-test-feedback" class="btn" data-nav>TEST HIT FEEDBACK</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-page" data-settings-page="controls">
+              <div class="settings-grid settings-grid-wide">
+                <div class="panel settings-panel">
+                  <div class="controls-head">
+                    <h2>CONTROLS</h2>
+                    <span>LOCAL ASSISTS</span>
+                  </div>
+                  <div class="setting-row">
+                    <span>AUTO LOCK</span>
+                    <button id="btn-auto-lock" class="btn btn-ghost" data-nav aria-pressed="true">AUTO LOCK: ON</button>
+                  </div>
+                  <p class="setting-note">HOLDS THE LOCK ON THE NEAREST VISIBLE TARGET. TURN OFF TO AIM WITH MOVEMENT ONLY.</p>
+                  <div class="setting-row">
+                    <span>AUTO ATTACK</span>
+                    <button id="btn-auto-attack" class="btn btn-ghost" data-nav aria-pressed="true">AUTO ATTACK: ON</button>
+                  </div>
+                  <p class="setting-note">FIRES AT THE LOCKED TARGET. MELEE INSIDE REACH, RANGED OUTSIDE IT. ALSO HOLDS THE LOCK.</p>
+                  <p class="setting-note setting-note-touch">TOUCH LAYOUT: STICK LEFT // SHIELD, SKILL AND DASH RIGHT. THE MINIMAP IS HIDDEN AND THE READINESS DOCK MOVES TO THE TOP CENTRE.</p>
                 </div>
               </div>
             </section>
@@ -415,7 +450,7 @@
                   </div>
                   <div class="setting-row">
                     <span>BUILD</span>
-                    <b>0.1.56 // CONSOLE</b>
+                    <b>0.1.57 // CONSOLE</b>
                   </div>
                   <div class="setting-row">
                     <span>RESET OPTIONS</span>
@@ -479,6 +514,32 @@
         <div id="countdown" class="countdown" hidden>
           <span id="countdown-label">GET READY</span>
           <strong id="countdown-value">2</strong>
+        </div>
+
+      </div>
+
+      <div id="touch-controls" class="touch-controls" hidden aria-label="Touch controls">
+        <div id="touch-stick" class="touch-stick" role="group" aria-label="Movement stick">
+          <span class="touch-stick-ring" aria-hidden="true"></span>
+          <span id="touch-stick-knob" class="touch-stick-knob" aria-hidden="true"></span>
+        </div>
+        <button id="touch-menu" type="button" class="touch-menu" aria-label="Pause menu">II</button>
+        <div class="touch-actions" role="group" aria-label="Actions">
+          <button id="touch-skill" type="button" class="touch-btn touch-btn-skill" aria-label="Skill; hold for power attack">
+            <span class="touch-btn-icon touch-btn-spark" aria-hidden="true">✷</span>
+            <span class="touch-btn-label">SKILL</span>
+            <span class="touch-btn-hint">HOLD = POWER</span>
+          </button>
+          <button id="touch-shield" type="button" class="touch-btn touch-btn-shield" aria-label="Shield; hold to guard and reflect">
+            <span class="touch-btn-icon touch-btn-crescent" aria-hidden="true"></span>
+            <span class="touch-btn-label">SHIELD</span>
+            <span class="touch-btn-hint">TAP LASH<br />HOLD GUARD</span>
+          </button>
+          <button id="touch-dash" type="button" class="touch-btn touch-btn-dash" aria-label="Dash; hold for charged dash">
+            <span class="touch-btn-icon touch-btn-chevron" aria-hidden="true">»</span>
+            <span class="touch-btn-label">DASH</span>
+            <span class="touch-btn-hint">HOLD = CHARGE</span>
+          </button>
         </div>
       </div>
 

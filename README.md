@@ -58,8 +58,9 @@ The build is a static PWA in `dist/`; serve it over HTTPS to install it and to u
 
 ## Controls
 
-Gamepad and keyboard/mouse are both supported. The most recently used device takes over; there is no
-on-screen input-mode badge.
+Gamepad, keyboard/mouse and touch are supported. The most recently used device takes over; there is no
+on-screen input-mode badge. A phone or tablet gets the touch layout automatically, and `?touch=1` /
+`?touch=0` forces it on or off for testing.
 
 For unattended testing, add `?autoplay=2` to the local URL. Bots drive every slot, including the local
 one, and the match auto-rematches so it keeps running without input. This is a QA hook, not a menu mode.
@@ -67,7 +68,8 @@ one, and the match auto-rematches so it keeps running without input. This is a Q
 More QA hooks exist: `?split=N` lays out up to four local panes, `?gauntlet=1&arena=5&bot=1` boots a
 gauntlet with a bot driving the local player, `?attract=1` boots the title demo immediately, `?demo=true`
 runs that demo as a permanent, non-interactive display loop, `?ui=0` hides the canvas UI for one load,
-and `?debug=1` exposes a read-only inspection handle. None of them appear in a menu or a snapshot.
+`?touch=1` forces the phone layout and `?debug=1` exposes a read-only inspection handle. None of them
+appear in a menu or a snapshot.
 
 Leave the title alone for 24 seconds and it starts an attract demo: a random program in a random arena,
 fighting a deep gauntlet wave with the canvas UI off. Any key, click, wheel or pad press brings the title
@@ -98,10 +100,21 @@ There is no aim stick. **Movement is facing.** Melee attacks lock the direction 
 commits to the **last movement direction**, even while target lock is holding your facing, so strafing
 past an enemy and dashing goes sideways. Standing still keeps your last facing.
 
+**Touch layout:** a stick at the bottom left and `SHIELD`, `SKILL` and `DASH` buttons at the bottom
+right. The stick sets facing by movement, exactly like a pad: it is not a second aim stick. Tap `SHIELD`
+for the lash and hold it for guard/reflect. Tap `SKILL` for the program skill and hold it for the power
+attack. Tap `DASH` to dodge and hold for the charged dash. `AUTO LOCK` and `AUTO ATTACK` default on for
+touch and live in `SETTINGS > CONTROLS`: auto lock holds the nearest visible target, and auto attack
+fires the ranged attack on that target, switching to melee inside reach. Both can be turned off; with
+both off the touch layout has no manual ranged button. The touch layout hides the minimap and puts the
+readiness dock at the top centre. `GAME UI` hides the canvas readout but leaves the stick and buttons, since
+those are the phone's controls.
+
 The title is a console menu: arrows or the left stick move the `>` cursor, Enter or `A` confirms, and
 Escape or `B` backs out. `HOW TO PLAY` holds the control tables and a short rules and program rundown;
-it shows a gamepad or keyboard/mouse layout based on what is plugged in. `SETTINGS` is the fourth option.
-Callsign editing is under `SETTINGS > SYSTEM`, alongside hit feedback, audio, scanline and reset options.
+it shows a gamepad, touch or keyboard/mouse layout based on the input device. `SETTINGS` is the fourth
+option. Callsign editing is under `SETTINGS > SYSTEM`, alongside hit feedback, audio, scanline and reset
+options. `SETTINGS > CONTROLS` holds auto lock and auto attack.
 
 ## Attacks, skill, and health
 
