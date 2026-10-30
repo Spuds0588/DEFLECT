@@ -90,11 +90,11 @@ are the local readout. Bots and remote players show no health or readiness telem
 
 | Option | Input | Role |
 | --- | --- | --- |
-| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear. Holding keeps the fire coming at the program's cadence. |
+| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact. Holding keeps the fire coming at the program's cadence. |
 | **MELEE ATTACK** | `B` / left mouse / `J` | **Tap** for a fast spiked lash across the 180° arc in front of you. It shoves what it hits sideways and reflects shots it catches. |
 | **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. Lock on to flatten caught shots toward the target. |
-| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades. It commits you: you cannot move freely while it runs, and it has a long cooldown. |
-| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon. Its mark in the top-left readiness dock shows when it is ready. |
+| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room. It commits you: you cannot move freely while it runs, and it has a long cooldown. |
+| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane. Its mark in the top-left readiness dock shows when it is ready. |
 | **DASH** | `A` / `Shift` / `Space` | Two charges. Tap to phase through enemies and cover in your last movement direction. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. |
 
 Ranged fire is the pressure tool. Melee is the answer to incoming fire: tap to lash, hold to guard. The
@@ -152,7 +152,7 @@ difficulty to start. There is no extra NEXT/RUN step. Training has **no rounds**
 and the session continues until you leave. Training and VS BOTS remember their difficulty separately.
 
 `SINGLE PLAYER → VS BOTS` uses the same setup but runs the normal match flow: countdown, last-standing
-rounds, first to 3. Bots take the programs you leave unused, so a Wedge pick can face Probe and Fisher.
+rounds, first to 3. Bots take the programs you leave unused, so a Wedge pick can face Probe, Fisher and Sweep.
 They use the same movement, facing, melee, dash, skill and heavy rules as you; they cannot aim
 independently of movement. Training keeps the endless respawn loop, while VS BOTS ends on the match
 overlay with a rematch option.
@@ -229,9 +229,10 @@ drop its lure, then step out of the way instead of standing on it.
 - Spend both dodge charges, then watch the two chevrons in the top-left readiness dock refill one at a time.
 - Hold `Y` through the full charge. The two orbit dots should meet at your front and the beam should fire
   on its own, root you, sweep slowly, and pierce every target in the line while pillars cut it off.
-- Tap `Y` for the program's skill: Probe's proximity mine, Wedge's bracket wall, or Fisher's lure
-  beacon. The mark in the top-left readiness dock should match the program and show readiness. Wedge's
-  wall should stop bodies and reflect shots; a lure should pull local bots off you.
+- Tap `Y` for the program's skill: Probe's proximity mine, Wedge's bracket wall, Fisher's lure beacon,
+  or Sweep's split brooms. The mark in the top-left readiness dock should match the program and show
+  readiness. Wedge's wall should stop bodies and reflect shots; a lure should pull local bots off you;
+  the split brooms should shove a body out of the lane in front of Sweep.
 - Reflect a `HARD` bolt back at it. Higher tiers try to dodge their own armed ricochets.
 - Leave endless training and return. The arena choice persists and a fresh session starts cleanly; there
   is no round or match overlay to clear.

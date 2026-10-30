@@ -242,6 +242,40 @@ export interface Player {
   comboStage: number;
   comboT: number;
 
+  /** Sweep's broom combo: 0 shared lash, 1 diagonal from the left, 2 diagonal from the right, 3 big forward broom. */
+  swingKind: number;
+  /**
+   * Sweep's giant broom heavy. The broom travels along the committed facing from
+   * `broS` (behind the cast point) to +reach, and shoves the bodies it crosses.
+   */
+  broT: number;
+  broDur: number;
+  broX: number;
+  broY: number;
+  broDirX: number;
+  broDirY: number;
+  /** Current signed forward offset of the broom line from the cast point. */
+  broS: number;
+  broHitPlayers: number;
+  broHitWorms: number;
+  broHitViruses: number;
+  broHitErrors: number;
+  broHitSentries: number;
+  broHitDrone: boolean;
+  /** Sweep's split-broom skill: remaining time, lane centre and tangent axis. */
+  fanT: number;
+  fanDur: number;
+  fanX: number;
+  fanY: number;
+  fanTx: number;
+  fanTy: number;
+  fanHitPlayers: number;
+  fanHitWorms: number;
+  fanHitViruses: number;
+  fanHitErrors: number;
+  fanHitSentries: number;
+  fanHitDrone: boolean;
+
   /** 0 none, 1 player, 2 worm, 3 virus, 4 drone, 5 sentry, 6 cascading error. */
   lockKind: number;
   lockId: number;
@@ -256,8 +290,8 @@ export interface Player {
 export interface Projectile {
   active: boolean;
   serial: number;
-  /** 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile, 5 Fisher spear. */
-  type: 0 | 1 | 2 | 3 | 4 | 5;
+  /** 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile, 5 Fisher spear, 6 Sweep broom. */
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;

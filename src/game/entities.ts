@@ -34,6 +34,7 @@ export function createPlayer(slot: number): Player {
     prevFacing: 0,
     swingFacing: 0,
     swingDir: -1,
+    swingKind: 0,
     hp: PLAYER.hp,
     maxHp: PLAYER.hp,
     energy: PLAYER.energyMax,
@@ -78,6 +79,31 @@ export function createPlayer(slot: number): Player {
     wedgeHitErrors: 0,
     wedgeHitSentries: 0,
     wedgeHitDrone: false,
+    broT: 0,
+    broDur: 0,
+    broX: 0,
+    broY: 0,
+    broDirX: 1,
+    broDirY: 0,
+    broS: 0,
+    broHitPlayers: 0,
+    broHitWorms: 0,
+    broHitViruses: 0,
+    broHitErrors: 0,
+    broHitSentries: 0,
+    broHitDrone: false,
+    fanT: 0,
+    fanDur: 0,
+    fanX: 0,
+    fanY: 0,
+    fanTx: 1,
+    fanTy: 0,
+    fanHitPlayers: 0,
+    fanHitWorms: 0,
+    fanHitViruses: 0,
+    fanHitErrors: 0,
+    fanHitSentries: 0,
+    fanHitDrone: false,
     iframes: 0,
     swingPhase: 0,
     swingT: 0,
@@ -385,6 +411,7 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.prevFacing = facing;
   p.swingFacing = facing;
   p.swingDir = -1;
+  p.swingKind = 0;
   p.hp = p.maxHp;
   p.energy = PLAYER.energyMax;
   p.burstLeft = BOLT.burstCount;
@@ -424,6 +451,31 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.wedgeHitErrors = 0;
   p.wedgeHitSentries = 0;
   p.wedgeHitDrone = false;
+  p.broT = 0;
+  p.broDur = 0;
+  p.broX = x;
+  p.broY = y;
+  p.broDirX = Math.cos(facing);
+  p.broDirY = Math.sin(facing);
+  p.broS = 0;
+  p.broHitPlayers = 0;
+  p.broHitWorms = 0;
+  p.broHitViruses = 0;
+  p.broHitErrors = 0;
+  p.broHitSentries = 0;
+  p.broHitDrone = false;
+  p.fanT = 0;
+  p.fanDur = 0;
+  p.fanX = x;
+  p.fanY = y;
+  p.fanTx = 1;
+  p.fanTy = 0;
+  p.fanHitPlayers = 0;
+  p.fanHitWorms = 0;
+  p.fanHitViruses = 0;
+  p.fanHitErrors = 0;
+  p.fanHitSentries = 0;
+  p.fanHitDrone = false;
   p.iframes = 0;
   p.swingPhase = 0;
   p.swingT = 0;

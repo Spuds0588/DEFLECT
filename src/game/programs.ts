@@ -9,6 +9,7 @@ export const PROGRAM_ID = {
   PROBE: 0,
   WEDGE: 1,
   FISHER: 2,
+  SWEEP: 3,
 } as const;
 
 export interface ProgramDef {
@@ -28,6 +29,12 @@ export interface ProgramDef {
   glyph: string;
   /** Core mark scale. Tight hulls need a smaller mark so it clears the health segments. */
   coreScale: number;
+  /**
+   * Mark radius as a fraction of `PLAYER.radius`. Defaults to 0.51, the dark core disc.
+   * A wide multi-line ASCII mark needs a larger footprint to stay legible; it may use
+   * the empty space out to the hull as long as it never touches the health segments.
+   */
+  glyphRadius?: number;
   bugKind: number;
 }
 
@@ -64,6 +71,21 @@ export const PROGRAMS: readonly ProgramDef[] = [
     coreScale: 1.1,
     bugKind: 5,
   },
+  {
+    id: PROGRAM_ID.SWEEP,
+    name: 'SWEEP.EXE',
+    role: 'SHOVE',
+    note: 'BROOM COMBO // GIANT SWEEP // SPLIT BROOMS',
+    color: PROGRAM_COLORS.sweep,
+    /**
+     * Clean mark: a four-point sparkle. The only literal Unicode broom is a colour
+     * emoji, which would break the one-hue silhouette, so the core says "clean" and
+     * the kit carries the broom itself. Direction neutral and legible at core size.
+     */
+    glyph: '✦',
+    coreScale: 1.06,
+    bugKind: 6,
+  },
 ];
 
 export function programDef(id: number): ProgramDef {
@@ -73,13 +95,6 @@ export function programDef(id: number): ProgramDef {
   return PROGRAMS[0];
 }
 
-/**
- * Parked roster entry, not built. SWEEP.EXE is an ASCII-broom pusher: alternating diagonal broom
- * pushes for the melee combo, a big forward third hit, a dust-trailing broom throw for ranged, a
- * screen-wide broom built line by line for the power attack, and two brooms that split outward for
- * the skill. Do not add it to `PROGRAMS` until those kit branches exist; a card with another
- * program's attacks would be worse than no card. Identity notes and the full spec live in TODO.md.
- */
 export function programName(id: number): string {
   return programDef(id).name;
 }

@@ -1694,3 +1694,61 @@ v0.1.26 with the new service-worker cache. The built bundle loaded with `[DEFLEC
 
 **Next:** party rules for local multiplayer, threat traversal (the pad is also the escape and contagion
 route) and the campaign node loader. See TODO.md § Arena traversal.
+
+## 2026-10-29 — SWEEP.EXE, the fourth program
+
+**Goal:** stand up the parked fourth program and mark the build the designer is testing.
+
+**Identity.** `SWEEP.EXE` joins `PROGRAMS` as id 3, role `SHOVE`, lime `#b8ff3a`. The hull is
+**eight-sided**: a pentagon's three equal perimeter slices cut its corners and read as arbitrary chunks,
+the same problem Wedge's old diamond had. Eight sides give three clean arcs and a closed silhouette at
+one health. The core mark is `✦`, a clean sparkle. The only literal broom in Unicode is `🧹`, which is a
+colour emoji: it ignores `fillStyle`, so tinting it would put a bitmap in a single-hue silhouette. The
+kit carries the broom; the core says "clean". The program card gets a broom-fan accent instead of the
+generic ticks.
+
+**Glyph support.** `drawSymbol` now gives wide multi-line ASCII marks a tighter row gap (0.8), a narrower
+width budget (1.78r instead of 2.15r) and an optional `glyphRadius` on `ProgramDef` so the mark can use
+the space between the core disc and the hull. `HOW TO PLAY` renders multi-line marks with `white-space:
+pre`. This was built while testing a two-line push-broom mark; it stays available for future ASCII
+programs even though Sweep's shipped mark is a single glyph.
+
+**Kit.** All numbers are in the new `SWEEP` block.
+
+- Melee is a three-hit broom combo, not the shared lash: kinds `1`/`2` push along opposite diagonals for
+  1 damage and `SWEEP.comboKnockback` (760), the third is a forward slab at `SWEEP.bigReach` (96) for 2
+  damage and `SWEEP.bigKnockback` (1150). Facing locks for every hit and the hold remains the guard. The
+  big hit reflects shots along the full 96-unit shaft instead of `PLAYER.swingReach`.
+- Ranged is projectile type `6`, a broom at `SWEEP.shotSpeed` (760) with a square dust trail, 2 damage,
+  and `SWEEP.shotKnockback` (860) so it stops on the body and slides it.
+- Power builds a giant broom line by line for 0.85 s, then sweeps from behind the cast point to
+  `+SWEEP.powerReach` over 0.9 s. The live broom is one wide line (`powerBand` 230 half-height), hits each
+  body once for 2 and shoves it 1450. Cooldown (6 s) starts when the sweep ends.
+- Skill starts two brooms together 58 units in front and splits them to `fanReach` (250) over 0.42 s,
+  hitting each body once for 1 and shoving it outward at 1100. Cover still cuts the contact.
+- Bots use the kit: the generic heavy hold builds the sweep, and a dedicated branch taps the split brooms
+  at 50–210 units so bot matches exercise the lane clear.
+- Readiness dock: one broom round, the heavy broom mark with its cooldown ring, and a two-arrow
+  split-broom skill mark. Online is unchanged; matches still run Probe because the snapshot carries no
+  kits.
+
+**Test label.** The title hub reads `v0.1.27 · IN TESTING` in a lime tag. Production build, service
+worker cache and package version are all 0.1.27.
+
+**Verification.**
+
+- Headless probe: type `6` does 2 damage and kx +860; combo reports kinds `1, 2, 3` and damages `1, 1, 2`
+  with diagonal shoves then a forward shove; the power fires and does 2 with kx +570; the fan hit does 1
+  and pushes out along the tangent; a bot with Sweep fires type `6`.
+- Browser 1920×1080: card, full-health and one-segment core clearance, broom swing, giant sweep, split
+  brooms and the thrown broom with its dust all render; no console errors.
+- `?autoplay=2`: a Sweep bot in slot 0 used the fan (`fanT 0.39`) and broom projectiles across rounds;
+  the console log was clean.
+- Gauntlet stress script: 110 s of practice reached wave 4 with 15 kills, both heavy and skill live,
+  threats damaged, no exceptions.
+- `npx tsc --noEmit`, `npm run build`, `npm run bench`: clean. Bench this pass: 2P 0.027/0.105, 8P stress
+  0.059/0.174, bot swarm 0.096/0.325, gauntlet 0.215/0.697 with 27.3 threats. Recorded in TODO
+  §Performance.
+
+**Next:** playtest the third hit and the power band, decide whether kits should travel online (snapshot
+change), and consider a vector broom for the core if the sparkle is too abstract.

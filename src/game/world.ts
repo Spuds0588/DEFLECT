@@ -5,6 +5,7 @@ import {
   CASCADING_ERROR,
   FISHER,
   MINE,
+  SWEEP,
   FIREWALL,
   WEDGE,
   GAUNTLET,
@@ -571,6 +572,7 @@ export class World {
       let laserBusy =
         (p.laserT > 0 && !overcharged) ||
         p.wedgeT > 0 ||
+        p.broT > 0 ||
         (p.laserChargeHeld && p.program !== PROGRAM_ID.FISHER);
       this.updateLock(p, laserBusy ? null : canAct ? input : null, canAct, dt);
       // Facing must follow the stick before the action snapshot is taken, otherwise a
@@ -609,6 +611,24 @@ export class World {
             }
           } else {
             if (p.netDrawing) this.detachNet(p);
+            else if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            p.laserChargeHeld = false;
+            p.laserChargeT = 0;
+            p.chargeT = 0;
+            p.chargeHeld = false;
+          }
+        } else if (p.program === PROGRAM_ID.SWEEP) {
+          // Sweep draws the giant broom while the button is held, then commits it. Like
+          // Wedge's plow it auto-fires at full charge instead of asking for a release.
+          if (canAct && heavyHeld) {
+            p.laserChargeT += dt;
+            if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+              p.facing = Math.atan2(input.my, input.mx);
+            }
+            p.laserFacing = p.facing;
+            if (p.laserChargeT >= SWEEP.powerChargeTime) this.fireBroomSweep(p);
+          } else {
+            if (canAct && p.laserChargeT >= SWEEP.powerChargeTime) this.fireBroomSweep(p);
             else if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
             p.laserChargeHeld = false;
             p.laserChargeT = 0;
@@ -761,7 +781,10 @@ export class World {
       }
 
       const autoFireKind = p.powerupT > 0 ? p.powerupKind : -1;
-      const heavyLock = p.wedgeT > 0 || (p.laserChargeHeld && p.program === PROGRAM_ID.WEDGE);
+      const heavyLock =
+        p.wedgeT > 0 ||
+        p.broT > 0 ||
+        (p.laserChargeHeld && (p.program === PROGRAM_ID.WEDGE || p.program === PROGRAM_ID.SWEEP));
       if (
         canAct &&
         input &&
@@ -795,6 +818,8 @@ export class World {
       this.resolveNets(p);
       if (p.dashT > 0 && p.dashKind === 1) this.resolveChargeDash(p);
       if (p.wedgeT > 0) this.resolveWedgeCharge(p);
+      if (p.broT > 0) this.tickBroomSweep(p, dt);
+      if (p.fanT > 0) this.tickFan(p, dt);
       if (p.bashT > 0) this.resolveBracket(p);
       this.checkTravel(p, canAct, dt);
     }
@@ -1077,6 +1102,23 @@ export class World {
 
   private handleDeflectPress(p: Player): void {
     p.ghostT = 0;
+    if (p.program === PROGRAM_ID.SWEEP) {
+      // Three-hit broom combo: a diagonal push from each side, then the big forward
+      // sweep that ends the chain. The shield stays the separate hold action.
+      let kind = 1;
+      let dir = 1;
+      if (p.comboT > 0 && p.comboStage === 1) {
+        kind = 2;
+        dir = -1;
+      } else if (p.comboT > 0 && p.comboStage === 2) {
+        kind = 3;
+        dir = 0;
+      }
+      if (!this.trySwing(p, dir, kind)) return;
+      p.comboStage = kind;
+      p.comboT = SWEEP.comboWindow;
+      return;
+    }
     // Every quick press is a lash: left, right, left, right. The shield is the
     // hold, never a third tap, so the two actions stay readable.
     const dir = p.comboStage === 1 && p.comboT > 0 ? -1 : 1;
@@ -1085,7 +1127,7 @@ export class World {
     p.comboT = PLAYER.comboWindow;
   }
 
-  private trySwing(p: Player, dir: number): boolean {
+  private trySwing(p: Player, dir: number, kind = 0): boolean {
     if (p.swingPhase !== 0 || p.dashT > 0 || p.waveT > 0) return false;
     p.swingPhase = 1;
     p.swingT = PLAYER.swingStartup;
@@ -1093,6 +1135,7 @@ export class World {
     p.swingHit = false;
     p.swingFacing = p.facing;
     p.swingDir = dir;
+    p.swingKind = kind;
     this.emit(EV.SWING, p.slot, p.x, p.y, p.facing);
     return true;
   }
@@ -1629,6 +1672,25 @@ export class World {
       return;
     }
 
+    if (p.program === PROGRAM_ID.SWEEP) {
+      // One broom per throw, slower than a bolt stream, and it shoves hard on contact.
+      if (p.autoFireT > 0 || p.energy < SWEEP.shotCost) return;
+      if (!this.spawnProjectile(
+        p,
+        0,
+        SWEEP.shotTtl,
+        SWEEP.shotSpeed,
+        false,
+        SWEEP.shotRadius,
+        SWEEP.shotDamage,
+        6,
+      )) return;
+      p.energy -= SWEEP.shotCost;
+      p.autoFireT = SWEEP.attackCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
     if (p.program === PROGRAM_ID.FISHER) {
       if (p.autoFireT > 0 || p.energy < FISHER.spearCost) return;
       if (!this.spawnProjectile(
@@ -1660,6 +1722,7 @@ export class World {
   private heavyCost(p: Player): number {
     if (p.program === PROGRAM_ID.WEDGE) return WEDGE.chargeCost;
     if (p.program === PROGRAM_ID.FISHER) return FISHER.netCost;
+    if (p.program === PROGRAM_ID.SWEEP) return SWEEP.powerCost;
     return PLAYER.laserCost;
   }
 
@@ -2112,6 +2175,277 @@ export class World {
     }
   }
 
+  /**
+   * Sweep's heavy: builds the giant broom behind his facing, then commits it. The line
+   * crosses the cast point and travels to `SWEEP.powerReach`, shoving every body it
+   * crosses once in the facing direction.
+   */
+  private fireBroomSweep(p: Player): void {
+    if (!p.alive || p.energy < SWEEP.powerCost) {
+      p.laserChargeHeld = false;
+      p.laserChargeT = 0;
+      return;
+    }
+    p.energy = Math.max(0, p.energy - SWEEP.powerCost);
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    p.broT = SWEEP.powerDuration;
+    p.broDur = SWEEP.powerDuration;
+    p.broX = p.x;
+    p.broY = p.y;
+    p.broDirX = Math.cos(p.facing);
+    p.broDirY = Math.sin(p.facing);
+    p.broS = -SWEEP.powerReach;
+    p.broHitPlayers = 0;
+    p.broHitWorms = 0;
+    p.broHitViruses = 0;
+    p.broHitErrors = 0;
+    p.broHitSentries = 0;
+    p.broHitDrone = false;
+    // Cooldown starts when the sweep ends, not when it begins.
+    p.laserCd = 0;
+    p.lockActive = false;
+    p.lockKind = 0;
+    p.lockId = -1;
+    p.comboStage = 0;
+    p.comboT = 0;
+    this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
+  }
+
+  private tickBroomSweep(p: Player, dt: number): void {
+    p.broT = Math.max(0, p.broT - dt);
+    const pct = p.broDur > 0 ? 1 - p.broT / p.broDur : 1;
+    p.broS = -SWEEP.powerReach + SWEEP.powerReach * 2 * pct;
+    this.resolveBroomSweep(p);
+    if (p.broT > 0) return;
+    p.laserCd = SWEEP.powerCooldown;
+    p.broHitPlayers = 0;
+    p.broHitWorms = 0;
+    p.broHitViruses = 0;
+    p.broHitErrors = 0;
+    p.broHitSentries = 0;
+    p.broHitDrone = false;
+  }
+
+  /** The live broom is one wide line across the facing axis, travelling forward. */
+  private resolveBroomSweep(p: Player): void {
+    const fx = p.broDirX;
+    const fy = p.broDirY;
+    const half = SWEEP.powerBand;
+    const width = SWEEP.powerWidth;
+
+    for (let i = 0; i < this.players.length; i++) {
+      const target = this.players[i];
+      if (target === p || !target.active || !target.alive || target.iframes > 0 || target.travelT > 0) continue;
+      const bit = 1 << target.slot;
+      if ((p.broHitPlayers & bit) !== 0) continue;
+      if (!this.broomReaches(p, target.x, target.y, PLAYER.radius, fx, fy, half, width)) continue;
+      p.broHitPlayers |= bit;
+      this.damagePlayer(target, SWEEP.powerDamage, p.slot, fx, fy, SWEEP.powerKnockback);
+    }
+
+    if (this.mode === 'training' && this.drone.active && !p.broHitDrone) {
+      if (this.broomReaches(p, this.drone.x, this.drone.y, this.drone.radius, fx, fy, half, width)) {
+        p.broHitDrone = true;
+        this.damageDrone(SWEEP.powerDamage, p.slot);
+      }
+    }
+
+    if (this.mode !== 'gauntlet') return;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const bit = 1 << i;
+      if ((p.broHitSentries & bit) !== 0) continue;
+      if (!this.broomReaches(p, s.x, s.y, s.radius, fx, fy, half, width)) continue;
+      p.broHitSentries |= bit;
+      this.damageSentry(s, SWEEP.powerDamage, p.slot, fx, fy, SWEEP.powerKnockback);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const bit = 1 << i;
+      if ((p.broHitViruses & bit) !== 0) continue;
+      if (!this.broomReaches(p, v.x, v.y, v.radius, fx, fy, half, width)) continue;
+      p.broHitViruses |= bit;
+      this.damageVirus(v, SWEEP.powerDamage, p.slot, fx, fy, SWEEP.powerKnockback);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const bit = 1 << i;
+      if ((p.broHitWorms & bit) !== 0) continue;
+      let touchX = 0;
+      let touchY = 0;
+      let touching = this.broomReaches(p, w.x, w.y, WORM.headRadius, fx, fy, half, width);
+      if (touching) {
+        touchX = w.x;
+        touchY = w.y;
+      }
+      for (let s = 0; s < w.segCount && !touching; s++) {
+        if (!this.broomReaches(p, w.segX[s], w.segY[s], WORM.segmentRadius, fx, fy, half, width)) continue;
+        touching = true;
+        touchX = w.segX[s];
+        touchY = w.segY[s];
+      }
+      if (!touching) continue;
+      p.broHitWorms |= bit;
+      const ndx = touchX - p.x;
+      const ndy = touchY - p.y;
+      const nd = Math.hypot(ndx, ndy) || 1;
+      this.damageWorm(w, SWEEP.powerDamage, p.slot, ndx / nd, ndy / nd, SWEEP.powerKnockback);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const bit = 1 << i;
+      if ((p.broHitErrors & bit) !== 0) continue;
+      const radius = CASCADING_ERROR.blockSize * 0.5;
+      if (!this.broomReaches(p, e.x, e.y, radius, fx, fy, half, width)) continue;
+      p.broHitErrors |= bit;
+      this.damageError(e, SWEEP.powerDamage, p.slot, fx, fy);
+    }
+  }
+
+  /** True when a body sits under the live broom line and cover does not cut the hit. */
+  private broomReaches(
+    p: Player,
+    x: number,
+    y: number,
+    radius: number,
+    fx: number,
+    fy: number,
+    half: number,
+    width: number,
+  ): boolean {
+    const dx = x - p.broX;
+    const dy = y - p.broY;
+    const forward = dx * fx + dy * fy;
+    if (Math.abs(forward - p.broS) > width + radius) return false;
+    const lateral = -dx * fy + dy * fx;
+    if (Math.abs(lateral) > half + radius) return false;
+    // Cover blocks the contact point on the broom, not the broom's center.
+    const cx = p.broX + fx * p.broS - fy * lateral;
+    const cy = p.broY + fy * p.broS + fx * lateral;
+    return !this.lineBlocked(cx, cy, x, y);
+  }
+
+  /**
+   * Sweep's skill: two brooms start together ahead of him and split along the tangent,
+   * shoving bodies out of the lane and leaving a clear path in front.
+   */
+  private startFan(p: Player): void {
+    const fx = Math.cos(p.facing);
+    const fy = Math.sin(p.facing);
+    p.fanT = SWEEP.fanLife;
+    p.fanDur = SWEEP.fanLife;
+    p.fanX = p.x + fx * 58;
+    p.fanY = p.y + fy * 58;
+    p.fanTx = -fy;
+    p.fanTy = fx;
+    p.fanHitPlayers = 0;
+    p.fanHitWorms = 0;
+    p.fanHitViruses = 0;
+    p.fanHitErrors = 0;
+    p.fanHitSentries = 0;
+    p.fanHitDrone = false;
+  }
+
+  private tickFan(p: Player, dt: number): void {
+    p.fanT = Math.max(0, p.fanT - dt);
+    const pct = p.fanDur > 0 ? 1 - p.fanT / p.fanDur : 1;
+    this.resolveFan(p, SWEEP.fanReach * pct);
+    if (p.fanT > 0) return;
+    p.fanHitPlayers = 0;
+    p.fanHitWorms = 0;
+    p.fanHitViruses = 0;
+    p.fanHitErrors = 0;
+    p.fanHitSentries = 0;
+    p.fanHitDrone = false;
+  }
+
+  private resolveFan(p: Player, spread: number): void {
+    const tx = p.fanTx;
+    const ty = p.fanTy;
+    const reach = SWEEP.fanWidth;
+    for (let side = -1; side <= 1; side += 2) {
+      const bx = p.fanX + tx * spread * side;
+      const by = p.fanY + ty * spread * side;
+      const shoveX = tx * side;
+      const shoveY = ty * side;
+
+      for (let i = 0; i < this.players.length; i++) {
+        const target = this.players[i];
+        if (target === p || !target.active || !target.alive || target.iframes > 0) continue;
+        const bit = 1 << target.slot;
+        if ((p.fanHitPlayers & bit) !== 0) continue;
+        if (!this.fanReaches(bx, by, target.x, target.y, PLAYER.radius, reach)) continue;
+        p.fanHitPlayers |= bit;
+        this.damagePlayer(target, SWEEP.fanDamage, p.slot, shoveX, shoveY, SWEEP.fanKnockback);
+      }
+
+      if (this.mode === 'training' && this.drone.active && !p.fanHitDrone) {
+        if (this.fanReaches(bx, by, this.drone.x, this.drone.y, this.drone.radius, reach)) {
+          p.fanHitDrone = true;
+          this.damageDrone(SWEEP.fanDamage, p.slot);
+        }
+      }
+
+      if (this.mode !== 'gauntlet') continue;
+      for (let i = 0; i < this.sentries.length; i++) {
+        const s = this.sentries[i];
+        if (!s.active) continue;
+        const bit = 1 << i;
+        if ((p.fanHitSentries & bit) !== 0) continue;
+        if (!this.fanReaches(bx, by, s.x, s.y, s.radius, reach)) continue;
+        p.fanHitSentries |= bit;
+        this.damageSentry(s, SWEEP.fanDamage, p.slot, shoveX, shoveY, SWEEP.fanKnockback);
+      }
+      for (let i = 0; i < this.viruses.length; i++) {
+        const v = this.viruses[i];
+        if (!v.active) continue;
+        const bit = 1 << i;
+        if ((p.fanHitViruses & bit) !== 0) continue;
+        if (!this.fanReaches(bx, by, v.x, v.y, v.radius, reach)) continue;
+        p.fanHitViruses |= bit;
+        this.damageVirus(v, SWEEP.fanDamage, p.slot, shoveX, shoveY, SWEEP.fanKnockback);
+      }
+      for (let i = 0; i < this.worms.length; i++) {
+        const w = this.worms[i];
+        if (!w.active) continue;
+        const bit = 1 << i;
+        if ((p.fanHitWorms & bit) !== 0) continue;
+        let touching = this.fanReaches(bx, by, w.x, w.y, WORM.headRadius, reach);
+        for (let s = 0; s < w.segCount && !touching; s++) {
+          touching = this.fanReaches(bx, by, w.segX[s], w.segY[s], WORM.segmentRadius, reach);
+        }
+        if (!touching) continue;
+        p.fanHitWorms |= bit;
+        this.damageWorm(w, SWEEP.fanDamage, p.slot, shoveX, shoveY, SWEEP.fanKnockback);
+      }
+      for (let i = 0; i < this.errors.length; i++) {
+        const e = this.errors[i];
+        if (!e.active) continue;
+        const bit = 1 << i;
+        if ((p.fanHitErrors & bit) !== 0) continue;
+        const radius = CASCADING_ERROR.blockSize * 0.5;
+        if (!this.fanReaches(bx, by, e.x, e.y, radius, reach)) continue;
+        p.fanHitErrors |= bit;
+        this.damageError(e, SWEEP.fanDamage, p.slot, shoveX, shoveY);
+      }
+    }
+  }
+
+  private fanReaches(bx: number, by: number, x: number, y: number, radius: number, reach: number): boolean {
+    const dx = x - bx;
+    const dy = y - by;
+    const rr = reach + radius;
+    if (dx * dx + dy * dy > rr * rr) return false;
+    return !this.lineBlocked(bx, by, x, y);
+  }
+
   private startNetDraw(p: Player): void {
     let index = -1;
     for (let i = 0; i < this.nets.length; i++) {
@@ -2446,6 +2780,8 @@ export class World {
       p.wallFacing = p.facing;
     } else if (p.bugKind === 3) {
       p.ghostT = BUG.ghostDuration;
+    } else if (p.bugKind === 6) {
+      this.startFan(p);
     } else if (p.bugKind === 4) {
       // Wedge's signature bug: a static bracket wall behind him. Refuse a wall that
       // would land inside cover and hand the energy back rather than eat the button.
@@ -2662,7 +2998,8 @@ export class World {
     if (p.swingHit) return;
     const whip = p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP;
     const whipMult = whip ? POWERUP.whipMultiplier : 1;
-    const reach = PLAYER.swingReach * whipMult;
+    // The big third broom hit is a slab: it deflects along its whole drawn shaft.
+    const reach = (p.program === PROGRAM_ID.SWEEP && p.swingKind === 3 ? SWEEP.bigReach : PLAYER.swingReach) * whipMult;
     const cos = Math.cos(p.swingFacing);
     const sin = Math.sin(p.swingFacing);
     for (let i = 0; i < this.projectiles.length; i++) {
@@ -2691,7 +3028,9 @@ export class World {
       // Timing is half the grade. A press at the very start of the active window still
       // catches the bolt, but sends it wide; a press near contact returns it straight.
       const timingEarly = Math.max(0, Math.min(1, p.swingT / PLAYER.swingActive));
-      const early = Math.min(1, distanceEarly * 0.62 + timingEarly * 0.38);
+      // The big broom is a flat slab: it returns the shot dead ahead instead of
+      // grading the catch angle like the spiked lash.
+      const early = p.swingKind === 3 ? 0 : Math.min(1, distanceEarly * 0.62 + timingEarly * 0.38);
       const returnAngle = p.swingFacing + (p.swingDir < 0 ? -1 : 1) * PLAYER.deflectMaxAngle * early;
       const speedScale = PLAYER.deflectEarlySpeed + (1 - PLAYER.deflectEarlySpeed) * (1 - early);
       const speed = Math.min(BOLT.maxSpeed, oldSpeed * BOLT.deflectMult * speedScale);
@@ -3009,6 +3348,12 @@ export class World {
         this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, FISHER.spearKnockback);
         continue;
       }
+      if (proj.type === 6) {
+        // Broom: a heavy throw, so it stops on the body and slides it well back.
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, SWEEP.shotKnockback);
+        proj.active = false;
+        return true;
+      }
       this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, BOLT.knockback);
       proj.active = false;
       return true;
@@ -3068,6 +3413,9 @@ export class World {
       this.releaseNetDraft(p);
       p.wedgeT = 0;
       p.bashT = 0;
+      p.broT = 0;
+      p.fanT = 0;
+      p.swingKind = 0;
       p.stringLeft = 0;
       p.stringT = 0;
       p.comboStage = 0;
@@ -5291,14 +5639,29 @@ export class World {
     const sin = Math.sin(p.swingFacing);
     const whip = p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP;
     const whipMult = whip ? POWERUP.whipMultiplier : 1;
-    const reach = PLAYER.punchReach * whipMult;
-    const damage = PLAYER.punchDamage * whipMult;
-    const force = (p.thrall ? PLAYER.thrallSwingKnockback : PLAYER.punchKnockback) * (whip ? 1.8 : 1);
+    const broomBig = p.program === PROGRAM_ID.SWEEP && p.swingKind === 3;
+    const broomDiag = p.program === PROGRAM_ID.SWEEP && p.swingKind !== 0 && !broomBig;
+    const reach = (broomBig ? SWEEP.bigReach : PLAYER.punchReach) * whipMult;
+    const damage = (broomBig ? SWEEP.bigDamage : PLAYER.punchDamage) * whipMult;
+    const baseForce = broomBig ? SWEEP.bigKnockback : broomDiag ? SWEEP.comboKnockback : PLAYER.punchKnockback;
+    const force = (p.thrall ? PLAYER.thrallSwingKnockback : baseForce) * (whip ? 1.8 : 1);
     // A sweep shoves sideways, not straight away. The two tap directions throw
     // targets opposite ways, so the lash reads as a physical arc rather than a shove.
     const sweepDir = p.swingDir < 0 ? -1 : 1;
-    const shoveX = -sin * sweepDir;
-    const shoveY = cos * sweepDir;
+    let shoveX = -sin * sweepDir;
+    let shoveY = cos * sweepDir;
+    if (broomBig) {
+      // The big third hit is a forward push, not a sideways lash.
+      shoveX = cos;
+      shoveY = sin;
+    } else if (broomDiag) {
+      // Small broom hits throw on a diagonal: mostly across the arc, partly forward.
+      shoveX = -sin * sweepDir * 0.86 + cos * 0.5;
+      shoveY = cos * sweepDir * 0.86 + sin * 0.5;
+      const mag = Math.hypot(shoveX, shoveY) || 1;
+      shoveX /= mag;
+      shoveY /= mag;
+    }
 
     for (let i = 0; i < this.players.length; i++) {
       const target = this.players[i];

@@ -37,6 +37,7 @@ export const PROGRAM_COLORS = {
   probe: '#2ee6ff',
   wedge: '#ffb63c',
   fisher: '#8a7dff',
+  sweep: '#b8ff3a',
   lure: '#7dffd4',
 } as const;
 
@@ -152,6 +153,9 @@ export function drawGlyph(
 export function programHullSides(programId: number): number {
   if (programId === 1) return 4;
   if (programId === 2) return 6;
+  // Sweep's octagon keeps three equal perimeter segments clean; a pentagon cut
+  // through its corners and read as arbitrary chunks.
+  if (programId === 3) return 8;
   return 0;
 }
 
@@ -341,12 +345,16 @@ export function drawSymbol(
   for (let i = 0; i < lines.length; i++) if (lines[i].length > longest) longest = lines[i].length;
 
   const base = (r > 7 ? SYMBOL_SIZE_LARGE : SYMBOL_SIZE_SMALL) * (fontScale > 0 ? fontScale : 1);
+  const multi = lines.length > 1;
   // Monospace advance is about 0.6em. Fit both the width and the line count inside
   // the same footprint as one glyph; a single glyph keeps its scaled font size.
+  // A multi-line picture is wider by nature, so it gets a slightly tighter width
+  // budget and closer rows: a wide ASCII mark must not cross the health hull.
   const advance = emAdvance(ctx, widestLine(lines));
-  const widthFit = (r * 2.15) / Math.max(0.2, advance);
-  const heightFit = (r * 2.05) / (lines.length * 1.05);
-  const single = lines.length === 1 && longest <= 1;
+  const widthFit = (r * (multi ? 1.78 : 2.15)) / Math.max(0.2, advance);
+  const rowGap = multi ? 0.8 : 1.05;
+  const heightFit = (r * 2.05) / (lines.length * rowGap);
+  const single = !multi && longest <= 1;
   const scale = single
     ? Math.min(1, widthFit / base)
     : Math.max(0.12, Math.min(1, widthFit / base, heightFit / base));
@@ -357,7 +365,7 @@ export function drawSymbol(
   ctx.font = symbolFont(base);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const lineH = base * 1.05;
+  const lineH = base * rowGap;
   const top = -((lines.length - 1) * lineH) * 0.5;
   for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], 0, top + i * lineH);
   ctx.restore();

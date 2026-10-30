@@ -263,6 +263,51 @@ export const FISHER = {
 } as const;
 
 /**
+ * SWEEP.EXE: an ASCII broom pushed around the room. Melee is a three-hit broom combo,
+ * ranged is a dust-trailing broom throw, the heavy draws a giant broom then sweeps it
+ * across the arena, and the skill splits two brooms outward to clear a lane.
+ */
+export const SWEEP = {
+  /** Ranged: a thrown broom. Fisher's spear speed, shorter reach, much harder shove. */
+  shotCost: 9,
+  shotDamage: 2,
+  shotSpeed: 760,
+  shotTtl: 0.82,
+  shotRadius: 8,
+  shotKnockback: 860,
+  attackCooldown: 0.5,
+  /** Melee combo: two diagonal pushes, then a bigger forward broom. */
+  comboWindow: 0.56,
+  comboDamage: 1,
+  comboKnockback: 760,
+  /** The third hit is the payoff: longer reach, two damage, a much bigger slide. */
+  bigReach: 96,
+  bigDamage: 2,
+  bigKnockback: 1150,
+  /** Power: build a giant broom, then sweep it through the facing half of the room. */
+  powerCost: 55,
+  powerChargeTime: 0.85,
+  powerCooldown: 6,
+  powerDuration: 0.9,
+  /** Half-height of the swept band. Two thirds of the 720 view is 480, so 230 each way. */
+  powerBand: 230,
+  /** Distance the broom travels from behind the player to ahead of him. */
+  powerReach: 520,
+  /** Half-thickness of the live broom line. */
+  powerWidth: 30,
+  powerDamage: 2,
+  powerKnockback: 1450,
+  /** Skill: two brooms start together in front and split outward to clear a lane. */
+  fanLife: 0.42,
+  fanReach: 250,
+  fanWidth: 30,
+  fanDamage: 1,
+  fanKnockback: 1100,
+  /** Cooldown for the split-broom skill. The tap also pays `BUG.cost` of energy. */
+  fanCooldown: 6,
+} as const;
+
+/**
  * Timed proximity mine. The old heavy bomb was replaced after the designer called it
  * overpowered: the mine cannot be thrown across the map, must be armed, and gives
  * opponents time to read and avoid it.
@@ -289,7 +334,7 @@ export const MINE = {
 export const BUG = {
   cost: 35,
   /** A static wall is stronger than a shove, so its slot in the table is longer. */
-  cooldown: [4.5, 5, 7, 8, 9, 8],
+  cooldown: [4.5, 5, 7, 8, 9, 8, 6],
   trapRadius: 62,
   trapDuration: 2.2,
   trapSlow: 0.42,

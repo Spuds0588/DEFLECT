@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-29 (v0.1.26 multi-deck traversal arena and pad transit)
+Last updated: 2026-10-29 (v0.1.27 SWEEP.EXE and the IN TESTING build label)
 
 ---
 
@@ -717,6 +717,47 @@ Last updated: 2026-10-29 (v0.1.26 multi-deck traversal arena and pad transit)
 
 ---
 
+## v0.1.27 — SWEEP.EXE and the test build label (2026-10-29)
+
+### SWEEP.EXE
+- [x] `SWEEP.EXE` is in `PROGRAMS` (id 3, role `SHOVE`) with a lime accent from `identity.ts`
+- [x] Identity: eight-sided hull (three equal perimeter segments read cleanly), `✦` clean core mark at
+      `coreScale 1.06`, and a broom-fan portrait accent. Checked at full and one-segment health; the mark
+      clears the hull. The only literal Unicode broom is a colour emoji, so the core says "clean" and the
+      kit carries the broom
+- [x] `drawSymbol` supports wide multi-line marks with a larger `glyphRadius` footprint, tighter rows and
+      a narrower width budget; built for Sweep, available to future ASCII programs
+- [x] Melee: three-hit broom combo, diagonal pushes then a big forward hit, facing locked, third hit
+      reflects along the full 96-unit shaft
+- [x] Ranged: dust-trailing broom projectile (type 6), 2 damage and a hard push
+- [x] Power: giant broom built line by line, then swept across the facing band; each body hit once
+- [x] Skill: two brooms split outward, shoving bodies and hostiles out of the lane
+- [x] Bots use the kit: the generic heavy hold builds the sweep and a dedicated branch taps the split
+      brooms at 50–210 units
+- [x] Test builds are labelled `IN TESTING` on the title hub next to the version number
+
+### Verification
+- [x] Headless probe: ranged type 6 does 2 damage and kx +860; the melee combo reports kinds 1, 2, 3 and
+      damages 1, 1, 2 with diagonal then forward shoves; the power fires and does 2 damage with kx +570;
+      the skill hit does 1 and shoves the target out along the tangent; a Sweep bot fires type 6
+- [x] Browser 1920×1080: program card, full-health and one-segment core clearance, broom swing, giant
+      sweep, split brooms and broom projectile all render; no console errors
+- [x] `?autoplay=2` on CROSSROADS: a Sweep bot in slot 0 used the split brooms (`fanT 0.39`) and fired
+      broom projectiles through round 6 with no errors
+- [x] Gauntlet stress: 110 s of practice with the Sweep kit reached wave 4, 15 kills, both heavy and
+      skill fired, threats existed and took damage, no exceptions
+- [x] `npx tsc --noEmit`, `npm run build`, and `npm run bench` clean
+
+### Next
+- [ ] Decide whether Sweep (and the other kits) should be playable online; that needs a snapshot/protocol
+      change rather than a renderer branch
+- [ ] Playtest the third-hit reach/damage and the power band; tune `SWEEP.bigReach`, `powerBand` and
+      `SWEEP.powerKnockback` together
+- [ ] If a true monochrome broom is wanted at the core, draw it as vector paths instead of text
+- [ ] Re-measure the snapshot once kits are carried; `Snapshot` is untouched by this pass
+
+---
+
 ## v0.1.25 — Bot skill pass and solo training (2026-10-29)
 
 ### Bots
@@ -820,21 +861,8 @@ Last updated: 2026-10-29 (v0.1.26 multi-deck traversal arena and pad transit)
 - [x] `IMPOSSIBLE` is a real fourth tuning row (20 ms reaction, zero aim error, short fire cadence,
       maximum dodge); tune it after a playtest before treating the numbers as final
 
-### Next: Sweep.exe (parked design)
-- [ ] Add `SWEEP.EXE` to `PROGRAMS` only when its kit branches exist; until then it stays a design record
-      so it is never a selectable card with another program's attacks
-- [ ] Identity: a lime accent from `identity.ts`, a new hull side count and `coreScale`, and an ASCII broom
-      core mark checked at full and one-segment health like every other program
-- [ ] Melee: alternating diagonal broom pushes that damage and shove; the third hit is a larger forward
-      broom sweep. This is a combo, not the shared single lash, so it needs its own swing state and facing
-      lock rules
-- [ ] Ranged: a broom projectile near Fisher's spear speed, leaving a digital dust trail; on hit it
-      damages and pushes
-- [ ] Power: draws a huge ASCII broom line by line to the facing side, then sweeps down the top two thirds
-      of the screen, damaging and pushing everything it touches
-- [ ] Skill: two brooms start together in front and travel outward in opposite directions, clearing a lane
-      and shoving or damaging what they meet; immovable or immune elements stay
-- [ ] Reuse the Wedge knockback slide and square dust instead of adding a second displacement system
+### Sweep.exe
+- [x] Built in v0.1.27; the checklist, verification and follow-ups live in that section
 
 ### Verification
 - [x] `HOW TO PLAY` at 1500×844: keyboard layout by default; injected pad layout after a fake
@@ -996,13 +1024,17 @@ Machine: current dev laptop, Node 20 headless bench and Chromium for the browser
 
 | Scenario | Sim ms/tick avg / p99 | Render | Notes |
 | --- | --- | --- | --- |
-| 2P duel, 0.6 live projectiles | 0.016 / 0.071 | 60 fps | v0.1.16 bench |
-| 4P brawl, 1.7 live projectiles | 0.013 / 0.050 | — | v0.1.16 bench |
-| 8P stress, 6.9 live projectiles | 0.016 / 0.058 | 60 fps | v0.1.16 bench + `?stress=8` |
-| 8P max projectiles, 25.7 live avg | 0.029 / 0.083 | 60 fps | v0.1.16 bench; mine/trap feed |
-| 8P idle | 0.003 / 0.007 | — | floor case |
-| 8P bot swarm (AI + sim) | 0.030 / 0.155 | — | three styles, digital, pathfinding |
-| Gauntlet max threats (2W/10V/2F + 14E + sentries + thrall) | 0.127 / 0.526 | 60 fps | v0.1.16 bench, 27.2 live threats |
+| 2P duel, 0.6 live projectiles | 0.027 / 0.105 | 60 fps | v0.1.27 bench |
+| 4P brawl, 1.6 live projectiles | 0.040 / 0.141 | — | v0.1.27 bench |
+| 8P stress, 7.0 live projectiles | 0.059 / 0.174 | 60 fps | v0.1.27 bench + `?stress=8` |
+| 8P max projectiles, 25.8 live avg | 0.095 / 0.261 | 60 fps | v0.1.27 bench; mine/trap feed |
+| 8P idle | 0.015 / 0.033 | — | floor case |
+| 8P bot swarm (AI + sim) | 0.096 / 0.325 | — | three styles, digital, pathfinding |
+| Gauntlet max threats (2W/10V/2F + 14E + sentries + thrall) | 0.215 / 0.697 | 60 fps | v0.1.27 bench, 27.3 live threats |
+
+Two v0.1.27 runs varied by roughly 0.01–0.03 ms on the light cases and 0.08 ms on the gauntlet; all
+remain far under the 4 ms budget. A Sweep bot match and a 110 s Sweep gauntlet stress ran without a
+measurable frame drop.
 
 Budget is under 4 ms per tick with 8 players and 48 live projectiles. Every measured case remains far
 under budget. Render held 60 fps (the display cap) under stress.

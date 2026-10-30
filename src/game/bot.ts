@@ -308,6 +308,30 @@ export class BotBrain {
       return;
     }
 
+    // Sweep clears the lane in front of him: split the brooms when the target is
+    // close, then walk into the gap they leave. A tap, not a hold, so this is the
+    // skill and never the giant sweep.
+    if (
+      me.program === PROGRAM_ID.SWEEP &&
+      this.candleCd <= 0 &&
+      me.bugCd <= 0 &&
+      me.energy >= BUG.cost &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.laserT <= 0 &&
+      !me.laserChargeHeld &&
+      me.broT <= 0 &&
+      !blocked &&
+      dist > 50 &&
+      dist < 210
+    ) {
+      out.mx = Math.cos(aim) * 0.8;
+      out.my = Math.sin(aim) * 0.8;
+      out.pressed |= ACTION.CANDLE;
+      this.candleCd = this.rng.range(4.5, 6.5);
+      return;
+    }
+
     // The shot direction is the movement direction. Stepping into the aim is the
     // single-stick cost every player pays. Bot-owned bolts travel slower than a
     // human's, so range and lead must use the speed this brain actually fires.

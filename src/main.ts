@@ -246,7 +246,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.26 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.27 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -853,7 +853,8 @@ function drawProgramPortrait(canvas: HTMLCanvasElement, programId: number): void
   ctx.scale(4.4, 4.4);
   ctx.globalAlpha = 0.95;
   ctx.fillStyle = def.color;
-  drawSymbol(ctx, def.glyph, 0, 0, 10);
+  // Wide multi-line marks use a larger poster footprint so their rows stay legible.
+  drawSymbol(ctx, def.glyph, 0, 0, 10 * ((def.glyphRadius ?? 0.51) / 0.51));
   ctx.restore();
 
   // Signature accent ticks below the mark so each card has a kit silhouette hint.
@@ -870,6 +871,14 @@ function drawProgramPortrait(canvas: HTMLCanvasElement, programId: number): void
     ctx.lineTo(cx + 28, cy + 44);
     ctx.moveTo(cx - 28, cy + 44);
     ctx.lineTo(cx + 28, cy + 36);
+  } else if (programId === PROGRAM_ID.SWEEP) {
+    // Broom fan under the core mark.
+    ctx.moveTo(cx - 22, cy + 46);
+    ctx.lineTo(cx, cy + 34);
+    ctx.lineTo(cx + 22, cy + 46);
+    ctx.moveTo(cx - 10, cy + 46);
+    ctx.lineTo(cx, cy + 34);
+    ctx.lineTo(cx + 10, cy + 46);
   } else {
     ctx.moveTo(cx - 22, cy + 44);
     ctx.lineTo(cx - 8, cy + 44);

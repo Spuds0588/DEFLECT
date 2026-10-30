@@ -1,4 +1,4 @@
-import { BOLT, BUG, CAMERA_ZOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { BOLT, BUG, CAMERA_ZOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
 import { drawGlyph, drawSymbol, pathProgramFrame, pathProgramHealth, PROGRAM_COLORS, slotColor, slotGlyph, THREAT_COLORS } from './identity';
@@ -1748,6 +1748,29 @@ export class Renderer {
         ctx.lineTo(-6, 9);
         ctx.stroke();
         ctx.restore();
+      } else if (p.type === 6) {
+        // Thrown broom: a short shaft and a hard bristle fan, leaving square dust.
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.95;
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        this.pathBroom(ctx, -15, 14, 4, 12);
+        ctx.stroke();
+        ctx.restore();
+        ctx.save();
+        ctx.fillStyle = '#9aa7b4';
+        for (let k = 0; k < 5; k++) {
+          const idx = (p.trailHead - 1 - k * 2 + TRAIL_LEN * 2) % TRAIL_LEN;
+          if (k * 2 >= p.trailCount) break;
+          ctx.globalAlpha = 0.3 - k * 0.05;
+          ctx.fillRect(p.trailX[idx] - 1.8, p.trailY[idx] - 1.8, 3.6, 3.6);
+        }
+        ctx.restore();
       } else if (p.type >= 3) {
         const angle = Math.atan2(p.vy, p.vx);
         ctx.save();
@@ -2258,7 +2281,9 @@ export class Renderer {
 
       // Quick tap: a straight spiked lash whips across the forward arc. No shield
       // fill belongs on the tap; the guard is the separate hold action.
-      if (p.swingPhase !== 0) {
+      if (p.swingPhase !== 0 && p.program === PROGRAM_ID.SWEEP) {
+        this.drawBroomSwing(p, x, y, facing, color);
+      } else if (p.swingPhase !== 0) {
         const half = PLAYER.swingHalfAngle;
         const dir = p.swingDir < 0 ? -1 : 1;
         const pct = Math.max(0, Math.min(1, p.swingPct));
@@ -2406,6 +2431,13 @@ export class Renderer {
           ctx.stroke();
           ctx.restore();
         }
+      }
+
+      // Sweep: the giant broom builds at his side, then crosses the room. The two
+      // split brooms from the skill live in the same block.
+      if (p.program === PROGRAM_ID.SWEEP) {
+        this.drawGiantBroom(p, x, y, color, t);
+        this.drawFan(p, color, t);
       }
 
       // Charged triangle dash silhouette.
@@ -2571,7 +2603,7 @@ export class Renderer {
         drawGlyph(ctx, slotGlyph(p.slot), 0, 0, PLAYER.radius * 0.51);
       } else {
         const glyph = programDef(p.program);
-        drawSymbol(ctx, glyph.glyph, 0, 0, PLAYER.radius * 0.51, glyph.coreScale);
+        drawSymbol(ctx, glyph.glyph, 0, 0, PLAYER.radius * (glyph.glyphRadius ?? 0.51), glyph.coreScale);
       }
       ctx.restore();
 
@@ -2800,10 +2832,11 @@ export class Renderer {
     ctx.stroke();
 
     // 1. Ranged ammo: one dot per shot left in the program's string.
-    const ammoMax = p.program === PROGRAM_ID.WEDGE ? 3 : p.program === PROGRAM_ID.FISHER ? 1 : BOLT.burstCount;
+    const ammoMax =
+      p.program === PROGRAM_ID.WEDGE ? 3 : p.program === PROGRAM_ID.FISHER || p.program === PROGRAM_ID.SWEEP ? 1 : BOLT.burstCount;
     const ammo = p.program === PROGRAM_ID.WEDGE
       ? p.stringLeft > 0 ? p.stringLeft : p.burstCd <= 0 ? 3 : 0
-      : p.program === PROGRAM_ID.FISHER
+      : p.program === PROGRAM_ID.FISHER || p.program === PROGRAM_ID.SWEEP
         ? p.autoFireT <= 0 ? 1 : 0
         : p.burstLeft;
     const dotGap = ammoMax > 3 ? 5 : 5.6;
@@ -2873,6 +2906,18 @@ export class Renderer {
       ctx.lineTo(4.5, -1);
       ctx.moveTo(4.5, 1);
       ctx.lineTo(4.5, 6.5);
+    } else if (p.bugKind === 6) {
+      // Split brooms: two outward arrows with a clear centre gap.
+      ctx.moveTo(-2, 0);
+      ctx.lineTo(-6, 0);
+      ctx.moveTo(-4, -3);
+      ctx.lineTo(-6, 0);
+      ctx.lineTo(-4, 3);
+      ctx.moveTo(2, 0);
+      ctx.lineTo(6, 0);
+      ctx.moveTo(4, -3);
+      ctx.lineTo(6, 0);
+      ctx.lineTo(4, 3);
     } else {
       // Lure beacon: a center pulse with two open arcs, not a closed ring. The
       // closed ring plus dot is Probe's core mark (`◎`) and would collide with it.
@@ -2890,16 +2935,21 @@ export class Renderer {
 
     // 4. Power attack (hold Y): program-shaped heavy, with its cooldown ring.
     const heavyX = first + cell * 3;
-    const heavyReady = p.laserCd <= 0 && p.laserT <= 0 && p.wedgeT <= 0;
+    const heavyReady = p.laserCd <= 0 && p.laserT <= 0 && p.wedgeT <= 0 && p.broT <= 0;
     const heavyMax = p.program === PROGRAM_ID.WEDGE
       ? WEDGE.chargeCooldown
       : p.program === PROGRAM_ID.FISHER
         ? FISHER.netCooldown
-        : PLAYER.laserCooldown;
+        : p.program === PROGRAM_ID.SWEEP
+          ? SWEEP.powerCooldown
+          : PLAYER.laserCooldown;
     const heavyColor = p.program === PROGRAM_ID.WEDGE
       ? PROGRAM_COLORS.wedge
-      : p.program === PROGRAM_ID.FISHER ? PROGRAM_COLORS.fisher : color;
-    const heavyLive = p.laserT > 0 || p.wedgeT > 0;
+      : p.program === PROGRAM_ID.FISHER
+        ? PROGRAM_COLORS.fisher
+        : p.program === PROGRAM_ID.SWEEP ? PROGRAM_COLORS.sweep : color;
+    const heavyLive =
+      p.laserT > 0 || p.wedgeT > 0 || p.broT > 0 || (p.program === PROGRAM_ID.SWEEP && p.laserChargeHeld);
     ctx.save();
     ctx.translate(heavyX, cy);
     ctx.globalAlpha = heavyLive ? 0.98 : heavyReady ? 0.85 : 0.24;
@@ -2920,6 +2970,16 @@ export class Renderer {
       ctx.lineTo(4.5, 4.5);
       ctx.moveTo(-4.5, 4.5);
       ctx.lineTo(4.5, -4.5);
+    } else if (p.program === PROGRAM_ID.SWEEP) {
+      // Broom mark: a shaft with a three-strand fan. The skill beside it is two
+      // outward arrows, so the two broom ideas never share one mark.
+      ctx.moveTo(0, -6);
+      ctx.lineTo(0, 1.5);
+      ctx.moveTo(-5, 1.5);
+      ctx.lineTo(5, 1.5);
+      ctx.moveTo(-4, 6);
+      ctx.lineTo(0, 1.5);
+      ctx.lineTo(4, 6);
     } else {
       ctx.moveTo(0, -5.5);
       ctx.lineTo(0, 5.5);
@@ -2953,6 +3013,170 @@ export class Renderer {
       ctx.strokeRect(powerX - 3.5, cy - 3.5, 7, 7);
     }
 
+    ctx.restore();
+  }
+
+  /** A broom in local space: shaft from `inner` to `tip`, bristles fanned at the tip. */
+  private pathBroom(
+    ctx: CanvasRenderingContext2D,
+    inner: number,
+    tip: number,
+    bristles: number,
+    spread: number,
+  ): void {
+    const binder = tip - (tip - inner) * 0.34;
+    ctx.beginPath();
+    ctx.moveTo(inner, 0);
+    ctx.lineTo(binder, 0);
+    ctx.moveTo(binder, -spread * 0.28);
+    ctx.lineTo(binder, spread * 0.28);
+    for (let i = -bristles; i <= bristles; i++) {
+      const k = i / bristles;
+      ctx.moveTo(binder, k * spread * 0.28);
+      ctx.lineTo(tip, k * spread);
+    }
+  }
+
+  /**
+   * Sweep's melee. The broom head rides the same arc as every other program's lash, but
+   * reads as a physical push: a shaft, a bristle fan and squares shaken loose.
+   */
+  private drawBroomSwing(p: Player, x: number, y: number, facing: number, color: string): void {
+    const half = PLAYER.swingHalfAngle;
+    const dir = p.swingDir === 0 ? 1 : p.swingDir < 0 ? -1 : 1;
+    const pct = Math.max(0, Math.min(1, p.swingPct));
+    const progress = p.swingPhase === 1 ? 0 : p.swingPhase === 2 ? 1 - pct : 1;
+    const big = p.swingKind === 3;
+    const reach = big ? SWEEP.bigReach : PLAYER.punchReach;
+    const angle = facing - dir * half * 0.96 + dir * half * 1.92 * progress;
+    const alpha = p.swingPhase === 2 ? 0.95 : p.swingPhase === 3 ? 0.3 : 0.55;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.strokeStyle = color;
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = big ? 3 : 2.2;
+    this.pathBroom(ctx, PLAYER.radius * 0.35, reach, big ? 6 : 4, big ? 24 : 16);
+    ctx.stroke();
+    ctx.restore();
+    // Square dust shaken off the bristles, kept in screen space.
+    ctx.save();
+    ctx.fillStyle = '#9aa7b4';
+    for (let i = 0; i < 4; i++) {
+      const back = i * 0.2;
+      const a = angle - dir * back;
+      const r = reach * (0.94 - i * 0.16);
+      const wobble = Math.sin(p.swingT * 42 + i * 2.1) * 3;
+      ctx.globalAlpha = alpha * (0.34 - i * 0.06);
+      ctx.fillRect(x + Math.cos(a) * r - 1.6 + wobble, y + Math.sin(a) * r - 1.6, 3.2, 3.2);
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Sweep's heavy. It draws line by line while charging: the bristle fan widens from the
+   * middle out, then the spine closes, then the handle arrives. While live it travels the
+   * committed line at full size.
+   */
+  private drawGiantBroom(p: Player, x: number, y: number, color: string, t: number): void {
+    const charging = p.laserChargeHeld && p.broT <= 0;
+    if (!charging && p.broT <= 0) return;
+    const build = charging ? Math.max(0, Math.min(1, p.laserChargeT / SWEEP.powerChargeTime)) : 1;
+    const dirX = charging ? Math.cos(p.laserFacing) : p.broDirX;
+    const dirY = charging ? Math.sin(p.laserFacing) : p.broDirY;
+    const s = charging ? -SWEEP.powerReach : p.broS;
+    const half = SWEEP.powerBand;
+    const px = -dirY;
+    const py = dirX;
+    const baseX = (charging ? x : p.broX) + dirX * s;
+    const baseY = (charging ? y : p.broY) + dirY * s;
+    const live = !charging;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineCap = 'square';
+    // Spine: a hard line across the swept band, growing from the middle out.
+    const spine = 0.25 + 0.75 * build;
+    ctx.globalAlpha = 0.28 + 0.4 * build;
+    ctx.lineWidth = live ? 3 : 2;
+    ctx.beginPath();
+    ctx.moveTo(baseX - px * half * spine, baseY - py * half * spine);
+    ctx.lineTo(baseX + px * half * spine, baseY + py * half * spine);
+    ctx.stroke();
+    // Bristles fan forward along the sweep direction, built from the middle out.
+    const strands = 15;
+    const shown = Math.max(1, Math.round(strands * build));
+    ctx.globalAlpha = 0.5 + 0.4 * build;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    for (let i = 0; i < shown; i++) {
+      const k = strands > 1 ? (i / (strands - 1)) * 2 - 1 : 0;
+      const bx = baseX + px * half * k;
+      const by = baseY + py * half * k;
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + dirX * 46, by + dirY * 46);
+    }
+    ctx.stroke();
+    // One handle from the middle of the brush, arriving last, so the build reads as
+    // a single object assembling. Two rails read as stray beams across the arena.
+    if (build > 0.55) {
+      const h = (build - 0.55) / 0.45;
+      const hx = baseX - dirX * 200;
+      const hy = baseY - dirY * 200;
+      ctx.globalAlpha = 0.5 * h;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.lineTo(hx, hy);
+      ctx.moveTo(hx - px * 14, hy - py * 14);
+      ctx.lineTo(hx + px * 14, hy + py * 14);
+      ctx.stroke();
+    }
+    // Dust: squares shed along the bristle line.
+    ctx.fillStyle = '#a7b1bb';
+    for (let i = 0; i < 10; i++) {
+      const k = ((i / 9) * 2 - 1) * half;
+      const wobble = Math.sin(t * 9 + i * 1.7) * 6;
+      ctx.globalAlpha = (0.18 + 0.22 * build) * (1 - Math.abs(k) / half);
+      ctx.fillRect(baseX + px * k + dirX * 54 + wobble, baseY + py * k + dirY * 54, 4, 4);
+    }
+    ctx.restore();
+  }
+
+  /** Sweep's skill: the two brooms splitting outward, plus the dust in the lane. */
+  private drawFan(p: Player, color: string, t: number): void {
+    if (p.fanT <= 0 || p.fanDur <= 0) return;
+    const pct = Math.max(0, Math.min(1, 1 - p.fanT / p.fanDur));
+    const spread = SWEEP.fanReach * pct;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineCap = 'round';
+    for (let side = -1; side <= 1; side += 2) {
+      const bx = p.fanX + p.fanTx * spread * side;
+      const by = p.fanY + p.fanTy * spread * side;
+      const angle = Math.atan2(p.fanTy * side, p.fanTx * side);
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(angle);
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 2.2;
+      this.pathBroom(ctx, -9, 24, 4, 15);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.fillStyle = '#9aa7b4';
+    for (let i = 0; i < 12; i++) {
+      const k = (i / 11) * 2 - 1;
+      const wobble = Math.sin(t * 12 + i) * 4;
+      ctx.globalAlpha = 0.22 * (1 - Math.abs(k));
+      ctx.fillRect(p.fanX + p.fanTx * spread * k + wobble, p.fanY + p.fanTy * spread * k, 3.4, 3.4);
+    }
     ctx.restore();
   }
 
@@ -3017,7 +3241,7 @@ export class Renderer {
         drawGlyph(ctx, slotGlyph(p.slot), x, y + 1, PLAYER.radius * 0.51);
       } else {
         const glyph = programDef(p.program);
-        drawSymbol(ctx, glyph.glyph, x, y + 1, PLAYER.radius * 0.51, glyph.coreScale);
+        drawSymbol(ctx, glyph.glyph, x, y + 1, PLAYER.radius * (glyph.glyphRadius ?? 0.51), glyph.coreScale);
       }
     }
 

@@ -89,15 +89,19 @@ silhouette from `pathProgramHealth` in `src/game/identity.ts`: Probe is a cyan s
 an amber diamond with `▣`, Fisher an indigo hex reel with `≈`. The select screen and the arena share that
 shape and glyph, so a program reads the same in the roster, intro and fight.A program's `glyph` may be a single character, a multi-character text combo, Unicode dingbats/wingdings, or a multi-line ASCII picture; `drawSymbol` scales it to the core and portrait, strips common indentation, and measures the real advance against the symbol font stack (`ui-monospace` first, then `Segoe UI Symbol`, `Noto Sans Symbols 2`, `Apple Symbols`, Wingdings, Webdings) so a wide mark shrinks instead of spilling through the hull. Prefer direction-neutral marks: a pointing glyph at the core reads as facing. Each program also owns `coreScale` so a tight hull keeps clearance from its
 rotating health segments: Probe `1.12`, Wedge `0.88` (the diamond's sides are the tightest core), Fisher
-`1.10`. The low-health core keeps a scale floor (`0.78 + 0.22 * coreHp`) so the mark stays visible while
-the hull ghosts carry the damage read. Check a new program at full and one-segment health; the mark must
-not touch the bright hull.
+`1.10`, Sweep `1.06`. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
+uses the empty space between the core disc and the hull, with tighter row spacing and a narrower width
+budget; a single glyph keeps the default 0.51. The low-health core keeps a scale floor
+(`0.78 + 0.22 * coreHp`) so the mark stays visible while the hull ghosts carry the damage read. Check a
+new program at full and one-segment health; the mark must not touch the bright hull.
 
 A four-sided hull cannot be split into three equal corner pieces, so Wedge draws one bracket per health
 segment at three corners, a short frame-weight tab at the fourth corner, and a thin rim around the square.
 The tab and rim keep the silhouette closed at full health without counting as a health segment; keep them
 below the health stroke weight. Do not revert to equal perimeter slices on the diamond, which cut through
-corners and read as arbitrary chunks. Networked matches still use the slot palette and slot glyphs because the
+corners and read as arbitrary chunks. A five-sided hull has the same problem in a milder form: its slices
+cut corners irregularly, so Sweep uses an **eight-sided** hull, where three equal perimeter segments read
+as clean arcs. Networked matches still use the slot palette and slot glyphs because the
 protocol does not carry programs yet; do not fake program identity in a guest snapshot.
 
 This stays team-ready: a future team mode paints the outline by team and keeps the glyph per program or
@@ -237,12 +241,16 @@ bolt:
 - **Ranged attack (`X`)**: Probe's fast burst bolt is five shots, 0.45 s life (~390 units), one bank,
   1 damage, then a 0.2 s recharge. Holding keeps the stream coming at `BOLT.autoInterval`; the low shot
   cost makes sustained fire possible without turning it into a machine gun. Wedge fires a three-shot
-  string and Fisher a piercing spear. Do not restore the old long TTL without reworking the kit.
+  string, Fisher a piercing spear and Sweep a dust-trailing broom that stops on the body and shoves it
+  hard. Do not restore the old long TTL without reworking the kit.
 - **Melee attack (`B` tap)**: the cone is **180°**. Every quick press is a fast spiked lash that sweeps
   the arc left, right, left. It reflects incoming fire and shoves players and hostiles sideways in the
   sweep direction; there is no third-tap shield wave. Facing locks for the lash. The active window is
   generous; an early or far-edge catch still returns the bolt, but angles it and loses some speed. A
-  last-instant catch returns it straight.
+  last-instant catch returns it straight. Sweep replaces the shared lash with a **three-hit broom combo**:
+  a diagonal push from each side, then a big forward broom on the third tap. The first two damage 1 and
+  shove on a diagonal; the third reaches `SWEEP.bigReach` (96), deals 2, shoves straight ahead and
+  reflects along the whole drawn shaft. Facing still locks for every hit, and the hold is still the guard.
 - **Guard (`B` hold)**: after `PLAYER.guardStartDelay` (0.08 s) the melee button raises a 180° shield
   that reflects every shot in front for up to 1 s instead. A quick tap stays a melee attack and never
   draws shield fill. Each caught shot burns `guardReflectCost`; when the guard or its timer runs out it
@@ -251,7 +259,9 @@ bolt:
   incoming angle. The shield visual is one clean crescent: fill, rim and burn-down edge, with no radial
   fan and no cooldown ghost arc beside the avatar.
 - **Skill (`Y` tap)**: the program's assigned skill, owned by `PROGRAMS` (`bugKind` is the wire field):
-  Probe's proximity mine, Wedge's **static wall**, Fisher's lure beacon. Wedge plants his bracket shape as
+  Probe's proximity mine, Wedge's **static wall**, Fisher's lure beacon, Sweep's **split brooms**. Sweep
+  starts two brooms together in front of him and sends them outward along the tangent, shoving bodies and
+  hostiles out of the lane before walking through the gap. Wedge plants his bracket shape as
   a solid barrier one body-length behind him (`WEDGE.wall*`): it blocks bodies and reflects shots, so it
   closes the lane he just left and pairs with a backward dash and a flip. It is not a shove and not a free
   projectile delete; dodge still phases through it. A wall that would land in cover is refused and the
@@ -261,8 +271,10 @@ bolt:
 - **Power attack (`Y` hold)**: program-specific heavy. Probe charges for 0.9 s, then **auto-fires**
   without waiting for release for 3 s, rooted, sweeping at `PLAYER.laserTurnRate` (0.55 rad/s), piercing
   every enemy in the line and respecting pillar cover. Wedge plows forward with a bracket; Fisher draws a
-  **freeform web**. Cooldown starts when the heavy ends. Releasing before the charge completes cancels;
-  a release inside `heavyTapMax` uses the skill instead.
+  **freeform web**; Sweep assembles a giant broom at his side and sweeps it across a `SWEEP.powerBand`-
+  half-height band in the facing direction, shoving and damaging every body it crosses. Cooldown starts
+  when the heavy ends. Releasing before the charge completes cancels; a release inside `heavyTapMax` uses
+  the skill instead.
 - **Dash**: two stored charges (`PLAYER.dashCharges`), one shared 1.8 s recharge. Tap phases through
   geometry and enemies; hold after the tap for the charged triangle dash that damages what it crosses.
 
@@ -387,14 +399,30 @@ link is a `bridge`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
 - The campaign route plate (`road.ts`) belongs to the between-level transition, not to the archive. Do not
   mount it in a menu.
 
-### D14 — Sweep.exe is parked until its kit exists (decided 2026-10-29)
-`SWEEP.EXE` is designed but deliberately **not** in `PROGRAMS` yet. Its identity is an ASCII broom and a
-lime accent; its kit is a three-hit broom combo for melee, a dust-trailing broom throw for ranged, a huge
-broom drawn line by line then swept down the top two thirds of the screen for the power attack, and two
-brooms that split outward to clear a lane for the skill. Do not add a selectable card until those
-branches exist in `World`; a card running another program's attacks is worse than no card. Reuse the
-Wedge displacement slide and square dust rather than adding a second knockback system, and check the core
-mark against the hull at full and one-segment health. The full spec is in `TODO.md`.
+### D14 — Sweep.exe: broom push kit, clean core mark (built 2026-10-29)
+`SWEEP.EXE` is the fourth program and the roster's **shove** specialist. Identity: lime accent, an
+eight-sided hull, and a `✦` clean sparkle at the core. The only literal Unicode broom is the colour emoji
+`🧹`, which ignores `fillStyle` and would put a brown bitmap inside an otherwise single-hue silhouette; do
+not tint emoji into the core mark. The kit carries the broom: the core mark says "clean" instead. Revisit
+only if a monochrome broom glyph is drawn as vector paths.
+
+- **Melee**: a three-hit broom combo replaces the shared lash. Diagonal pushes on hits one and two, then
+a bigger forward broom. Every hit locks facing and the hold is still the guard. The third hit reflects
+along the full `SWEEP.bigReach` shaft, not just `PLAYER.swingReach`.
+- **Ranged**: a broom thrown at `SWEEP.shotSpeed` (near Fisher's spear) with a square dust trail. It does
+2 damage, stops on the body and shoves hard; it is type `6`, so every `type >= 3` hostile check must stay
+an explicit `=== 3 || === 4` or equivalent before adding another player projectile type.
+- **Power**: builds the giant broom line by line behind the committed facing, then sweeps it through the
+cast point to `+SWEEP.powerReach` over `SWEEP.powerDuration`. The live broom is one wide line
+(`SWEEP.powerBand` half-height) that damages and shoves each body once; cooldown starts when it ends.
+- **Skill**: two brooms start together in front and split along the tangent to `SWEEP.fanReach`, shoving
+bodies outward and clearing the lane. Bodies are hit once per cast, and cover still cuts the contact.
+
+Displacement reuses the shared `kx`/`ky` slide, `PLAYER.knockDrag` easing and the existing square slide
+dust; do not add a second knockback system. All numbers live in the `SWEEP` block in `config.ts`. Bots own
+the kit like any other program: the generic heavy hold builds the sweep, and a dedicated branch taps the
+split brooms at 50–210 units. Sweep is local-only for now; online matches still run Probe because
+`Snapshot` does not carry programs. Do not add kit fields to the snapshot without a protocol decision.
 
 ---
 
@@ -645,8 +673,9 @@ play URL is <https://spuds0588.github.io/DEFLECT/>.
 - Bot cost is part of the bench result; do not move AI into `World.step` or allocate per bot per frame.
   A* scratch must stay preallocated (`src/game/nav.ts`); re-plan on a timer, not every tick.
 - The gauntlet max case (2 worms, 10 viruses, 2 firewalls, 14 cascading-error blocks, sentries, one
-  thrall) is part of `npm run bench`. v0.1.15 measured 0.131 ms/tick avg, p99 0.522 ms with 26.2 live
-  threats. Keep it there so threat complexity cannot regress silently.
+  thrall) is part of `npm run bench`. v0.1.27 measured 0.215 ms/tick avg, p99 0.697 ms with 27.3 live
+  threats; the eight-bot swarm measured 0.096 avg / 0.325 p99. Keep it there so threat complexity cannot
+  regress silently.
 - Measured results live in `TODO.md` §Performance. Do not claim a cap without numbers there.
 
 ---
