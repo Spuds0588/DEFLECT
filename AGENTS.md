@@ -285,7 +285,8 @@ bolt:
   skill; guests read it from the snapshot.
 - **Power attack (`Y` hold)**: program-specific heavy. Probe charges for 0.63 s, then **auto-fires**
   without waiting for release for 3 s, rooted, sweeping at `PLAYER.laserTurnRate` (0.55 rad/s), piercing
-  every enemy in the line and respecting pillar cover. Wedge plows forward with a bracket; Fisher draws a
+  every enemy in the line. The shaft stops on the first solid surface (see D22), and a raised guard
+  glances it away at an angle instead of letting it pass. Wedge plows forward with a bracket; Fisher draws a
   **freeform web**; Sweep assembles a giant broom at his side and sweeps it across a `SWEEP.powerBand`-
   half-height band in the facing direction, shoving and damaging every body it crosses. Cooldown starts
   when the heavy ends. Releasing before the charge completes cancels; a release inside `heavyTapMax` uses
@@ -434,8 +435,9 @@ a bigger forward broom. Every hit locks facing and the hold is still the guard. 
 along the full `SWEEP.bigReach` shaft, not just `PLAYER.swingReach`. The broom is drawn upright in front
 of the avatar (binder on top, bristles under it) and strokes **straight up and down** across the lane; it
 does not swing on a curved arc, and the head never turns over. Hit one strokes down, hit two back up.
-- **Ranged**: a thrown broom head at `SWEEP.shotSpeed` (500, deliberately slow). It is wide
-(`shotRadius` 15), does 2 damage, stops on the body and shoves hard (`shotKnockback` 1200, the biggest
+- **Ranged**: a thrown broom head at `SWEEP.shotSpeed` (600, slower than a bolt but fast enough to
+trade shots). It is wide
+(`shotRadius` 18), does 2 damage, stops on the body and shoves hard (`shotKnockback` 1200, the biggest
 ranged shove in the roster), and **dies on geometry** rather than ricocheting. It draws no line trail and no handle: just the same upright comb as the melee, with the
 bristles at the bottom, plus a short puff of grey square dust from `emitBroomDust`. It is type `6`, so every `type >= 3` hostile check must stay an explicit
 `=== 3 || === 4` or equivalent before adding another player projectile type.
@@ -468,9 +470,10 @@ split brooms at 50–210 units. Sweep is local-only for now; online matches stil
 (`#3dff6e`), a six-point star hull, and a `☠` core. The star has twelve equal edges, so the three health
 segments cut cleanly with no frame rim; the trim is half an edge at each segment end.
 
-- **Ranged**: a cheap needle dart (type 7) drawn as a `†` mark, 1 direct damage plus venom. It does not
-  bounce and carries no motion tail; a small green halo is the only glow. Its damage is deliberately
-  small because the venom is the payload.
+- **Ranged**: a cheap needle dart (type 7) drawn as a **hypodermic**, 1 direct damage plus venom. It
+  is geometry (`drawSyringe`: flange, plunger, barrel with a venom window, hub and a long needle), not
+  the `†` mark, which read as a cross at projectile size. It does not bounce and carries no motion tail;
+  a small green halo is the only glow. Its damage is deliberately small because the venom is the payload.
 - **Venom**: 3.5 s, one tick every 0.75 s for 0.34 (about a third of a segment). A hit refreshes the whole
   duration instead of stacking. Poisoned bodies get a pulsing green rim and a flashing `☠` above the
   body — a status mark, not a health pip, so it is allowed on bots and remotes too.
@@ -646,8 +649,8 @@ should stay that way. Damage reads as **shake + three crack stages**, never a he
 - **Wedge's wall is solid, not shoot-through.** Every shot type stops or reflects on it; only the lobbed
   shell (type 9) is airborne over it. It has `WEDGE.wallHp` (7): ordinary shots chip 1, spears/brooms/bombs
   chip 2, a lash chips 1, a blast chips 2, and at zero it de-rezzes (`EV.WALL_BREAK`). Its cracks are drawn
-  along the segment; its hit shake is a 3 px normal offset. A laser is still a charged piercing beam and is
-  not blocked by the plate; do not add a special rule for it without deciding that the heavy is weaker.
+  along the segment; its hit shake is a 3 px normal offset. The heavy beam also stops on the plate (D22);
+  it does not chip it. Do not give shots a way through without deciding that the wall is weaker.
 - **File boxes are debris, not cover.** Rounded dashed outlines say "this moves". They are pushed by
   bodies, launched by the melee lash without being deleted (2 hp, so the second hit still breaks one),
   batted by a raised guard, shoved by shots and blasts, swept by the compactor and never overlap each
@@ -662,6 +665,60 @@ should stay that way. Damage reads as **shake + three crack stages**, never a he
   pinned on any ledge below the stop line. It must stop at a meaningful line (RECYCLING BIN stops on the
   hole's rim), never at a place that cuts the last safe ground in half. A compactor arena ships with no
   solid cover, because the plate would pin bodies against it instead of pushing them.
+
+### D21 — Buffer_Overflow.exe: hourglass throw, fast-forward, dilation (built 2026-10-30)
+
+`BUFFER_OVERFLOW.EXE` is the roster's **time** program (id 6, `BUFFER`). Identity:
+`PROGRAM_COLORS.buffer` (`#ff6ec7`), six clock faces on a ring, and a pinched hourglass at the core.
+
+- **Hull**: six clock faces, two per health segment, orbiting at `0.78r` with a `0.17r` radius. Each
+  face carries a minute and an hour hand at its own angle, so the ring reads as a set of times rather
+  than six dots. Losing a segment removes two whole clocks; the rest stay bright, and the lost clocks
+  still ghost like every other hull. The inner edge is `0.61r`, just outside the `0.6r` core clearance.
+- **Core**: the hourglass is vector, never the `⧗` codepoint. U+29D7 resolves to a colour emoji on some
+  systems and paints an opaque tile into the core, so `drawHourglassMark` draws two rounded triangles
+  pointing at each other with their tips overlapping (`0.18h`) to make the waist. It uses only the
+  caller's fill colour, and its corners are rounded with `arcTo`. `coreScale` is `0.84`, so the mark
+  keeps clear air between itself and the clock ring. **Do not draw the dark core disc behind it**: Buffer
+  is the one program whose mark is a solid filled shape, and a disc behind it reads as a black tile. The
+  renderer skips the disc for `PROGRAM_ID.BUFFER` only.
+- **Ranged**: one heavy hourglass (type 10), `430 u/s`, wide (`13`), no motion tail, dies on geometry.
+  It passes through up to three bodies (`BUFFER.shotHits`), damaging each once and shoving hard
+  (`780`); every body struck flips `spinDir`, so the mark visibly reverses. It uses the spear's hit
+  masks per family, and a worm swallows it. Every `type >= 3` deflect branch may turn it into a bolt,
+  which is the existing guard/lash rule; types 8/9 remain the never-deflectable exceptions.
+- **Skill**: **fast-forward** for `2.6 s`. Movement, attack rate and every cooldown run at `2.5x` for
+  that body only. It is driven by `Player.fastT` (local-only) and a per-player `pdt` that scales
+  cooldown/attack timers; `Player.speedMult` scales walking only, so dash and plow keep their committed
+  distance. The duration runs on the real clock.
+- **Power**: **time dilation** for `5 s`. Every body except the caster, every hostile projectile, and the
+  whole gauntlet/drone simulation run at `0.3x` (`World.timeSlowT`/`timeSlowOwner`). The field runs on
+  the real clock and never enters `Snapshot`; a guest never sees it because online still runs Probe.
+  The renderer washes the frame edges in Buffer pink while it is live and marks the caster's dock as the
+  live heavy.
+- **Bots**: tap fast-forward when a target sits 40–320 units away; the generic heavy hold builds the
+  dilation. Both ride the same `InputFrame` path as a human.
+
+All numbers live in the `BUFFER` block in `config.ts`. The kit is local-only like every other program.
+
+### D22 — The heavy beam is a surface, not an infinite ray (built 2026-10-30)
+
+`beamReach` in `src/game/collision.ts` is the one reach test for the heavy beam. Pillars, deployed Wedge
+walls, the compactor plate and a walled arena's bounds end it; a chasm or an open lip does not. Both
+`World.applyLaserDamage` and `Renderer.drawLasers` call it, so the drawn shaft and the damage line stop on
+the same surface instead of the old render-only 25-unit probe. The beam does not chip a wall it stops on.
+
+A raised guard in the corridor (front half-plane, same rule as the projectile catch) catches the beam and
+glances it away. The reflected shaft leaves at `PLAYER.laserReflectAngle` off the incoming line (0.65 rad
+≈ 37°, inside the intended 30–45° band) and reaches `PLAYER.laserReflectRange` (380). It is one pass of
+its own beam: every body on the deflected line takes `PLAYER.laserDamage`, but the **caster and the guard
+are both skipped**, so a guard can never be used to hit its owner. The catch also cuts a charged heavy
+into its full cooldown; the caster takes no damage from the catch itself.
+
+The guard draws the deflected shaft for `PLAYER.laserReflectFlash` (`beamReflectT` / `beamReflectFacing` /
+`beamReflectDist`). Those fields are local only, like every other program kit effect: the snapshot carries
+the `EV.DEFLECT` event, so an online guest gets the flare and sound but not the drawn shaft. Do not turn
+the beam into a projectile to reuse deflect code; its occluders are geometry, not bodies.
 
 ---
 
@@ -735,8 +792,10 @@ public/               manifest, generated icons, service worker
   swing resolution, spends guard time per catch, and sets `PF.GUARD` so guests can draw it.
 - Powerups spawn only in training/gauntlet and are collected by any live player. Definitions are data in
   `powerups.ts`; the world never hard-codes a pickup label or color.
-- Laser damage is tested against the full worm chain, not just the head. Wall shields absorb projectiles
-  from other players; ghost ignores contact/projectile damage and ends on any attack.
+- Laser damage is tested against the full worm chain, not just the head, and against `beamReach`, so a
+  wall or compactor plate clips the damage exactly where it clips the drawn shaft. A guarding rival in
+  the corridor reflects the beam (D22). Wall shields absorb projectiles from other players; ghost ignores
+  contact/projectile damage and ends on any attack.
 - Hit detection is substepped (max 6 units per substep) so 2800 u/s bolts cannot tunnel.
 - Program kits are data in `programs.ts` plus branches in `World`. Probe keeps the five-shot burst,
   charged piercing beam and proximity mine; Wedge fires a three-shot string, dashes with a damaging

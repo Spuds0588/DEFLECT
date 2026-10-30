@@ -124,6 +124,9 @@ export function createPlayer(slot: number): Player {
     laserCd: 0,
     laserTickT: 0,
     laserFacing: 0,
+    beamReflectT: 0,
+    beamReflectFacing: 0,
+    beamReflectDist: 0,
     netDrawing: false,
     netT: 0,
     netIndex: -1,
@@ -134,6 +137,8 @@ export function createPlayer(slot: number): Player {
     guardCd: 0,
     bugKind: 0,
     bugCd: 0,
+    fastT: 0,
+    speedMult: 1,
     powerupKind: -1,
     powerupT: 0,
     autoFireT: 0,
@@ -187,6 +192,9 @@ export function createProjectile(): Projectile {
     blastRadius: 0,
     blastKnockback: 0,
     arcDur: 0,
+    hits: 0,
+    spin: 0,
+    spinDir: 1,
     homing: false,
     pathAxis: 0,
     hitPlayers: 0,
@@ -513,6 +521,9 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.laserCd = 0;
   p.laserTickT = 0;
   p.laserFacing = facing;
+  p.beamReflectT = 0;
+  p.beamReflectFacing = 0;
+  p.beamReflectDist = 0;
   p.netDrawing = false;
   p.netT = 0;
   p.netIndex = -1;
@@ -533,6 +544,8 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.travelToY = y;
   p.travelSwap = false;
   p.bugCd = 0;
+  p.fastT = 0;
+  p.speedMult = 1;
   p.powerupKind = -1;
   p.powerupT = 0;
   p.autoFireT = 0;

@@ -219,6 +219,14 @@ export const PLAYER = {
   laserTurnRate: 0.55,
   laserRange: 3000,
   laserKnockback: 120,
+  /**
+   * Guard deflection: the reflected shaft leaves 30-45 degrees off the incoming line, so
+   * it never returns to the caster. `laserReflectRange` is how far the glance can cut.
+   */
+  laserReflectAngle: 0.65,
+  laserReflectRange: 380,
+  /** How long the reflected shaft flashes after a guard catches it. */
+  laserReflectFlash: 0.34,
   /** Hold dash after the normal dodge to build the triangle charge. */
   dashChargeTime: 0.45,
   chargeDashTime: 0.3,
@@ -378,12 +386,15 @@ export const FISHER = {
  * across the arena, and the skill splits two brooms outward to clear a lane.
  */
 export const SWEEP = {
-  /** Ranged: a thrown broom head. Wide and slow, and it dies on geometry, no ricochet. */
+  /**
+   * Ranged: a thrown broom head. Wide and deliberately slower than a bolt, but fast enough
+   * to contest a traded shot; it dies on geometry, no ricochet.
+   */
   shotCost: 9,
   shotDamage: 2,
-  shotSpeed: 500,
-  shotTtl: 0.9,
-  shotRadius: 15,
+  shotSpeed: 600,
+  shotTtl: 0.85,
+  shotRadius: 18,
   /** A broom head is heavy: this is the biggest shove of any ranged attack. */
   shotKnockback: 1200,
   attackCooldown: 0.5,
@@ -509,6 +520,35 @@ export const KABOOM = {
 } as const;
 
 /**
+ * BUFFER_OVERFLOW.EXE: the roster's time specialist. One heavy hourglass that passes
+ * through a few bodies, a cooldown-burn skill, and a field that slows everything else.
+ */
+export const BUFFER = {
+  /** Ranged: one slow hourglass. It is heavy, wide, and pierces a short body chain. */
+  shotCost: 12,
+  shotDamage: 1,
+  shotSpeed: 430,
+  shotTtl: 1.6,
+  shotRadius: 13,
+  /** Bodies it can pass through before it de-rezzes on the last one. */
+  shotHits: 3,
+  /** Big ranged shove: the hourglass is a weight, not a dart. */
+  shotKnockback: 780,
+  /** Radians per second of the mark's spin. Every body struck flips the direction. */
+  spinRate: 3.4,
+  attackCooldown: 0.62,
+  /** Skill: fast-forward. Movement, attack rate and every cooldown run at this multiple. */
+  fastTime: 2.6,
+  fastScale: 2.5,
+  /** Power: every other body and hostile projectile crawls for this long. */
+  slowCost: 55,
+  slowChargeTime: 0.6,
+  slowTime: 5,
+  slowScale: 0.3,
+  slowCooldown: 9,
+} as const;
+
+/**
  * Timed proximity mine. The old heavy bomb was replaced after the designer called it
  * overpowered: the mine cannot be thrown across the map, must be armed, and gives
  * opponents time to read and avoid it.
@@ -535,7 +575,7 @@ export const MINE = {
 export const BUG = {
   cost: 35,
   /** A static wall is stronger than a shove, so its slot in the table is longer. */
-  cooldown: [4.5, 5, 7, 8, 9, 8, 6, 7, 7.5],
+  cooldown: [4.5, 5, 7, 8, 9, 8, 6, 7, 7.5, 10],
   trapRadius: 62,
   trapDuration: 2.2,
   trapSlow: 0.42,

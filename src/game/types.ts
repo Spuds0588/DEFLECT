@@ -118,6 +118,8 @@ export const EV = {
   PROP_BREAK: 37,
   /** A deployed Wedge wall ran out of health and broke. */
   WALL_BREAK: 38,
+  /** Buffer's hourglass burst: `power` 1 fast-forward, 0 time dilation. */
+  TIME_WARP: 39,
 } as const;
 
 /** Breakable file boxes. The renderer maps each to one glyph. */
@@ -253,6 +255,13 @@ export interface Player {
   laserTickT: number;
   /** Facing committed when the beam begins. */
   laserFacing: number;
+  /**
+   * A raised guard caught the heavy beam: seconds of reflected flash left, the direction
+   * the reflected shaft travels, and how far it reaches back to the caster. Local only.
+   */
+  beamReflectT: number;
+  beamReflectFacing: number;
+  beamReflectDist: number;
   /** Fisher net deployment: drawing state, elapsed draw, and tether origin. */
   netDrawing: boolean;
   netT: number;
@@ -302,6 +311,13 @@ export interface Player {
    * through it because a dodge phases geometry.
    */
   netPinT: number;
+  /**
+   * Buffer's fast-forward. Seconds of 2.5x movement, attack rate and cooldown burn.
+   * Local-only like every program kit, so it never enters a snapshot.
+   */
+  fastT: number;
+  /** Per-tick movement multiplier from time effects. 1 when nothing is warping time. */
+  speedMult: number;
   /** Active pickup effect, -1 when none. See powerups.ts. */
   powerupKind: number;
   powerupT: number;
@@ -362,11 +378,12 @@ export interface Projectile {
   serial: number;
   /**
    * 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile, 5 Fisher spear,
-   * 6 Sweep broom, 7 Toxic needle, 8 Kaboom bomb, 9 Kaboom lobbed bomb. Types 8/9
-   * explode on contact and are never deflected, so every `type >= 3` deflect branch
-   * must exclude them explicitly.
+   * 6 Sweep broom, 7 Toxic needle, 8 Kaboom bomb, 9 Kaboom lobbed bomb, 10 Buffer
+   * hourglass. Types 8/9 explode on contact and are never deflected, so every
+   * `type >= 3` deflect branch must exclude them explicitly. Type 10 is a player
+   * shot that passes through up to `BUFFER.shotHits` bodies instead of stopping.
    */
-  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;
@@ -390,6 +407,13 @@ export interface Projectile {
   homing: boolean;
   /** 0 horizontal, 1 vertical. */
   pathAxis: number;
+  /**
+   * Hourglass state: bodies struck so far (stops at `BUFFER.shotHits`), current mark
+   * rotation and the direction it spins. Each body struck flips `spinDir`.
+   */
+  hits: number;
+  spin: number;
+  spinDir: number;
   /** Piercing spear hit masks, so one throw damages each hostile once. */
   hitPlayers: number;
   hitWorms: number;

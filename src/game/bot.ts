@@ -380,6 +380,30 @@ export class BotBrain {
       return;
     }
 
+    // Buffer's fast-forward is a window, not a projectile: spend it when a target is
+    // in reach so the burn goes into closing distance and chaining shots. A tap, so
+    // this is always the skill and never the dilation heavy.
+    if (
+      me.program === PROGRAM_ID.BUFFER &&
+      this.candleCd <= 0 &&
+      me.bugCd <= 0 &&
+      me.energy >= BUG.cost &&
+      me.fastT <= 0 &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.laserT <= 0 &&
+      !me.laserChargeHeld &&
+      !blocked &&
+      dist > 40 &&
+      dist < 320
+    ) {
+      out.mx = Math.cos(aim) * 0.9;
+      out.my = Math.sin(aim) * 0.9;
+      out.pressed |= ACTION.CANDLE;
+      this.candleCd = this.rng.range(6, 8);
+      return;
+    }
+
     // The shot direction is the movement direction. Stepping into the aim is the
     // single-stick cost every player pays. Bot-owned bolts travel slower than a
     // human's, so range and lead must use the speed this brain actually fires.

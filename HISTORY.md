@@ -2186,3 +2186,140 @@ that before adding another map with cover.
 
 **Next:** playtest whether 0.63 s still leaves the beam telegraphed enough for a dodge, and whether the
 shorter charges shift the balance toward heavies in bots matches.
+
+## 2026-10-30 — BUFFER_OVERFLOW.EXE (v0.1.41)
+
+Goal: add the seventh program, a time specialist: hourglass throw, fast-forward skill, time-dilation heavy.
+
+Changes:
+- `BUFFER` numbers in `config.ts`; program id 6, hot-pink accent, `bugKind` 9 and a 10 s skill cooldown.
+- Hull: six clock faces, two per health segment, orbiting the body with live minute/hour hands. The
+  core disc is skipped for this program; the hourglass is a vector mark (two rounded triangles with
+  overlapping tips), never the `⧗` codepoint, which can resolve to a colour emoji.
+- Ranged type 10: heavy hourglass, no tail, dies on geometry, passes through three bodies, flips spin.
+- Skill fast-forward: `Player.fastT`, per-player `pdt` for cooldowns/attack rate and `speedMult` for
+  walking. Power dilation: `World.timeSlowT` / `timeSlowOwner`, applied to other players, hostile
+  projectiles and the gauntlet/drone simulation, with a particle burst and a frame-edge wash.
+- Bots tap fast-forward at 40–320 units; the generic heavy-hold builds the dilation.
+- Toxic's needle is now a shape-built hypodermic (`drawSyringe`) instead of the `†` mark, which
+  read as a cross in flight.
+
+Verification:
+- `tsc --noEmit` clean, production build clean.
+- Headless: hourglass hits three bodies and flips spin twice, spin rotates; fast-forward walk 2.50x,
+  autoFire and bug cooldowns burn 2.5x; dilation leaves the caster at 248 u/s and other bodies at
+  74.4 u/s (0.30), hostile shot 60 u instead of 200 (0.30); skill/heavy wiring and 0.6 s charge.
+- Browser: program card and portrait, in-arena clock ring and vector hourglass, clock sizes at four
+  scales on a light background (no opaque tile).
+
+Next: tune the hourglass chain count and dilation window in play, then decide whether the kit should
+join the online snapshot (needs a protocol decision).
+
+## 2026-10-30 — Sweep broom speed (v0.1.42)
+
+**Goal:** Sweep's thrown broom read as too slow to contest other players at range; a traded shot
+almost always lost. Nudge the throw up without turning it into a bolt.
+
+**Changes:**
+- `SWEEP.shotSpeed` 500 → **600**, `shotTtl` 0.9 → **0.85**, so max range moves 450 → **500**. The
+  broom keeps its 15-unit width, 2 damage, the roster's biggest ranged shove and its geometry death,
+  so it is still a heavy throw rather than a fast one.
+- Updated the D14 note in AGENTS.md (the ranged line no longer calls it "deliberately slow") and
+  bumped to v0.1.42 with a refreshed service worker cache.
+
+**Verification:** headless probe on CROSSROADS: the broom spawned at **600.0 u/s** with a 0.83 s
+fuse, 500 units of maximum travel, radius 15 and 2 damage, and still stopped on cover at 330 units
+after 0.57 s. `npx tsc --noEmit` clean.
+
+**Next:** watch a Sweep vs Probe/Buffer trade in VS BOTS. If the broom still loses the exchange, the
+next lever is `SWEEP.attackCooldown` (0.5), not more speed.
+
+## 2026-10-30 — Sweep broom width (v0.1.43)
+
+**Goal:** the broom throw is a balance tool, so widen it a little. A wider head helps Sweep contest
+a traded shot without another speed bump.
+
+**Changes:**
+- `SWEEP.shotRadius` 15 → **18**, so the collision diameter goes 30 → 36 units. That is the balance
+  change: a body 30 units off the flight line now clips the head (18 + 13 body radius) instead of
+  slipping past it at the old 28-unit reach.
+- The thrown head draws at `half` 20 / `depth` 34 instead of 17 / 32. Because the row strings are
+  sized from the head width, the wider head also buys a column: `/====\` over 11 bristles instead of
+  `/===\` over 10. No new drawing path, so the melee, giant and split brooms are untouched.
+- Updated the D14 ranged note in AGENTS.md and bumped to v0.1.43.
+
+**Verification:** headless probe in a two-player match: the spawned broom reports radius 18 at
+600 u/s, and a target held 30 units off its line drops from 3 hp to 1 (one 2-damage hit). Browser at
+in-arena scale: three stationary heads read as clean binder-plus-comb rows with no clipping, and the
+grey dust puff still trails the wider head. `npx tsc --noEmit` clean.
+
+**Next:** judge the wider grab in play. If it now feels too generous, the lever is `shotRadius` back
+toward 16, not the drawing width.
+
+## 2026-10-30 — Heavy beam: layers, solid stop, guard reflect (v0.1.44)
+
+**Goal:** make Probe's beam read as a heavy laser instead of a flat bar, and give it real surface
+rules. It should stop on walls and barriers, not pass through them, and a guarding opponent should be
+able to turn it back on its caster.
+
+**Changes:**
+- Added `beamReach` to `src/game/collision.ts`: one reach test for pillars (ray/slab), deployed Wedge
+  walls (ray/segment with half-thickness pad), the compactor plate when it is live, and a walled arena's
+  bounds. Open arenas and chasms do not block a beam.
+- `World.laserReach` and `Renderer.drawLasers` both call it. The old render-only `beamClear` probe is
+  gone, so the drawn shaft and the damage line now stop on the same surface. Damage tests take the reach
+  as a parameter instead of always using `PLAYER.laserRange`.
+- `World.reflectLaser`: the nearest rival in the corridor with `guardT > 0`, facing the incoming shaft
+  (front half-plane) catches it. The guard is untouched, the caster takes `PLAYER.laserDamage` and the
+  knockback, and a charged heavy is cut into its full cooldown. The guard stores
+  `beamReflectT/Facing/Dist` and draws a fading return shaft for `PLAYER.laserReflectFlash` (0.34 s).
+  Overcharge tick beams still reflect but are already spent.
+- Beam drawing now stacks haze, glow, body, a hot white inner band, edge rails, two travelling energy
+  pulses, counter-running streaks, a muzzle flare and an impact star on the surface it stopped on.
+  `emitLaserSparks` throws small streaks off both edges every 26 ms and a spray at the solid end, once
+  per frame rather than once per pane.
+- `Player` gained `beamReflectT/Facing/Dist` (initialised and cleared on spawn; local only). Updated D10,
+  D20 and the collision notes, and added D22 to AGENTS.md.
+- Bumped to v0.1.44 and refreshed the service worker cache.
+
+**Verification:** headless in a two-player match on GRID ZERO: pillar front at 931 gave reach 231; a
+deployed wall at x=900 gave reach 200 and left the target at 3 hp; the compactor helper returned 280
+from y=700 to a plate at 420; a charged beam into a facing guard left the guard at 3, dropped the caster
+3→2, ended the beam and started the 5 s cooldown; the same guard facing away was cut to 1 hp and the
+caster stayed at 3; overcharge reflection left the guard untouched. Browser on CROSSROADS: layered
+shaft stopped with an impact flare on the pillar, side sparks visible at in-game size, reflected shaft
+drawn from a guard back to the caster, no console errors. `npx tsc --noEmit` and `npm run build` clean.
+
+**Next:** watch a duel where one player holds guard against a beam. If the reflection is too punishing,
+the lever is the reflected damage (one hit now) or `laserReflectFlash`, not the stop rule.
+
+## 2026-10-30 — Angled beam deflection (v0.1.45)
+
+**Goal:** a guard should glance the heavy beam away, not return it. The reflected shaft should leave at
+30-45 degrees off the incident line, so it can never hit the player who fired it but can still cut a
+body standing beside the guard.
+
+**Changes:**
+- `reflectLaser` now rotates the incoming shaft by `PLAYER.laserReflectAngle` (new, 0.65 rad = 37.2 deg),
+  toward the side the guard was standing on, instead of sending it straight back. The glance reaches
+  `PLAYER.laserReflectRange` (new, 380) and is clipped by `beamReach`, so pillars, walls, the compactor
+  plate and bounds end it.
+- The deflected line is resolved by a new `damageBeamLine` pass, shared with the live beam. It takes
+  skip slots, and the reflection skips both the guard and the caster. Directly behind the guard on the
+  incident line is now off the deflected path.
+- The catch still cuts a charged heavy into its full cooldown, but no longer damages or shoves the
+  caster. Overcharge tick beams still reflect without a heavy lock.
+- `laserHits` became the origin-agnostic `beamLineHits`; the live beam now calls the shared damage pass
+  with the caster's slot as its skip. Renamed to avoid colliding with the firewall's `beamHits`.
+- Updated D10 and D22 in AGENTS.md, and bumped to v0.1.45.
+
+**Verification:** headless three-player match on GRID ZERO. A centered guard deflected to +37.2 deg and
+cut a target placed on that line (3 -> 2) while the caster and guard stayed at 3; the beam was cut to 0
+with `laserCd` 4.9 s and the flash stored with 380 reach. A body straight behind the guard on the
+incident line stayed at 3. A guard offset above the line flipped the glance to -37.2 deg and cut its
+angled target (3 -> 2); the first offset test at 240 units was correctly eaten by a pillar between the
+guard and the target. `npx tsc --noEmit` clean.
+
+**Next:** judge the 37-degree glance in a real duel. If it feels too wide (hard to aim at a third body),
+drop `laserReflectAngle` toward 0.55 rad (31 deg); if it feels too narrow, 0.78 rad (45 deg) is the
+ceiling the design asked for.

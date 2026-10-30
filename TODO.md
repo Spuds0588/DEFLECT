@@ -2,7 +2,72 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.40 power-attack charge shortened)
+Last updated: 2026-10-30 (v0.1.45 angled beam deflection)
+
+---
+
+## v0.1.45 — Angled beam deflection (2026-10-30)
+
+- [x] A guard no longer returns the beam to its caster. The reflected shaft leaves at
+      `PLAYER.laserReflectAngle` (0.65 rad = **37.2°**, inside the 30–45° band), toward the side the guard
+      was standing on, and reaches `PLAYER.laserReflectRange` (380)
+- [x] The deflected line is its own one-pass beam: it can cut a body beside the guard, but the **caster
+      and the guard are both skipped**. A body directly behind the guard on the incident line is missed
+- [x] The catch still cuts a charged heavy into its full cooldown; the caster no longer takes a hit from
+      the catch
+- [x] Headless: centred guard → target at +37.2° cut, caster and guard at full hp; body straight behind
+      the guard untouched; an offset guard flips the glance to -37.2° and still cuts its angled target
+
+---
+
+## v0.1.44 — Heavy beam: layers, solid stop, guard reflect (2026-10-30)
+
+- [x] `beamReach` in `collision.ts`: pillars, deployed Wedge walls, the compactor plate and a walled
+      arena's bounds end the beam; a chasm or open lip does not. Sim damage and the drawn shaft share it
+- [x] More shaft layers: wide haze, glow, body, hot white inner band, edge rails, two travelling
+      energy pulses, counter-running streaks, muzzle flare and an impact flare on the stopping surface
+- [x] Side sparks peel off both edges while firing, with a spray at the solid end (`emitLaserSparks`)
+- [x] A raised guard in the beam's corridor reflects it: guard untouched, caster takes 1 damage and the
+      shove, a charged heavy is cut into its full cooldown, and the guard flashes a return shaft for
+      `PLAYER.laserReflectFlash` (0.34 s). Only the nearest, correctly facing guard catches it
+- [x] Headless: pillar reach 231, wall reach 200, plate 280, charged reflect caster 3→2 / guard 3 / beam
+      cut / cd 5, guard facing away is cut, overcharge reflection does not touch the guard
+- [x] Browser: layered shaft, side sparks, impact flare on a pillar, reflected shaft off a guard; no
+      console errors. `npx tsc --noEmit`, `npm run build` clean
+
+---
+
+## v0.1.43 — Sweep broom width (2026-10-30)
+
+- [x] `SWEEP.shotRadius` 15 → **18** (36-unit collision diameter) and the thrown head drawn at
+      `half` 20 / `depth` 34, which adds a binder column and a bristle column to the ASCII row
+- [x] Headless check: radius 18 at 600 u/s, and a body 30 units off the flight line now takes the
+      hit (inside 18 + 13 body radius, outside the old 15 + 13)
+- [x] Browser check at in-arena size: the comb reads as `/====\` over 11 bristles, no clipping or
+      broken rows; the dust puff still trails the wider head
+
+---
+
+## v0.1.42 — Sweep broom speed (2026-10-30)
+
+- [x] `SWEEP.shotSpeed` 500 → **600**, `shotTtl` 0.9 → **0.85**: max range 450 → **500**, so the broom
+      contests a traded shot without turning into a fast projectile
+- [x] Headless check: 600 u/s, 0.83 s fuse, 500 max range, 15 radius, 2 damage; still dies on cover
+
+---
+
+## v0.1.41 — BUFFER_OVERFLOW.EXE (2026-10-30)
+
+- [x] Program id 6, hot-pink accent, `⧗` metadata glyph and a vector hourglass core (no emoji tile,
+      no dark core disc) with rounded, overlapping triangles
+- [x] Six clock-face health segments, two per health segment, orbiting the body with live hands
+- [x] Ranged hourglass: slow, wide, no tail, dies on geometry, passes through three bodies and flips
+      its spin on every hit
+- [x] Skill **FAST-FORWARD**: 2.5x movement, attack rate and cooldowns for 2.6 s (`fastT`/`pdt`)
+- [x] Power **TIME DILATION**: every other body, hostile shot and the gauntlet simulation at 0.3x for 5 s,
+      with a pink hourglass burst and an edge wash
+- [x] Bot taps fast-forward at close range; generic heavy hold builds the dilation
+- [x] Headless checks: 3-body chain, spin flips, 2.5x walk/cooldown, 0.3x other bodies and hostile shots
 
 ---
 

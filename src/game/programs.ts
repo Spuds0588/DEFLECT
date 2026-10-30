@@ -12,6 +12,7 @@ export const PROGRAM_ID = {
   SWEEP: 3,
   TOXIC: 4,
   KABOOM: 5,
+  BUFFER: 6,
 } as const;
 
 export interface ProgramDef {
@@ -121,6 +122,23 @@ export const PROGRAMS: readonly ProgramDef[] = [
     // crowding the health segments.
     coreScale: 0.86,
     bugKind: 8,
+  },
+  {
+    id: PROGRAM_ID.BUFFER,
+    name: 'BUFFER_OVERFLOW.EXE',
+    role: 'TIME',
+    note: 'HOURGLASS THROW // FAST-FORWARD // TIME DILATION',
+    color: PROGRAM_COLORS.buffer,
+    /**
+     * Hourglass. The arena never draws this codepoint: `drawProgramMark` swaps in a
+     * vector hourglass so a system whose U+29D7 resolves to an emoji cannot drop an
+     * opaque tile into the core. The glyph stays here for text and card metadata.
+     */
+    glyph: '⧗',
+    // The hourglass shrinks away from the clock ring so neither hull nor core crowds
+    // the other: the mark is half the height of a full-health hull, with real air.
+    coreScale: 0.84,
+    bugKind: 9,
   },
 ];
 

@@ -282,7 +282,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.40 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.45 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -1555,6 +1555,9 @@ function handleGameEvent(e: GameEvent, remote: boolean): void {
     case EV.PUSHER:
       // The compactor: a heavy low hit, not the full explosion cue.
       audio.explode();
+      break;
+    case EV.TIME_WARP:
+      audio.shieldWave();
       break;
     case EV.THRALL:
       audio.eliminate();

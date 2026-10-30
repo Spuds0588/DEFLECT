@@ -8,6 +8,7 @@ export const P_COLOR_VIRUS = -5;
 export const P_COLOR_FIREWALL = -6;
 export const P_COLOR_DUST = -7;
 export const P_COLOR_TOXIN = -8;
+export const P_COLOR_BUFFER = -9;
 
 export interface Particle {
   active: boolean;
@@ -37,6 +38,7 @@ export function particleColor(color: number): string {
   if (color === P_COLOR_FIREWALL) return THREAT_COLORS.firewall;
   if (color === P_COLOR_DUST) return '#8d979e';
   if (color === P_COLOR_TOXIN) return PROGRAM_COLORS.toxic;
+  if (color === P_COLOR_BUFFER) return PROGRAM_COLORS.buffer;
   return '#9fd7e8';
 }
 

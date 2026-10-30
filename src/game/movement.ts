@@ -44,8 +44,10 @@ export function stepPlayerMotion(
     const trapFactor = p.slowT > 0 ? BUG.trapSlow : 1;
     // A caught body can still turn and look around, but its feet are webbed.
     const held = p.netPinT > 0 ? 0 : 1;
-    const tx = held * mx * PLAYER.speed * slow * trapFactor;
-    const ty = held * my * PLAYER.speed * slow * trapFactor;
+    // Time effects scale walking only. Dashes and plows are committed shapes with
+    // their own distance, so fast-forward does not turn one into a cross-arena leap.
+    const tx = held * mx * PLAYER.speed * slow * trapFactor * p.speedMult;
+    const ty = held * my * PLAYER.speed * slow * trapFactor * p.speedMult;
     const k = 1 - Math.exp(-PLAYER.accel * dt);
     p.vx += (tx - p.vx) * k;
     p.vy += (ty - p.vy) * k;

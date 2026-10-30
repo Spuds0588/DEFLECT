@@ -1,5 +1,6 @@
 import {
   BOLT,
+  BUFFER,
   BUG,
   CAMERA_ZOOM,
   CAMPAIGN,
@@ -32,7 +33,7 @@ import {
 } from './config';
 import { ARENAS, arenaSolids, type ArenaDef } from './arenas';
 import type { CampaignDataCrate } from './campaign';
-import { circleRect, hitScratch } from './collision';
+import { beamReach, circleRect, hitScratch } from './collision';
 import {
   clearPlayerForSpawn,
   createBarrier,
@@ -172,6 +173,13 @@ export class World {
   private pathFound = false;
   private pathBest2 = 0;
   private gauntletT = 0;
+  /**
+   * Buffer's time dilation: seconds left and the slot that cast it. Public for the
+   * renderer's field tint. Local-only, never part of a snapshot.
+   */
+  timeSlowT = 0;
+  /** Slot that cast the dilation; the renderer marks their dock as live. */
+  timeSlowOwner = -1;
   /** Local bot match: slots 1..botSlots are AI, not network guests. */
   private botSlots = 0;
   /** Scratch for the current lock target, so target reads never allocate. */
@@ -371,6 +379,8 @@ export class World {
     this.infection = 0;
     this.gauntletKills = 0;
     this.gauntletT = 0;
+    this.timeSlowT = 0;
+    this.timeSlowOwner = -1;
     this.gauntletOver = false;
     this.wave = 1;
     this.waveBannerT = 0;
@@ -755,6 +765,13 @@ export class World {
       this.phase = 'practice';
     }
 
+    // Buffer's dilation runs on the real clock: five seconds is five seconds even
+    // while the field is slowing everything inside it.
+    if (this.timeSlowT > 0) {
+      this.timeSlowT = Math.max(0, this.timeSlowT - dt);
+      if (this.timeSlowT === 0) this.timeSlowOwner = -1;
+    }
+
     const canAct = this.phase === 'live' || this.phase === 'practice';
     if (this.mode === 'gauntlet') this.driveThrall(dt);
     if (this.arena.pushers && canAct) this.tickPusher(dt);
@@ -784,6 +801,18 @@ export class World {
       p.prevX = p.x;
       p.prevY = p.y;
       p.prevFacing = p.facing;
+
+      // Time effects. Fast-forward burns every per-player timer and attack at 2.5x;
+      // a slowed body (Buffer's dilation, everyone but the caster) runs at 0.3x.
+      // Both effects run on the real clock, so their own timers tick on raw `dt`.
+      const fast = p.fastT > 0;
+      const chilled = this.timeSlowT > 0 && p.slot !== this.timeSlowOwner;
+      const timeScale = (fast ? BUFFER.fastScale : 1) * (chilled ? BUFFER.slowScale : 1);
+      // Walking is scaled here; dashes and plows keep their committed distance.
+      p.speedMult = timeScale;
+      if (p.fastT > 0) p.fastT = Math.max(0, p.fastT - dt);
+      // Per-player dt for cooldowns, attack rate and swing animations.
+      const pdt = dt * timeScale;
 
       // A ride owns the body: no steering, no attacks, no damage until the car or
       // the pad lets go. The position was already moved to the far plate.
@@ -834,21 +863,22 @@ export class World {
 
       if (p.dashT > 0) p.dashT = Math.max(0, p.dashT - dt);
       if (p.dashCd > 0) {
-        p.dashCd = Math.max(0, p.dashCd - dt);
+        p.dashCd = Math.max(0, p.dashCd - pdt);
         if (p.dashCd === 0 && p.dashCharges < PLAYER.dashCharges) {
           p.dashCharges++;
           if (p.dashCharges < PLAYER.dashCharges) p.dashCd = PLAYER.dashCooldown;
         }
       }
-      if (p.guardCd > 0) p.guardCd = Math.max(0, p.guardCd - dt);
-      if (p.chargeDashCd > 0) p.chargeDashCd = Math.max(0, p.chargeDashCd - dt);
-      if (p.laserCd > 0) p.laserCd = Math.max(0, p.laserCd - dt);
+      if (p.guardCd > 0) p.guardCd = Math.max(0, p.guardCd - pdt);
+      if (p.chargeDashCd > 0) p.chargeDashCd = Math.max(0, p.chargeDashCd - pdt);
+      if (p.laserCd > 0) p.laserCd = Math.max(0, p.laserCd - pdt);
+      if (p.beamReflectT > 0) p.beamReflectT = Math.max(0, p.beamReflectT - dt);
       // Gas/stream visual lifetime. Damage resolved on use; this only retires the draw.
       if (p.toxT > 0) p.toxT = Math.max(0, p.toxT - dt);
       this.tickPlayerPoison(p, dt);
       if (p.laserT > 0) {
-        p.laserT = Math.max(0, p.laserT - dt);
-        p.laserTickT -= dt;
+        p.laserT = Math.max(0, p.laserT - pdt);
+        p.laserTickT -= pdt;
         if (p.laserTickT <= 0) {
           p.laserTickT += PLAYER.laserTick;
           this.applyLaserDamage(p);
@@ -856,18 +886,18 @@ export class World {
         if (p.laserT === 0) p.laserCd = PLAYER.laserCooldown;
       }
       if (p.burstCd > 0) {
-        p.burstCd = Math.max(0, p.burstCd - dt);
+        p.burstCd = Math.max(0, p.burstCd - pdt);
         if (p.burstCd === 0) p.burstLeft = BOLT.burstCount;
       }
       if (p.iframes > 0) p.iframes = Math.max(0, p.iframes - dt);
       if (p.hitFlash > 0) p.hitFlash = Math.max(0, p.hitFlash - dt);
       if (p.waveT > 0) p.waveT = Math.max(0, p.waveT - dt);
-      if (p.waveCd > 0) p.waveCd = Math.max(0, p.waveCd - dt);
-      if (p.bugCd > 0) p.bugCd = Math.max(0, p.bugCd - dt);
-      if (p.autoFireT > 0) p.autoFireT = Math.max(0, p.autoFireT - dt);
+      if (p.waveCd > 0) p.waveCd = Math.max(0, p.waveCd - pdt);
+      if (p.bugCd > 0) p.bugCd = Math.max(0, p.bugCd - pdt);
+      if (p.autoFireT > 0) p.autoFireT = Math.max(0, p.autoFireT - pdt);
       if (p.bashT > 0) p.bashT = Math.max(0, p.bashT - dt);
       if (p.wedgeT > 0) p.wedgeT = Math.max(0, p.wedgeT - dt);
-      if (p.stringT > 0) p.stringT = Math.max(0, p.stringT - dt);
+      if (p.stringT > 0) p.stringT = Math.max(0, p.stringT - pdt);
       if (p.stringLeft > 0 && p.stringT <= 0) this.fireWedgeStringShot(p);
       if (p.powerupT > 0) {
         p.powerupT = Math.max(0, p.powerupT - dt);
@@ -887,7 +917,7 @@ export class World {
         p.comboT = Math.max(0, p.comboT - dt);
         if (p.comboT === 0) p.comboStage = 0;
       }
-      this.tickSwing(p, dt);
+      this.tickSwing(p, pdt);
 
       const input = this.mode === 'gauntlet' && p.thrall ? this.thrallFrame : (inputs[p.slot] ?? null);
       // Remember the last real stick direction. A dash commits to it even when lock is
@@ -925,7 +955,7 @@ export class World {
           // The net is drawn by movement, not by rooting. Hold to pay out the line,
           // release to detach it as a shield and snare.
           if (canAct && heavyHeld) {
-            p.laserChargeT += dt;
+            p.laserChargeT += pdt;
             if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
               p.facing = Math.atan2(input.my, input.mx);
             }
@@ -950,7 +980,7 @@ export class World {
           // Sweep draws the giant broom while the button is held, then commits it. Like
           // Wedge's plow it auto-fires at full charge instead of asking for a release.
           if (canAct && heavyHeld) {
-            p.laserChargeT += dt;
+            p.laserChargeT += pdt;
             if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
               p.facing = Math.atan2(input.my, input.mx);
             }
@@ -971,7 +1001,7 @@ export class World {
         } else if (p.program === PROGRAM_ID.TOXIC) {
           // The gas cone auto-fires at full charge, like the other committed heavies.
           if (canAct && heavyHeld) {
-            p.laserChargeT += dt;
+            p.laserChargeT += pdt;
             if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
               p.facing = Math.atan2(input.my, input.mx);
             }
@@ -990,7 +1020,7 @@ export class World {
           // The charge builds the carpet, then commits it. Release at full charge still
           // fires, so the heavy never swallows a completed wind-up.
           if (canAct && heavyHeld) {
-            p.laserChargeT += dt;
+            p.laserChargeT += pdt;
             if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
               p.facing = Math.atan2(input.my, input.mx);
             }
@@ -1005,11 +1035,29 @@ export class World {
             p.chargeT = 0;
             p.chargeHeld = false;
           }
+        } else if (p.program === PROGRAM_ID.BUFFER) {
+          // The dilation commits itself at full charge, like the other heavies.
+          if (canAct && heavyHeld) {
+            p.laserChargeT += pdt;
+            if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+              p.facing = Math.atan2(input.my, input.mx);
+            }
+            p.laserFacing = p.facing;
+            if (p.laserChargeT >= BUFFER.slowChargeTime) this.startTimeSlow(p);
+          } else if (p.laserChargeT >= BUFFER.slowChargeTime) {
+            this.startTimeSlow(p);
+          } else {
+            if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            p.laserChargeHeld = false;
+            p.laserChargeT = 0;
+            p.chargeT = 0;
+            p.chargeHeld = false;
+          }
         } else if (p.program === PROGRAM_ID.WEDGE) {
           // Wedge plants the red triangle, then commits to a straight plow. The charge
           // auto-fires; the player never has to guess the release window.
           if (canAct && heavyHeld) {
-            p.laserChargeT += dt;
+            p.laserChargeT += pdt;
             if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
               p.facing = Math.atan2(input.my, input.mx);
             }
@@ -1024,7 +1072,7 @@ export class World {
             p.chargeHeld = false;
           }
         } else if (canAct && heavyHeld) {
-          p.laserChargeT += dt;
+          p.laserChargeT += pdt;
           // Rooted feet, free aim: the beam can be swept while charging.
           if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
             p.facing = Math.atan2(input.my, input.mx);
@@ -1057,7 +1105,7 @@ export class World {
             p.facing += Math.max(-maxTurn, Math.min(maxTurn, delta));
           }
           p.laserFacing = p.facing;
-          p.laserTickT -= dt;
+          p.laserTickT -= pdt;
           if (p.laserTickT <= 0) {
             p.laserTickT += TOXIC.streamTick;
             this.applyToxicStream(p);
@@ -1106,7 +1154,7 @@ export class World {
           p.dashChargeT = 0;
           this.tryDash(p);
         }
-        if (heldDash) p.dashChargeT += dt;
+        if (heldDash) p.dashChargeT += pdt;
         else {
           if (
             p.dashChargeHeld &&
@@ -1218,14 +1266,16 @@ export class World {
     this.updateProps(dt);
 
     if (this.mode === 'training' || this.mode === 'gauntlet') this.updatePickups(dt);
-    this.updateDrone(dt);
+    // Threats are the other half of the dilation: the whole hostile simulation slows.
+    const threatDt = this.timeSlowT > 0 ? dt * BUFFER.slowScale : dt;
+    this.updateDrone(threatDt);
     this.updateNets(dt);
     this.updateLures(dt);
     this.updateBarriers(dt);
     this.updateProjectiles(dt);
     // Campaign threats stay parked until the breach warning hands the room over.
     if (this.mode === 'gauntlet' && (!this.campaign || this.campaignPhase === 'assault')) {
-      this.updateGauntlet(dt);
+      this.updateGauntlet(threatDt);
     }
 
     if (this.mode === 'match' && this.phase === 'live') {
@@ -1692,32 +1742,128 @@ export class World {
     this.applyLaserDamage(p);
   }
 
-  /** Beam hit test: inside the narrow corridor, in front, and not behind cover. */
-  private laserHits(p: Player, x: number, y: number, radius: number): boolean {
-    const cos = Math.cos(p.laserFacing);
-    const sin = Math.sin(p.laserFacing);
-    const dx = x - p.x;
-    const dy = y - p.y;
-    const forward = dx * cos + dy * sin;
-    if (forward < 0 || forward > PLAYER.laserRange) return false;
-    const lateral = Math.abs(dy * cos - dx * sin);
-    if (lateral > PLAYER.laserHalfWidth + radius) return false;
-    return !this.lineBlocked(p.x, p.y, x, y);
+  /** Distance the beam travels before a solid surface ends it. */
+  private laserReach(p: Player): number {
+    return beamReach(
+      this.arena,
+      this.barriers,
+      this.pusherActive,
+      this.pusherY,
+      p.x,
+      p.y,
+      Math.cos(p.laserFacing),
+      Math.sin(p.laserFacing),
+      PLAYER.laserRange,
+    );
   }
 
-  /** Every hostile in the line takes a tick. The beam deliberately does not stop at the first. */
-  private applyLaserDamage(p: Player): void {
+  /**
+   * A raised guard catches the heavy beam and glances it away. The reflected shaft leaves
+   * at `PLAYER.laserReflectAngle` off the incoming line (30-45 degrees), so it never goes
+   * back to the caster but can still cut a body standing beside or behind the guard. The
+   * catch ends a charged heavy into its cooldown; the caster is untouched.
+   */
+  private reflectLaser(p: Player, reach: number): number {
     const dirX = Math.cos(p.laserFacing);
     const dirY = Math.sin(p.laserFacing);
     for (let i = 0; i < this.players.length; i++) {
+      const guard = this.players[i];
+      if (guard === p || !guard.active || !guard.alive || guard.guardT <= 0) continue;
+      const gx = guard.x - p.x;
+      const gy = guard.y - p.y;
+      const forward = gx * dirX + gy * dirY;
+      if (forward <= 0 || forward >= reach) continue;
+      // The shaft is thick, so a guard a little off the centre line still catches it.
+      if (Math.abs(gy * dirX - gx * dirY) > PLAYER.laserHalfWidth + PLAYER.radius) continue;
+      // The shield covers the front half-plane: the guard has to be facing the caster.
+      if (-(dirX * Math.cos(guard.facing) + dirY * Math.sin(guard.facing)) <= 0.05) continue;
+      if (this.lineBlocked(p.x, p.y, guard.x, guard.y)) continue;
+
+      // Glance, not return: rotate the incoming line by the shield angle, toward the side
+      // the guard was standing on. The caster sits ~145 degrees off this line, so the
+      // deflected shaft can never hit its owner.
+      const lateral = gy * dirX - gx * dirY;
+      const side = lateral < -0.001 ? -1 : 1;
+      const out = p.laserFacing + side * PLAYER.laserReflectAngle;
+      const rx = Math.cos(out);
+      const ry = Math.sin(out);
+      const reflectReach = beamReach(
+        this.arena,
+        this.barriers,
+        this.pusherActive,
+        this.pusherY,
+        guard.x,
+        guard.y,
+        rx,
+        ry,
+        PLAYER.laserReflectRange,
+      );
+
+      guard.beamReflectT = PLAYER.laserReflectFlash;
+      guard.beamReflectFacing = out;
+      guard.beamReflectDist = reflectReach;
+      this.emit(EV.DEFLECT, guard.slot, guard.x, guard.y, 1, rx, ry);
+
+      // One pass of the deflected shaft, skipping both the guard and the caster.
+      this.damageBeamLine(guard.slot, guard.x, guard.y, rx, ry, reflectReach, guard.slot, p.slot);
+
+      // A charged heavy is cut short and goes on its full cooldown. An overcharge tick
+      // beam is only 0.06 s, so it is already spent.
+      if (p.laserT > 0.5) {
+        p.laserT = 0;
+        p.laserTickT = 0;
+        p.laserCd = PLAYER.laserCooldown;
+      }
+      return forward;
+    }
+    return reach;
+  }
+
+  /** Beam hit test: inside the narrow corridor, in front, and short of the solid end. */
+  private beamLineHits(
+    ox: number,
+    oy: number,
+    dx: number,
+    dy: number,
+    reach: number,
+    x: number,
+    y: number,
+    radius: number,
+  ): boolean {
+    const px = x - ox;
+    const py = y - oy;
+    const forward = px * dx + py * dy;
+    if (forward < 0 || forward > reach) return false;
+    const lateral = Math.abs(py * dx - px * dy);
+    if (lateral > PLAYER.laserHalfWidth + radius) return false;
+    return !this.lineBlocked(ox, oy, x, y);
+  }
+
+  /**
+   * One pass of a beam line. Every body in the corridor takes a tick or, for a reflected
+   * shaft, the single hit of the glance. `skipA`/`skipB` are slot indices to leave alone
+   * (slots are array indices), used to keep a reflection off its guard and its caster.
+   */
+  private damageBeamLine(
+    ownerSlot: number,
+    ox: number,
+    oy: number,
+    dx: number,
+    dy: number,
+    reach: number,
+    skipA: number,
+    skipB: number,
+  ): void {
+    for (let i = 0; i < this.players.length; i++) {
+      if (i === skipA || i === skipB) continue;
       const target = this.players[i];
-      if (target === p || !target.active || !target.alive || target.iframes > 0 || target.ghostT > 0) continue;
-      if (!this.laserHits(p, target.x, target.y, PLAYER.radius)) continue;
-      this.damagePlayer(target, PLAYER.laserDamage, p.slot, dirX, dirY, PLAYER.laserKnockback);
+      if (!target.active || !target.alive || target.iframes > 0 || target.ghostT > 0) continue;
+      if (!this.beamLineHits(ox, oy, dx, dy, reach, target.x, target.y, PLAYER.radius)) continue;
+      this.damagePlayer(target, PLAYER.laserDamage, ownerSlot, dx, dy, PLAYER.laserKnockback);
     }
 
-    if (this.mode === 'training' && this.drone.active && this.laserHits(p, this.drone.x, this.drone.y, this.drone.radius)) {
-      this.damageDrone(PLAYER.laserDamage, p.slot);
+    if (this.mode === 'training' && this.drone.active && this.beamLineHits(ox, oy, dx, dy, reach, this.drone.x, this.drone.y, this.drone.radius)) {
+      this.damageDrone(PLAYER.laserDamage, ownerSlot);
     }
 
     if (this.mode !== 'gauntlet') return;
@@ -1726,33 +1872,45 @@ export class World {
       if (!w.active) continue;
       // The whole chain is a target. Checking only the head made beams that crossed a
       // worm's body look like they passed through without damage.
-      let hit = this.laserHits(p, w.x, w.y, WORM.headRadius);
+      let hit = this.beamLineHits(ox, oy, dx, dy, reach, w.x, w.y, WORM.headRadius);
       if (!hit) {
         for (let s = 0; s < w.segCount; s++) {
-          if (this.laserHits(p, w.segX[s], w.segY[s], WORM.segmentRadius)) {
+          if (this.beamLineHits(ox, oy, dx, dy, reach, w.segX[s], w.segY[s], WORM.segmentRadius)) {
             hit = true;
             break;
           }
         }
       }
       if (!hit) continue;
-      this.damageWorm(w, PLAYER.laserDamage, p.slot, dirX, dirY);
+      this.damageWorm(w, PLAYER.laserDamage, ownerSlot, dx, dy);
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
-      if (!v.active || !this.laserHits(p, v.x, v.y, v.radius)) continue;
-      this.damageVirus(v, PLAYER.laserDamage, p.slot, dirX, dirY, PLAYER.laserKnockback * 0.4);
+      if (!v.active || !this.beamLineHits(ox, oy, dx, dy, reach, v.x, v.y, v.radius)) continue;
+      this.damageVirus(v, PLAYER.laserDamage, ownerSlot, dx, dy, PLAYER.laserKnockback * 0.4);
     }
     for (let i = 0; i < this.sentries.length; i++) {
       const s = this.sentries[i];
-      if (!s.active || !this.laserHits(p, s.x, s.y, s.radius)) continue;
-      this.damageSentry(s, PLAYER.laserDamage, p.slot, dirX, dirY, PLAYER.laserKnockback);
+      if (!s.active || !this.beamLineHits(ox, oy, dx, dy, reach, s.x, s.y, s.radius)) continue;
+      this.damageSentry(s, PLAYER.laserDamage, ownerSlot, dx, dy, PLAYER.laserKnockback);
     }
     for (let i = 0; i < this.errors.length; i++) {
       const e = this.errors[i];
-      if (!e.active || !this.laserHits(p, e.x, e.y, CASCADING_ERROR.blockSize * 0.5)) continue;
-      this.damageError(e, PLAYER.laserDamage, p.slot, dirX, dirY);
+      if (!e.active || !this.beamLineHits(ox, oy, dx, dy, reach, e.x, e.y, CASCADING_ERROR.blockSize * 0.5)) continue;
+      this.damageError(e, PLAYER.laserDamage, ownerSlot, dx, dy);
     }
+  }
+
+  /** Every hostile in the line takes a tick. The beam deliberately does not stop at the first. */
+  private applyLaserDamage(p: Player): void {
+    const dirX = Math.cos(p.laserFacing);
+    const dirY = Math.sin(p.laserFacing);
+    const solidReach = this.laserReach(p);
+    const reach = this.reflectLaser(p, solidReach);
+    // A guard caught the beam: its line ends there and the deflected shaft was already
+    // resolved by the reflection.
+    if (reach < solidReach) return;
+    this.damageBeamLine(p.slot, p.x, p.y, dirX, dirY, reach, p.slot, -1);
   }
 
   private updateLock(p: Player, input: InputFrame | null, canAct: boolean, dt: number): void {
@@ -2109,6 +2267,26 @@ export class World {
       return;
     }
 
+    if (p.program === PROGRAM_ID.BUFFER) {
+      // One heavy hourglass per throw. It is slow and wide, and it passes through a
+      // short chain of bodies instead of stopping on the first one.
+      if (p.autoFireT > 0 || p.energy < BUFFER.shotCost) return;
+      if (!this.spawnProjectile(
+        p,
+        0,
+        BUFFER.shotTtl,
+        BUFFER.shotSpeed,
+        false,
+        BUFFER.shotRadius,
+        BUFFER.shotDamage,
+        10,
+      )) return;
+      p.energy -= BUFFER.shotCost;
+      p.autoFireT = BUFFER.attackCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
     if (p.program === PROGRAM_ID.TOXIC) {
       // A cheap needle stream. The direct hit is small; the venom is the payload.
       if (p.autoFireT > 0 || p.energy < TOXIC.needleCost) return;
@@ -2162,6 +2340,7 @@ export class World {
     if (p.program === PROGRAM_ID.SWEEP) return SWEEP.powerCost;
     if (p.program === PROGRAM_ID.TOXIC) return TOXIC.streamCost;
     if (p.program === PROGRAM_ID.KABOOM) return KABOOM.clusterCost;
+    if (p.program === PROGRAM_ID.BUFFER) return BUFFER.slowCost;
     return PLAYER.laserCost;
   }
 
@@ -3468,6 +3647,8 @@ export class World {
       this.startToxicSpray(p);
     } else if (p.bugKind === 8) {
       this.throwSkillBomb(p);
+    } else if (p.bugKind === 9) {
+      this.startFastForward(p);
     } else if (p.bugKind === 4) {
       // Wedge's signature bug: a static bracket wall behind him. Refuse a wall that
       // would land inside cover and hand the energy back rather than eat the button.
@@ -3480,6 +3661,37 @@ export class World {
       this.spawnLure(p);
     }
     this.emit(EV.BUG, p.slot, p.x, p.y, p.bugKind, Math.cos(p.facing), Math.sin(p.facing));
+  }
+
+  /**
+   * Buffer's skill: burn a couple of seconds in fast-forward. This body, and only this
+   * body, runs its movement, attack rate and every cooldown at 2.5x. The effect runs
+   * on the real clock, so the skill has a fixed duration however many shots it fits.
+   */
+  private startFastForward(p: Player): void {
+    p.fastT = BUFFER.fastTime;
+    this.emit(EV.TIME_WARP, p.slot, p.x, p.y, 1);
+  }
+
+  /**
+   * Buffer's power: an hourglass burst that dilates the room. Every other body and
+   * every hostile projectile runs at 0.3x for five real seconds; the caster keeps
+   * their own clock, so the window is theirs to spend.
+   */
+  private startTimeSlow(p: Player): void {
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    if (!p.alive) return;
+    p.energy = Math.max(0, p.energy - BUFFER.slowCost);
+    this.timeSlowT = BUFFER.slowTime;
+    this.timeSlowOwner = p.slot;
+    p.laserCd = BUFFER.slowCooldown;
+    p.lockActive = false;
+    p.lockKind = 0;
+    p.lockId = -1;
+    this.emit(EV.TIME_WARP, p.slot, p.x, p.y, 0);
   }
 
   /**
@@ -3697,6 +3909,9 @@ export class World {
     proj.blastRadius = blastRadius;
     proj.blastKnockback = blastKnockback;
     proj.arcDur = arcDur;
+    proj.hits = 0;
+    proj.spin = this.rng.range(0, Math.PI * 2);
+    proj.spinDir = 1;
     proj.trailHead = 0;
     proj.trailCount = 0;
     return true;
@@ -3827,6 +4042,14 @@ export class World {
       proj.prevX = proj.x;
       proj.prevY = proj.y;
 
+      // Time dilation: a hostile shot, or one fired by a slowed body, crawls with its
+      // owner. The caster's own fire keeps full speed.
+      const pdt =
+        this.timeSlowT > 0 &&
+        (proj.owner < 0 ? proj.type >= 3 : proj.owner !== this.timeSlowOwner)
+          ? dt * BUFFER.slowScale
+          : dt;
+
       if (proj.type === 1) {
         // Mines never travel. They arm, wait for a hostile in range, then detonate
         // on a timer if nothing walks into them.
@@ -3876,17 +4099,17 @@ export class World {
         // A bomb can also wait its turn at the muzzle: the power's carpet is released
         // as a string, and the delay is carried in `grace` before the fuse starts.
         if (proj.grace > 0) {
-          proj.grace = Math.max(0, proj.grace - dt);
+          proj.grace = Math.max(0, proj.grace - pdt);
           continue;
         }
-        proj.fuse -= dt;
+        proj.fuse -= pdt;
         if (proj.fuse <= 0) {
           this.detonateBomb(proj);
           continue;
         }
         const bombSpeed = Math.hypot(proj.vx, proj.vy);
-        const bombSteps = Math.max(1, Math.min(20, Math.ceil((bombSpeed * dt) / 6)));
-        const bombDt = dt / bombSteps;
+        const bombSteps = Math.max(1, Math.min(20, Math.ceil((bombSpeed * pdt) / 6)));
+        const bombDt = pdt / bombSteps;
         for (let s = 0; s < bombSteps; s++) {
           proj.x += proj.vx * bombDt;
           proj.y += proj.vy * bombDt;
@@ -3907,12 +4130,16 @@ export class World {
         continue;
       }
 
-      if (proj.grace > 0) proj.grace = Math.max(0, proj.grace - dt);
-      proj.fuse -= dt;
+      if (proj.grace > 0) proj.grace = Math.max(0, proj.grace - pdt);
+      proj.fuse -= pdt;
       if (proj.fuse <= 0) {
         proj.active = false;
         continue;
       }
+
+      // The hourglass spins on its own axis. Bodies reverse it: `hourglassStruck`
+      // flips `spinDir`, so a hit visibly kicks the mark the other way.
+      if (proj.type === 10) proj.spin += proj.spinDir * BUFFER.spinRate * pdt;
 
       if (proj.homing) this.steerPathBolt(proj);
 
@@ -3923,7 +4150,7 @@ export class World {
           const desired = Math.atan2(target.y - proj.y, target.x - proj.x);
           let delta = desired - Math.atan2(proj.vy, proj.vx);
           delta = Math.atan2(Math.sin(delta), Math.cos(delta));
-          const maxTurn = SENTRY.missileTurn * dt;
+          const maxTurn = SENTRY.missileTurn * pdt;
           const angle = Math.atan2(proj.vy, proj.vx) + Math.max(-maxTurn, Math.min(maxTurn, delta));
           proj.vx = Math.cos(angle) * SENTRY.missileSpeed;
           proj.vy = Math.sin(angle) * SENTRY.missileSpeed;
@@ -3931,8 +4158,8 @@ export class World {
       }
 
       const speed = Math.hypot(proj.vx, proj.vy);
-      const steps = Math.max(1, Math.min(20, Math.ceil((speed * dt) / 6)));
-      const sdt = dt / steps;
+      const steps = Math.max(1, Math.min(20, Math.ceil((speed * pdt) / 6)));
+      const sdt = pdt / steps;
       for (let s = 0; s < steps; s++) {
         proj.x += proj.vx * sdt;
         proj.y += proj.vy * sdt;
@@ -4024,7 +4251,7 @@ export class World {
       // There is no wall to hit, so nothing ricochets: the shot falls into the void. A
       // committed shape keeps its geometry death, which is what makes a bomb detonate
       // at the lip instead of disappearing.
-      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9) {
+      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9 || proj.type === 10) {
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
       }
       proj.active = false;
@@ -4051,9 +4278,9 @@ export class World {
       bounced = true;
     }
     if (!bounced) return;
-    if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9) {
-      // Spear, thrown broom and every bomb are committed lines, not ricochets. They
-      // die on geometry; the bomb branch turns that death into a detonation.
+    if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9 || proj.type === 10) {
+      // Spear, thrown broom, hourglass and every bomb are committed lines, not
+      // ricochets. They die on geometry; the bomb branch turns that into a detonation.
       proj.active = false;
       this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
       return;
@@ -4088,7 +4315,7 @@ export class World {
       const rr = WEDGE.wallThickness * 0.5 + proj.radius;
       if (dx * dx + dy * dy > rr * rr) continue;
 
-      const heavy = proj.type === 5 || proj.type === 6 || proj.type === 8;
+      const heavy = proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10;
       this.damageBarrier(wall, heavy ? 2 : 1);
 
       const side = (dx * wall.nx + dy * wall.ny) >= 0 ? 1 : -1;
@@ -4122,7 +4349,7 @@ export class World {
   private bouncePillars(proj: Projectile): void {
     for (let i = 0; i < this.arena.pillars.length; i++) {
       if (!circleRect(proj.x, proj.y, proj.radius, this.arena.pillars[i], hitScratch)) continue;
-      if (proj.type === 5 || proj.type === 6 || proj.type === 8) {
+      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10) {
         proj.active = false;
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
         return;
@@ -4188,6 +4415,18 @@ export class World {
         this.poisonPlayer(p, proj.owner);
         proj.active = false;
         return true;
+      }
+      if (proj.type === 10) {
+        // Hourglass: one pass per body, shove it, flip the spin and keep flying. It
+        // de-rezzes on the last allowed body, so it reads as a heavy chain, not a
+        // piercing spear that crosses the whole room.
+        const bit = 1 << p.slot;
+        if ((proj.hitPlayers & bit) !== 0) continue;
+        proj.hitPlayers |= bit;
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, BUFFER.shotKnockback, hitKind, hitId);
+        this.hourglassStruck(proj);
+        if (!proj.active) return true;
+        continue;
       }
       this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, BOLT.knockback, hitKind, hitId);
       proj.active = false;
@@ -6843,7 +7082,82 @@ export class World {
     }
   }
 
+  /** One body struck by an hourglass: flip the spin, spend a pass, report the death. */
+  private hourglassStruck(proj: Projectile): boolean {
+    proj.hits++;
+    proj.spinDir = -proj.spinDir;
+    this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 0);
+    if (proj.hits >= BUFFER.shotHits) proj.active = false;
+    return !proj.active;
+  }
+
+  /**
+   * Hourglass pass over the gauntlet roster. Each family uses the spear's hit masks, so
+   * one shell damages a body once and keeps flying until its passes are spent. A worm
+   * swallows the shell, which is the one body that can end the pass early.
+   */
+  private hourglassHitsGauntlet(proj: Projectile): boolean {
+    const speed = Math.hypot(proj.vx, proj.vy) || 1;
+    const ux = proj.vx / speed;
+    const uy = proj.vy / speed;
+
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitErrors & bit) !== 0) continue;
+      const rr = proj.radius + CASCADING_ERROR.blockSize * 0.5;
+      const dx = proj.x - e.x;
+      const dy = proj.y - e.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitErrors |= bit;
+      this.damageError(e, proj.damage, proj.owner, ux, uy);
+      if (this.hourglassStruck(proj)) return true;
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitSentries & bit) !== 0) continue;
+      const rr = proj.radius + s.radius;
+      const dx = proj.x - s.x;
+      const dy = proj.y - s.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitSentries |= bit;
+      this.damageSentry(s, proj.damage, proj.owner, ux, uy, BUFFER.shotKnockback);
+      if (this.hourglassStruck(proj)) return true;
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitViruses & bit) !== 0) continue;
+      const rr = proj.radius + v.radius;
+      const dx = proj.x - v.x;
+      const dy = proj.y - v.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitViruses |= bit;
+      this.damageVirus(v, proj.damage, proj.owner, ux, uy, BUFFER.shotKnockback);
+      if (this.hourglassStruck(proj)) return true;
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitWorms & bit) !== 0) continue;
+      const hdx = proj.x - w.x;
+      const hdy = proj.y - w.y;
+      const hr = proj.radius + WORM.headRadius;
+      if (hdx * hdx + hdy * hdy > hr * hr) continue;
+      // A worm swallows the shell instead of being pierced by it.
+      this.eatProjectile(proj, w);
+      return true;
+    }
+    return false;
+  }
+
   private projectileHitsGauntlet(proj: Projectile): boolean {
+    if (proj.type === 10) return this.hourglassHitsGauntlet(proj);
     if (proj.type === 5) {
       this.spearHitsGauntlet(proj);
       return false;

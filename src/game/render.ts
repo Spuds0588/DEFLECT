@@ -1,12 +1,13 @@
-import { BOLT, BUG, CAMERA, CAMERA_ZOOM, CAMPAIGN, FILE_PROP, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { BOLT, BUFFER, BUG, CAMERA, CAMERA_ZOOM, CAMPAIGN, FILE_PROP, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
-import { drawGlyph, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
+import { drawGlyph, drawHourglassMark, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
 import { P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
 import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type Lure, type Net, type Phase, type Pickup, type Player, type Projectile, type Prop, type Sentry, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
+import { beamReach } from './collision';
 
 export interface RenderState {
   mode: GameMode;
@@ -54,6 +55,9 @@ export interface RenderState {
   pusherFlashT?: number;
   pusherY?: number;
   pusherActive?: boolean;
+  /** Buffer's time dilation, in seconds of real time left, and who cast it. */
+  timeSlowT?: number;
+  timeSlowOwner?: number;
 }
 
 const FONT_TINY = '700 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -254,6 +258,8 @@ export class Renderer {
   private slideDustT = 0;
   /** Cadence for the dust a thrown broom head drags behind it. */
   private broomDustT = 0;
+  /** Cadence for the sparks peeling off a live heavy beam. */
+  private laserSparkT = 0;
   /** Rotating seed for Toxic's circular burst, so it needs no per-frame allocation. */
   private toxicSeed = 1;
   /** Toggled from Settings > Feedback. */
@@ -356,6 +362,7 @@ export class Renderer {
     // per pane would double the dust and trail samples in a split match.
     this.emitSlideDust(state, alpha, fx, dt);
     this.emitBroomDust(state, alpha, fx, dt);
+    this.emitLaserSparks(state, alpha, fx, dt);
     this.emitToxicBurst(state, alpha, fx);
     this.updatePlayerTrails(state, t);
     this.updateTrails(state, alpha);
@@ -456,6 +463,21 @@ export class Renderer {
 
     // Screen-space overlays shared by the whole frame.
     ctx.setTransform(base, 0, 0, base, this.dpr * this.offX, this.dpr * this.offY);
+    // Time dilation: a pink edge wash marks the slow field even when nothing hostile
+    // happens to be on screen. It sits under the hit flash so impacts stay readable.
+    const slowT = state.timeSlowT ?? 0;
+    if (slowT > 0 && introDone) {
+      const fade = Math.min(1, slowT / 0.35);
+      ctx.save();
+      ctx.globalAlpha = 0.16 * fade;
+      ctx.fillStyle = PROGRAM_COLORS.buffer;
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      ctx.globalAlpha = 0.5 + 0.14 * Math.sin(t * 5);
+      ctx.strokeStyle = PROGRAM_COLORS.buffer;
+      ctx.lineWidth = 2.4;
+      ctx.strokeRect(9, 9, VIEW_W - 18, VIEW_H - 18);
+      ctx.restore();
+    }
     if (this.viewCount > 1) {
       this.drawViewDivider(state);
       this.drawViewFrames(state);
@@ -2555,35 +2577,96 @@ export class Renderer {
       const ax = Math.cos(p.laserFacing);
       const ay = Math.sin(p.laserFacing);
       const origin = PLAYER.radius + 12;
-      let reach: number = PLAYER.laserRange;
-      for (let d = 24; d < PLAYER.laserRange; d += 25) {
-        if (this.beamClear(state.arena, x, y, x + ax * d, y + ay * d)) continue;
-        reach = d - 25;
-        break;
-      }
-      reach = Math.max(origin + 8, reach);
+      // The drawing and the damage test share one reach, so the shaft visibly stops on
+      // pillars, deployed walls, the compactor plate and a walled arena's bounds.
+      const reach = Math.max(
+        origin + 8,
+        beamReach(state.arena, state.barriers, state.pusherActive === true, state.pusherY ?? 0, x, y, ax, ay, PLAYER.laserRange),
+      );
       const flicker = 0.85 + 0.15 * Math.sin(t * 44 + i);
       const width = PLAYER.laserHalfWidth * 2;
-      ctx.strokeStyle = playerColor(state, p);
-      ctx.globalAlpha = 0.12 * flicker;
-      ctx.lineWidth = width + 26;
+      const color = playerColor(state, p);
+      const x0 = x + ax * PLAYER.radius;
+      const y0 = y + ay * PLAYER.radius;
+      const x1 = x + ax * reach;
+      const y1 = y + ay * reach;
+      ctx.strokeStyle = color;
+
+      // Stacked layers, widest and faintest first. The extra haze pass keeps the beam
+      // reading as light rather than a painted bar, and the inner band adds a hot core
+      // inside the program color instead of jumping straight from glow to white.
+      ctx.globalAlpha = 0.055 * flicker;
+      ctx.lineWidth = width + 78;
       ctx.beginPath();
-      ctx.moveTo(x + ax * PLAYER.radius, y + ay * PLAYER.radius);
-      ctx.lineTo(x + ax * reach, y + ay * reach);
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
       ctx.stroke();
-      ctx.globalAlpha = 0.3 * flicker;
-      ctx.lineWidth = width + 10;
+      ctx.globalAlpha = 0.1 * flicker;
+      ctx.lineWidth = width + 46;
       ctx.stroke();
-      ctx.globalAlpha = 0.62 * flicker;
+      ctx.globalAlpha = 0.2 * flicker;
+      ctx.lineWidth = width + 22;
+      ctx.stroke();
+      ctx.globalAlpha = 0.34 * flicker;
+      ctx.lineWidth = width + 8;
+      ctx.stroke();
+      ctx.globalAlpha = 0.66 * flicker;
       ctx.lineWidth = width;
       ctx.stroke();
-      ctx.globalAlpha = 0.95;
+      ctx.globalAlpha = 0.5 * flicker;
+      ctx.lineWidth = width * 0.56;
+      ctx.stroke();
+      // A hot white band inside the program color, so the shaft has a gradient instead
+      // of one flat fill with a thin line down the middle.
+      ctx.globalAlpha = 0.2 * flicker;
       ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = width * 0.78;
+      ctx.stroke();
+      ctx.globalAlpha = 0.92 * flicker;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 8;
+      ctx.stroke();
       ctx.lineWidth = 3;
       ctx.stroke();
-      // Sparks crawling along the beam.
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      // Edge rails: two thin lines along the sides of the shaft, so the width reads even
+      // against a bright floor.
+      const nx = -ay;
+      const ny = ax;
+      const rail = PLAYER.laserHalfWidth + 1;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.3 * flicker;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(x0 + nx * rail, y0 + ny * rail);
+      ctx.lineTo(x1 + nx * rail, y1 + ny * rail);
+      ctx.moveTo(x0 - nx * rail, y0 - ny * rail);
+      ctx.lineTo(x1 - nx * rail, y1 - ny * rail);
+      ctx.stroke();
+
+      // Energy pulses: short bright packets running down the shaft.
+      ctx.strokeStyle = '#ffffff';
+      ctx.globalAlpha = 0.14 * flicker;
+      ctx.lineWidth = width * 0.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let s = 0; s < 2; s++) {
+        const along = (t * 430 + s * (reach / 2)) % reach;
+        const a0 = Math.max(4, along - 110);
+        const a1 = Math.min(reach, along);
+        if (a1 <= a0) continue;
+        ctx.moveTo(x + ax * a0, y + ay * a0);
+        ctx.lineTo(x + ax * a1, y + ay * a1);
+      }
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+
+      // Two counter-running streaks of light inside the beam.
+      ctx.strokeStyle = color;
       ctx.globalAlpha = 0.8;
-      ctx.strokeStyle = playerColor(state, p);
       ctx.lineWidth = 2;
       ctx.beginPath();
       for (let s = 0; s < 7; s++) {
@@ -2592,26 +2675,168 @@ export class Renderer {
         ctx.moveTo(x + ax * along - ay * side, y + ay * along + ax * side);
         ctx.lineTo(x + ax * (along + 6) - ay * side, y + ay * (along + 6) + ax * side);
       }
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = '#ffffff';
+      ctx.beginPath();
+      for (let s = 0; s < 5; s++) {
+        const along = reach - (((t * 470 + s * 131 + i * 71) % reach) + 18);
+        const side = Math.cos(t * 26 + s * 1.7) * (PLAYER.laserHalfWidth * 0.55);
+        ctx.moveTo(x + ax * along - ay * side, y + ay * along + ax * side);
+        ctx.lineTo(x + ax * (along - 9) - ay * side, y + ay * (along - 9) + ax * side);
+      }
       ctx.stroke();
+
+      // Muzzle flare: a hot cap where the shaft leaves the avatar.
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      const muzzle = 0.6 + 0.4 * flicker;
+      ctx.globalAlpha = 0.22 * muzzle;
+      ctx.beginPath();
+      ctx.arc(x0, y0, PLAYER.laserHalfWidth + 16, 0, TWO_PI);
+      ctx.fill();
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.arc(x0, y0, PLAYER.laserHalfWidth * 0.55, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.globalAlpha = 0.95;
+      ctx.beginPath();
+      ctx.arc(x0, y0, 6 + Math.sin(t * 40) * 1.4, 0, TWO_PI);
+      ctx.fill();
+
+      // Impact flare at the surface the shaft stopped on. A beam that meets nothing burns
+      // out into a small taper instead, so the end never looks clipped.
+      const hit = reach < PLAYER.laserRange;
+      ctx.globalAlpha = (hit ? 0.85 : 0.3) * flicker;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x1, y1, hit ? PLAYER.laserHalfWidth * 0.7 : PLAYER.laserHalfWidth * 0.35, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.globalAlpha = hit ? 0.95 : 0.4;
+      ctx.beginPath();
+      ctx.arc(x1, y1, hit ? 7 + Math.sin(t * 36) * 2 : 3, 0, TWO_PI);
+      ctx.fill();
+      if (hit) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        for (let s = 0; s < 8; s++) {
+          const a = (s / 8) * TWO_PI + t * 1.8;
+          const len = 10 + ((s * 7 + i * 3) % 9);
+          ctx.moveTo(x1 + Math.cos(a) * 8, y1 + Math.sin(a) * 8);
+          ctx.lineTo(x1 + Math.cos(a) * (8 + len), y1 + Math.sin(a) * (8 + len));
+        }
+        ctx.stroke();
+      }
+    }
+
+    // Deflected shafts: a guard caught a heavy beam and glanced it away at the shield angle.
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      if (!p.active || p.beamReflectT <= 0) continue;
+      const fade = Math.min(1, p.beamReflectT / PLAYER.laserReflectFlash);
+      const x = lerp(p.prevX, p.x, alpha);
+      const y = lerp(p.prevY, p.y, alpha);
+      const rx = Math.cos(p.beamReflectFacing);
+      const ry = Math.sin(p.beamReflectFacing);
+      const from = PLAYER.radius + 4;
+      const to = Math.max(from + 12, p.beamReflectDist);
+      const color = playerColor(state, p);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.22 * fade;
+      ctx.lineWidth = PLAYER.laserHalfWidth * 2 + 30;
+      ctx.beginPath();
+      ctx.moveTo(x + rx * from, y + ry * from);
+      ctx.lineTo(x + rx * to, y + ry * to);
+      ctx.stroke();
+      ctx.globalAlpha = 0.8 * fade;
+      ctx.lineWidth = PLAYER.laserHalfWidth * 0.9;
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.globalAlpha = 0.95 * fade;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      // A star at the guard makes the catch read even when the shaft is short.
+      ctx.globalAlpha = 0.9 * fade;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      const flare = (1 - fade) * 14 + 8;
+      ctx.moveTo(x, y - flare);
+      ctx.lineTo(x + 2.4, y - 2.4);
+      ctx.lineTo(x + flare, y);
+      ctx.lineTo(x + 2.4, y + 2.4);
+      ctx.lineTo(x, y + flare);
+      ctx.lineTo(x - 2.4, y + 2.4);
+      ctx.lineTo(x - flare, y);
+      ctx.lineTo(x - 2.4, y - 2.4);
+      ctx.closePath();
+      ctx.fill();
     }
     ctx.globalAlpha = 1;
     ctx.restore();
   }
 
-  /** True when nothing in the arena blocks the segment. Used only for beam visuals. */
-  private beamClear(arena: ArenaDef, ax: number, ay: number, bx: number, by: number): boolean {
-    for (let i = 0; i < arena.pillars.length; i++) {
-      const r = arena.pillars[i];
-      // Cheap reject, then a coarse segment-vs-rect test against the expanded pillar.
-      if (Math.max(ax, bx) < r.x || Math.min(ax, bx) > r.x + r.w) continue;
-      if (Math.max(ay, by) < r.y || Math.min(ay, by) > r.y + r.h) continue;
-      for (let s = 0; s <= 16; s++) {
-        const px = ax + ((bx - ax) * s) / 16;
-        const py = ay + ((by - ay) * s) / 16;
-        if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return false;
+  /**
+   * Side sparks while a heavy beam is live: little streaks peel off both edges of the
+   * shaft and fade, plus a spray at the surface it stopped on. Emitted once per frame,
+   * never once per split pane.
+   */
+  private emitLaserSparks(state: RenderState, alpha: number, fx: Fx, dt: number): void {
+    this.laserSparkT -= dt;
+    if (this.laserSparkT > 0) return;
+    this.laserSparkT = 0.026;
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      if (!p.active || !p.alive || p.laserT <= 0) continue;
+      if (p.program === PROGRAM_ID.TOXIC) continue;
+      const x = lerp(p.prevX, p.x, alpha);
+      const y = lerp(p.prevY, p.y, alpha);
+      const ax = Math.cos(p.laserFacing);
+      const ay = Math.sin(p.laserFacing);
+      const reach = Math.max(
+        PLAYER.radius + 20,
+        beamReach(state.arena, state.barriers, state.pusherActive === true, state.pusherY ?? 0, x, y, ax, ay, PLAYER.laserRange),
+      );
+      const sideX = -ay;
+      const sideY = ax;
+      // Two edge sparks at random points along the shaft.
+      for (let k = 0; k < 2; k++) {
+        const along = 34 + Math.random() * Math.max(1, reach - 60);
+        const edge = PLAYER.laserHalfWidth + 2 + Math.random() * 10;
+        const dir = Math.random() < 0.5 ? -1 : 1;
+        const px = x + ax * along + sideX * edge * dir;
+        const py = y + ay * along + sideY * edge * dir;
+        const out = 50 + Math.random() * 140;
+        fx.particles.spawn(
+          0,
+          px,
+          py,
+          sideX * out * dir + ax * (40 + Math.random() * 80),
+          sideY * out * dir + ay * (40 + Math.random() * 80),
+          0.1 + Math.random() * 0.18,
+          1.2 + Math.random() * 1.8,
+          p.slot,
+          5,
+        );
+      }
+      // Impact spray at the solid end, kicked back along the shaft.
+      if (reach < PLAYER.laserRange) {
+        const dir = Math.random() < 0.5 ? -1 : 1;
+        fx.particles.spawn(
+          0,
+          x + ax * reach,
+          y + ay * reach,
+          -ax * (90 + Math.random() * 90) + sideX * (60 + Math.random() * 90) * dir,
+          -ay * (90 + Math.random() * 90) + sideY * (60 + Math.random() * 90) * dir,
+          0.14 + Math.random() * 0.2,
+          1.4 + Math.random() * 2,
+          p.slot,
+          4.5,
+        );
       }
     }
-    return true;
   }
 
   /** Advances each projectile's trail once per frame, never once per split pane. */
@@ -2619,9 +2844,9 @@ export class Renderer {
     for (let i = 0; i < state.projectiles.length; i++) {
       const p = state.projectiles[i];
       if (!p.active) continue;
-      // The thrown broom head and the venom needle are solid objects, not bolts: no
-      // motion tail. Their bodies are drawn with the rest of the projectile shapes.
-      if (p.type === 6 || p.type === 7 || p.type === 8 || p.type === 9) continue;
+      // The thrown broom head, venom needle, bombs and the hourglass are solid objects,
+      // not bolts: no motion tail. Their bodies are drawn with the rest of the shapes.
+      if (p.type === 6 || p.type === 7 || p.type === 8 || p.type === 9 || p.type === 10) continue;
       this.pushTrail(p, lerp(p.prevX, p.x, alpha), lerp(p.prevY, p.y, alpha));
     }
   }
@@ -2641,9 +2866,8 @@ export class Renderer {
         : ownerPlayer
           ? playerColor(state, ownerPlayer)
           : particleColor(P_COLOR_ICE);
-      // The thrown broom head and the venom needle are solid objects, not bolts: no
-      // motion tail. Their bodies are drawn with the rest of the projectile shapes.
-      if (p.type !== 6 && p.type !== 7 && p.type !== 8 && p.type !== 9) {
+      // Solid throws carry no motion tail; the hourglass is one of them.
+      if (p.type !== 6 && p.type !== 7 && p.type !== 8 && p.type !== 9 && p.type !== 10) {
         if (p.trailCount >= 2) {
       // Hostile shots get a short tail so the screen does not fill with long lines.
       const count = p.type >= 3 ? Math.min(p.trailCount, 5) : p.trailCount;
@@ -3017,21 +3241,36 @@ export class Renderer {
       } else if (p.type === 6) {
         // Thrown broom: head only, held upright like every other broom this program
         // draws. No handle, no motion tail, and it dies on geometry instead of bouncing.
-        this.drawBroomText(x, y - 16, 17, 32, Math.PI / 2, 0.95, color);
-      } else if (p.type === 7) {
-        // Venom needle: a dagger mark turned along its flight, inside a soft venom halo.
-        const angle = Math.atan2(p.vy, p.vx);
+        // The head is a touch wider than the collision radius so the extra reach reads;
+        // the larger `half` also buys another binder and bristle column in the ASCII row.
+        this.drawBroomText(x, y - 16, 20, 34, Math.PI / 2, 0.95, color);
+      } else if (p.type === 10) {
+        // Heavy hourglass: the program's own mark, spinning on its axis inside a soft
+        // weight halo. No tail, no handle: it is one solid object in flight.
         ctx.save();
         ctx.translate(x, y);
-        ctx.globalAlpha = 0.22;
+        ctx.globalAlpha = 0.18;
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(0, 0, p.radius * 2.1, 0, TWO_PI);
         ctx.fill();
-        ctx.globalAlpha = 0.95;
-        ctx.rotate(angle);
-        drawSymbol(ctx, '†', 0, 0, p.radius * 1.9, 1);
+        ctx.globalAlpha = 0.96;
+        ctx.rotate(p.spin);
+        drawHourglassMark(ctx, 0, 0, p.radius * 1.35);
         ctx.restore();
+      } else if (p.type === 7) {
+        // Venom needle: a hypodermic, drawn with shapes. The typed dagger read as a
+        // cross at this size and lost the syringe entirely.
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius * 1.7, 0, TWO_PI);
+        ctx.fill();
+        ctx.restore();
+        this.drawSyringe(x, y, angle, p.radius, color);
       } else if (p.type === 8 || p.type === 9) {
         // Kaboom's shell: the bomb mark upright on the ground plane, a live fuse spark,
         // and, for a lobbed shell, a short arc lift plus its landing shadow.
@@ -3926,14 +4165,19 @@ export class Renderer {
       // stable core until the snapshot carries programs and health.
       const coreHp = showHull ? hpFrac : 1;
       const coreR = PLAYER.radius * (0.3 + 0.28 * coreHp) * (1 + 0.035 * Math.sin(t * 4 + p.slot));
-      ctx.save();
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 0.82;
-      ctx.fillStyle = 'rgba(2, 7, 12, 0.88)';
-      ctx.beginPath();
-      ctx.arc(x, y, coreR, 0, TWO_PI);
-      ctx.fill();
-      ctx.restore();
+      // Buffer has no dark core disc. His mark is a solid filled hourglass, so a disc
+      // behind it reads as a black tile rather than as a nucleus: every other program
+      // draws a stroked mark, where the disc is the negative space it sits in.
+      if (p.program !== PROGRAM_ID.BUFFER) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.82;
+        ctx.fillStyle = 'rgba(2, 7, 12, 0.88)';
+        ctx.beginPath();
+        ctx.arc(x, y, coreR, 0, TWO_PI);
+        ctx.fill();
+        ctx.restore();
+      }
 
       if (isLocal && hpFrac <= 0.34) {
         ctx.globalAlpha = 0.35 + 0.4 * Math.abs(Math.sin(t * 9 + p.slot));
@@ -4001,6 +4245,23 @@ export class Renderer {
         ctx.fillStyle = PROGRAM_COLORS.toxic;
         drawSymbol(ctx, '☠', x, y - PLAYER.radius - 13, 8, 1);
         ctx.globalAlpha = 1;
+      }
+
+      if (p.fastT > 0) {
+        // Fast-forward: a dashed chrono ring spinning at the burn rate. Local and bot
+        // bodies alike, because the effect is on the body, not in a HUD panel.
+        const pulse = 0.5 + 0.5 * Math.sin(t * 16 + p.slot * 2.1);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.4 + 0.3 * pulse;
+        ctx.strokeStyle = PROGRAM_COLORS.buffer;
+        ctx.lineWidth = 2.4;
+        ctx.setLineDash([5, 7]);
+        ctx.lineDashOffset = -t * 42;
+        ctx.beginPath();
+        ctx.arc(x, y, PLAYER.radius + 7, 0, TWO_PI);
+        ctx.stroke();
+        ctx.restore();
       }
 
       if (p.ghostT > 0) {
@@ -4090,10 +4351,11 @@ export class Renderer {
         const fy = Math.sin(facing);
         let reach = p.toxRadius;
         for (let d = 24; d < p.toxRadius; d += 25) {
-          if (!this.beamClear(state.arena, x, y, x + fx * d, y + fy * d)) {
-            reach = Math.max(60, d - 25);
-            break;
-          }
+          // The jet's damage still reads pillars only, so its drawn shaft must too; no
+          // deployed walls or compactor plate in this test.
+          if (beamReach(state.arena, null, false, 0, x, y, fx, fy, d) >= d) continue;
+          reach = Math.max(60, d - 25);
+          break;
         }
         const span = Math.min(reach, p.toxRadius * grow);
         const flicker = 0.9 + 0.1 * Math.sin(t * 26 + p.slot);
@@ -4379,7 +4641,10 @@ export class Renderer {
 
     // 1. Ranged ammo: one dot per shot left in the program's string.
     const singleShot =
-      p.program === PROGRAM_ID.FISHER || p.program === PROGRAM_ID.SWEEP || p.program === PROGRAM_ID.KABOOM;
+      p.program === PROGRAM_ID.FISHER ||
+      p.program === PROGRAM_ID.SWEEP ||
+      p.program === PROGRAM_ID.KABOOM ||
+      p.program === PROGRAM_ID.BUFFER;
     const ammoMax = p.program === PROGRAM_ID.WEDGE ? 3 : singleShot ? 1 : BOLT.burstCount;
     const ammo = p.program === PROGRAM_ID.WEDGE
       ? p.stringLeft > 0 ? p.stringLeft : p.burstCd <= 0 ? 3 : 0
@@ -4472,6 +4737,15 @@ export class Renderer {
       ctx.lineTo(5, -5);
       ctx.moveTo(5, -5);
       ctx.lineTo(6.6, -4.4);
+    } else if (p.bugKind === 9) {
+      // Fast-forward: a double chevron, the universal "run it faster" mark. The
+      // heavy beside it is an hourglass, so speed and dilation never share a mark.
+      ctx.moveTo(-4.5, -5.5);
+      ctx.lineTo(-0.5, 0);
+      ctx.lineTo(-4.5, 5.5);
+      ctx.moveTo(0.5, -5.5);
+      ctx.lineTo(4.5, 0);
+      ctx.lineTo(0.5, 5.5);
     } else {
       // Lure beacon: a center pulse with two open arcs, not a closed ring. The
       // closed ring plus dot is Probe's core mark (`◎`) and would collide with it.
@@ -4498,17 +4772,27 @@ export class Renderer {
           ? SWEEP.powerCooldown
           : p.program === PROGRAM_ID.KABOOM
             ? KABOOM.clusterCooldown
-            : PLAYER.laserCooldown;
+            : p.program === PROGRAM_ID.BUFFER
+              ? BUFFER.slowCooldown
+              : PLAYER.laserCooldown;
     const heavyColor = p.program === PROGRAM_ID.WEDGE
       ? PROGRAM_COLORS.wedge
       : p.program === PROGRAM_ID.FISHER
         ? PROGRAM_COLORS.fisher
-        : p.program === PROGRAM_ID.SWEEP ? PROGRAM_COLORS.sweep : color;
+        : p.program === PROGRAM_ID.SWEEP
+          ? PROGRAM_COLORS.sweep
+          : p.program === PROGRAM_ID.BUFFER
+            ? PROGRAM_COLORS.buffer
+            : color;
     const heavyLive =
       p.laserT > 0 ||
       p.wedgeT > 0 ||
       p.broT > 0 ||
-      ((p.program === PROGRAM_ID.SWEEP || p.program === PROGRAM_ID.KABOOM) && p.laserChargeHeld);
+      ((state.timeSlowT ?? 0) > 0 && (state.timeSlowOwner ?? -1) === p.slot) ||
+      ((p.program === PROGRAM_ID.SWEEP ||
+        p.program === PROGRAM_ID.KABOOM ||
+        p.program === PROGRAM_ID.BUFFER) &&
+        p.laserChargeHeld);
     ctx.save();
     ctx.translate(heavyX, cy);
     ctx.globalAlpha = heavyLive ? 0.98 : heavyReady ? 0.85 : 0.24;
@@ -4539,6 +4823,16 @@ export class Renderer {
       ctx.moveTo(-4, 6);
       ctx.lineTo(0, 1.5);
       ctx.lineTo(4, 6);
+    } else if (p.program === PROGRAM_ID.BUFFER) {
+      // Dilation: an hourglass, two triangles meeting at a waist. The skill beside it
+      // is a double chevron, so speed and time-stop never share one mark.
+      ctx.moveTo(-5, -5.5);
+      ctx.lineTo(5, -5.5);
+      ctx.lineTo(0, 0);
+      ctx.lineTo(5, 5.5);
+      ctx.lineTo(-5, 5.5);
+      ctx.lineTo(0, 0);
+      ctx.closePath();
     } else if (p.program === PROGRAM_ID.KABOOM) {
       // Carpet: three shells over one blast line. The skill beside it is a single
       // shell with a fuse, so the two bomb ideas never share one mark.
@@ -4581,6 +4875,74 @@ export class Renderer {
       ctx.strokeRect(powerX - 3.5, cy - 3.5, 7, 7);
     }
 
+    ctx.restore();
+  }
+
+  /**
+   * Toxic's needle: a hypodermic drawn from basic shapes, pointing +x. A typed `†`
+   * read as a cross at projectile size, so the syringe is geometry: flange, plunger
+   * rod, barrel with a venom window, hub and a thin sharp needle. Nothing here builds
+   * strings or allocates; the whole thing is five paths at the current fill colour.
+   */
+  private drawSyringe(
+    x: number,
+    y: number,
+    angle: number,
+    r: number,
+    color: string,
+  ): void {
+    const ctx = this.ctx;
+    // Proportions are what make it read as a syringe at six units: a barrel you can
+    // see, then a needle at least as long again. A short tip just reads as a pill.
+    const s = Math.max(5, r * 1.05);
+    const line = Math.max(1, s * 0.14);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Needle: a hairline out of the hub, long enough to be the point of the shape.
+    ctx.globalAlpha = 0.95;
+    ctx.lineWidth = line;
+    ctx.beginPath();
+    ctx.moveTo(s * 1.25, 0);
+    ctx.lineTo(s * 3.6, 0);
+    ctx.stroke();
+
+    // Barrel: a dark glass fill inside a bright rounded rectangle.
+    ctx.globalAlpha = 0.2;
+    ctx.fillRect(-s * 1.25, -s * 0.62, s * 2.3, s * 1.24);
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = line;
+    ctx.beginPath();
+    ctx.roundRect(-s * 1.25, -s * 0.62, s * 2.3, s * 1.24, s * 0.24);
+    ctx.stroke();
+
+    // Venom window: a bright load inside the barrel, so the body has weight.
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(-s * 0.95, -s * 0.3, s * 1.6, s * 0.6);
+
+    // Hub: a short taper from the barrel to the needle root.
+    ctx.globalAlpha = 0.95;
+    ctx.beginPath();
+    ctx.moveTo(s * 1.05, -s * 0.4);
+    ctx.lineTo(s * 1.3, -s * 0.14);
+    ctx.lineTo(s * 1.3, s * 0.14);
+    ctx.lineTo(s * 1.05, s * 0.4);
+    ctx.closePath();
+    ctx.fill();
+
+    // Plunger rod and its flange at the back: the other half of the silhouette.
+    ctx.lineWidth = Math.max(1, s * 0.18);
+    ctx.beginPath();
+    ctx.moveTo(-s * 1.25, 0);
+    ctx.lineTo(-s * 2.35, 0);
+    ctx.moveTo(-s * 2.35, -s * 0.7);
+    ctx.lineTo(-s * 2.35, s * 0.7);
+    ctx.stroke();
     ctx.restore();
   }
 

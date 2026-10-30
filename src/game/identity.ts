@@ -40,6 +40,8 @@ export const PROGRAM_COLORS = {
   sweep: '#b8ff3a',
   toxic: '#3dff6e',
   kaboom: '#ff5a3d',
+  /** Time: a hot pink, held clear of the virus magenta and Kaboom's orange. */
+  buffer: '#ff6ec7',
   lure: '#7dffd4',
 } as const;
 
@@ -206,6 +208,49 @@ export function drawBombMark(ctx: CanvasRenderingContext2D, cx: number, cy: numb
   ctx.fillRect(cx + r * 0.9, bodyY - bodyR * 1.28, Math.max(2, r * 0.26), Math.max(2, r * 0.26));
 }
 
+/** One triangle with every corner rounded, built from three arcTo joins. */
+function roundedTriangle(
+  ctx: CanvasRenderingContext2D,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  px: number,
+  py: number,
+  round: number,
+): void {
+  ctx.moveTo((ax + bx) * 0.5, (ay + by) * 0.5);
+  ctx.arcTo(bx, by, px, py, round);
+  ctx.arcTo(px, py, ax, ay, round);
+  ctx.arcTo(ax, ay, bx, by, round);
+  ctx.closePath();
+}
+
+/**
+ * Buffer's hourglass: two rounded triangles pointing at each other with their tips
+ * overlapping, which is what gives the shape its pinched waist. Drawn as vector
+ * geometry rather than a typed dingbat: U+29D7 falls back to a colour emoji on some
+ * systems, which paints its own opaque tile over the core. This mark uses only the
+ * caller's fill colour, so the core stays transparent.
+ */
+export function drawHourglassMark(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  const w = r * 0.58;
+  const h = r * 0.82;
+  // The tips cross the centre by this much. Without the overlap the neck reads as a
+  // single touching point and the mark looks like a bowtie sticker, not a glass.
+  const overlap = h * 0.18;
+  const round = r * 0.17;
+  ctx.beginPath();
+  roundedTriangle(ctx, cx - w, cy - h, cx + w, cy - h, cx, cy + overlap, round);
+  roundedTriangle(ctx, cx - w, cy + h, cx + w, cy + h, cx, cy - overlap, round);
+  ctx.fill();
+}
+
 /** Draws a program's core mark, including Kaboom's missing-font fallback. */
 export function drawProgramMark(
   ctx: CanvasRenderingContext2D,
@@ -217,6 +262,12 @@ export function drawProgramMark(
   r: number,
   fontScale = 1,
 ): void {
+  // Buffer's term is vector on every host: the typed hourglass is an emoji on some
+  // systems and would bring an opaque tile into the core.
+  if (programId === 6) {
+    drawHourglassMark(ctx, cx, cy, r * fontScale);
+    return;
+  }
   if (programId === 5 && !hasSymbolFont(symbolFamily ?? '')) {
     drawBombMark(ctx, cx, cy, r);
     return;
@@ -259,6 +310,9 @@ export function programHullSides(programId: number): number {
   if (programId === 4) return 12;
   // Kaboom is three separate outward-pointing triangles; the custom path lives below.
   if (programId === 5) return 3;
+  // Buffer's hull is six round pips on a clock dial, not a polygon. The custom path
+  // below owns the shape, so there are no sides for the frame pass to draw.
+  if (programId === 6) return 0;
   return 0;
 }
 
@@ -281,6 +335,37 @@ export function pathProgramHealth(
   const twoPi = Math.PI * 2;
   const sides = programHullSides(programId);
   ctx.beginPath();
+  // Buffer's hull is a ring of clock faces, two per health segment, turning around
+  // the body. Each clock is a small circle with a minute and an hour hand, so the
+  // silhouette reads as time rather than as another polygon. The faces orbit at 0.78r
+  // with a 0.17r radius, so their inner edge is 0.61r: just outside the core disc every
+  // hull keeps clear. Hand angles differ per clock, so the ring reads as a set of
+  // times instead of six identical dots.
+  if (programId === 6) {
+    const perSeg = 2;
+    const count = segments * perSeg;
+    const orbit = r * 0.78;
+    const face = r * 0.17;
+    for (let seg = 0; seg < freshSegments; seg++) {
+      for (let k = 0; k < perSeg; k++) {
+        const i = seg * perSeg + k;
+        const a = spin + (i / count) * twoPi;
+        const px = cx + Math.cos(a) * orbit;
+        const py = cy + Math.sin(a) * orbit;
+        ctx.moveTo(px + face, py);
+        ctx.arc(px, py, face, 0, twoPi);
+        // Minute hand, then a shorter hour hand at its own angle. Both turn with the
+        // hull, so the clocks are alive instead of printed badges.
+        const minute = spin * 1.6 + i * 0.9;
+        const hour = minute + 1.9;
+        ctx.moveTo(px, py);
+        ctx.lineTo(px + Math.cos(minute) * face * 0.68, py + Math.sin(minute) * face * 0.68);
+        ctx.moveTo(px, py);
+        ctx.lineTo(px + Math.cos(hour) * face * 0.42, py + Math.sin(hour) * face * 0.42);
+      }
+    }
+    return;
+  }
   // Kaboom's hull is three outward-pointing triangles, one health segment each, spaced
   // 120° apart so the set reads as a triangle made of triangles. The bases sit outside
   // the core disc (max 0.6r at full health) so no health segment ever crosses the

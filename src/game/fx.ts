@@ -1,5 +1,6 @@
 import {
   ParticleSystem,
+  P_COLOR_BUFFER,
   P_COLOR_DANGER,
   P_COLOR_DUST,
   P_COLOR_FIREWALL,
@@ -250,6 +251,19 @@ export class Fx {
         const shards = Math.max(4, Math.min(14, Math.round(ev.power * 0.28)));
         this.particles.shards(ev.x, ev.y, shards, P_COLOR_DUST, 60, 300);
         this.particles.ring(ev.x, ev.y, P_COLOR_DUST, 4, ev.power * 1.2, 0.22);
+        break;
+      }
+      case EV.TIME_WARP: {
+        // An hourglass burst: two counter-rotating rings plus a short white core. Fast
+        // forward and dilation share it, so one effect owns "Buffer spent a cooldown".
+        this.particles.ring(ev.x, ev.y, P_COLOR_BUFFER, 16, 190, 0.5);
+        this.particles.ring(ev.x, ev.y, P_COLOR_BUFFER, 8, 120, 0.36);
+        this.particles.ring(ev.x, ev.y, P_COLOR_WHITE, 4, 66, 0.24);
+        this.particles.shards(ev.x, ev.y, 16, P_COLOR_BUFFER, 90, 420);
+        this.particles.burst(ev.x, ev.y, 8, P_COLOR_WHITE, 60, 240);
+        this.shake = Math.max(this.shake, 5);
+        this.flash = Math.max(this.flash, 0.16);
+        this.flashColor = '#ffd7f2';
         break;
       }
       case EV.WALL_BREAK: {
