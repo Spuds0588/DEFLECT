@@ -1584,3 +1584,25 @@ Fisher more deliberate skill use.
 **Next:** The bot work is a usable test bed now. The traversal section is design-only; start with one bridge,
 one pad pair and the lift in a local test arena, then assemble the mixed arena. Campaign companions are
 still the largest missing bot consumer.
+
+## 2026-10-29 — Session 37 deployment
+
+**Goal:** Ship the v0.1.24 alpha and confirm the GitHub Pages deployment, not just the local build.
+
+**Changed:**
+- Commit `cb273c7` carries the v0.1.11–v0.1.24 work: programs and identity, bot-driven player slots,
+  gauntlet records, the couch menu pass, campaign slots, and the traversal / magic-user plans.
+- This entry records the production deployment after the workflow and live page checks.
+
+**Verification:**
+- `npm run build` and `npm run bench` clean locally; the production preview smoke pass covered the hub,
+  VS BOTS start, pause overlay, How to Play, Settings, gauntlet setup and campaign slots.
+- GitHub Actions run `40980536181` completed successfully (build and deploy jobs).
+- <https://spuds0588.github.io/DEFLECT/> serves v0.1.24 with `assets/index-BOezCEdl.js` and
+  `assets/index-Dr6DFEYQ.css`. In the live page: four-option hub, How to Play, three-tab Settings,
+  gauntlet setup and campaign slots rendered; a Wedge vs Probe HARD bot match started with no console
+  errors. The active service-worker cache is `deflect-0.1.24-shell`.
+- Workflow emitted only the existing Node 20 action deprecation warning; both jobs still passed.
+
+**Next:** road-map items remain intentionally open: campaign node loader and saves, local multiplayer,
+bridges/pads/lifts, magic users, Sweep.exe's kit, and IMPOSSIBLE tuning.
