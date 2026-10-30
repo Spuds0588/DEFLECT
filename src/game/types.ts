@@ -122,6 +122,8 @@ export const EV = {
   WALL_BREAK: 38,
   /** Bad Lag's hourglass burst: `power` 1 fast-forward, 0 time dilation. */
   TIME_WARP: 39,
+  /** A projectile reached its TTL without touching a body or cover. */
+  DISSOLVE: 40,
 } as const;
 
 /** Breakable file boxes. The renderer maps each to one glyph. */

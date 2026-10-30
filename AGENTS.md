@@ -134,7 +134,9 @@ round start/end, win. Each event is `{ kind, slot, x, y, power, dirX, dirY }`; h
 knockback direction so every peer sprays directional sparks the same way. Peers use those events for
 particles and sound so that everyone sees and hears the same thing. A guest plays its own **shoot /
 swing / dash** sounds locally for immediacy; deflect and hit feedback come back with the snapshot
-(accepted v1 latency).
+(accepted v1 latency). One additive kind, `DISSOLVE`, marks a projectile that reached its own TTL
+without touching a body or cover; it carries the projectile type in `power`, and local FX turns it
+into a short shard fizzle. Hits and cover stops keep their own feedback; do not emit `DISSOLVE` for them.
 
 ### D6 — Training drone and local bot simulacrum (revised 2026-10-29)
 Solo training includes one simple drone: it drifts, fires slow bolts, and respawns. It exists so the

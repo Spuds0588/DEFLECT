@@ -5083,6 +5083,9 @@ export class World {
       if (proj.grace > 0) proj.grace = Math.max(0, proj.grace - pdt);
       proj.fuse -= pdt;
       if (proj.fuse <= 0) {
+        // It reached its own range, not a body or a wall. Leave a shard fizzle where
+        // the shape ran out instead of blinking it off the field.
+        this.emit(EV.DISSOLVE, proj.owner, proj.x, proj.y, proj.type);
         proj.active = false;
         continue;
       }

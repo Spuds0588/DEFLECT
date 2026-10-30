@@ -2655,3 +2655,25 @@ exceptions after the first hot-reload stale-class error was cleared by a full re
 **Next:** playtest the 2.4 s gather and 7 s period in a campaign run. If the lanes read as unavoidable
 on a wide camera, widen the vertical spacing between a pair before shortening the gather; the telegraph
 is the only fair warning.
+
+## 2026-10-30 — Projectile end-of-range dissolve (v0.1.55)
+
+**Goal:** stop shots that reach their maximum flight time from blinking out of existence.
+
+**Changes:** `EV.DISSOLVE` (40) is emitted from the general projectile lifetime branch when `fuse`
+reaches zero. It carries the owner in `slot` and the projectile type in `power`. `Fx` reads it as a
+small shard fizzle: four or six shards depending on the shape, a few matching sparks, two white flecks
+and a short thin ring. Hostile shots use the danger tint; player shots use their program colour. No
+screen shake, flash or sound. The branch is only the free-flight expiry; body hits, cover stops, mines
+and bombs keep their existing effects and never emit it.
+
+Because the event travels in the existing snapshot event list, guests get the same fizzle without a new
+snapshot field. The event kind is additive; an older guest that ignores unknown kinds simply sees the old
+disappearance.
+
+**Verification:** `npm run build` clean. A temporary headless check fired a bolt into open floor and
+found the `DISSOLVE` event with the owner and type; a second bolt stopped by the training drone produced
+the hit path with no dissolve. The temporary script was removed. Browser console clean after reload.
+
+**Next:** watch a full autoplay match for event volume. A deep gauntlet wave with many bolts expiring at
+once should still fit the event budget comfortably, but that measurement is not taken yet.

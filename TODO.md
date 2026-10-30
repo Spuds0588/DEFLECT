@@ -2,7 +2,24 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.54 arena laser emitters)
+Last updated: 2026-10-30 (v0.1.55 projectile dissolve)
+
+---
+
+## v0.1.55 — A projectile that runs out of range dissolves (2026-10-30)
+
+- [x] `EV.DISSOLVE` (40) emitted when a general projectile's fuse reaches zero without a body or
+      cover hit; `power` carries the projectile type and `slot` carries the owner
+- [x] `Fx` turns the event into a small shard fizzle: larger shapes (spear, broom, needle, mouth,
+      hourglass) leave six pieces, bolts and hostile shots four; hostile fire uses the danger tint and
+      player fire uses the owner's program colour
+- [x] No shake, flash or sound. A body hit, cover stop, mine detonation or bomb blast keeps its
+      existing feedback and never emits `DISSOLVE`
+- [x] Event-driven, so an online guest sees the same fizzle from the snapshot event list. No new
+      snapshot field or packet shape; the event vocabulary gains one kind
+- [x] Docs: AGENTS D5, this entry; build stamped 0.1.55
+- [x] `npm run build` clean; headless check confirms a free-flying bolt emits DISSOLVE at TTL and a
+      bolt stopped by the training drone does not
 
 ---
 

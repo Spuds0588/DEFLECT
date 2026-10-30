@@ -125,6 +125,18 @@ export class Fx {
         this.flashColor = '#ffffff';
         break;
       }
+      case EV.DISSOLVE: {
+        // A shot that simply ran out of range breaks into a small shard fizzle. Bigger
+        // shapes (spear, broom, needle, mouth, hourglass) leave a few more pieces than
+        // a bolt, and hostile fire uses the danger tint instead of a program colour.
+        const tint = ev.slot >= 0 ? ev.slot : P_COLOR_DANGER;
+        const bits = ev.power >= 5 ? 6 : 4;
+        this.particles.shards(ev.x, ev.y, bits, tint, 24, 110);
+        this.particles.burst(ev.x, ev.y, 4, tint, 18, 80);
+        this.particles.burst(ev.x, ev.y, 2, P_COLOR_WHITE, 12, 50);
+        this.particles.ring(ev.x, ev.y, tint, 2, 18, 0.16);
+        break;
+      }
       case EV.WORM_HIT: {
         this.particles.impact(ev.x, ev.y, ev.dirX, ev.dirY, P_COLOR_WORM, 12);
         this.shake = Math.max(this.shake, 2.5);
