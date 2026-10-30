@@ -16,12 +16,15 @@ import {
   SENTRY,
   THRALL,
   TRAINING,
+  TRAVEL,
+  TRAVERSE,
   VIEW_H,
   VIEW_W,
   VIRUS,
   WORM,
+  type Rect,
 } from './config';
-import { ARENAS, type ArenaDef } from './arenas';
+import { ARENAS, arenaSolids, type ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
 import {
   clearPlayerForSpawn,
@@ -73,6 +76,8 @@ const EVENT_CAPACITY = MAX_EVENTS * 2;
 export class World {
   readonly mode: GameMode;
   readonly arena: ArenaDef;
+  /** Cover plus floor gaps. Bodies collide with this; shots only respect cover. */
+  private readonly solids: readonly Rect[];
   readonly selectedProgram: number;
   readonly players: Player[];
   readonly projectiles: Projectile[];
@@ -182,6 +187,7 @@ export class World {
     this.mode = mode;
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
+    this.solids = arenaSolids(arena);
     this.gauntletPractice = gauntletPractice;
     this.localSlot = localSlot;
     this.selectedProgram = clampProgram(program);
@@ -491,6 +497,14 @@ export class World {
       p.prevY = p.y;
       p.prevFacing = p.facing;
 
+      // A ride owns the body: no steering, no attacks, no damage until the car or
+      // the pad lets go. The position was already moved to the far plate.
+      if (p.travelCd > 0) p.travelCd = Math.max(0, p.travelCd - dt);
+      if (p.travelT > 0) {
+        this.tickTravel(p, dt);
+        continue;
+      }
+
       if (p.dashT > 0) p.dashT = Math.max(0, p.dashT - dt);
       if (p.dashCd > 0) {
         p.dashCd = Math.max(0, p.dashCd - dt);
@@ -774,7 +788,7 @@ export class World {
         laserBusy || !input ? 0 : input.mx,
         laserBusy || !input ? 0 : input.my,
         dt,
-        this.arena.pillars,
+        this.solids,
         this.arena.bounds,
       );
       this.resolveBarrier(p);
@@ -782,6 +796,7 @@ export class World {
       if (p.dashT > 0 && p.dashKind === 1) this.resolveChargeDash(p);
       if (p.wedgeT > 0) this.resolveWedgeCharge(p);
       if (p.bashT > 0) this.resolveBracket(p);
+      this.checkTravel(p, canAct, dt);
     }
 
     if (this.mode === 'training' || this.mode === 'gauntlet') this.updatePickups(dt);
@@ -810,6 +825,162 @@ export class World {
     }
 
     this.clearPressed(inputs);
+  }
+
+  /** One tick of a ride. Lift bodies are already on the far plate; pads swap at half. */
+  private tickTravel(p: Player, dt: number): void {
+    p.iframes = Math.max(p.iframes, 0.05);
+    p.vx = 0;
+    p.vy = 0;
+    p.kx = 0;
+    p.ky = 0;
+    p.travelT = Math.max(0, p.travelT - dt);
+    // The pad unloads the avatar in layers at the source, then reloads it at the mate.
+    // The swap lands exactly where the unload finishes, so no frame shows a pop.
+    if (p.travelKind === TRAVEL.pad && !p.travelSwap && p.travelT <= p.travelDur * 0.5) {
+      p.travelSwap = true;
+      p.x = p.travelToX;
+      p.y = p.travelToY;
+      p.prevX = p.x;
+      p.prevY = p.y;
+    }
+    if (p.travelT > 0) return;
+    p.travelKind = TRAVEL.none;
+    p.travelDur = 0;
+    p.travelSwap = false;
+    p.travelLatch = true;
+    p.travelCd = TRAVERSE.cooldown;
+    p.iframes = Math.max(p.iframes, 0.25);
+  }
+
+  /**
+   * Pads and lifts arm on a standing body, not on touch. A moving player crosses a plate
+   * without noticing; a waiting one sees the progress ring fill. An arrival plate stays
+   * latched until the body steps off, so the return trip is always a choice.
+   */
+  private checkTravel(p: Player, canAct: boolean, dt: number): void {
+    const tr = this.arena.traverse;
+    if (!tr || !canAct) {
+      p.travelDwell = 0;
+      p.travelKind = TRAVEL.none;
+      return;
+    }
+
+    let pad = -1;
+    let lift = -1;
+    for (let i = 0; i < tr.pads.length; i++) {
+      const dx = p.x - tr.pads[i].x;
+      const dy = p.y - tr.pads[i].y;
+      if (dx * dx + dy * dy <= tr.pads[i].radius * tr.pads[i].radius) {
+        pad = i;
+        break;
+      }
+    }
+    if (pad < 0) {
+      for (let i = 0; i < tr.lifts.length; i++) {
+        const dx = p.x - tr.lifts[i].x;
+        const dy = p.y - tr.lifts[i].y;
+        if (dx * dx + dy * dy <= tr.lifts[i].radius * tr.lifts[i].radius) {
+          lift = i;
+          break;
+        }
+      }
+    }
+    if (pad < 0 && lift < 0) {
+      p.travelDwell = 0;
+      p.travelKind = TRAVEL.none;
+      p.travelLatch = false;
+      return;
+    }
+    if (p.travelLatch || p.travelCd > 0) {
+      p.travelDwell = 0;
+      return;
+    }
+
+    const busy =
+      p.swingPhase !== 0 ||
+      p.dashT > 0 ||
+      p.wedgeT > 0 ||
+      p.bashT > 0 ||
+      p.waveT > 0 ||
+      p.laserT > 0 ||
+      p.laserChargeHeld ||
+      p.netDrawing;
+    if (busy || p.vx * p.vx + p.vy * p.vy > TRAVERSE.dwellSpeed * TRAVERSE.dwellSpeed) {
+      p.travelDwell = 0;
+      return;
+    }
+
+    let toX = p.x;
+    let toY = p.y;
+    let ride = 0;
+    let kind: number = TRAVEL.none;
+    if (pad >= 0) {
+      let mate = -1;
+      for (let i = 0; i < tr.pads.length; i++) {
+        if (i !== pad && tr.pads[i].pair === tr.pads[pad].pair) {
+          mate = i;
+          break;
+        }
+      }
+      if (mate < 0) return;
+      toX = tr.pads[mate].x;
+      toY = tr.pads[mate].y;
+      ride = TRAVERSE.padRide;
+      kind = TRAVEL.pad;
+    } else {
+      const dest = tr.lifts[tr.lifts[lift].link];
+      if (!dest) return;
+      toX = dest.x;
+      toY = dest.y;
+      ride = TRAVERSE.liftRide;
+      kind = TRAVEL.lift;
+    }
+
+    p.travelKind = kind;
+    p.travelDwell += dt;
+    const needed = kind === TRAVEL.lift ? TRAVERSE.liftDwell : TRAVERSE.padDwell;
+    if (p.travelDwell < needed) return;
+
+    // Commit. The body crosses immediately; the renderer's transition covers the cut.
+    p.travelDwell = 0;
+    p.travelT = ride;
+    p.travelDur = ride;
+    p.travelLatch = true;
+    p.travelToX = toX;
+    p.travelToY = toY;
+    p.travelSwap = false;
+    if (kind === TRAVEL.lift) {
+      p.x = toX;
+      p.y = toY;
+      p.prevX = toX;
+      p.prevY = toY;
+    } else {
+      // Pads keep the body at the source while it unloads; tickTravel swaps at half.
+      p.prevX = p.x;
+      p.prevY = p.y;
+    }
+    p.vx = 0;
+    p.vy = 0;
+    p.kx = 0;
+    p.ky = 0;
+    p.iframes = Math.max(p.iframes, ride + 0.25);
+    p.swingPhase = 0;
+    p.swingT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    p.dashChargeHeld = false;
+    p.dashT = 0;
+    p.wedgeT = 0;
+    p.bashT = 0;
+    p.laserT = 0;
+    p.laserChargeT = 0;
+    p.laserChargeHeld = false;
+    p.guardT = 0;
+    p.waveT = 0;
+    p.netDrawing = false;
+    p.moveDirX = Math.cos(p.facing);
+    p.moveDirY = Math.sin(p.facing);
   }
 
   clearEvents(): void {
@@ -1566,8 +1737,8 @@ export class World {
       return false;
     }
     const probe = WEDGE.wallThickness * 0.5 + PLAYER.radius * 0.35;
-    for (let i = 0; i < this.arena.pillars.length; i++) {
-      const pillar = this.arena.pillars[i];
+    for (let i = 0; i < this.solids.length; i++) {
+      const pillar = this.solids[i];
       if (circleRect(cx, cy, probe, pillar, hitScratch)) return false;
       if (circleRect(x1, y1, probe, pillar, hitScratch)) return false;
       if (circleRect(x2, y2, probe, pillar, hitScratch)) return false;
@@ -2875,7 +3046,7 @@ export class World {
     dirY: number,
     force: number,
   ): void {
-    if (!p.alive || p.iframes > 0 || p.ghostT > 0) return;
+    if (!p.alive || p.iframes > 0 || p.ghostT > 0 || p.travelT > 0) return;
     p.hp -= amount;
     p.hitFlash = PLAYER.hitFlash;
     p.kx += dirX * force;
@@ -3228,8 +3399,8 @@ export class World {
     const pad = d.radius + 10;
     d.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, d.x));
     d.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, d.y));
-    for (let i = 0; i < this.arena.pillars.length; i++) {
-      if (circleRect(d.x, d.y, d.radius, this.arena.pillars[i], hitScratch)) {
+    for (let i = 0; i < this.solids.length; i++) {
+      if (circleRect(d.x, d.y, d.radius, this.solids[i], hitScratch)) {
         d.x = hitScratch.px;
         d.y = hitScratch.py;
         this.pickDroneTarget();
@@ -3254,8 +3425,8 @@ export class World {
       const x = this.rng.range(this.arena.bounds.left + 120, this.arena.bounds.right - 120);
       const y = this.rng.range(this.arena.bounds.top + 120, this.arena.bounds.bottom - 120);
       let blocked = false;
-      for (let i = 0; i < this.arena.pillars.length; i++) {
-        const rect = this.arena.pillars[i];
+      for (let i = 0; i < this.solids.length; i++) {
+        const rect = this.solids[i];
         if (
           x > rect.x - 70 &&
           x < rect.x + rect.w + 70 &&
@@ -3289,8 +3460,10 @@ export class World {
     d.netPinT = 0;
     this.pickDroneTarget();
     const initialSpawn = this.arena.spawns[2];
-    d.x = initial ? initialSpawn.x : this.rng.range(this.arena.bounds.left + 150, this.arena.bounds.right - 150);
-    d.y = initial ? initialSpawn.y : this.rng.range(this.arena.bounds.top + 120, this.arena.bounds.bottom - 120);
+    // pickDroneTarget already chose a point clear of cover and floor gaps, so respawns
+    // use it instead of a raw random point that could land in a trench.
+    d.x = initial ? initialSpawn.x : d.targetX;
+    d.y = initial ? initialSpawn.y : d.targetY;
     d.prevX = d.x;
     d.prevY = d.y;
     d.x = Math.max(this.arena.bounds.left + d.radius, Math.min(this.arena.bounds.right - d.radius, d.x));
@@ -3442,8 +3615,8 @@ export class World {
       const x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, originX + Math.cos(angle) * dist));
       const y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, originY + Math.sin(angle) * dist));
       let blocked = false;
-      for (let i = 0; i < this.arena.pillars.length; i++) {
-        if (circleRect(x, y, POWERUP.radius + 6, this.arena.pillars[i], hitScratch)) {
+      for (let i = 0; i < this.solids.length; i++) {
+        if (circleRect(x, y, POWERUP.radius + 6, this.solids[i], hitScratch)) {
           blocked = true;
           break;
         }
@@ -3734,8 +3907,8 @@ export class World {
     ) {
       return false;
     }
-    for (let i = 0; i < this.arena.pillars.length; i++) {
-      if (circleRect(x, y, radius + 4, this.arena.pillars[i], hitScratch)) return false;
+    for (let i = 0; i < this.solids.length; i++) {
+      if (circleRect(x, y, radius + 4, this.solids[i], hitScratch)) return false;
     }
     return true;
   }
@@ -3900,8 +4073,8 @@ export class World {
 
   /** True collision with cover, used by worms and sentries. */
   private pushOutOfCover(body: { x: number; y: number; vx: number; vy: number }, radius: number): void {
-    for (let i = 0; i < this.arena.pillars.length; i++) {
-      if (!circleRect(body.x, body.y, radius, this.arena.pillars[i], hitScratch)) continue;
+    for (let i = 0; i < this.solids.length; i++) {
+      if (!circleRect(body.x, body.y, radius, this.solids[i], hitScratch)) continue;
       body.x = hitScratch.px;
       body.y = hitScratch.py;
       const vn = body.vx * hitScratch.nx + body.vy * hitScratch.ny;
@@ -4034,8 +4207,8 @@ export class World {
     ) {
       return false;
     }
-    for (let i = 0; i < this.arena.pillars.length; i++) {
-      if (circleRect(x, y, r, this.arena.pillars[i], hitScratch)) return false;
+    for (let i = 0; i < this.solids.length; i++) {
+      if (circleRect(x, y, r, this.solids[i], hitScratch)) return false;
     }
     for (let i = 0; i < this.errors.length; i++) {
       const e = this.errors[i];
@@ -4353,8 +4526,8 @@ export class World {
       }
       w.segX[i] = Math.max(this.arena.bounds.left + WORM.segmentRadius, Math.min(this.arena.bounds.right - WORM.segmentRadius, w.segX[i]));
       w.segY[i] = Math.max(this.arena.bounds.top + WORM.segmentRadius, Math.min(this.arena.bounds.bottom - WORM.segmentRadius, w.segY[i]));
-      for (let p = 0; p < this.arena.pillars.length; p++) {
-        if (!circleRect(w.segX[i], w.segY[i], WORM.segmentRadius, this.arena.pillars[p], hitScratch)) continue;
+      for (let p = 0; p < this.solids.length; p++) {
+        if (!circleRect(w.segX[i], w.segY[i], WORM.segmentRadius, this.solids[p], hitScratch)) continue;
         w.segX[i] = hitScratch.px;
         w.segY[i] = hitScratch.py;
       }
@@ -4519,8 +4692,8 @@ export class World {
   }
 
   private nudgeVirusFromCover(v: Virus): void {
-    for (let i = 0; i < this.arena.pillars.length; i++) {
-      if (circleRect(v.x, v.y, v.radius, this.arena.pillars[i], hitScratch)) {
+    for (let i = 0; i < this.solids.length; i++) {
+      if (circleRect(v.x, v.y, v.radius, this.solids[i], hitScratch)) {
         v.x = hitScratch.px;
         v.y = hitScratch.py;
       }
@@ -4757,8 +4930,8 @@ export class World {
       sx = Math.max(this.arena.bounds.left + PLAYER.radius, Math.min(this.arena.bounds.right - PLAYER.radius, sx));
       sy = Math.max(this.arena.bounds.top + PLAYER.radius, Math.min(this.arena.bounds.bottom - PLAYER.radius, sy));
       clear = true;
-      for (let i = 0; i < this.arena.pillars.length; i++) {
-        if (circleRect(sx, sy, PLAYER.radius, this.arena.pillars[i], hitScratch)) {
+      for (let i = 0; i < this.solids.length; i++) {
+        if (circleRect(sx, sy, PLAYER.radius, this.solids[i], hitScratch)) {
           clear = false;
           break;
         }

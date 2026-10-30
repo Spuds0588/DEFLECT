@@ -105,6 +105,15 @@ export function createPlayer(slot: number): Player {
     wallT: 0,
     wallFacing: 0,
     slowT: 0,
+    travelKind: 0,
+    travelT: 0,
+    travelDur: 0,
+    travelDwell: 0,
+    travelCd: 0,
+    travelLatch: false,
+    travelToX: 0,
+    travelToY: 0,
+    travelSwap: false,
     netPinT: 0,
     waveT: 0,
     waveCd: 0,
@@ -436,6 +445,15 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.ghostT = 0;
   p.wallT = 0;
   p.slowT = 0;
+  p.travelKind = 0;
+  p.travelT = 0;
+  p.travelDur = 0;
+  p.travelDwell = 0;
+  p.travelCd = 0;
+  p.travelLatch = false;
+  p.travelToX = x;
+  p.travelToY = y;
+  p.travelSwap = false;
   p.bugCd = 0;
   p.powerupKind = -1;
   p.powerupT = 0;

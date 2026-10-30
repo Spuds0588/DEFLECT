@@ -132,6 +132,34 @@ export const PLAYER = {
   slideDustSpacing: 12,
 } as const;
 
+/**
+ * Floor traversal. Pads and lifts are floor content, not a new movement mode: the body
+ * must be standing still on the plate for the dwell timer, then the ride owns it.
+ */
+export const TRAVERSE = {
+  /** Standing still on a paired pad for this long sends you to its mate. */
+  padDwell: 0.32,
+  /** Pad transit. Half is the unload at the source, half the reload at the mate. */
+  padRide: 0.36,
+  /** Standing still on a lift plate this long calls the car. */
+  liftDwell: 0.55,
+  /** The car's travel time. The screen transition runs for the same window. */
+  liftRide: 1.55,
+  /** Applies after any ride. An arrival plate also needs a step off before it re-arms. */
+  cooldown: 0.35,
+  /** Bodies moving faster than this are crossing a plate, not waiting on it. */
+  dwellSpeed: 70,
+  /** Progress ring radius, measured outward from the hull so it clears the health segments. */
+  dwellRing: 16,
+} as const;
+
+/** Player travel state kind. Kept as numbers so it can live on the reused player record. */
+export const TRAVEL = {
+  none: 0,
+  pad: 1,
+  lift: 2,
+} as const;
+
 /** Fast close-range bolt. A near-continuous five-shot stream with a short recharge. */
 export const BOLT = {
   radius: 7,

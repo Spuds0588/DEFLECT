@@ -212,6 +212,21 @@ export interface Player {
   /** Trap slow remaining (applies to movement speed). */
   slowT: number;
   /**
+   * Floor traversal. `travelKind` names the plate being waited on or ridden (TRAVEL),
+   * `travelT` is the remaining ride, `travelDwell` is the wait so far, and
+   * `travelLatch` forces one step off an arrival plate before it can arm again.
+   */
+  travelKind: number;
+  travelT: number;
+  travelDur: number;
+  travelDwell: number;
+  travelCd: number;
+  travelLatch: boolean;
+  /** Pad ride endpoint. The body stays at the source until the unload finishes. */
+  travelToX: number;
+  travelToY: number;
+  travelSwap: boolean;
+  /**
    * Fisher's web holds this body in place. Refreshed every tick it is inside a web,
    * so a caught player, bot or thrall stays stuck until the web expires; a dash tears
    * through it because a dodge phases geometry.

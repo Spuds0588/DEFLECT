@@ -5,6 +5,38 @@ export interface SpawnPoint {
   y: number;
 }
 
+/** A paired teleporter plate. `pair` groups two plates into one link. */
+export interface ArenaPadDef {
+  x: number;
+  y: number;
+  radius: number;
+  pair: number;
+}
+
+/** A lift plate. `link` is the index of the plate at the other deck. */
+export interface ArenaLiftDef {
+  x: number;
+  y: number;
+  radius: number;
+  link: number;
+}
+
+/**
+ * Optional floor traversal. The chasms are real body-blockers: bodies walk the bridge
+ * around them, projectiles fly over them. Pads and lifts are the other two routes across.
+ * Everything here is geometry + presentation, like the rest of the arena record.
+ */
+export interface ArenaTraversalDef {
+  /** Open floor gaps. Bodies cannot enter; shots cross them. */
+  chasms: Rect[];
+  /** Deck plates drawn across a gap. Walkable because the chasm leaves that span open. */
+  bridges: Rect[];
+  /** Raised deck treatment. Purely visual; the pads and lifts make the deck change real. */
+  upperDecks: Rect[];
+  pads: ArenaPadDef[];
+  lifts: ArenaLiftDef[];
+}
+
 /**
  * An arena is pure geometry + presentation. Collision, spawns, prediction, rendering and
  * the host snapshot all read this one definition so a guest can never simulate a different map.
@@ -24,6 +56,8 @@ export interface ArenaDef {
   pillars: Rect[];
   /** Ordered around the perimeter. Spawn selection spreads evenly for any player count. */
   spawns: SpawnPoint[];
+  /** Multi-deck floor content. Absent means a flat arena. */
+  traverse?: ArenaTraversalDef;
 }
 
 const perimeterSpawns: SpawnPoint[] = [
@@ -197,6 +231,59 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 230, y: 260 },
     ],
   },
+  {
+    id: 5,
+    name: 'TRANSIT',
+    tagline: 'Bridge, pad or lift. Pick a lane.',
+    hudLabel: 'ARENA // TRANSIT',
+    accent: '#5aa8ff',
+    accentSoft: 'rgba(90, 168, 255, 0.32)',
+    accentFaint: 'rgba(90, 168, 255, 0.03)',
+    signature: 3,
+    bounds: { left: 48, top: 48, right: 2352, bottom: 1232 },
+    // Two decks over a service trench. The trench splits into two blockers with one
+    // walkable span left open for the bridge, so the only ground route is the deck.
+    pillars: [
+      // Upper deck.
+      { x: 700, y: 120, w: 120, h: 140 },
+      { x: 700, y: 340, w: 120, h: 100 },
+      { x: 1450, y: 140, w: 160, h: 130 },
+      { x: 2150, y: 150, w: 110, h: 110 },
+      // Lower deck.
+      { x: 400, y: 1000, w: 120, h: 100 },
+      { x: 820, y: 950, w: 130, h: 100 },
+      { x: 1450, y: 860, w: 140, h: 110 },
+      { x: 1900, y: 1080, w: 150, h: 100 },
+    ],
+    spawns: [
+      { x: 1090, y: 1180 },
+      { x: 1600, y: 1180 },
+      { x: 2250, y: 1180 },
+      { x: 2250, y: 900 },
+      { x: 1090, y: 820 },
+      { x: 600, y: 1180 },
+      { x: 120, y: 1180 },
+      { x: 120, y: 820 },
+    ],
+    traverse: {
+      chasms: [
+        { x: 48, y: 500, w: 1042, h: 260 },
+        { x: 1230, y: 500, w: 1122, h: 260 },
+      ],
+      bridges: [{ x: 1090, y: 500, w: 140, h: 260 }],
+      upperDecks: [{ x: 48, y: 48, w: 2304, h: 452 }],
+      // Paired pads on the west end: the fast crossing, with a short materialize lock.
+      pads: [
+        { x: 330, y: 930, radius: 46, pair: 0 },
+        { x: 330, y: 330, radius: 46, pair: 0 },
+      ],
+      // Lift on the east end: slower than a pad, but it puts you on the deck behind cover.
+      lifts: [
+        { x: 1980, y: 950, radius: 62, link: 1 },
+        { x: 1980, y: 320, radius: 62, link: 0 },
+      ],
+    },
+  },
 ];
 
 export function getArena(index: number): ArenaDef {
@@ -207,6 +294,26 @@ export function getArena(index: number): ArenaDef {
 export function arenaIndexById(id: number): number {
   for (let i = 0; i < ARENAS.length; i++) if (ARENAS[i].id === id) return i;
   return 0;
+}
+
+/**
+ * Everything a body collides with: cover plus the floor gaps of a multi-deck arena.
+ * Projectiles keep using `arena.pillars` alone because they fly over a trench.
+ * Built once per arena, shared by the world, the guest predictor and bot pathing.
+ */
+const SOLIDS: (readonly Rect[])[] = [];
+
+export function arenaSolids(arena: ArenaDef): readonly Rect[] {
+  let solids = SOLIDS[arena.id];
+  if (!solids) {
+    const list = arena.pillars.slice();
+    if (arena.traverse) {
+      for (let i = 0; i < arena.traverse.chasms.length; i++) list.push(arena.traverse.chasms[i]);
+    }
+    solids = list;
+    SOLIDS[arena.id] = solids;
+  }
+  return solids;
 }
 
 /**
@@ -236,6 +343,37 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
   ctx.lineWidth = 1;
   ctx.strokeRect(mapX(bounds.left), mapY(bounds.top), (bounds.right - bounds.left) * sx, (bounds.bottom - bounds.top) * sy);
   ctx.globalAlpha = 1;
+
+  // Multi-deck floor: raised deck tint, open trench, deck plate, then the transit plates.
+  if (arena.traverse) {
+    const tr = arena.traverse;
+    ctx.fillStyle = 'rgba(90, 168, 255, 0.16)';
+    for (let i = 0; i < tr.upperDecks.length; i++) {
+      const r = tr.upperDecks[i];
+      ctx.fillRect(mapX(r.x), mapY(r.y), r.w * sx, r.h * sy);
+    }
+    ctx.fillStyle = '#02050a';
+    for (let i = 0; i < tr.chasms.length; i++) {
+      const r = tr.chasms[i];
+      ctx.fillRect(mapX(r.x), mapY(r.y), r.w * sx, r.h * sy);
+    }
+    ctx.fillStyle = 'rgba(180, 226, 255, 0.4)';
+    for (let i = 0; i < tr.bridges.length; i++) {
+      const r = tr.bridges[i];
+      ctx.fillRect(mapX(r.x), mapY(r.y), Math.max(1, r.w * sx), r.h * sy);
+    }
+    ctx.strokeStyle = arena.accent;
+    for (let i = 0; i < tr.pads.length; i++) {
+      ctx.beginPath();
+      ctx.arc(mapX(tr.pads[i].x), mapY(tr.pads[i].y), 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (let i = 0; i < tr.lifts.length; i++) {
+      const px = mapX(tr.lifts[i].x);
+      const py = mapY(tr.lifts[i].y);
+      ctx.strokeRect(px - 3, py - 3, 6, 6);
+    }
+  }
 
   ctx.fillStyle = '#08121d';
   ctx.strokeStyle = arena.accentSoft;

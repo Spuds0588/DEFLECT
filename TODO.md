@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-29 (v0.1.25 bot skill pass, solo training, traversal and magic-user plans)
+Last updated: 2026-10-29 (v0.1.26 multi-deck traversal arena and pad transit)
 
 ---
 
@@ -1038,66 +1038,57 @@ The 8-player cap stands as a product decision; the real test is still eight actu
 - [ ] Tauri shell spike (wrap the built PWA, window config, no Rust logic yet)
 - [ ] Mobile/touch fallback investigation (PWA audience) — decide before adding
 
-## Arena traversal — bridges, pads and lifts (design 2026-10-29)
+## Arena traversal — bridges, pads and lifts (built 2026-10-29)
 
-The campaign needs movement between arena nodes before a mixed traversal arena can be built. This is a
-design and build order, not an approved runtime yet. `CAMPAIGN.md` already names bridges, paired pads and
-a shared lift; these tasks turn that grammar into playable geometry.
+The continuous-arena model is now implemented. `ArenaDef.traverse` carries chasms, bridge decks, upper
+deck treatment, paired pads and linked lift plates; `TRANSIT` mixes all three. Bodies collide with
+`arenaSolids()` (cover plus chasms), while shots and lasers still use `pillars` and cross a trench.
+Campaign node transitions remain future work; this pass proves the geometry, the sim rules and the read.
 
-### Decisions to settle first
-- [ ] Choose the transition model: one continuous arena with internal bridges, or one `ArenaDef` per node
-      with a short cut between them. Decide whether a transition is a fade, an assembly, or a camera
-      move, and keep it local-only until networked PvE has a protocol
-- [ ] Define traversal ownership: the host runs the link, the local party follows, and guests would receive
-      only the resulting node id once a protocol exists. Never put arena geometry in `Snapshot`
-- [ ] Decide whether traversal is available during a fight, only between encounters, or only after the
-      room's threats are dead
-- [ ] Define the party rule: one player on a pad moves everyone, or only the players standing on it
-- [ ] Decide how bots follow a link: host pathing to the trigger, auto-travel with the party, or left behind
+### Built
+- [x] Continuous arena model: a bridge is arena geometry, not a separate scene; the follow camera already
+      handles the wider bounds. No geometry or traversal state enters `Snapshot`
+- [x] `TRANSIT`: two decks over a split trench, one central bridge, paired pads on the west and a two-stop
+      lift on the east
+- [x] Chasms block bodies, drones, worms, viruses, sentries and placement checks; shots, lasers and
+      firewall beams cross them. A dodge still phases solids, so a charged dash can cross the gap
+- [x] Bots use a 20 u grid built from `arenaSolids()` and force a route when the straight walk crosses a
+      gap, so a clean firing line no longer walks them into the trench lip
+- [x] Paired pads arm on a still body (0.32 s dwell), lock input, cancel attacks and ignore damage for the
+      ride, and stay latched after arrival until the body steps off
+- [x] Pad transit unloads the avatar's hull, core and glyph in order at the source, swaps at the midpoint,
+      then rebuilds them at the mate. Ride time is 0.36 s, down from the first 0.5 s pass
+- [x] Lift plates arm on a 0.55 s stand and ride for 1.55 s under a shrinking-deck screen transition
+- [x] Headless checks: trench blocks a walk, bridge crosses, pad dwell/ride/latch, lift ride, moving body
+      ignores pads, A* route crosses only on the bridge, and a digital bot walks itself across
+- [x] Browser: TRANSIT selectable as the sixth arena; pad ride landed at the mate; lift ride landed on the
+      upper plate; holding W crossed the bridge from the lower deck to the top wall; bot match and
+      gauntlet spawned no threat inside the trench
 
-### Bridges
-- [ ] Pick the representation: a corridor baked into an `ArenaDef` (walkable, can hold cover and a gate),
-      or a lightweight link record with its own short scene. Prefer arena geometry for the first build
-- [ ] Test a bridge as a choke: cover on both sides, a gate that opens after the encounter, no camera cut
-      while a player is on it. The follow camera already handles long arenas
-- [ ] Give a gate a visible `CLOSED` state without adding a second collision system
-- [ ] Confirm 8 players and bots can cross a bridge without clipping cover or dropping nav routes
-
-### Transporter pads
-- [ ] Add a paired portal record (point A, point B, arrival facing, cooldown) as arena data. Pads are not
-      projectiles: no physics, no deflection, no damage
-- [ ] Stand-to-trigger with a short materialise (target 0.4 s), destination facing, and a cooldown so a
-      player cannot bounce between pads while holding a direction
-- [ ] Decide the pad read: floor ring, fill, arrival burn, and what a locked pad looks like
-- [ ] Do not accept a player during hitstun, a net pin, or a rooted heavy; decide the same rule for bots and
-      the training drone
-
-### Lifts
-- [ ] The lift is a small circular `ArenaDef` with a shared floor selector, not a menu. Players enter, pick a
-      floor, and the whole party arrives together
-- [ ] Visual A (preferred): draw the level below as large concentric shapes that shrink toward the lift
-      arena's center while rising, like the ground falling away from a rocket. Scale and opacity only; no
-      per-frame gradients and no post-processing. Hold the ride for a short mechanical beat
-- [ ] Visual B (fallback): fade out the other level layers, hold the cabin, then fade the destination back
-      in after a set time. Cheaper and easier to read if Visual A makes players motion-sick
-- [ ] Decide whether the lift moves through playable floors (a real vertical arena stack) or is a
-      transition between separate arenas
-- [ ] Keep the lift geometry static; the illusion lives in render layers, not in world movement
-
-### Then: mixed traversal multiplayer arena
-- [ ] Build one new `ArenaDef` only after bridges, pads and the lift have each been tested alone. It should
-      contain a bridge choke, one paired pad and a central lift, with every route readable on one screen
-- [ ] Decide the PvP rule for each link: pads and lifts probably carry combat state, so a player cannot
-      escape a lost fight for free. Record the rule in `AGENTS.md` when chosen
-- [ ] Verify bots path across all three links, and that the camera, minimap and spawn ring still work
-- [ ] Keep the mixed arena available to PvP as ordinary arena geometry; do not fork competitive `World`
-      into a campaign-only mode
-- [ ] Use the finished arena as the blockout reference for the campaign's first playable sector
+### Next
+- [ ] Party rule for pads and lifts: one rider moves everyone, or only the bodies standing on the plate.
+      Decide alongside local multiplayer, not before
+- [ ] Threat traversal: let worms, viruses and infected bodies follow a pad ride into the linked room,
+      with a per-family cooldown and cap. The pad is the player's escape hatch, and the same unload window
+      is what lets a chasing threat or a virus spill across after them. This is how viruses spread across
+      campaign arenas; do not let a whole wave spill through one plate in a single ride
+- [ ] Add travel state to the network snapshot or a dedicated packet so a guest sees the unload/reload and
+      gets a clean camera cut instead of a prediction snap. Protocol change, so record it in `AGENTS.md`
+- [ ] Campaign node loader: one node at a time, party state, host authority, and the bridge/pad/lift cut
+      between nodes. Keep geometry out of `Snapshot` until networked PvE has its own decision
+- [ ] Give a bridge gate a visible `CLOSED` state without adding a second collision system
+- [ ] Decide whether a lift ever serves more than two plates (a floor selector), and how that reads
+      without a menu
+- [ ] Confirm 8 local players and bots cross all three links without clipping cover or dropping routes
+- [ ] Use `TRANSIT` as the blockout reference for the campaign's first playable sector
+- [ ] Re-measure the render cost of the new deck layers with `F3` on the 8P stress case
 
 ### Verification
-- [ ] A bridge, a pad and a lift each work in a local test arena with bots and 2–8 local players
-- [ ] No traversal element writes geometry, programs or sector state into `Snapshot`
-- [ ] The elevator illusion holds 60 fps inside the render budget in AGENTS §8
+- [x] A bridge, a pad and a lift work in a local test arena with a bot walk and a browser session
+- [x] No traversal element writes geometry, programs or sector state into `Snapshot`
+- [x] The lift and pad transitions are scale/opacity strokes only; no `shadowBlur`, filter or per-frame
+      gradient
+- [ ] 8-player local pass across all three links
 
 ## Threat family — magic users (placeholder 2026-10-29)
 

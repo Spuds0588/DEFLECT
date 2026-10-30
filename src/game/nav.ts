@@ -1,5 +1,5 @@
 import { PLAYER, type Bounds } from './config';
-import type { ArenaDef } from './arenas';
+import { arenaSolids, type ArenaDef } from './arenas';
 
 /**
  * Bots need to walk around concave cover, not just strafe at it. This is a small
@@ -34,6 +34,7 @@ export class ArenaNav {
   private generation = 0;
 
   constructor(arena: ArenaDef) {
+    const solids = arenaSolids(arena);
     this.bounds = arena.bounds;
     this.cols = Math.max(1, Math.floor((this.bounds.right - this.bounds.left) / CELL));
     this.rows = Math.max(1, Math.floor((this.bounds.bottom - this.bounds.top) / CELL));
@@ -54,8 +55,8 @@ export class ArenaNav {
         const x = this.bounds.left + c * CELL + CELL * 0.5;
         const y = this.bounds.top + r * CELL + CELL * 0.5;
         let blocked = 0;
-        for (let i = 0; i < arena.pillars.length; i++) {
-          const p = arena.pillars[i];
+        for (let i = 0; i < solids.length; i++) {
+          const p = solids[i];
           // Conservative expanded box: no path cell can touch cover.
           if (
             x > p.x - CLEARANCE &&

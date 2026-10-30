@@ -1,6 +1,6 @@
-import { BOLT, BUG, FISHER, PLAYER, WEDGE } from './config';
+import { BOLT, BUG, FISHER, PLAYER, WEDGE, type Rect } from './config';
 import { PROGRAM_ID } from './programs';
-import type { ArenaDef } from './arenas';
+import { arenaSolids, type ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
 import { Rng } from './rng';
 import { arenaNav, NAV_MAX_PATH } from './nav';
@@ -198,8 +198,17 @@ export class BotBrain {
     // Bots must not fight while pinned to a wall: a point-blank ricochet has no
     // reaction time. Pull back toward the center lane first.
     if (this.nearWall(me, world.arena)) {
-      const cx = (world.arena.bounds.left + world.arena.bounds.right) * 0.5 - me.x;
-      const cy = (world.arena.bounds.top + world.arena.bounds.bottom) * 0.5 - me.y;
+      let tx = (world.arena.bounds.left + world.arena.bounds.right) * 0.5;
+      let ty = (world.arena.bounds.top + world.arena.bounds.bottom) * 0.5;
+      // A multi-deck arena's literal centre can be the trench. The bridge is the
+      // safe lane to pull back to instead.
+      const bridge = world.arena.traverse?.bridges[0];
+      if (bridge) {
+        tx = bridge.x + bridge.w * 0.5;
+        ty = bridge.y + bridge.h * 0.5;
+      }
+      const cx = tx - me.x;
+      const cy = ty - me.y;
       const cm = Math.hypot(cx, cy) || 1;
       out.mx = cx / cm;
       out.my = cy / cm;
@@ -238,6 +247,9 @@ export class BotBrain {
     const dist = Math.hypot(dx, dy) || 1;
     const aim = this.computeAim(me, fx, fy, fvx, fvy, dist);
     const blocked = this.lineBlocked(me, fx, fy, world.arena.pillars);
+    // Shots cross a floor gap, bodies do not. The route has to use the bridge even
+    // when the bot has a clean firing line straight at the target.
+    const gapBlocked = this.gapBlocked(me, fx, fy, world.arena);
 
     // Heavy attack: commit to a held power button now and then. The program owns what
     // that does (beam, plow or web), so the bot only has to hold, aim and release.
@@ -372,7 +384,7 @@ export class BotBrain {
     // Spacing: duelists close, tricksters orbit, siege units hold the far lane.
     let moveX = 0;
     let moveY = 0;
-    if (blocked) {
+    if (blocked || gapBlocked) {
       // Walk around cover with a grid route. Corner-only steering can pinch
       // bots between two blocks; the route handles concave layouts.
       if (this.followPath(me, fx, fy, world.arena)) {
@@ -586,17 +598,24 @@ export class BotBrain {
     return true;
   }
 
-  private lineBlocked(me: Player, tx: number, ty: number, pillars: ArenaDef['pillars']): boolean {
+  private lineBlocked(me: Player, tx: number, ty: number, pillars: readonly Rect[]): boolean {
     return this.firstBlocking(me.x, me.y, tx, ty, pillars, 10) >= 0;
   }
 
-  /** Returns the index of the first pillar crossed by a padded line, or -1. */
+  /** True when the straight walk to the target would hit a floor gap. */
+  private gapBlocked(me: Player, tx: number, ty: number, arena: ArenaDef): boolean {
+    const gaps = arena.traverse?.chasms;
+    if (!gaps) return false;
+    return this.firstBlocking(me.x, me.y, tx, ty, gaps, PLAYER.radius + 2) >= 0;
+  }
+
+  /** Returns the index of the first solid crossed by a padded line, or -1. */
   private firstBlocking(
     x0: number,
     y0: number,
     x1: number,
     y1: number,
-    pillars: ArenaDef['pillars'],
+    solids: readonly Rect[],
     pad: number,
   ): number {
     const dx = x1 - x0;
@@ -607,8 +626,8 @@ export class BotBrain {
       const t = s / steps;
       const x = x0 + dx * t;
       const y = y0 + dy * t;
-      for (let i = 0; i < pillars.length; i++) {
-        const r = pillars[i];
+      for (let i = 0; i < solids.length; i++) {
+        const r = solids[i];
         if (x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad) {
           return i;
         }
@@ -646,8 +665,9 @@ export class BotBrain {
 
     let chosen = this.pathIndex;
     const last = Math.min(this.pathCount - 1, this.pathIndex + 10);
+    const solids = arenaSolids(arena);
     for (let i = last; i >= this.pathIndex; i--) {
-      if (this.firstBlocking(me.x, me.y, this.pathX[i], this.pathY[i], arena.pillars, 12) < 0) {
+      if (this.firstBlocking(me.x, me.y, this.pathX[i], this.pathY[i], solids, 12) < 0) {
         chosen = i;
         break;
       }
@@ -716,8 +736,9 @@ export class BotBrain {
 
     const aheadX = me.x + sx * 54;
     const aheadY = me.y + sy * 54;
-    for (let i = 0; i < arena.pillars.length; i++) {
-      if (!circleRect(aheadX, aheadY, 20, arena.pillars[i], hitScratch)) continue;
+    const solids = arenaSolids(arena);
+    for (let i = 0; i < solids.length; i++) {
+      if (!circleRect(aheadX, aheadY, 20, solids[i], hitScratch)) continue;
       sx += hitScratch.nx * 1.4;
       sy += hitScratch.ny * 1.4;
       break;

@@ -1,4 +1,4 @@
-import { BOLT, BUG, CAMERA_ZOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, TRAIL_LEN, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { BOLT, BUG, CAMERA_ZOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
 import { drawGlyph, drawSymbol, pathProgramFrame, pathProgramHealth, PROGRAM_COLORS, slotColor, slotGlyph, THREAT_COLORS } from './identity';
@@ -231,6 +231,7 @@ export class Renderer {
     this.emitSlideDust(state, alpha, fx, dt);
     this.drawPlayers(state, alpha, t, intro);
     if (introDone) {
+      this.drawTravelProgress(state);
       this.drawLockReticle(state, t);
       fx.particles.draw(ctx);
     }
@@ -265,12 +266,20 @@ export class Renderer {
       this.drawReadiness(state, t);
       if (this.showMinimap) this.drawMinimap(state, t);
     }
+    this.drawTravelOverlay(state);
   }
 
   private updateCamera(state: RenderState, alpha: number, dt: number): void {
     const arena = state.arena;
     const b = arena.bounds;
     const local = state.players[state.localSlot];
+    // A pad swap is a cut, not a pan. Snap on the half where the body changes plates.
+    const padSwap = !!(
+      local &&
+      local.travelT > 0 &&
+      local.travelKind === TRAVEL.pad &&
+      local.travelSwap
+    );
     let focusX = (b.left + b.right) * 0.5;
     let focusY = (b.top + b.bottom) * 0.5;
     if (local && local.active) {
@@ -289,7 +298,7 @@ export class Renderer {
     if (spanY <= viewH) targetY = (b.top + b.bottom - viewH) * 0.5;
     else targetY = Math.max(b.top, Math.min(b.bottom - viewH, focusY - viewH * 0.5));
 
-    if (!this.camReady || this.camArena !== arena.id) {
+    if (padSwap || !this.camReady || this.camArena !== arena.id) {
       this.camX = targetX;
       this.camY = targetY;
       this.camReady = true;
@@ -416,6 +425,8 @@ export class Renderer {
     ctx.fillRect(arena.bounds.left, scanY, arena.bounds.right - arena.bounds.left, 16);
     ctx.restore();
 
+    this.drawTraversal(arena, t, frameA);
+
     // Border glow.
     ctx.save();
     ctx.globalAlpha = frameA;
@@ -533,7 +544,211 @@ export class Renderer {
     ctx.arc(cx, cy, 54, 0, TWO_PI);
     ctx.stroke();
     ctx.restore();
-    this.drawArenaSignature(arena, t, frameA);
+    if (!arena.traverse) this.drawArenaSignature(arena, t, frameA);
+  }
+
+  /**
+   * Multi-deck floor content. The chasms are drawn as open holes, the bridge as a solid
+   * deck over one, and the pads and lift plates as the two shortcuts across.
+   */
+  private drawTraversal(arena: ArenaDef, t: number, alpha: number): void {
+    const tr = arena.traverse;
+    if (!tr) return;
+    const ctx = this.ctx;
+
+    // Raised deck: a lighter plate and a hard lip where it overlooks the trench.
+    for (let i = 0; i < tr.upperDecks.length; i++) {
+      const r = tr.upperDecks[i];
+      ctx.save();
+      ctx.globalAlpha = 0.055 * alpha;
+      ctx.fillStyle = '#9ad4ff';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = arena.accentSoft;
+      ctx.globalAlpha = 0.6 * alpha;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(r.x, r.y + r.h);
+      ctx.lineTo(r.x + r.w, r.y + r.h);
+      ctx.stroke();
+      ctx.globalAlpha = 0.2 * alpha;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = r.x + 18; x < r.x + r.w - 12; x += 46) {
+        ctx.moveTo(x, r.y + r.h - 11);
+        ctx.lineTo(x + 18, r.y + r.h - 11);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Trench: no floor, a recessed lip, nothing else. The avatar falls between decks
+    // only through the pads and lift; walking off is blocked by the body collision.
+    for (let i = 0; i < tr.chasms.length; i++) {
+      const r = tr.chasms[i];
+      ctx.save();
+      ctx.fillStyle = '#02050a';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.globalAlpha = 0.45 * alpha;
+      ctx.strokeStyle = arena.accentSoft;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+      ctx.globalAlpha = 0.38 * alpha;
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(r.x, r.y + 1);
+      ctx.lineTo(r.x + r.w, r.y + 1);
+      ctx.moveTo(r.x, r.y + r.h - 1);
+      ctx.lineTo(r.x + r.w, r.y + r.h - 1);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Bridge: a solid plate with rails and ticks crawling toward the far deck.
+    for (let i = 0; i < tr.bridges.length; i++) {
+      const r = tr.bridges[i];
+      const vertical = r.h >= r.w;
+      ctx.save();
+      ctx.fillStyle = 'rgba(9, 22, 35, 0.96)';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = 'rgba(150, 212, 255, 0.05)';
+      if (vertical) ctx.fillRect(r.x + 16, r.y, Math.max(0, r.w - 32), r.h);
+      else ctx.fillRect(r.x, r.y + 16, r.w, Math.max(0, r.h - 32));
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2.5;
+      ctx.globalAlpha = 0.72 * alpha;
+      ctx.beginPath();
+      if (vertical) {
+        ctx.moveTo(r.x + 1.5, r.y);
+        ctx.lineTo(r.x + 1.5, r.y + r.h);
+        ctx.moveTo(r.x + r.w - 1.5, r.y);
+        ctx.lineTo(r.x + r.w - 1.5, r.y + r.h);
+      } else {
+        ctx.moveTo(r.x, r.y + 1.5);
+        ctx.lineTo(r.x + r.w, r.y + 1.5);
+        ctx.moveTo(r.x, r.y + r.h - 1.5);
+        ctx.lineTo(r.x + r.w, r.y + r.h - 1.5);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 0.22 * alpha;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (vertical) {
+        for (let y = r.y + 14; y < r.y + r.h - 8; y += 22) {
+          ctx.moveTo(r.x + 10, y);
+          ctx.lineTo(r.x + r.w - 10, y);
+        }
+      } else {
+        for (let x = r.x + 14; x < r.x + r.w - 8; x += 22) {
+          ctx.moveTo(x, r.y + 10);
+          ctx.lineTo(x, r.y + r.h - 10);
+        }
+      }
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.6 * alpha;
+      ctx.fillStyle = arena.accent;
+      if (vertical) {
+        const off = (t * 34) % 26;
+        for (let y = r.y + 14 + off; y < r.y + r.h - 14; y += 26) {
+          ctx.fillRect(r.x + r.w * 0.5 - 9, y, 18, 2.6);
+        }
+      } else {
+        const off = (t * 34) % 26;
+        for (let x = r.x + 14 + off; x < r.x + r.w - 14; x += 26) {
+          ctx.fillRect(x, r.y + r.h * 0.5 - 5, 2.6, 18);
+        }
+      }
+      ctx.restore();
+    }
+
+    // Paired teleporter plates. The centre arrow points at the mate, so two plates
+    // with the same mark are a route even before the first ride.
+    for (let i = 0; i < tr.pads.length; i++) {
+      const pad = tr.pads[i];
+      let mate = -1;
+      for (let k = 0; k < tr.pads.length; k++) {
+        if (k !== i && tr.pads[k].pair === pad.pair) {
+          mate = k;
+          break;
+        }
+      }
+      const pulse = 0.58 + 0.42 * Math.sin(t * 2.2 + i * 1.7);
+      ctx.save();
+      ctx.translate(pad.x, pad.y);
+      ctx.strokeStyle = arena.accent;
+      ctx.globalAlpha = (0.3 + pulse * 0.34) * alpha;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, pad.radius, 0, TWO_PI);
+      ctx.stroke();
+      ctx.globalAlpha = (0.14 + pulse * 0.16) * alpha;
+      ctx.beginPath();
+      ctx.arc(0, 0, pad.radius - 9, 0, TWO_PI);
+      ctx.stroke();
+      ctx.globalAlpha = (0.28 + pulse * 0.34) * alpha;
+      ctx.beginPath();
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * TWO_PI;
+        ctx.moveTo(Math.cos(a) * (pad.radius - 17), Math.sin(a) * (pad.radius - 17));
+        ctx.lineTo(Math.cos(a) * (pad.radius - 9), Math.sin(a) * (pad.radius - 9));
+      }
+      ctx.stroke();
+      if (mate >= 0) {
+        const angle = Math.atan2(tr.pads[mate].y - pad.y, tr.pads[mate].x - pad.x);
+        ctx.rotate(angle);
+        ctx.fillStyle = arena.accent;
+        ctx.globalAlpha = (0.5 + pulse * 0.35) * alpha;
+        ctx.beginPath();
+        ctx.moveTo(9, 0);
+        ctx.lineTo(-4, -6);
+        ctx.lineTo(-4, 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.35 * alpha;
+        ctx.beginPath();
+        ctx.moveTo(-9, 0);
+        ctx.lineTo(-15, 0);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Lift plates. Chevrons climb toward the linked deck so the two ends read as one shaft.
+    for (let i = 0; i < tr.lifts.length; i++) {
+      const lift = tr.lifts[i];
+      const dest = tr.lifts[lift.link];
+      const dir = dest && dest.y < lift.y ? -1 : 1;
+      ctx.save();
+      ctx.translate(lift.x, lift.y);
+      ctx.fillStyle = 'rgba(9, 22, 35, 0.86)';
+      ctx.beginPath();
+      ctx.arc(0, 0, lift.radius, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = arena.accent;
+      ctx.globalAlpha = 0.55 * alpha;
+      ctx.lineWidth = 2.6;
+      ctx.stroke();
+      ctx.globalAlpha = 0.2 * alpha;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, 0, lift.radius - 9, 0, TWO_PI);
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2.4;
+      for (let k = 0; k < 3; k++) {
+        const phase = (t * 0.7 + k / 3) % 1;
+        const yy = dir * ((1 - phase) * 22 - 8);
+        ctx.globalAlpha = (0.18 + 0.3 * Math.sin(phase * Math.PI)) * alpha;
+        ctx.beginPath();
+        ctx.moveTo(-12, yy - dir * 6);
+        ctx.lineTo(0, yy + dir * 4);
+        ctx.lineTo(12, yy - dir * 6);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 
   private drawArenaSignature(arena: ArenaDef, t: number, alpha = 1): void {
@@ -2002,6 +2217,12 @@ export class Renderer {
       // A dead body leaves no marker on the field. The death burst and the respawn
       // timer carry the state; a dashed ring with an X read as another interactable.
       if (!p.alive) continue;
+      // Lift riders are hidden under the car transition. A pad rider is drawn in its
+      // layer-by-layer unload/reload at the two plates instead.
+      if (p.travelT > 0) {
+        if (p.travelKind === TRAVEL.pad) this.drawPadTransit(state, p, t);
+        continue;
+      }
 
       // Held guard: a tight 180 degree screen right against the body. It is the safe,
       // readable option; the tap swing stays the offensive one.
@@ -2736,6 +2957,167 @@ export class Renderer {
   }
 
   /**
+   * Pad transit: the avatar unloads in layers at the source, then the same layers
+   * rebuild at the mate. The hull goes first on the way out and last on the way in,
+   * so the character reads as decompiling and recompiling rather than blinking.
+   */
+  private drawPadTransit(state: RenderState, p: Player, t: number): void {
+    if (p.travelDur <= 0) return;
+    const pct = 1 - Math.max(0, Math.min(1, p.travelT / p.travelDur));
+    const unload = pct < 0.5;
+    const phase = unload ? pct * 2 : (pct - 0.5) * 2;
+    const reveal = Math.max(0, Math.min(1, unload ? 1 - phase : phase));
+    const x = p.x;
+    const y = p.y;
+    const color = playerColor(state, p);
+    const isLocal = p.slot === state.localSlot;
+    const hull = Math.max(0, Math.min(1, (reveal - 0.5) / 0.5));
+    const core = Math.max(0, Math.min(1, (reveal - 0.2) / 0.6));
+    const glyphA = Math.max(0, Math.min(1, reveal / 0.35));
+    const ctx = this.ctx;
+    ctx.save();
+
+    if (hull > 0) {
+      const spin = t * 0.22 + (p.program === PROGRAM_ID.WEDGE ? Math.PI / 4 : 0);
+      ctx.strokeStyle = color;
+      ctx.lineCap = 'butt';
+      ctx.lineJoin = 'round';
+      ctx.globalAlpha = 0.34 * hull;
+      ctx.lineWidth = 1.4;
+      pathProgramFrame(ctx, p.program, x, y, PLAYER.radius, spin);
+      ctx.stroke();
+      if (isLocal) {
+        ctx.globalAlpha = hull;
+        ctx.lineWidth = 2.6;
+        pathProgramHealth(ctx, p.program, x, y, PLAYER.radius, spin, PLAYER.hp, PLAYER.hp);
+        ctx.stroke();
+        ctx.globalAlpha = 0.32 * hull;
+        ctx.lineWidth = 5;
+        ctx.stroke();
+        ctx.globalAlpha = hull;
+        ctx.lineWidth = 2.6;
+        ctx.stroke();
+      }
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'miter';
+    }
+
+    if (core > 0) {
+      ctx.globalAlpha = 0.82 * core;
+      ctx.fillStyle = 'rgba(2, 7, 12, 0.88)';
+      ctx.beginPath();
+      ctx.arc(x, y, PLAYER.radius * 0.45, 0, TWO_PI);
+      ctx.fill();
+    }
+
+    if (glyphA > 0) {
+      ctx.globalAlpha = glyphA;
+      ctx.fillStyle = color;
+      if (state.mode === 'match') {
+        drawGlyph(ctx, slotGlyph(p.slot), x, y + 1, PLAYER.radius * 0.51);
+      } else {
+        const glyph = programDef(p.program);
+        drawSymbol(ctx, glyph.glyph, x, y + 1, PLAYER.radius * 0.51, glyph.coreScale);
+      }
+    }
+
+    // Transfer scan: a ring that closes on the source and opens on the mate, plus a
+    // single slice line so the loading order is visible frame by frame.
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = unload ? 0.8 : 0.6;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(x, y, (PLAYER.radius + 7) * (0.16 + 0.95 * reveal), 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath();
+    const sliceY = y + PLAYER.radius - reveal * PLAYER.radius * 2;
+    ctx.moveTo(x - PLAYER.radius - 10, sliceY);
+    ctx.lineTo(x + PLAYER.radius + 10, sliceY);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Fills around the local avatar while a pad or lift is waiting for the ride to arm. */
+  private drawTravelProgress(state: RenderState): void {
+    const p = state.players[state.localSlot];
+    if (!p || !p.active || !p.alive || p.travelT > 0 || p.travelDwell <= 0) return;
+    const needed = p.travelKind === TRAVEL.lift ? TRAVERSE.liftDwell : TRAVERSE.padDwell;
+    const pct = Math.max(0, Math.min(1, p.travelDwell / needed));
+    const x = lerp(p.prevX, p.x, 1);
+    const y = lerp(p.prevY, p.y, 1);
+    const r = PLAYER.radius + TRAVERSE.dwellRing;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = state.arena.accent;
+    ctx.globalAlpha = 0.24;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.92;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(x, y, r, -Math.PI * 0.5, -Math.PI * 0.5 + TWO_PI * pct);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Screen-space ride transition. The lift shrinks a stack of deck outlines toward the
+   * centre while the veil rises, which reads as the floor dropping away; the pad is a
+   * short white ring flash. Both hide the body swap that already happened in the sim.
+   */
+  private drawTravelOverlay(state: RenderState): void {
+    const p = state.players[state.localSlot];
+    // Only the lift is a full-screen transition; pad transit is drawn on the avatar
+    // itself, so the unload and reload stay visible at both plates.
+    if (!p || p.travelT <= 0 || p.travelDur <= 0 || p.travelKind !== TRAVEL.lift) return;
+    const pct = 1 - Math.max(0, Math.min(1, p.travelT / p.travelDur));
+    const ctx = this.ctx;
+    const cx = VIEW_W * 0.5;
+    const cy = VIEW_H * 0.5;
+    ctx.save();
+    const rise = Math.min(1, pct / 0.52);
+    const fall = Math.max(0, (pct - 0.52) / 0.48);
+    const veil = Math.min(0.94, rise * 1.1) * (1 - fall);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = state.arena.accent;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 5; i++) {
+      const k = i / 4;
+      const s = (1 - rise) * (0.94 - k * 0.15) + 0.05;
+      const w = VIEW_W * 0.94 * s;
+      const h = VIEW_H * 0.86 * s;
+      ctx.globalAlpha = (0.4 - k * 0.06) * (1 - fall);
+      ctx.strokeRect(cx - w * 0.5, cy - h * 0.5, w, h);
+    }
+    ctx.globalAlpha = 0.3 * (1 - fall);
+    ctx.beginPath();
+    for (let i = 0; i < 12; i++) {
+      const yy = ((i / 12 + pct * 1.6) % 1) * VIEW_H;
+      ctx.moveTo(cx - 26, yy);
+      ctx.lineTo(cx + 26, yy);
+    }
+    ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#01040a';
+    ctx.globalAlpha = veil;
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    if (fall > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = state.arena.accent;
+      ctx.globalAlpha = (1 - fall) * 0.7;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 40 + fall * 250, 0, TWO_PI);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
    * Toggleable minimap. It shows cover, the local avatar, other players and local
    * gauntlet threats. No labels; the shapes already carry meaning.
    */
@@ -2766,6 +3148,29 @@ export class Renderer {
     for (let i = 0; i < arena.pillars.length; i++) {
       const r = arena.pillars[i];
       ctx.fillRect(x0 + (r.x - b.left) * sx, y0 + (r.y - b.top) * sy, Math.max(2, r.w * sx), Math.max(2, r.h * sy));
+    }
+    const tr = arena.traverse;
+    if (tr) {
+      ctx.fillStyle = '#02050a';
+      for (let i = 0; i < tr.chasms.length; i++) {
+        const r = tr.chasms[i];
+        ctx.fillRect(x0 + (r.x - b.left) * sx, y0 + (r.y - b.top) * sy, Math.max(1, r.w * sx), Math.max(1, r.h * sy));
+      }
+      ctx.fillStyle = 'rgba(180, 226, 255, 0.55)';
+      for (let i = 0; i < tr.bridges.length; i++) {
+        const r = tr.bridges[i];
+        ctx.fillRect(x0 + (r.x - b.left) * sx, y0 + (r.y - b.top) * sy, Math.max(1, r.w * sx), Math.max(1, r.h * sy));
+      }
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 1;
+      for (let i = 0; i < tr.pads.length; i++) {
+        ctx.beginPath();
+        ctx.arc(x0 + (tr.pads[i].x - b.left) * sx, y0 + (tr.pads[i].y - b.top) * sy, 2.4, 0, TWO_PI);
+        ctx.stroke();
+      }
+      for (let i = 0; i < tr.lifts.length; i++) {
+        ctx.strokeRect(x0 + (tr.lifts[i].x - b.left) * sx - 2, y0 + (tr.lifts[i].y - b.top) * sy - 2, 4, 4);
+      }
     }
     if (state.firewalls) {
       ctx.strokeStyle = THREAT_COLORS.firewall;

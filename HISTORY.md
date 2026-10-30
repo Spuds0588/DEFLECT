@@ -1643,3 +1643,51 @@ sparring-drone training path that the bot-count menu had hidden.
 **Next:** This batch is committed locally but intentionally not pushed while the v0.1.24 production test
 is running. Tune wall/lure cadence after a live match, then IMPOSSIBLE. Campaign companions still need the
 sector loader.
+
+## 2026-10-29 — Session 39: multi-deck traversal arena (v0.1.26)
+
+**Goal:** build the level-traversal pieces the campaign needs — bridges, elevator plates and paired
+teleporter pads — link them into one playable arena, and verify every route through it.
+
+**Changes:**
+- `ArenaDef` gained an optional `traverse` record: chasms, bridge decks, upper-deck treatment, paired
+  pads and linked lifts. `TRANSIT` (sixth arena) is two decks over a split service trench: one central
+  bridge, paired pads on the west, a two-stop lift on the east. The trench blocks bodies but not shots;
+  a dodge still phases it.
+- `arenaSolids()` is the shared body-collision list (cover + chasms). Player movement, guest prediction,
+  bot pathing, drone/worm/virus/sentry/error placement and powerups use it; projectiles, lasers and
+  firewall beams keep using `pillars` so they cross the gap.
+- Bots now force an A* route when the straight walk crosses a floor gap, and a bot pinned to the outer
+  ring retreats toward the bridge instead of the arena's literal centre (which is trench on `TRANSIT`).
+  Verified with a live digital brain walking from the lower deck to the upper deck.
+- Pads and lifts arm on a still body: pad dwell 0.32 s (old 0.45) and ride 0.36 s (old 0.5), lift dwell
+  0.55 s and ride 1.55 s. A ride cancels attacks, locks input and ignores damage, and the arrival plate
+  stays latched until the body steps off so it cannot bounce back. The pad ride was made faster and is
+  now an unload: hull, then core, then glyph come apart at the source, the body swaps at the midpoint,
+  and the layers rebuild at the mate. The lift keeps the shrinking-deck screen transition.
+- Renderer: open trench with a lit lip, a railed bridge with traffic ticks, ringed pad plates with a
+  mate arrow, lift plates whose chevrons point at the linked deck, and pad/lift markers on the minimap.
+  The arena picker preview draws the same deck layout.
+- Version 0.1.26; title header, settings footer, boot log and service-worker cache bumped together.
+
+**Verification:**
+- `npx tsc --noEmit` and `npm run build` clean.
+- Headless traversal probe: trench stops a walk at the lip (y 782), bridge walk reaches the upper deck,
+  pad dwell/ride/latch lands on the mate and does not ping-pong, lift lands on the upper plate, a moving
+  body ignores a pad, A* has 107 waypoints with every one on walkable floor and crosses on the bridge,
+  and a bot crosses under its own brain. All pass.
+- Browser dev, TRANSIT: arena card is selectable as `06 TRANSIT`; a pad ride from (330,930) arrived at
+  (330,330); a lift ride from (1980,950) arrived at (1980,320); holding `W` walked the bridge from
+  (1160,900) to (1160,70); a VS BOTS match ran and a gauntlet run spawned sentries with no threat inside
+  the trench; no console errors.
+- Visual: bridge/deck/pads/lift screenshots at 1600×900, plus the pad unload and reload and the lift
+  transition. The lift chevron direction was corrected after the first look.
+- Pad staging checked frame by frame with the ride pinned: at the source the hull is gone first while
+  the core and glyph still hold, and at the mate the glyph returns alone before the core and then the
+  hull rebuild. The scan ring and slice line track both halves.
+- Bots on TRANSIT: `?autoplay=2` ran a HARD-bot match to round 2 with a bot round win, two live brains
+  pathing and firing, and no console errors or vaulting into the trench. The headless probe still has
+  the digital brain walking itself across the bridge.
+
+**Next:** confirm the pad read in motion, then party rules for local multiplayer, threat traversal and
+the campaign node loader. See TODO.md § Arena traversal.

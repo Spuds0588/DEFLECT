@@ -10,8 +10,8 @@ numbers, with a vinyl-crackle bed.
 
 **Playable now:** solo training against a sparring drone or endless 1v1–1v3 bot practice, **VS BOTS**
 round matches against one to three local opponents, a scored local **GAUNTLET** against worms, viruses,
-cascading errors, shooters and infected thralls, or host/join a room for up to 8 players. Five arenas are selectable from the title screen, including the multi-district
-`MAINFRAME`. Match modes are first to 3 rounds; training is continuous practice, while gauntlet is a
+cascading errors, shooters and infected thralls, or host/join a room for up to 8 players. Six arenas are selectable from the title screen, including the multi-district
+`MAINFRAME` and the multi-deck `TRANSIT`. Match modes are first to 3 rounds; training is continuous practice, while gauntlet is a
 one-life score chase with a local top-runs table.
 
 **Campaign (story mode):** `SINGLE PLAYER > CAMPAIGN` opens three local save slots first. An empty slot
@@ -130,6 +130,17 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `THE RING` | A hollow central box with a gate on each side. Close control fights and blind flanks. |
 | `SWITCHBACK` | Staggered bars form serpentine lanes. Long sightlines and heavy ricochets. |
 | `MAINFRAME` | A large multi-district map (four linked combat zones) with a camera that follows you. Cross lanes, pillar cover, a gate ring and a ricochet alley; fights move between districts. |
+| `TRANSIT` | Two decks over a service trench. Cross on the central bridge, ride the paired transporter pads, or take the lift on the east end. The trench blocks bodies but not shots; dashes phase it. |
+
+### Bridges, pads and lifts
+
+Traversal is arena geometry, not a separate mode. A floor gap is solid to bodies, bots and gauntlet
+threats, while shots fly over it. The bridge is the only walking route across. Pads and lifts arm on a
+**standing** body, not on touch, so running through one does nothing; the ring around the avatar fills
+while the plate waits. A pad ride unloads the avatar layer by layer at the source, then rebuilds it at the
+mate, and the body cannot act or be hit while it is in transit. A lift ride is a longer screen transition
+built from deck outlines shrinking toward the centre. Both are ordinary arena data, so a match, a
+training session and the gauntlet share the same links.
 
 ## Training and bot practice
 

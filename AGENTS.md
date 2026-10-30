@@ -158,6 +158,17 @@ same definition. The room host selects one and sends the id in `START`; snapshot
 Do not reintroduce a global `PILLARS` constant or branch collision on map names. New arenas are content
 entries, not new systems.
 
+An arena may also carry a `traverse` record: chasms, bridge decks, upper-deck treatment, paired pads and
+linked lift plates. Chasms are **body** blockers, not cover: `arenaSolids()` adds them to `pillars` for
+bodies, bot pathing, spawns and placement, while projectiles and lasers keep using `pillars` alone and fly
+over the gap. A dodge still phases solids, so a charged dash can cross a trench. Pads and lifts arm on a
+still body after their dwell window, cancel attacks and damage for the ride, and use per-player state
+(`travelKind`/`travelT`); they never write geometry into `Snapshot`. A pad holds the body at the source
+for the unload half, swaps to the mate at the midpoint, and rebuilds it during the reload half; a lift
+moves at the start and is covered by the shrinking-deck transition. `TRANSIT` is the mixed test arena.
+Traversal is also the intended route for threats to spill into a later campaign arena (a virus following
+a pad across linked rooms); until a campaign runtime exists, pads only move player bodies.
+
 ### D9 — Gauntlet is a local threat sandbox (revised 2026-10-29)
 On explicit designer request, hostiles exist in a local **GAUNTLET** mode, not in ranked PvP and not over
 the network. It is a test bed for the eventual PvE direction, not a promise of online PvE.
@@ -432,8 +443,15 @@ public/               manifest, generated icons, service worker
   rendering. The hull, core glyph, heading arrow, lock reticle, readiness-column offset and bot nav
   clearance all derive from it; enemy and drill radii are separate. Do not add a second visual-only
   avatar scale. The active arena's spawns must stay clear at this radius.
-- The active `ArenaDef` supplies pillars and ordered spawn points. Any player count spreads evenly
-  around that arena's spawn ring; the training drone uses the opposite spawn.
+- The active `ArenaDef` supplies pillars, optional floor gaps, traversal plates and ordered spawn
+  points. Any player count spreads evenly around that arena's spawn ring; the training drone uses the
+  opposite spawn. Bodies collide with `arenaSolids()`; projectile, laser and firewall collision uses
+  `pillars` so shots cross a trench.
+- Pads and lifts are per-player travel state, resolved after motion. They need a slow body on the plate
+  for the dwell window, reject attacks and approaches, and lock input for the ride. A pad swaps position
+  at the ride midpoint so the renderer can play unload/reload; a lift moves immediately and is hidden by
+  its transition. Guest prediction does not receive travel fields yet, so an online guest sees the host's
+  position snap after a pad or lift.
 - A projectile whose muzzle point would start inside arena geometry is refused: no bolt, no energy
   spent. Without this rule a point-blank shot can ricochet directly back into the shooter's body.
 - Projectiles store `ownerSlot`, `deflects`, `bounces`, `armed`. A bolt cannot hit the player who last
@@ -498,7 +516,13 @@ public/               manifest, generated icons, service worker
 ratio (`fitCanvas` in `src/ui/dom.ts`) and draw in a fixed design space, so map labels stay at the console
 text scale instead of being baked into a small bitmap.
 - Cover is a solid object: bright panel fill, inset panel, hard rim and top highlight. It must not read as
-  floor texture. The lower-left minimap is optional and reuses the same arena geometry.
+  floor texture. A trench is the opposite: near-black fill with a lit lip, so it reads as open space. The
+  bridge is a deck with rails and moving traffic ticks. Pads are ringed plates with a mate arrow; lifts
+  are circular pads with chevrons pointing toward the linked deck.
+- Pad transit draws the avatar in its own layer order (glyph, core, hull) instead of hiding it; the hull
+  is first to leave and last to return. A scan ring and slice line sell the transfer. The lift uses the
+  screen-space shrink-and-fade transition. Both are render-only and must not change hitboxes or timing.
+- The lower-left minimap is optional and reuses the same arena geometry.
 - Dead players leave no field marker. Do not draw a corpse ring, X or ghost body; the death burst and the
   respawn timer carry the state, and a leftover marker reads as another interactable.
 - DOM is only for menus, lobby, toasts, and round/match overlays. The title and settings screens keep

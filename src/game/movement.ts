@@ -6,13 +6,14 @@ import type { Player } from './types';
 /**
  * Shared kinematic step used by the authoritative world and the guest's local prediction.
  * Facing is derived from movement (single-stick), locked while swinging or dashing.
+ * `solids` is cover plus any floor gaps; a dodge phases both.
  */
 export function stepPlayerMotion(
   p: Player,
   mx: number,
   my: number,
   dt: number,
-  pillars: readonly Rect[],
+  solids: readonly Rect[],
   bounds: Bounds,
 ): void {
   const movingSq = mx * mx + my * my;
@@ -76,8 +77,8 @@ export function stepPlayerMotion(
 
   // Both dodge kinds phase through cover; the charged dash is the damaging one.
   if (p.dashT <= 0) {
-    for (let i = 0; i < pillars.length; i++) {
-      if (circleRect(p.x, p.y, r, pillars[i], hitScratch)) {
+    for (let i = 0; i < solids.length; i++) {
+      if (circleRect(p.x, p.y, r, solids[i], hitScratch)) {
         p.x = hitScratch.px;
         p.y = hitScratch.py;
         const vn = p.vx * hitScratch.nx + p.vy * hitScratch.ny;

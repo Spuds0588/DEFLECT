@@ -17,6 +17,11 @@ inside one storage device. The route ends at `ROOT`, inside `THE SUCCESSOR`.
 The route blueprint is a review tool. In play, a player should not choose a sector from a menu. They
 push through the current cluster, find the uplink, and carry the route into the next system.
 
+The traversal grammar is now playable geometry. `ArenaDef.traverse` holds trenches, bridge decks, paired
+pads and linked lifts, and `TRANSIT` is the test arena that mixes all three. It is one continuous arena,
+not a node link yet: the campaign loader still has to decide how a bridge, pad or lift cut opens the next
+node. Nothing about this geometry enters `Snapshot`; the tests cover local play only.
+
 ## Where the archive lives
 
 `SINGLE PLAYER > CAMPAIGN` opens three save slots. An empty slot starts a new run and continues to the bot

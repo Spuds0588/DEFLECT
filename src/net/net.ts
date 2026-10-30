@@ -1,7 +1,7 @@
 import Peer from 'peerjs';
 import type { DataConnection } from 'peerjs';
 import { MAX_PLAYERS, MAX_PROJECTILES, NET, PLAYER } from '../game/config';
-import { ARENAS, type ArenaDef } from '../game/arenas';
+import { ARENAS, arenaSolids, type ArenaDef } from '../game/arenas';
 import { createPlayer, createProjectile, playerFlags } from '../game/entities';
 import { sanitizeName } from '../game/identity';
 import { stepPlayerMotion } from '../game/movement';
@@ -1059,7 +1059,7 @@ export class LocalPredictor {
     if (p.laserChargeHeld || p.laserT > 0) {
       p.facing = this.authFacing;
       p.laserFacing = this.authFacing;
-      stepPlayerMotion(p, 0, 0, dt, this.arena.pillars, this.arena.bounds);
+      stepPlayerMotion(p, 0, 0, dt, arenaSolids(this.arena), this.arena.bounds);
       const adx = this.authX - p.x;
       const ady = this.authY - p.y;
       const ad2 = adx * adx + ady * ady;
@@ -1184,7 +1184,7 @@ export class LocalPredictor {
     }
     p.chargeHeld = heldSwing;
 
-    stepPlayerMotion(p, input.mx, input.my, dt, this.arena.pillars, this.arena.bounds);
+    stepPlayerMotion(p, input.mx, input.my, dt, arenaSolids(this.arena), this.arena.bounds);
 
     if (moveSq <= 0.0025 && p.swingPhase === 0 && p.dashT <= 0) {
       p.facing = this.authFacing;
