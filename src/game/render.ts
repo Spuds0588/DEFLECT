@@ -2178,6 +2178,74 @@ export class Renderer {
     }
   }
 
+  /**
+   * Shared lunge telegraph for a virus or a small sentry. A dashed guide is the tell;
+   * the live beat is a hot streak. Only active attacks reach this helper.
+   */
+  private drawLungeWarn(
+    x: number,
+    y: number,
+    radius: number,
+    dirX: number,
+    dirY: number,
+    elapsed: number,
+    windup: number,
+    active: number,
+    color: string,
+  ): void {
+    if (elapsed >= windup + active) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.atan2(dirY, dirX));
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    if (elapsed < windup) {
+      const t = Math.max(0, Math.min(1, elapsed / windup));
+      ctx.globalAlpha = 0.32 + 0.38 * t;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath();
+      ctx.moveTo(radius + 2, 0);
+      ctx.lineTo(radius + 46, 0);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const tip = radius + 50;
+      ctx.beginPath();
+      ctx.moveTo(tip - 8, -6);
+      ctx.lineTo(tip, 0);
+      ctx.lineTo(tip - 8, 6);
+      ctx.stroke();
+      ctx.globalAlpha = 0.2 + 0.35 * t;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 7 + t * 3, -0.92, 0.92);
+      ctx.stroke();
+      ctx.globalAlpha = 0.05 + 0.1 * t;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(radius + 46, -10);
+      ctx.lineTo(radius + 46, 10);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      const t = Math.max(0, Math.min(1, (elapsed - windup) / active));
+      ctx.globalAlpha = 0.7 * (1 - t * 0.55);
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(-radius - 20, 0);
+      ctx.lineTo(radius + 42, 0);
+      ctx.stroke();
+      ctx.globalAlpha *= 0.35;
+      ctx.lineWidth = 8;
+      ctx.stroke();
+      ctx.globalAlpha = 0.9 * (1 - t * 0.5);
+      ctx.beginPath();
+      ctx.arc(radius + 35, 0, 3.5, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   private drawWorms(worms: readonly Worm[], alpha: number, t: number): void {
     const ctx = this.ctx;
     ctx.save();
@@ -2263,6 +2331,60 @@ export class Renderer {
       }
       ctx.restore();
 
+      // Bite jaws are drawn in world space on the committed direction, not on the
+      // body's heading. The wind-up opens them; the live beat snaps them shut.
+      if (w.biteT > 0) {
+        const biteTotal = WORM.biteWindup + WORM.biteActive + WORM.biteRecovery;
+        const biteElapsed = biteTotal - w.biteT;
+        if (biteElapsed < WORM.biteWindup + WORM.biteActive) {
+          const wind = Math.max(0, Math.min(1, biteElapsed / WORM.biteWindup));
+          const snapping = biteElapsed >= WORM.biteWindup;
+          const open = snapping
+            ? Math.max(0, 1 - (biteElapsed - WORM.biteWindup) / WORM.biteActive)
+            : 0.4 + 0.6 * wind;
+          const reach = r + 6 + (snapping ? 10 : 8 + 10 * wind);
+          const spread = snapping ? 2 + 2 * open : 8 + 10 * open;
+          ctx.save();
+          ctx.translate(hx, hy);
+          ctx.rotate(Math.atan2(w.biteDirY, w.biteDirX));
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.strokeStyle = base;
+          ctx.fillStyle = base;
+          ctx.lineWidth = snapping ? 2.6 : 1.8;
+          ctx.globalAlpha = snapping ? 0.95 : 0.45 + 0.35 * wind;
+          ctx.beginPath();
+          ctx.moveTo(0, -r * 0.45);
+          ctx.lineTo(reach, -spread);
+          ctx.lineTo(reach * 0.58, -1);
+          ctx.closePath();
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(0, r * 0.45);
+          ctx.lineTo(reach, spread);
+          ctx.lineTo(reach * 0.58, 1);
+          ctx.closePath();
+          ctx.stroke();
+          if (snapping) {
+            ctx.globalAlpha = 0.75;
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(r * 0.2, 0);
+            ctx.lineTo(reach - 2, 0);
+            ctx.stroke();
+          } else {
+            ctx.globalAlpha = 0.28 + 0.3 * wind;
+            ctx.lineWidth = 1.2;
+            ctx.setLineDash([4, 5]);
+            ctx.beginPath();
+            ctx.moveTo(r + 2, 0);
+            ctx.lineTo(r + 52, 0);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          ctx.restore();
+        }
+      }
+
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -2333,6 +2455,21 @@ export class Renderer {
         ctx.stroke();
       }
       ctx.restore();
+
+      if (v.chargeT > 0) {
+        const chargeTotal = VIRUS.chargeWindup + VIRUS.chargeActive + VIRUS.chargeRecovery;
+        this.drawLungeWarn(
+          x,
+          y,
+          v.radius,
+          v.chargeDirX,
+          v.chargeDirY,
+          chargeTotal - v.chargeT,
+          VIRUS.chargeWindup,
+          VIRUS.chargeActive,
+          THREAT_COLORS.virus,
+        );
+      }
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -2461,6 +2598,21 @@ export class Renderer {
         ctx.strokeRect(-r - 4, -r - 4, (r + 4) * 2, (r + 4) * 2);
       }
       ctx.restore();
+
+      if (s.ramT > 0) {
+        const ramTotal = SENTRY.ram.windup + SENTRY.ram.active + SENTRY.ram.recovery;
+        this.drawLungeWarn(
+          x,
+          y,
+          s.radius,
+          s.ramDirX,
+          s.ramDirY,
+          ramTotal - s.ramT,
+          SENTRY.ram.windup,
+          SENTRY.ram.active,
+          color,
+        );
+      }
     }
     ctx.globalAlpha = 1;
     ctx.restore();

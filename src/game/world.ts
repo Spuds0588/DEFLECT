@@ -7024,6 +7024,11 @@ export class World {
     s.orbitR = 0;
     s.orbitDir = 1;
     s.orbitHitCd = 0;
+    s.ramT = 0;
+    s.ramCd = this.rng.range(0.9, SENTRY.ram.cooldown);
+    s.ramHit = false;
+    s.ramDirX = 1;
+    s.ramDirY = 0;
     return true;
   }
 
@@ -7056,18 +7061,30 @@ export class World {
     s.prevY = s.y;
     s.phase += dt;
     if (s.hitFlash > 0) s.hitFlash = Math.max(0, s.hitFlash - dt);
+    if (s.ramCd > 0) s.ramCd = Math.max(0, s.ramCd - dt);
     // Held in Atomize's orbit: the field owns position and firing until it releases.
-    if (s.orbitOwner >= 0) return;
+    if (s.orbitOwner >= 0) {
+      s.ramT = 0;
+      return;
+    }
     if (s.spawnT > 0) {
       s.spawnT = Math.max(0, s.spawnT - dt);
+      s.ramT = 0;
       s.vx = 0;
       s.vy = 0;
       return;
     }
     if (s.pinT > 0) {
       s.pinT = Math.max(0, s.pinT - dt);
+      s.ramT = 0;
       s.vx = 0;
       s.vy = 0;
+      return;
+    }
+
+    const p = this.players[0];
+    if (s.ramT > 0) {
+      this.updateSentryRam(s, dt, p);
       return;
     }
 
@@ -7104,7 +7121,6 @@ export class World {
       fireMax = SENTRY.flock.fireMax;
     }
 
-    const p = this.players[0];
     // A cloaked player is not a visible target. The sentry falls back to its landing
     // zone unless a lure is still pulling it, so the cloak buys real reposition time.
     const pVisible = p.alive && p.cloakT <= 0;
@@ -7127,6 +7143,44 @@ export class World {
     // Sentries hold their landing zone. They engage only inside the leash + weapon
     // range; outside that they drift back to the anchor instead of following the player.
     const engaged = (pVisible || lure !== null) && dist < s.leash + range;
+
+    // Only the small silhouettes answer a player in their face with a ram. The heavy
+    // triplex and homing pods keep their shooting role and their distance band.
+    // One ram commits at a time: a three-dart flock must not stack three melee hits on
+    // the same frame, which would delete a full health bar before the tell resolved.
+    const canRam = s.kind === 0 || s.kind === 3;
+    let ramBusy = false;
+    if (canRam) {
+      for (let i = 0; i < this.sentries.length; i++) {
+        const other = this.sentries[i];
+        if (other !== s && other.active && other.ramT > 0) {
+          ramBusy = true;
+          break;
+        }
+      }
+    }
+    if (
+      canRam &&
+      !ramBusy &&
+      s.ramT <= 0 &&
+      s.ramCd <= 0 &&
+      pVisible &&
+      !lure &&
+      p.alive &&
+      dist <= SENTRY.ram.range &&
+      !this.lineBlocked(s.x, s.y, p.x, p.y)
+    ) {
+      const ramTotal = SENTRY.ram.windup + SENTRY.ram.active + SENTRY.ram.recovery;
+      s.ramT = ramTotal;
+      s.ramCd = SENTRY.ram.cooldown;
+      s.ramHit = false;
+      s.ramDirX = ux;
+      s.ramDirY = uy;
+      s.fireT = Math.max(s.fireT, ramTotal + 0.25);
+      this.updateSentryRam(s, dt, p);
+      return;
+    }
+
     let desiredX = 0;
     let desiredY = 0;
     if (engaged) {
@@ -7218,6 +7272,62 @@ export class World {
     s.fireT =
       this.rng.range(fireMin, fireMax) *
       (!this.gauntletPractice && this.wave <= SENTRY.openingWaves ? SENTRY.openingCadenceMult : 1);
+  }
+
+  /**
+   * Small sentry ram: wind-up, one committed dash, then a recovery beat. It never
+   * fires during the attack, and cover ends both the travel and the hit.
+   */
+  private updateSentryRam(s: Sentry, dt: number, p: Player): void {
+    const total = SENTRY.ram.windup + SENTRY.ram.active + SENTRY.ram.recovery;
+    const elapsed = total - s.ramT;
+    if (elapsed < SENTRY.ram.windup) {
+      s.vx = 0;
+      s.vy = 0;
+    } else if (elapsed < SENTRY.ram.windup + SENTRY.ram.active) {
+      s.vx = s.ramDirX * SENTRY.ram.speed;
+      s.vy = s.ramDirY * SENTRY.ram.speed;
+    } else {
+      s.vx = 0;
+      s.vy = 0;
+    }
+    s.x += (s.vx + s.kx) * dt;
+    s.y += (s.vy + s.ky) * dt;
+    s.kx *= Math.exp(-SENTRY.knockDrag * dt);
+    s.ky *= Math.exp(-SENTRY.knockDrag * dt);
+    if (!this.openWalls) {
+      s.x = Math.max(this.arena.bounds.left + s.radius, Math.min(this.arena.bounds.right - s.radius, s.x));
+      s.y = Math.max(this.arena.bounds.top + s.radius, Math.min(this.arena.bounds.bottom - s.radius, s.y));
+    }
+    this.pushOutOfCover(s, s.radius);
+
+    if (
+      elapsed >= SENTRY.ram.windup &&
+      elapsed < SENTRY.ram.windup + SENTRY.ram.active &&
+      !s.ramHit &&
+      p.alive &&
+      p.cloakT <= 0 &&
+      p.iframes <= 0
+    ) {
+      const dx = p.x - s.x;
+      const dy = p.y - s.y;
+      const rr = s.radius + PLAYER.radius + 4;
+      if (dx * dx + dy * dy <= rr * rr && !this.lineBlocked(s.x, s.y, p.x, p.y)) {
+        const d = Math.hypot(dx, dy) || 1;
+        s.ramHit = true;
+        this.damagePlayer(
+          p,
+          SENTRY.ram.damage,
+          -1,
+          dx / d,
+          dy / d,
+          SENTRY.ram.knockback,
+          SRC.SENTRY,
+          this.sentries.indexOf(s),
+        );
+      }
+    }
+    s.ramT = Math.max(0, s.ramT - dt);
   }
 
   /** True collision with cover, used by worms and sentries. */
@@ -7525,6 +7635,11 @@ export class World {
     w.phase = this.rng.range(0, Math.PI * 2);
     w.spawnT = WORM.spawnTime;
     w.pinT = 0;
+    w.biteT = 0;
+    w.biteCd = WORM.biteCooldown * 0.5;
+    w.biteHit = false;
+    w.biteDirX = Math.cos(w.angle);
+    w.biteDirY = Math.sin(w.angle);
     this.pickWormPatrol(w);
     const ca = Math.cos(w.angle);
     const sa = Math.sin(w.angle);
@@ -7584,6 +7699,8 @@ export class World {
     w.phase += dt;
     if (w.hitFlash > 0) w.hitFlash = Math.max(0, w.hitFlash - dt);
     if (w.touchCd > 0) w.touchCd = Math.max(0, w.touchCd - dt);
+    if (w.biteCd > 0) w.biteCd = Math.max(0, w.biteCd - dt);
+    if (w.biteT > 0) w.biteT = Math.max(0, w.biteT - dt);
     if (w.spawnT > 0) {
       w.spawnT = Math.max(0, w.spawnT - dt);
       w.vx = 0;
@@ -7612,6 +7729,30 @@ export class World {
     }
     w.retargetT -= dt;
 
+    // A close player is answered with a committed bite. The wind-up is the tell; the
+    // direction is latched so a dash or a step sideways can still beat it.
+    const biteDistSq = pdx * pdx + pdy * pdy;
+    if (
+      w.biteT <= 0 &&
+      w.biteCd <= 0 &&
+      w.aggroT > 0 &&
+      p.alive &&
+      p.cloakT <= 0 &&
+      biteDistSq <= WORM.biteRange * WORM.biteRange &&
+      !this.lineBlocked(w.x, w.y, p.x, p.y)
+    ) {
+      const d = Math.sqrt(biteDistSq) || 1;
+      w.biteT = WORM.biteWindup + WORM.biteActive + WORM.biteRecovery;
+      w.biteCd = WORM.biteCooldown;
+      w.biteHit = false;
+      w.biteDirX = pdx / d;
+      w.biteDirY = pdy / d;
+      w.vx = 0;
+      w.vy = 0;
+    }
+    const biteElapsed =
+      w.biteT > 0 ? WORM.biteWindup + WORM.biteActive + WORM.biteRecovery - w.biteT : -1;
+
     const anchorDx = w.anchorX - w.x;
     const anchorDy = w.anchorY - w.y;
     const anchorDist = Math.hypot(anchorDx, anchorDy);
@@ -7636,25 +7777,44 @@ export class World {
       }
     }
 
-    const desired =
-      Math.atan2(ty - w.y, tx - w.x) +
-      Math.sin(w.phase * WORM.seekWobbleFreq + w.y * 0.01) * WORM.seekWobbleAmp;
-    let diff = desired - w.angle;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    const turn = WORM.turnRate * dt;
-    w.angle += Math.max(-turn, Math.min(turn, diff));
-    const growSlow = Math.max(
-      WORM.minSpeedMult,
-      1 - (w.segCount - WORM.segments) * WORM.lengthSlow,
-    );
-    const speed =
-      WORM.speed *
-      growSlow *
-      (w.infected ? WORM.infectedSpeedMult : 1) *
-      (w.aggroT > 0 ? 1 : WORM.patrolSpeedMult);
-    w.vx = Math.cos(w.angle) * speed;
-    w.vy = Math.sin(w.angle) * speed;
+    if (w.biteT > 0) {
+      const biteTurn = WORM.biteTurnRate * dt;
+      const biteAngle = Math.atan2(w.biteDirY, w.biteDirX);
+      let faceDiff = biteAngle - w.angle;
+      while (faceDiff > Math.PI) faceDiff -= Math.PI * 2;
+      while (faceDiff < -Math.PI) faceDiff += Math.PI * 2;
+      w.angle += Math.max(-biteTurn, Math.min(biteTurn, faceDiff));
+      if (biteElapsed < WORM.biteWindup) {
+        w.vx = 0;
+        w.vy = 0;
+      } else if (biteElapsed < WORM.biteWindup + WORM.biteActive) {
+        w.vx = w.biteDirX * WORM.biteLunge;
+        w.vy = w.biteDirY * WORM.biteLunge;
+      } else {
+        w.vx = 0;
+        w.vy = 0;
+      }
+    } else {
+      const desired =
+        Math.atan2(ty - w.y, tx - w.x) +
+        Math.sin(w.phase * WORM.seekWobbleFreq + w.y * 0.01) * WORM.seekWobbleAmp;
+      let diff = desired - w.angle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      const turn = WORM.turnRate * dt;
+      w.angle += Math.max(-turn, Math.min(turn, diff));
+      const growSlow = Math.max(
+        WORM.minSpeedMult,
+        1 - (w.segCount - WORM.segments) * WORM.lengthSlow,
+      );
+      const speed =
+        WORM.speed *
+        growSlow *
+        (w.infected ? WORM.infectedSpeedMult : 1) *
+        (w.aggroT > 0 ? 1 : WORM.patrolSpeedMult);
+      w.vx = Math.cos(w.angle) * speed;
+      w.vy = Math.sin(w.angle) * speed;
+    }
     w.x += (w.vx + w.kx) * dt;
     w.y += (w.vy + w.ky) * dt;
     w.kx *= Math.exp(-WORM.knockDrag * dt);
@@ -7719,7 +7879,40 @@ export class World {
       }
     }
 
-    if (p.alive && p.cloakT <= 0 && w.touchCd <= 0) {
+    const biteReach = WORM.headRadius + PLAYER.radius + WORM.biteReach;
+    if (
+      biteElapsed >= WORM.biteWindup &&
+      biteElapsed < WORM.biteWindup + WORM.biteActive &&
+      !w.biteHit &&
+      p.alive &&
+      p.cloakT <= 0
+    ) {
+      const bdx = p.x - w.x;
+      const bdy = p.y - w.y;
+      const forward = bdx * w.biteDirX + bdy * w.biteDirY;
+      if (
+        forward > 0 &&
+        bdx * bdx + bdy * bdy <= biteReach * biteReach &&
+        !this.lineBlocked(w.x, w.y, p.x, p.y)
+      ) {
+        const d = Math.hypot(bdx, bdy) || 1;
+        w.biteHit = true;
+        w.aggroT = WORM.aggroTime;
+        w.touchCd = WORM.touchCooldown;
+        this.damagePlayer(
+          p,
+          WORM.biteDamage,
+          -1,
+          bdx / d,
+          bdy / d,
+          WORM.biteKnockback,
+          SRC.WORM,
+          this.worms.indexOf(w),
+        );
+      }
+    }
+
+    if (w.biteT <= 0 && p.alive && p.cloakT <= 0 && w.touchCd <= 0) {
       let hit = false;
       let hdx = p.x - w.x;
       let hdy = p.y - w.y;
@@ -7828,6 +8021,11 @@ export class World {
     v.orbitR = 0;
     v.orbitDir = 1;
     v.orbitHitCd = 0;
+    v.chargeT = 0;
+    v.chargeCd = this.rng.range(0.8, VIRUS.chargeCooldown);
+    v.chargeHit = false;
+    v.chargeDirX = 1;
+    v.chargeDirY = 0;
     this.nudgeVirusFromCover(v);
     this.pickVirusRoam(v);
     return v;
@@ -7901,16 +8099,24 @@ export class World {
     v.phase += dt;
     if (v.hitFlash > 0) v.hitFlash = Math.max(0, v.hitFlash - dt);
     if (v.contactCd > 0) v.contactCd = Math.max(0, v.contactCd - dt);
-    // Held in Atomize's orbit: the field owns position until it releases.
-    if (v.orbitOwner >= 0) return;
+    if (v.chargeCd > 0) v.chargeCd = Math.max(0, v.chargeCd - dt);
+    if (v.chargeT > 0) v.chargeT = Math.max(0, v.chargeT - dt);
+    // Held in Atomize's orbit: the field owns position until it releases. A charge
+    // cannot resume after the field drops the body.
+    if (v.orbitOwner >= 0) {
+      v.chargeT = 0;
+      return;
+    }
     if (v.spawnT > 0) {
       v.spawnT = Math.max(0, v.spawnT - dt);
+      v.chargeT = 0;
       v.vx = 0;
       v.vy = 0;
       return;
     }
     if (v.pinT > 0) {
       v.pinT = Math.max(0, v.pinT - dt);
+      v.chargeT = 0;
       v.vx = 0;
       v.vy = 0;
       return;
@@ -7961,6 +8167,30 @@ export class World {
     v.targetWorm = targetWorm;
     v.targetPlayer = targetPlayer;
 
+    // A virus that has the player in front of it commits to one charge. The glow is
+    // the tell; the direction is latched so a dash or an orbit can still slip it.
+    const chargeTotal = VIRUS.chargeWindup + VIRUS.chargeActive + VIRUS.chargeRecovery;
+    const pcx = p.x - v.x;
+    const pcy = p.y - v.y;
+    const pcDist = Math.hypot(pcx, pcy) || 1;
+    if (
+      v.chargeT <= 0 &&
+      v.chargeCd <= 0 &&
+      targetPlayer &&
+      p.alive &&
+      p.cloakT <= 0 &&
+      pcDist >= VIRUS.chargeMinRange &&
+      pcDist <= VIRUS.chargeRange &&
+      !this.lineBlocked(v.x, v.y, p.x, p.y)
+    ) {
+      v.chargeT = chargeTotal;
+      v.chargeCd = VIRUS.chargeCooldown;
+      v.chargeHit = false;
+      v.chargeDirX = pcx / pcDist;
+      v.chargeDirY = pcy / pcDist;
+    }
+    const chargeElapsed = v.chargeT > 0 ? chargeTotal - v.chargeT : -1;
+
     v.retargetT -= dt;
     if (!lureTarget && !targetPlayer && targetWorm < 0) {
       const rdx = v.roamX - v.x;
@@ -8002,12 +8232,25 @@ export class World {
     }
     desiredX += Math.sin(v.phase * VIRUS.wobbleFreqX) * VIRUS.wobbleAmp;
     desiredY += Math.cos(v.phase * VIRUS.wobbleFreqY) * VIRUS.wobbleAmp;
-    const dm = Math.hypot(desiredX, desiredY) || 1;
-    desiredX /= dm;
-    desiredY /= dm;
-    const k = 1 - Math.exp(-VIRUS.accel * dt);
-    v.vx += (desiredX * VIRUS.speed - v.vx) * k;
-    v.vy += (desiredY * VIRUS.speed - v.vy) * k;
+    if (v.chargeT > 0) {
+      if (chargeElapsed < VIRUS.chargeWindup) {
+        v.vx = 0;
+        v.vy = 0;
+      } else if (chargeElapsed < VIRUS.chargeWindup + VIRUS.chargeActive) {
+        v.vx = v.chargeDirX * VIRUS.chargeSpeed;
+        v.vy = v.chargeDirY * VIRUS.chargeSpeed;
+      } else {
+        v.vx = 0;
+        v.vy = 0;
+      }
+    } else {
+      const dm = Math.hypot(desiredX, desiredY) || 1;
+      desiredX /= dm;
+      desiredY /= dm;
+      const k = 1 - Math.exp(-VIRUS.accel * dt);
+      v.vx += (desiredX * VIRUS.speed - v.vx) * k;
+      v.vy += (desiredY * VIRUS.speed - v.vy) * k;
+    }
     v.x += (v.vx + v.kx) * dt;
     v.y += (v.vy + v.ky) * dt;
     v.kx *= Math.exp(-VIRUS.knockDrag * dt);
@@ -8018,6 +8261,36 @@ export class World {
       v.y = Math.max(this.arena.bounds.top + v.radius, Math.min(this.arena.bounds.bottom - v.radius, v.y));
     }
     this.nudgeVirusFromCover(v);
+
+    if (
+      v.chargeT > 0 &&
+      chargeElapsed >= VIRUS.chargeWindup &&
+      chargeElapsed < VIRUS.chargeWindup + VIRUS.chargeActive &&
+      !v.chargeHit &&
+      p.alive &&
+      p.cloakT <= 0 &&
+      p.iframes <= 0
+    ) {
+      const cdx = p.x - v.x;
+      const cdy = p.y - v.y;
+      const rr = v.radius + PLAYER.radius + 4;
+      if (cdx * cdx + cdy * cdy <= rr * rr && !this.lineBlocked(v.x, v.y, p.x, p.y)) {
+        const d = Math.hypot(cdx, cdy) || 1;
+        v.chargeHit = true;
+        v.contactCd = VIRUS.contactCooldown;
+        this.damagePlayer(
+          p,
+          VIRUS.chargeDamage,
+          -1,
+          cdx / d,
+          cdy / d,
+          VIRUS.chargeKnockback,
+          SRC.VIRUS,
+          this.viruses.indexOf(v),
+        );
+        this.addInfection(GAUNTLET.infectionPerTouch, p.x, p.y);
+      }
+    }
 
     if (p.alive && p.cloakT <= 0 && p.iframes <= 0 && v.contactCd <= 0) {
       const pdx = p.x - v.x;

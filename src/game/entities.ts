@@ -353,6 +353,11 @@ export function createWorm(): Worm {
     phase: 0,
     spawnT: 0,
     pinT: 0,
+    biteT: 0,
+    biteCd: 0,
+    biteHit: false,
+    biteDirX: 1,
+    biteDirY: 0,
   };
 }
 
@@ -386,6 +391,11 @@ export function createVirus(): Virus {
     orbitR: 0,
     orbitDir: 1,
     orbitHitCd: 0,
+    chargeT: 0,
+    chargeCd: 0,
+    chargeHit: false,
+    chargeDirX: 1,
+    chargeDirY: 0,
   };
 }
 
@@ -439,6 +449,11 @@ export function createSentry(): Sentry {
     orbitR: 0,
     orbitDir: 1,
     orbitHitCd: 0,
+    ramT: 0,
+    ramCd: 0,
+    ramHit: false,
+    ramDirX: 1,
+    ramDirY: 0,
   };
 }
 

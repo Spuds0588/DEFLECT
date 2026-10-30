@@ -550,6 +550,12 @@ export interface Worm {
   spawnT: number;
   /** Fisher net snare: movement is held while this is above zero. */
   pinT: number;
+  /** Telegraphed close bite: total timer, cooldown, committed direction and one-hit latch. */
+  biteT: number;
+  biteCd: number;
+  biteHit: boolean;
+  biteDirX: number;
+  biteDirY: number;
 }
 
 export interface Virus {
@@ -585,6 +591,12 @@ export interface Virus {
   orbitR: number;
   orbitDir: number;
   orbitHitCd: number;
+  /** Telegraphed player charge: total timer, cooldown, committed direction and one-hit latch. */
+  chargeT: number;
+  chargeCd: number;
+  chargeHit: boolean;
+  chargeDirX: number;
+  chargeDirY: number;
 }
 
 export interface Sentry {
@@ -619,6 +631,12 @@ export interface Sentry {
   orbitR: number;
   orbitDir: number;
   orbitHitCd: number;
+  /** Small silhouettes only: telegraphed ram, cooldown, committed direction and one-hit latch. */
+  ramT: number;
+  ramCd: number;
+  ramHit: boolean;
+  ramDirX: number;
+  ramDirY: number;
 }
 
 export interface LaserEmitter {

@@ -2754,3 +2754,43 @@ not tested; the browser run used synthetic pointer events.
 
 **Next:** run the layer on an actual iPhone and Android phone, tune thumb reach and the 2×2 button grid,
 and decide whether AUTO LOCK off needs a manual lock-cycle control. Portrait is usable but not laid out.
+
+## 2026-10-30 — Threat melee: worm bite, virus charge, sentry ram (v0.1.58)
+
+**Goal:** close-range threats should do something other than touch damage; give the worms a committed bite
+and the smaller mobile threats a charge or dash they can use as melee.
+
+**Changes:**
+- Worms now bite a player inside `WORM.biteRange` (76). The head rears for 0.32 s, lunges at
+  `biteLunge` (210) for 0.16 s, and deals `biteDamage` (1) plus `biteKnockback` (880) once inside a
+  56-unit reach. `biteRecovery` (0.38) and `biteCooldown` (2.4) follow. Touch damage is suppressed for
+  the whole attack, the bite direction is latched at the trigger, and cover breaks the trigger and the
+  hit. The teeth draw in the committed direction, opening on the wind-up and snapping shut on the lunge.
+- Viruses charge a player between `VIRUS.chargeMinRange` (34) and `chargeRange` (150). They latch a
+  direction, hold still for `chargeWindup` (0.34), dash at `chargeSpeed` (620) for `chargeActive` (0.22),
+  and deal 1 damage plus a 540 shove on the first contact. `chargeRecovery` (0.34) and
+  `chargeCooldown` (4.2) follow. Iframes, a cloak or cover beat the hit; the commitment still runs.
+- Pulse squares and dart flocks ram instead of firing when a player is inside `SENTRY.ram.range` (92).
+  The ram is a 0.3 s wind-up, a 0.16 s dash at 460, 1 damage and a 620 shove, then a 0.36 s recovery and
+  a 3.8 s cooldown. The sentry stops its firing cycle for the attack and cannot shoot during it. Only
+  one sentry ram commits at a time: without that gate a three-dart flock stacked three melee hits on one
+  frame and deleted a full health bar. Triplex and homing silhouettes keep their existing firing bands and
+  do not ram.
+- Virus charges and sentry rams are cancelled by Atomize's orbit, a compactor pin, a spawn window or an
+  arena transition, so a held body cannot resume an old lunge after the field drops it.
+- Shared `drawLungeWarn` telegraph for virus/sentry dashes: dashed guide, arc and arrow during the
+  wind-up, then a hot streak and an impact nose during the dash. The worm uses its own jaw shape so it
+  reads as a bite rather than another projectile.
+- Tuning lives in `tuning/threats.json`. README threat bullets and AGENTS D9 record the tells and the
+  "cover cancels it" rule. Build stamped 0.1.58 in the title, Settings > System, the console log and the
+  service worker cache.
+
+**Verification:** `npx tsc --noEmit` clean after each edit; `npm run build` clean. A headless World probe
+in `scripts/.tmp-threat-melee.ts` (removed after use) set each threat in range with its cooldown clear and
+stepped the sim: the worm began a 0.86 s bite and dealt 1 damage (`killer === SRC.WORM`); the virus
+started a 0.90 s charge at 100 units and dealt 1 damage; the pulse square started a 0.80 s ram and dealt
+1 damage while a second square at the same range stayed out of the commit (`ramT` 0), so the pair dealt
+one segment, not two. No test of a real player dodging the tells yet.
+
+**Next:** run wave 3+ in the browser and watch the bite/charge/ram tells at the minimum camera zoom. The
+next content question is whether flocks should burst darts on a ram impact; they currently only shove.

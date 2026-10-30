@@ -247,16 +247,23 @@ of every threat; existing countdowns keep running. Each arena changes the zones 
 
 - **WORMS**: trailing chains of red squares. They patrol a territory anchor, eat bolts and viruses, and
 damage on touch. They only commit to you if you enter their patch or hit them, then lose interest after
-5.5 s and return. Longer chains move slower. Cover blocks them. A virus that catches one turns it into a
+5.5 s and return. A player who closes inside 76 units draws a telegraphed **bite**: the head rears, then
+lunges 56 units forward for 1 damage and a hard shove. Back off, dash through it, or break line of sight
+to waste it. Longer chains move slower. Cover blocks them. A virus that catches one turns it into a
 faster hunter.
 - **VIRUSES**: magenta diamonds that spread toward roam points instead of beelining across the map. They
 pursue a player only inside 310 units, or an uninfected worm inside 560 units. Touching you fills the
 infection meter; at full meter a **THRALL** copy of you spawns nearby and fights with your own single-stick
-rules. They still infect worms and split on a timer.
+rules. A virus that lines you up at 34–150 units winds up and **charges** in a straight line for 1 damage
+and a 540 shove; sidestep or dash to make it miss, then punish the recovery. They still infect worms and
+split on a timer.
 - **SENTRIES**: pulse squares, triplex shotguns, homing trapezoids and dart flocks. They land in a zone
 and hold it, with a 100–250 unit leash instead of following you across the arena. Heavy triplex and homing
-silhouettes are much slower than the pulse and flock. Packs arrive one at a time, low-tier shots are
-short-ranged and disperse on cover, and enemy fire damages other enemies too while `FRIENDLY FIRE` is on.
+silhouettes are much slower than the pulse and flock. A pulse square or a flock that finds you inside 92
+units stops shooting and **rams** instead: a short wind-up, a 0.16 s dash, 1 damage and a 620 shove, then
+a recovery beat. Only one sentry commits at a time, so a dart flock cannot stack three hits on one frame.
+Packs arrive one at a time, low-tier shots are short-ranged and disperse on cover, and
+enemy fire damages other enemies too while `FRIENDLY FIRE` is on.
 - **CASCADING ERRORS**: yellow blocks stamped with red exclamation marks. They spread outward like a
   plant, one block every 4.0 s early and 2.0 s at full pressure, hurt on contact, and take three hits to
   delete a single block. The first colony starts at four blocks and the live cap grows over many waves.

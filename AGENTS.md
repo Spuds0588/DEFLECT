@@ -223,13 +223,20 @@ the network. It is a test bed for the eventual PvE direction, not a promise of o
   segment per meal. They **hold a territory anchor**, patrol it at reduced speed, and only chase a player
   who enters `WORM.aggroRadius` or hits them; interest expires after `WORM.aggroTime` and they return.
   Longer chains move slower. They are **blocked by cover** like the player; only designated phasing threats
-  should pass through geometry.
+  should pass through geometry. A player inside `WORM.biteRange` draws a telegraphed **bite**: the head
+  rears for `biteWindup`, lunges at `biteLunge` for `biteActive`, and deals `biteDamage` plus
+  `biteKnockback` once before `biteRecovery`. The direction is latched at the trigger, so a strafe, dash or
+  broken line of sight can make it whiff; touch damage is suppressed for the whole attack, and
+  `biteCooldown` gates the next one. Do not let a worm bite through cover.
 - **Viruses** are magenta diamonds that spread, split, and infect. They roam toward `VIRUS.roam*` points
   and only pursue a player or an uninfected worm inside `VIRUS.huntRadius` / `VIRUS.wormHuntRadius`; worms
   are the preferred host. They can convert a worm (magenta, faster) or fill the local player's infection
   meter; at full meter the meter resets to 0.3 and a **thrall** copy spawns nearby. A thrall writes an
   `InputFrame` like any player, so it obeys one-stick facing, swing locks, dash cooldown, burst recharge
-  and energy. It uses `players[1]` locally, not a room slot.
+  and energy. It uses `players[1]` locally, not a room slot. A virus that has the player between
+  `VIRUS.chargeMinRange` and `chargeRange` latches a direction, glows through `chargeWindup`, then dashes
+  at `chargeSpeed` for `chargeActive`; the first body hit takes `chargeDamage` and `chargeKnockback`,
+  then `chargeRecovery` and `chargeCooldown` follow. Cover and dashes beat the hit, not the commitment.
 - **Firewalls** are sweeping orange beams. They warn, then cross the arena and burn players, worms and
   viruses. Pillars cut both the visible beam and its damage; line of sight is real cover. Automatic
   firewalls are **off**. They are reserved for a future destructible switch on selected arenas; setting
@@ -246,7 +253,10 @@ the network. It is a test bed for the eventual PvE direction, not a promise of o
   shooter count past it. The opening pack is two pulse squares through wave 3, placed inside the camera
   window; the cap starts at two and reaches five. Their first shots and repeat cadence are slower for
   those opening waves. Their low-tier bolts are short-lived and **disperse on geometry** instead of
-  bouncing.
+  bouncing. A pulse square or a flock with a player inside `SENTRY.ram.range` breaks its firing cycle for a
+  telegraphed **ram** (`windup`, `active`, `recovery`, `damage`, `knockback`). Only one sentry ram
+  commits at a time; a three-dart flock must never stack three melee hits on one frame. Triplex and homing
+  silhouettes do not ram; they keep their firing band. Cover ends both the travel and the hit.
 - Enemy fire is factional. A missed sentry shot can damage worms, viruses, and cascading errors. Sentries
   do not shoot their own pack because a projectile has no source silhouette to exclude safely.
 - **Friendly fire is a run rule, not a constant.** GAUNTLET and CAMPAIGN setup carry a `FRIENDLY FIRE`

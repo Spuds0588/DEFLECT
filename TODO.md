@@ -2,7 +2,31 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.57 touch framework)
+Last updated: 2026-10-30 (v0.1.58 threat melee)
+
+---
+
+## v0.1.58 — Threat melee: worm bite, virus charge, sentry ram (2026-10-30)
+
+### Built
+- [x] Worms answer a close player with a telegraphed bite: rear, 0.16 s lunge, 1 damage and an 880 shove,
+      then recovery. Direction latches at the trigger; cover, a dash or a strafe can make it whiff
+- [x] Viruses wind up and straight-line **charge** at 34–150 units for 1 damage and a 540 shove, then
+      recover; iframes and cover cancel the hit, not the commitment
+- [x] Pulse squares and dart flocks **ram** a player inside 92 units instead of firing; triplex and homing
+      silhouettes keep their shooting band. The ram has a 0.3 s wind-up, 0.16 s dash and a recovery beat;
+      only one sentry ram commits at a time, so a flock cannot stack three hits on one frame
+- [x] Shared render telegraphs: worm jaws open and snap shut on the committed direction; virus and sentry
+      lunges draw a dashed guide, a hot dash trail and an impact nose. No new particle system
+- [x] All numbers live in `tuning/threats.json` (`WORM.bite*`, `VIRUS.charge*`, `SENTRY.ram`); README and
+      AGENTS D9 updated; build stamped 0.1.58
+- [x] `npx tsc --noEmit` clean. Headless probes: a worm at 50 units bit for 1 damage; a virus at 100 units
+      charged and hit once; a pulse square at 70 units rammed and hit once. `npm run build` clean
+
+### Next
+- [ ] Physical playtest of the three tells at gauntlet wave 3+; check that the bite jaw and the ram guide
+      still read at the camera's minimum zoom
+- [ ] Decide whether a ramming flock should spread its darts on impact (currently it only shoves)
 
 ---
 
