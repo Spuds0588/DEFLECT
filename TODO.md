@@ -737,6 +737,8 @@ Last updated: 2026-10-29 (v0.1.27 SWEEP.EXE and the IN TESTING build label)
 - [x] Local bots draw the same three-segment program hull, glow and damage read as the local avatar, with
       no heading arrow, energy arc or readiness column
 - [x] Score pips use program colours in local matches; the minimap drone ring uses the threat ice colour
+- [x] Menu cards show one outline: the focused item owns the border, and a saved program or arena keeps a
+      dot after its name (also removed the bright selected border on sector tabs)
 
 ### Verification
 - [x] Headless probe: needle type 7 applies venom, spray hits and poisons in radius, the jet fires after

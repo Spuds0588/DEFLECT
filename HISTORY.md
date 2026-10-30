@@ -1837,6 +1837,9 @@ and his skill should read as the death burst with circles.
 - The spray is emitted as particle circles (kind 5) for the whole cloud life, matching the death shard
   burst but round and green. The jet is clipped by cover and ticks venom every 0.2 s.
 - Bots gained a close-range spray branch; the generic heavy hold builds the jet.
+- Menu selections use one outline again. The focused card owns the bright border; a saved
+  program or arena keeps a small dot after its name instead of a second box, and the
+  sector tabs lost their bright selected border. Bumped to v0.1.31 for the production check.
 
 **Verification:** `npx tsc --noEmit` clean; headless checks covered needle → venom → spray → jet, rooting
 (0 units moved), 2.4 rad/s aim, damage ticks, and cover. Browser checks at 1920×1080 confirmed five

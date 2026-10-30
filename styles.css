@@ -2529,10 +2529,17 @@ body.pointer-live .console-arena-card:hover,
   outline: none;
 }
 
+/* A saved pick is marked with a dot, never a second outline. Only the focused
+   card carries the bright border; two competing boxes made the cursor ambiguous. */
 .console-arena-card.selected {
-  border-color: #7df8ff;
-  background: rgba(46, 230, 255, 0.1);
-  color: #eaffff;
+  border-color: rgba(46, 230, 255, 0.22);
+  background: rgba(2, 9, 12, 0.55);
+  color: rgba(140, 211, 222, 0.72);
+}
+
+.console-arena-card.selected .console-arena-label::after {
+  content: ' •';
+  color: #7df8ff;
 }
 
 .console-arena-card.nav-focus,
@@ -2600,10 +2607,17 @@ body.pointer-live .console-program-card:hover,
   outline: none;
 }
 
+/* Same rule as the arena cards: one outline, owned by the cursor. The saved
+   program keeps a small dot after its name so the last pick is still readable. */
 .console-program-card.selected {
-  border-color: #7df8ff;
-  background: rgba(46, 230, 255, 0.1);
-  color: #eaffff;
+  border-color: rgba(46, 230, 255, 0.22);
+  background: rgba(2, 9, 12, 0.55);
+  color: rgba(140, 211, 222, 0.72);
+}
+
+.console-program-card.selected .console-program-name::after {
+  content: ' •';
+  color: #7df8ff;
 }
 
 .console-program-line {
@@ -2866,8 +2880,8 @@ body.pointer-live .console-choice:hover {
 }
 
 .console-sector-tab.selected {
-  border-color: rgba(125, 248, 255, 0.62);
-  background: rgba(46, 230, 255, 0.09);
+  border-color: rgba(125, 248, 255, 0.26);
+  background: rgba(46, 230, 255, 0.05);
   color: #eaffff;
 }
 
