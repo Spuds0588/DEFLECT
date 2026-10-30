@@ -2,7 +2,22 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.46 attract demo, UI toggle, bot footwork)
+Last updated: 2026-10-30 (v0.1.47 tuning data in JSON)
+
+---
+
+## v0.1.47 — Gameplay tuning moves to JSON (2026-10-30)
+
+- [x] All tuning records split into `src/game/tuning/player.json`, `programs.json`, `threats.json`,
+      `campaign.json` and `world.json`
+- [x] `src/game/config.ts` is now a typed facade: it imports the JSON, adds the four derived values
+      (`PLAYER.swingHalfAngle`/`guardHalfAngle`, `SWEEP.powerRise`/`powerSpan`) and re-exports every old
+      name, so no system changed and no system imports JSON directly
+- [x] Structural values stay in code: engine limits, view size, pool sizes, palette, `TRAVEL`, `TRAIL_LEN`
+- [x] `src/game/tuning/README.md` documents the file map, units, derived fields and the invariants easiest
+      to break while tuning
+- [x] Verification: a deep compare of all 40 exports against the previous `config.ts` reports **identical**;
+      `npx tsc --noEmit` and `npm run build` clean. No gameplay value changed
 
 ---
 

@@ -1,0 +1,26 @@
+{
+  "CAMPAIGN": {
+    "drillTime": 18,
+    "drillBannerTime": 3.4,
+    "breachTime": 3.4,
+    "breachBannerTime": 3.2,
+    "clearBannerTime": 3,
+    "failBannerTime": 2.2,
+    "minDrillBots": 1,
+    "maxDrillBots": 3,
+    "drillRing": 250,
+    "drillSpread": 0.72,
+    "waveStart": 3,
+    "waveSeconds": 14,
+    "killsToClear": 10,
+    "openingWormDelay": 6,
+    "sentryInterval": 14,
+    "wormInterval": 14,
+    "scorePerKill": 120,
+    "scorePerData": 300,
+    "cleanSweepBonus": 1500,
+    "scoreParTime": 95,
+    "scoreTimeRate": 6,
+    "scorePerDamage": 80
+  }
+}

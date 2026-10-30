@@ -306,6 +306,11 @@ npm run bench   # headless 60 Hz simulation, 8P bot AI, and gauntlet threat benc
 npm run icons   # regenerate PWA icons
 ```
 
+Gameplay tuning lives in [src/game/tuning](src/game/tuning), split into player, program, threat, campaign
+and world JSON. `src/game/config.ts` is the typed facade every system imports from, so editing a number is
+a JSON change rather than a code change. A running dev server hot-reloads it; see the folder's README for
+units, the file map and the values that stay derived in code.
+
 Pushing to `main` builds `dist/` and deploys it to GitHub Pages through
 `.github/workflows/pages.yml`. The repository's Pages source must be set to **GitHub Actions**, not the
 raw branch.

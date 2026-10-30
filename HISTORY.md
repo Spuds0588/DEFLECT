@@ -2366,3 +2366,29 @@ being drawn.
 
 **Next:** judge the demo in motion, then tune `ATTRACT.wave`/`refill` for pacing. The dock now has the
 standard circles; compare it on a pad at 1080p before changing the panel size.
+
+## 2026-10-30 — Gameplay tuning moves to JSON (v0.1.47)
+
+**Goal:** make every feel/timing number easy to find and adjust during playtesting without editing systems.
+
+**Changes:**
+- Split the tuning literals out of `config.ts` into `src/game/tuning/`: `player.json` (avatar, bolt, skill,
+  mine), `programs.json` (six kits), `threats.json` (gauntlet families), `campaign.json` (node pacing and
+  score) and `world.json` (camera, traversal, powerups, rounds, training, net, attract).
+- `config.ts` is now a typed facade. It imports the records, adds the values that are derived from view
+  geometry (`PLAYER.swingHalfAngle`/`guardHalfAngle`, `SWEEP.powerRise`/`powerSpan`) and re-exports all
+  38 old names. No call site changed and no system imports JSON directly.
+- Structural constants stayed in code: `VIEW_W/H`, `CAMERA_ZOOM`, engine limits, pool sizes, `TRAVEL`,
+  `TRAIL_LEN` and `COLORS`.
+- `tuning/README.md` documents the file map, units, derived fields and the tuning-adjacent invariants
+  (bomb types are never deflectable, beam reflections never hit the caster, hull clearance).
+- AGENTS.md gains D24 and points the per-system "all numbers live in" notes at the JSON records; README
+  documents the folder and the dev hot-reload path.
+
+**Verification:** a temporary deep-compare script imported the previous `config.ts` from `HEAD` and the new
+facade and compared all 40 exports recursively: **IDENTICAL, no value or key changes**. The four derived
+fields were omitted from JSON and recomputed in the facade with the same formulas. `npx tsc --noEmit` and
+`npm run build` are clean; the attract demo and gauntlet run on the dev server after the move.
+
+**Next:** tuning now has one obvious home. When playtesting a kit, edit `tuning/programs.json`; if a value
+needs to scale with the view or a sector, keep that derivation in `config.ts` rather than baking the result.

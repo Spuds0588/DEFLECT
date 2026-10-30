@@ -251,8 +251,8 @@ the network. It is a test bed for the eventual PvE direction, not a promise of o
   (`FIREWALL.enemyDamage`).
 - The mode is deliberately absent from `Snapshot` and `NetView`. Any future networked PvE needs its own
   protocol work and a new decision; do not leak gauntlet entities into match snapshots.
-- All numbers live in `GAUNTLET`, `WORM`, `VIRUS`, `FIREWALL`, `SENTRY`, `CASCADING_ERROR` and `THRALL` in
-  `config.ts`.
+- Tuning lives in `tuning/threats.json`, exported as `GAUNTLET`, `WORM`, `VIRUS`, `FIREWALL`, `SENTRY`,
+  `CASCADING_ERROR` and `THRALL` from `config.ts`.
 
 ### D10 — Four action jobs: ranged, melee, power, skill (revised 2026-10-29)
 Player-facing names are plain words, not internal verbs: **RANGED ATTACK** (`X`), **MELEE ATTACK**
@@ -474,7 +474,7 @@ two-row ASCII picture was tried there and turns to mush at core size, and a text
 read worse than the star. The heavy and melee brooms stay upright with the bristles at the bottom.
 
 Displacement reuses the shared `kx`/`ky` slide, `PLAYER.knockDrag` easing and the existing square slide
-dust; do not add a second knockback system. All numbers live in the `SWEEP` block in `config.ts`. Bots own
+dust; do not add a second knockback system. All numbers live in `tuning/programs.json` under `SWEEP`. Bots own
 the kit like any other program: the generic heavy hold builds the sweep, and a dedicated branch taps the
 split brooms at 50–210 units. Sweep is local-only for now; online matches still run Probe because
 `Snapshot` does not carry programs. Do not add kit fields to the snapshot without a protocol decision.
@@ -535,7 +535,7 @@ reads as a letter. `document.fonts.check` alone reports true for missing system 
 - Bots lob when a target sits between 90 and `lobRange + 60`; the generic heavy hold builds the carpet.
   The kit is local-only like every other program; do not add bombs to `Snapshot` fields.
 
-All numbers live in the `KABOOM` block in `config.ts`.
+All numbers live in `tuning/programs.json` under `KABOOM`.
 
 ### D17 — First campaign node: BUILD ROOT (built 2026-10-30)
 
@@ -561,13 +561,13 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
 - **Bots are the drill squad, not allies.** `World` has no team model for bot companions yet, so do not
   fake allies by disabling friendly fire. Team ownership is the prerequisite for bots that fight beside
   the player after the breach.
-- Campaign numbers live in the `CAMPAIGN` block in `config.ts`. The node identity, arena blockout and
+- Campaign numbers live in `tuning/campaign.json` under `CAMPAIGN`. The node identity, arena blockout and
   sector link live in `campaign.ts`; never put node geometry in a switch on level id.
 - Everything here is local, like the gauntlet. Nothing campaign-shaped enters `Snapshot`.
 
 ### D18 — Camera frames the group, fit-first split, rigs, death spectate (revised 2026-10-30)
 
-The camera is part of the read, not a fixed follow. All numbers live in `CAMERA` in `config.ts`.
+The camera is part of the read, not a fixed follow. All numbers live in `tuning/world.json` under `CAMERA`.
 `src/game/camera.ts` owns the rig director; the renderer owns framing, grouping and viewports.
 
 - **Group framing**: every local pane anchors on the bounding-box centre of the local players in that
@@ -714,7 +714,7 @@ should stay that way. Damage reads as **shake + three crack stages**, never a he
 - **Bots**: tap fast-forward when a target sits 40–320 units away; the generic heavy hold builds the
   dilation. Both ride the same `InputFrame` path as a human.
 
-All numbers live in the `BUFFER` block in `config.ts`. The kit is local-only like every other program.
+All numbers live in `tuning/programs.json` under `BUFFER`. The kit is local-only like every other program.
 
 ### D22 — The heavy beam is a surface, not an infinite ray (built 2026-10-30)
 
@@ -757,6 +757,25 @@ edge ends it and returns to the hub with nothing highlighted. `?attract=1` boots
 - The demo must stay out of menus and must not leave settings or `renderer.showUi` in the demo state when
   it exits; `uiEnabled` restores the saved choice.
 
+### D24 — Tuning data lives in JSON (decided 2026-10-30)
+All feel, timing and damage numbers live in `src/game/tuning/*.json`, split by ownership:
+`player.json` (avatar, bolt, skill, mine), `programs.json` (per-program kits), `threats.json` (gauntlet
+families), `campaign.json` (authored node pacing and score) and `world.json` (camera, arena traversal,
+powerups, rounds, training, net and attract). `src/game/config.ts` is a typed facade that imports those
+records and re-exports the old names, so no system imports JSON directly.
+
+- JSON has no comments. Rules and invariants stay in this document and in code; the JSON only carries
+  descriptively named values. `tuning/README.md` maps the files, units and derived fields.
+- Keep **structural constants** in `config.ts`: engine limits, view size, pool sizes, the render palette,
+  `TRAVEL` state values and `TRAIL_LEN`. Those are not feel knobs.
+- Keep **derived values** in `config.ts` too: `PLAYER.swingHalfAngle`/`guardHalfAngle` are `PI/2`, and
+  `SWEEP.powerRise`/`powerSpan` derive from the view so a camera-zoom change still resizes the broom.
+  Do not bake their current results into JSON.
+- `config.ts` is imported at build time; there is no runtime fetch. That keeps snapshots, bot determinism
+  and the PWA cache unchanged. A JSON edit hot-reloads in `npm run dev`; production needs a rebuild.
+- To add a placeholder value, add it to the relevant JSON object. A brand-new top-level record also needs
+  one import and one export line in the facade. Do not reintroduce tuning literals in `config.ts`.
+
 ---
 
 ## 3. Architecture
@@ -766,7 +785,8 @@ index.html            DOM screens (title, settings, lobby, overlays), canvas mou
 styles.css            UI system (neon geometry, no external fonts/images)
 src/main.ts           app state machine: title → lobby → game; UI wiring; gamepad menu nav
 .github/workflows/pages.yml  build dist and deploy the main-branch alpha to GitHub Pages
-src/game/config.ts    ALL tuning numbers. Change feel here, not in systems.
+src/game/tuning/      gameplay tuning JSON: player, programs, threats, campaign, world
+src/game/config.ts    typed facade over tuning JSON + engine limits and palette; import from here, never JSON
 src/game/programs.ts  roster: program ids, names, hues, core glyphs, signature skills
 src/game/campaign.ts  first playable campaign node: level identity, arena blockout, sector link
 src/game/road.ts      campaign route plate for the between-level transition (parked, not mounted)
@@ -874,7 +894,7 @@ public/               manifest, generated icons, service worker
   a brawl on every side cancels out. The anchor is then clamped to the middle band of the view
   (`CAMERA.edgeMargin`), unless the arena bound already pins the camera. Dynamic zoom pulls back when the
   group is spread (`CAMERA.zoomMin`/`zoomMax`). Up to four local panes each get their own camera, zoom and
-  HUD through `setLocalSlots`; see D18. All numbers live in `CAMERA` in `config.ts`; do not make the view
+  HUD through `setLocalSlots`; see D18. All numbers live in `tuning/world.json` under `CAMERA`; do not make the view
   follow the group centroid without the anchor clamp.
 - Dark background, grid, arena frame, corner brackets, and the active arena's pillars.
 - Each arena supplies an accent and a floor signature (cross, square, rings, chevrons). The title
@@ -989,7 +1009,8 @@ slot after a 6 s grace and marks the player as disconnected; if a round is live,
 
 ## 6. Tuning & feel rules
 
-- Every gameplay number lives in `src/game/config.ts` and is exported. No magic numbers in `world.ts`.
+- Every gameplay number lives in `src/game/tuning/*.json` and is re-exported from `src/game/config.ts`.
+  Systems import from `config.ts`, never from JSON. No magic numbers in `world.ts`.
 - A feel change must state the old value, new value, and why in `HISTORY.md`.
 - Keep the single-stick trade-off intact: if a change lets a player face one way and attack another,
   it is out of scope (that is twin-stick) unless the designer explicitly asks for it.
