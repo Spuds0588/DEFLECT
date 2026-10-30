@@ -73,6 +73,8 @@ export const SRC = {
   ERROR: 5,
   FIREWALL: 6,
   DRONE: 7,
+  /** No body: the floor ended. The death camera falls through to the nearest player. */
+  VOID: 8,
 } as const;
 
 export const EV = {

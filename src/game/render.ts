@@ -1143,10 +1143,17 @@ export class Renderer {
     const viewH = view.h / zoomTarget;
     const spanX = b.right - b.left;
     const spanY = b.bottom - b.top;
-    if (spanX <= viewW) targetX = (b.left + b.right - viewW) * 0.5;
-    else targetX = Math.max(b.left, Math.min(b.right - viewW, focusX - viewW * 0.5));
-    if (spanY <= viewH) targetY = (b.top + b.bottom - viewH) * 0.5;
-    else targetY = Math.max(b.top, Math.min(b.bottom - viewH, focusY - viewH * 0.5));
+    // On an open arena the frame may sit past the lip, so the drop is visible before
+    // anyone steps on it. Walled arenas keep the old hard clamp.
+    const outerPad = arena.walls === 'open' ? CAMERA.voidMargin : 0;
+    const camMinX = b.left - outerPad;
+    const camMaxX = b.right - viewW + outerPad;
+    const camMinY = b.top - outerPad;
+    const camMaxY = b.bottom - viewH + outerPad;
+    if (spanX + outerPad * 2 <= viewW) targetX = (b.left + b.right - viewW) * 0.5;
+    else targetX = Math.max(camMinX, Math.min(camMaxX, focusX - viewW * 0.5));
+    if (spanY + outerPad * 2 <= viewH) targetY = (b.top + b.bottom - viewH) * 0.5;
+    else targetY = Math.max(camMinY, Math.min(camMaxY, focusY - viewH * 0.5));
 
     // The anchor never leaves the middle band of the view. Without this the pull could
     // push the player's own body toward the frame edge while it leads the fight.
@@ -1156,7 +1163,7 @@ export class Renderer {
       const maxX = anchorX - margin;
       if (targetX < minX) targetX = minX;
       else if (targetX > maxX) targetX = maxX;
-      targetX = Math.max(b.left, Math.min(b.right - viewW, targetX));
+      targetX = Math.max(camMinX, Math.min(camMaxX, targetX));
     }
     if (spanY > viewH) {
       const margin = viewH * CAMERA.edgeMargin;
@@ -1164,7 +1171,7 @@ export class Renderer {
       const maxY = anchorY - margin;
       if (targetY < minY) targetY = minY;
       else if (targetY > maxY) targetY = maxY;
-      targetY = Math.max(b.top, Math.min(b.bottom - viewH, targetY));
+      targetY = Math.max(camMinY, Math.min(camMaxY, targetY));
     }
 
     // Respawn is a cut too: the body reappears at a spawn, not where the spectate pane
@@ -1303,58 +1310,101 @@ export class Renderer {
 
     this.drawTraversal(arena, t, frameA);
 
-    // Border glow.
+    // Border. An open arena has no wall, so the lip is dashed and the grid outside it is
+    // swallowed by the void. Corner brackets are dropped: nothing here stops a body.
+    const openLip = arena.walls === 'open';
     ctx.save();
-    ctx.globalAlpha = frameA;
     ctx.strokeStyle = arena.accent;
-    ctx.globalAlpha = 0.1;
-    ctx.lineWidth = 9;
-    ctx.strokeRect(arena.bounds.left, arena.bounds.top, arena.bounds.right - arena.bounds.left, arena.bounds.bottom - arena.bounds.top);
-    ctx.globalAlpha = 0.3;
-    ctx.lineWidth = 2.5;
-    ctx.strokeRect(arena.bounds.left, arena.bounds.top, arena.bounds.right - arena.bounds.left, arena.bounds.bottom - arena.bounds.top);
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(arena.bounds.left + 3.5, arena.bounds.top + 3.5, arena.bounds.right - arena.bounds.left - 7, arena.bounds.bottom - arena.bounds.top - 7);
-    ctx.globalAlpha = 1;
+    if (openLip) {
+      ctx.globalAlpha = frameA;
+      ctx.fillStyle = 'rgba(2, 5, 9, 0.94)';
+      const voidW = CAMERA.voidMargin + 72;
+      ctx.fillRect(b.left - voidW, b.top - voidW, b.right - b.left + voidW * 2, voidW);
+      ctx.fillRect(b.left - voidW, b.bottom, b.right - b.left + voidW * 2, voidW);
+      ctx.fillRect(b.left - voidW, b.top, voidW, b.bottom - b.top);
+      ctx.fillRect(b.right, b.top, voidW, b.bottom - b.top);
+      ctx.globalAlpha = 0.08 * frameA;
+      ctx.lineWidth = 9;
+      ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+      ctx.globalAlpha = 0.5 * frameA;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([30, 18]);
+      ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+      ctx.globalAlpha = 0.26 * frameA;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 10]);
+      ctx.strokeRect(b.left + 5.5, b.top + 5.5, b.right - b.left - 11, b.bottom - b.top - 11);
+      ctx.setLineDash([]);
+      // Inward chevrons, so the edge reads as "this way back" rather than a wall.
+      ctx.globalAlpha = 0.4 * frameA;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let x = b.left + 96; x < b.right - 40; x += 128) {
+        ctx.moveTo(x - 6, b.top + 3);
+        ctx.lineTo(x, b.top + 13);
+        ctx.lineTo(x + 6, b.top + 3);
+        ctx.moveTo(x - 6, b.bottom - 3);
+        ctx.lineTo(x, b.bottom - 13);
+        ctx.lineTo(x + 6, b.bottom - 3);
+      }
+      for (let y = b.top + 96; y < b.bottom - 40; y += 128) {
+        ctx.moveTo(b.left + 3, y - 6);
+        ctx.lineTo(b.left + 13, y);
+        ctx.lineTo(b.left + 3, y + 6);
+        ctx.moveTo(b.right - 3, y - 6);
+        ctx.lineTo(b.right - 13, y);
+        ctx.lineTo(b.right - 3, y + 6);
+      }
+      ctx.stroke();
+    } else {
+      ctx.globalAlpha = 0.1;
+      ctx.lineWidth = 9;
+      ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+      ctx.globalAlpha = 0.3;
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(b.left + 3.5, b.top + 3.5, b.right - b.left - 7, b.bottom - b.top - 7);
+      ctx.globalAlpha = 1;
 
-    // Corner brackets.
-    const len = 26;
-    const pad = 8;
-    ctx.strokeStyle = arena.accent;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(arena.bounds.left + pad, arena.bounds.top + pad + len);
-    ctx.lineTo(arena.bounds.left + pad, arena.bounds.top + pad);
-    ctx.lineTo(arena.bounds.left + pad + len, arena.bounds.top + pad);
-    ctx.moveTo(arena.bounds.right - pad - len, arena.bounds.top + pad);
-    ctx.lineTo(arena.bounds.right - pad, arena.bounds.top + pad);
-    ctx.lineTo(arena.bounds.right - pad, arena.bounds.top + pad + len);
-    ctx.moveTo(arena.bounds.left + pad, arena.bounds.bottom - pad - len);
-    ctx.lineTo(arena.bounds.left + pad, arena.bounds.bottom - pad);
-    ctx.lineTo(arena.bounds.left + pad + len, arena.bounds.bottom - pad);
-    ctx.moveTo(arena.bounds.right - pad - len, arena.bounds.bottom - pad);
-    ctx.lineTo(arena.bounds.right - pad, arena.bounds.bottom - pad);
-    ctx.lineTo(arena.bounds.right - pad, arena.bounds.bottom - pad - len);
-    ctx.stroke();
+      // Corner brackets.
+      const len = 26;
+      const pad = 8;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(b.left + pad, b.top + pad + len);
+      ctx.lineTo(b.left + pad, b.top + pad);
+      ctx.lineTo(b.left + pad + len, b.top + pad);
+      ctx.moveTo(b.right - pad - len, b.top + pad);
+      ctx.lineTo(b.right - pad, b.top + pad);
+      ctx.lineTo(b.right - pad, b.top + pad + len);
+      ctx.moveTo(b.left + pad, b.bottom - pad - len);
+      ctx.lineTo(b.left + pad, b.bottom - pad);
+      ctx.lineTo(b.left + pad + len, b.bottom - pad);
+      ctx.moveTo(b.right - pad - len, b.bottom - pad);
+      ctx.lineTo(b.right - pad, b.bottom - pad);
+      ctx.lineTo(b.right - pad, b.bottom - pad - len);
+      ctx.stroke();
 
-    // Edge ticks.
-    ctx.strokeStyle = 'rgba(90, 210, 230, 0.28)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let x = arena.bounds.left + 96; x < arena.bounds.right - 40; x += 128) {
-      ctx.moveTo(x, arena.bounds.top);
-      ctx.lineTo(x, arena.bounds.top + 7);
-      ctx.moveTo(x, arena.bounds.bottom);
-      ctx.lineTo(x, arena.bounds.bottom - 7);
+      // Edge ticks.
+      ctx.strokeStyle = 'rgba(90, 210, 230, 0.28)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let x = b.left + 96; x < b.right - 40; x += 128) {
+        ctx.moveTo(x, b.top);
+        ctx.lineTo(x, b.top + 7);
+        ctx.moveTo(x, b.bottom);
+        ctx.lineTo(x, b.bottom - 7);
+      }
+      for (let y = b.top + 96; y < b.bottom - 40; y += 128) {
+        ctx.moveTo(b.left, y);
+        ctx.lineTo(b.left + 7, y);
+        ctx.moveTo(b.right, y);
+        ctx.lineTo(b.right - 7, y);
+      }
+      ctx.stroke();
     }
-    for (let y = arena.bounds.top + 96; y < arena.bounds.bottom - 40; y += 128) {
-      ctx.moveTo(arena.bounds.left, y);
-      ctx.lineTo(arena.bounds.left + 7, y);
-      ctx.moveTo(arena.bounds.right, y);
-      ctx.lineTo(arena.bounds.right - 7, y);
-    }
-    ctx.stroke();
     ctx.restore();
 
     // Arena furniture.
@@ -4573,7 +4623,14 @@ export class Renderer {
     ctx.lineWidth = 1.4;
     ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
     ctx.globalAlpha = 0.22;
-    ctx.strokeRect(x0 + 5.5, y0 + 5.5, w - 11, h - 11);
+    if (arena.walls === 'open') {
+      // A broken inner rim on the map: the edge is a drop, not a wall.
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(x0 + 5.5, y0 + 5.5, w - 11, h - 11);
+      ctx.setLineDash([]);
+    } else {
+      ctx.strokeRect(x0 + 5.5, y0 + 5.5, w - 11, h - 11);
+    }
     ctx.globalAlpha = 1;
     // Cover: brighter than the floor so it still reads at thumbnail size.
     ctx.fillStyle = COLORS.pillarFill;

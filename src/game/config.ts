@@ -56,6 +56,11 @@ export const CAMERA = {
    */
   waveLookAhead: 380,
   /**
+   * World units of void the camera may show past the lip of an open-wall arena, so a
+   * player standing on the edge can see what they would fall into.
+   */
+  voidMargin: 90,
+  /**
    * Slow-motion when the local view count or grouping changes. The transition moves a
    * player's screen position; a full second at the slow scale gives the eye time to find
    * the avatar before a shot lands. The first `layoutSlowHold` seconds sit at the slow

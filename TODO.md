@@ -2,7 +2,41 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.37 fit-first split camera, pane frames, layout slow motion)
+Last updated: 2026-10-30 (v0.1.38 open-wall arenas and THE LEDGE)
+
+---
+
+## v0.1.38 — Open-wall arenas, THE LEDGE (2026-10-30)
+
+### Arena edges
+- [x] `ArenaDef.walls: 'solid' | 'open'` (default solid). Data, not a mode: host sim, guest prediction,
+      bots, renderer, minimap and picker preview all read the same flag (AGENTS D19)
+- [x] Open arena: `stepPlayerMotion` skips the boundary clamp, and a body whose centre crosses the lip
+      falls through the ordinary death path as `SRC.VOID` — loses the round, respawns in training/gauntlet,
+      fails a campaign node. Dash/iframe frames are cleared first; a pad or lift ride still owns the body
+- [x] Shoves are lethal at the lip: Sweep's broom, Wedge's bash/plow, bombs and the melee lash carry bodies
+      out. Worm/virus/sentry bounds clamps are skipped on open arenas and a threat past the lip is killed
+      through its normal damage path, so it credits the gauntlet/campaign clear and drops its pickup
+- [x] Shots die at the lip instead of ricocheting; committed shapes keep their geometry death, so a bomb
+      still detonates on the edge. Bots refuse a dash that would end past the lip and steer back over a
+      130-unit band
+- [x] Presentation: dashed lip over a black void band that swallows the floor grid, inward chevrons, dashed
+      minimap rim and preview border, and the camera may show `CAMERA.voidMargin` (90) past the lip
+- [x] `THE LEDGE` (id 6): violet, ring signature, six pillars, inset eight-point spawn ring
+
+### Verification
+- [x] Headless probe (18 checks): shove kill + `SRC.VOID` + round loss, iframes do not save a fall, solid
+      arena still clamps, walking off falls, training respawn, bolt dies at the lip vs bounces on a wall,
+      virus cull credits a clear, bots play 60 s without walking off, Sweep's thrown broom carries a body
+      over the line
+- [x] Browser on THE LEDGE: lip, chevrons, void band, dashed minimap and picker all render; gauntlet
+      autopilot ran to wave 4 with 6 kills and no threat outside bounds; no console errors
+- [x] `npx tsc --noEmit` and `npm run build` clean
+- [ ] Playtest: is the 130-unit bot edge band too cautious on a big open map? Does the shove-to-kill rate
+      feel like a strategy or a coin flip?
+- [ ] Consider a second open arena with a narrower lip or an interior island; do not convert an existing
+      arena without checking its spawn ring and bot pathing
+- [ ] Void deaths have no bespoke sound yet; they reuse the hit chirp plus the death burst
 
 ---
 

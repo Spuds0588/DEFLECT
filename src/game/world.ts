@@ -186,6 +186,8 @@ export class World {
   private thrallShootT = 0;
   private thrallSwingT = 0;
   private thrallDashT = 0;
+  /** Open-wall arena: the bounds are a lip, not a wall. Anything past it de-rezzes. */
+  private readonly openWalls: boolean;
 
   private get centerX(): number {
     return (this.arena.bounds.left + this.arena.bounds.right) * 0.5;
@@ -211,6 +213,7 @@ export class World {
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
     this.solids = arenaSolids(arena);
+    this.openWalls = arena.walls === 'open';
     this.gauntletPractice = gauntletPractice;
     this.localSlot = localSlot;
     this.selectedProgram = clampProgram(program);
@@ -1057,7 +1060,12 @@ export class World {
         dt,
         this.solids,
         this.arena.bounds,
+        this.openWalls,
       );
+      if (this.openWalls) {
+        this.checkFall(p);
+        if (!p.alive) continue;
+      }
       this.resolveBarrier(p);
       this.resolveNets(p);
       if (p.dashT > 0 && p.dashKind === 1) this.resolveChargeDash(p);
@@ -3840,6 +3848,19 @@ export class World {
   }
 
   private bounceWalls(proj: Projectile): void {
+    if (this.openWalls) {
+      const b = this.arena.bounds;
+      const r = proj.radius;
+      if (proj.x > b.left + r && proj.x < b.right - r && proj.y > b.top + r && proj.y < b.bottom - r) return;
+      // There is no wall to hit, so nothing ricochets: the shot falls into the void. A
+      // committed shape keeps its geometry death, which is what makes a bomb detonate
+      // at the lip instead of disappearing.
+      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9) {
+        this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
+      }
+      proj.active = false;
+      return;
+    }
     let bounced = false;
     const r = proj.radius;
     if (proj.x < this.arena.bounds.left + r) {
@@ -4026,6 +4047,31 @@ export class World {
       }
     }
     return false;
+  }
+
+  /**
+   * Open-wall arenas: the lip is the edge of the floor. A body whose centre crosses it
+   * is gone, so a shove that carries someone over the line is a kill, not a nudge.
+   */
+  private checkFall(p: Player): void {
+    const b = this.arena.bounds;
+    if (p.x > b.left && p.x < b.right && p.y > b.top && p.y < b.bottom) return;
+    this.fallPlayer(p);
+  }
+
+  private fallPlayer(p: Player): void {
+    if (!p.alive || p.travelT > 0) return;
+    // Invulnerability does not buy a floor: a dash or a hit-stun cannot save the body.
+    // The kill reuses the ordinary death path, so rounds, scores and the campaign fail
+    // all behave exactly as they do for a normal hit.
+    p.iframes = 0;
+    p.ghostT = 0;
+    p.hp = 1;
+    p.kx = 0;
+    p.ky = 0;
+    this.damagePlayer(p, 1, -1, 0, -1, 0, SRC.VOID, -1);
+    p.kx = 0;
+    p.ky = 0;
   }
 
   private damagePlayer(
@@ -4871,6 +4917,34 @@ export class World {
     for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) this.updateSentry(this.sentries[i], dt);
     for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) this.updateFirewall(this.firewalls[i], dt);
     this.updateErrors(dt);
+    if (this.openWalls) this.cullVoidThreats();
+  }
+
+  /**
+   * A threat carried over the lip is deleted by the drop. The kill goes through the
+   * normal damage path so it still counts toward the clear, drops its pickup and fires
+   * the same de-rez burst as a projectile kill.
+   */
+  private cullVoidThreats(): void {
+    const b = this.arena.bounds;
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (w.active && (w.x < b.left || w.x > b.right || w.y < b.top || w.y > b.bottom)) {
+        this.damageWorm(w, 9999, 0, 0, 0);
+      }
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (v.active && (v.x < b.left || v.x > b.right || v.y < b.top || v.y > b.bottom)) {
+        this.damageVirus(v, 9999, 0, 0, 0);
+      }
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active && (s.x < b.left || s.x > b.right || s.y < b.top || s.y > b.bottom)) {
+        this.damageSentry(s, 9999, 0, 0, 0);
+      }
+    }
   }
 
   /**
@@ -5146,8 +5220,12 @@ export class World {
     s.y += (s.vy + s.ky) * dt;
     s.kx *= Math.exp(-SENTRY.knockDrag * dt);
     s.ky *= Math.exp(-SENTRY.knockDrag * dt);
-    s.x = Math.max(this.arena.bounds.left + s.radius, Math.min(this.arena.bounds.right - s.radius, s.x));
-    s.y = Math.max(this.arena.bounds.top + s.radius, Math.min(this.arena.bounds.bottom - s.radius, s.y));
+    // Sentries hold a landing zone and are leashed, so the clamp only matters for a
+    // shove. On an open arena the drop is allowed to take them.
+    if (!this.openWalls) {
+      s.x = Math.max(this.arena.bounds.left + s.radius, Math.min(this.arena.bounds.right - s.radius, s.x));
+      s.y = Math.max(this.arena.bounds.top + s.radius, Math.min(this.arena.bounds.bottom - s.radius, s.y));
+    }
     this.pushOutOfCover(s, s.radius);
 
     if (!p.alive && !lure) return;
@@ -5630,9 +5708,11 @@ export class World {
     w.y += (w.vy + w.ky) * dt;
     w.kx *= Math.exp(-WORM.knockDrag * dt);
     w.ky *= Math.exp(-WORM.knockDrag * dt);
-    const pad = WORM.headRadius + WORM.wallPad;
-    w.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.x));
-    w.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.y));
+    if (!this.openWalls) {
+      const pad = WORM.headRadius + WORM.wallPad;
+      w.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.x));
+      w.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.y));
+    }
     // Worms are not one of the cover-phasing threats. Their chain is pushed out of
     // geometry exactly like a player body, so cover is real against them.
     this.pushOutOfCover(w, WORM.headRadius);
@@ -5974,8 +6054,11 @@ export class World {
     v.y += (v.vy + v.ky) * dt;
     v.kx *= Math.exp(-VIRUS.knockDrag * dt);
     v.ky *= Math.exp(-VIRUS.knockDrag * dt);
-    v.x = Math.max(this.arena.bounds.left + v.radius, Math.min(this.arena.bounds.right - v.radius, v.x));
-    v.y = Math.max(this.arena.bounds.top + v.radius, Math.min(this.arena.bounds.bottom - v.radius, v.y));
+    // A walled arena keeps the colony inside. An open one lets a shove carry it out.
+    if (!this.openWalls) {
+      v.x = Math.max(this.arena.bounds.left + v.radius, Math.min(this.arena.bounds.right - v.radius, v.x));
+      v.y = Math.max(this.arena.bounds.top + v.radius, Math.min(this.arena.bounds.bottom - v.radius, v.y));
+    }
     this.nudgeVirusFromCover(v);
 
     if (p.alive && p.iframes <= 0 && v.contactCd <= 0) {

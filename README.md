@@ -11,8 +11,8 @@ numbers, with a vinyl-crackle bed.
 **Playable now:** solo training against a sparring drone or endless 1v1–1v3 bot practice, **VS BOTS**
 round matches against one to three local opponents, a scored local **GAUNTLET** against worms, viruses,
 cascading errors, shooters and infected thralls, the first **CAMPAIGN** node, or host/join a room for up
-to 8 players. Six arenas are selectable from the title screen, including the multi-district
-`MAINFRAME` and the multi-deck `TRANSIT`. Match modes are first to 3 rounds; training is continuous practice, while gauntlet is a
+to 8 players. Seven arenas are selectable from the title screen, including the multi-district
+`MAINFRAME`, the multi-deck `TRANSIT` and the wall-less `THE LEDGE`. Match modes are first to 3 rounds; training is continuous practice, while gauntlet is a
 one-life score chase with a local top-runs table.
 
 **Campaign (story mode):** `SINGLE PLAYER > CAMPAIGN` opens three local save slots first. An empty slot
@@ -144,6 +144,7 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `SWITCHBACK` | Staggered bars form serpentine lanes. Long sightlines and heavy ricochets. |
 | `MAINFRAME` | A large multi-district map (four linked combat zones) with a camera that follows you. Cross lanes, pillar cover, a gate ring and a ricochet alley; fights move between districts. |
 | `TRANSIT` | Two decks over a service trench. Cross on the central bridge, ride the paired transporter pads, or take the lift on the east end. The trench blocks bodies but not shots; dashes phase it. |
+| `THE LEDGE` | No outer wall. The floor ends in a dashed lip over the void: a shove that carries a body over it kills, shots fall instead of ricocheting, and a pushed threat is a clear in the gauntlet. |
 
 ### Bridges, pads and lifts
 
@@ -154,6 +155,10 @@ while the plate waits. A pad ride unloads the avatar layer by layer at the sourc
 mate, and the body cannot act or be hit while it is in transit. A lift ride is a longer screen transition
 built from deck outlines shrinking toward the centre. Both are ordinary arena data, so a match, a
 training session and the gauntlet share the same links.
+
+Open edges are arena data, not a mode. On `THE LEDGE` the bounds are a lip rather than a wall, so Sweep's
+broom, Wedge's bash or a bomb can carry an opponent out, and a dash still commits you to whatever is on
+the other side of it. Bots steer away from the drop and refuse a dash that would end past it.
 
 ## Training and bot practice
 
@@ -222,8 +227,10 @@ push, throw a directional spray of rotating triangles, and tilt the view by the 
 
 This build is a test rig as much as a game. A useful pass:
 
-- All five arenas in training. Learn `THE RING`'s four side gates, `SWITCHBACK`'s ricochet lanes and
-  `MAINFRAME`'s linked districts.
+- All seven arenas in training. Learn `THE RING`'s four side gates, `SWITCHBACK`'s ricochet lanes,
+  `MAINFRAME`'s linked districts and `THE LEDGE`'s open lip.
+- On `THE LEDGE`, shove a bot over the edge with Sweep's thrown broom. It should de-rez at the lip and the
+  round should end; walk over the same edge yourself and you should fall too.
 - Start training with `NO BOTS`. The sparring drone should drift, fire slow bolts and respawn.
 - 1v1, 1v2 and 1v3 at each tier. `EASY` is a moving target; `HARD` punishes slow attacks and bad dashes.
   Training never ends on a round; bots respawn after each defeat.

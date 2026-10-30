@@ -217,7 +217,7 @@ export class BotBrain {
 
     // Reflex layer: deflect the closest bolt, or dash out of its line.
     if (this.threatSerial >= 0 && this.reactT <= 0) {
-      if (this.handleThreat(me, out)) return;
+      if (this.handleThreat(me, out, world.arena)) return;
     }
 
     const target = this.target >= 0 ? world.players[this.target] : null;
@@ -487,6 +487,7 @@ export class BotBrain {
       me.swingPhase === 0 &&
       this.threatSerial < 0 &&
       dist > 330 &&
+      this.dashSafe(world.arena, me.x, me.y, dx / dist, dy / dist) &&
       this.rng.next() < 0.004 * this.rule.dashBias
     ) {
       out.mx = dx / dist;
@@ -741,7 +742,7 @@ export class BotBrain {
     this.threatDist = pdist;
   }
 
-  private handleThreat(me: Player, out: InputFrame): boolean {
+  private handleThreat(me: Player, out: InputFrame, arena: ArenaDef): boolean {
     if (this.threatSerial < 0) return false;
     const dx = this.threatX - me.x;
     const dy = this.threatY - me.y;
@@ -793,12 +794,20 @@ export class BotBrain {
       const vx = this.threatVx;
       const vy = this.threatVy;
       const vm = Math.hypot(vx, vy) || 1;
-      const side = (this.strafeDir >= 0 ? 1 : -1) * (this.rng.next() < 0.5 ? -1 : 1);
-      out.mx = (-vy / vm) * side;
-      out.my = (vx / vm) * side;
-      out.pressed |= ACTION.DASH;
-      this.strafeDir = -this.strafeDir;
-      return true;
+      let side = (this.strafeDir >= 0 ? 1 : -1) * (this.rng.next() < 0.5 ? -1 : 1);
+      // Dodge away from the bolt, but never off the lip: flip the slide if that side is
+      // void, and if both sides are void take the walk instead of the dash.
+      if (!this.dashSafe(arena, me.x, me.y, (-vy / vm) * side, (vx / vm) * side)) {
+        if (this.dashSafe(arena, me.x, me.y, (vy / vm) * side, (-vx / vm) * side)) side = -side;
+        else side = 0;
+      }
+      if (side !== 0) {
+        out.mx = (-vy / vm) * side;
+        out.my = (vx / vm) * side;
+        out.pressed |= ACTION.DASH;
+        this.strafeDir = -this.strafeDir;
+        return true;
+      }
     }
 
     // Slide off the line even without a dash. The old rule waited until the bolt
@@ -936,6 +945,19 @@ export class BotBrain {
     this.steerY = sy;
   }
 
+  /**
+   * A dash commits the body for `dashSpeed * dashTime` units. On a walled arena the wall
+   * collects it; on an open one that is a fall, so refuse the ones that end in the void.
+   */
+  private dashSafe(arena: ArenaDef, x: number, y: number, dx: number, dy: number): boolean {
+    if (arena.walls !== 'open') return true;
+    const reach = PLAYER.dashSpeed * PLAYER.dashTime + PLAYER.radius + 24;
+    const ex = x + dx * reach;
+    const ey = y + dy * reach;
+    const b = arena.bounds;
+    return ex > b.left + 24 && ex < b.right - 24 && ey > b.top + 24 && ey < b.bottom - 24;
+  }
+
   private avoidFurniture(me: Player, x: number, y: number, arena: ArenaDef): void {
     let sx = this.steerX;
     let sy = this.steerY;
@@ -946,6 +968,16 @@ export class BotBrain {
     if (me.x > b.right - margin) sx -= (me.x - (b.right - margin)) / 90;
     if (me.y < b.top + margin) sy += (b.top + margin - me.y) / 90;
     if (me.y > b.bottom - margin) sy -= (me.y - (b.bottom - margin)) / 90;
+
+    if (arena.walls === 'open') {
+      // No wall to save a bad read, so the lip gets a much wider, harder steer than the
+      // walled nudge. A bot chasing a body toward the edge has to beat this to fall.
+      const lip = 130;
+      if (me.x < b.left + lip) sx += (b.left + lip - me.x) / 45;
+      if (me.x > b.right - lip) sx -= (me.x - (b.right - lip)) / 45;
+      if (me.y < b.top + lip) sy += (b.top + lip - me.y) / 45;
+      if (me.y > b.bottom - lip) sy -= (me.y - (b.bottom - lip)) / 45;
+    }
 
     const aheadX = me.x + sx * 54;
     const aheadY = me.y + sy * 54;

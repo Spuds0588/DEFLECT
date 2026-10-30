@@ -602,6 +602,33 @@ The camera is part of the read, not a fixed follow. All numbers live in `CAMERA`
   camera instead of panning across the arena. Team modes need a real team field before the ally branch can
   cover them; today the campaign drill is the only ally-shaped group.
 
+### D19 — An arena chooses a wall or a drop (built 2026-10-30)
+
+`ArenaDef.walls` is `'solid'` (the default) or `'open'`. It is arena data, like pillars and spawns, so
+nothing forks: the host sim, guest prediction, bot edges, the renderer and the picker preview all read the
+same flag. Walled arenas keep every old rule. Do not make it a mode flag or a room setting; the map owns it.
+
+- **Open means the floor ends at the bounds.** `stepPlayerMotion` skips the wall clamp, and `World` turns a
+  body whose centre crosses the lip into a fall (`SRC.VOID`). The fall runs through the ordinary death path,
+  so it loses the round, counts as the local death in the gauntlet/training and fails a campaign node.
+  Invulnerability does not buy a floor: a dash's or a hit's iframes are cleared before the kill. A ride on a
+  pad or lift still owns the body.
+- **A shove is a kill.** Sweep's broom, Wedge's bash and plow, bombs and the melee lash already push bodies;
+  on an open arena that push can carry one over the line. Threats are pushable too: the worm, virus and
+  sentry bounds clamps are skipped, and anything past the lip is deleted through its normal damage path, so
+  it still counts toward the gauntlet/campaign clear and drops its pickup. Sentries do not get a free leash
+  past the edge: the drop takes them like anything else.
+- **Nothing ricochets off nothing.** A shot that reaches the lip dies there; committed shapes (spear,
+  thrown broom, bombs) keep their geometry death, so a bomb still detonates at the edge. Bots refuse a dash
+  whose committed end point lands past the lip, and steer back from the edge over a `lip` band of 130 units
+  (`avoidFurniture`), because their walled 44-unit nudge is not enough without a wall.
+- **Read it before you step on it.** The lip draws as a dashed line over a black void band that swallows the
+  floor grid, with inward chevrons; the minimap and the arena preview use a dashed rim. The camera may show
+  `CAMERA.voidMargin` (90) units past the lip. Spawn rings on an open arena must be inset; never place a
+  spawn on the lip.
+- **THE LEDGE** (id 6) is the first open arena. Turning another arena open is a content change: check its
+  spawn ring, its cover layout and how its bots behave near the drop before shipping it.
+
 
 ---
 
@@ -616,7 +643,7 @@ src/game/config.ts    ALL tuning numbers. Change feel here, not in systems.
 src/game/programs.ts  roster: program ids, names, hues, core glyphs, signature skills
 src/game/campaign.ts  first playable campaign node: level identity, arena blockout, sector link
 src/game/road.ts      campaign route plate for the between-level transition (parked, not mounted)
-src/game/arenas.ts    five arena layouts (MAINFRAME is multi-district), spawn rings, previews
+src/game/arenas.ts    seven arena layouts (MAINFRAME multi-district, THE LEDGE open-edged), spawns, previews
 src/game/nav.ts       per-arena 20u navigation grid + reusable A* workspace for bots
 src/game/bot.ts       local bot brains: tiers, styles, same InputFrame as a human
 src/game/powerups.ts  local pickup ids, labels, colors, durations and weighted roll
@@ -655,7 +682,9 @@ public/               manifest, generated icons, service worker
 - The active `ArenaDef` supplies pillars, optional floor gaps, traversal plates and ordered spawn
   points. Any player count spreads evenly around that arena's spawn ring; the training drone uses the
   opposite spawn. Bodies collide with `arenaSolids()`; projectile, laser and firewall collision uses
-  `pillars` so shots cross a trench.
+  `pillars` so shots cross a trench. An arena with `walls: 'open'` treats its bounds as a lip instead of a
+  wall: the clamp is skipped, a crossed body falls (`SRC.VOID`), shots die at the edge instead of bouncing,
+  and pushed threats are culled as clears. See D19.
 - Pads and lifts are per-player travel state, resolved after motion. They need a slow body on the plate
   for the dwell window, reject attacks and approaches, and lock input for the ride. A pad swaps position
   at the ride midpoint so the renderer can play unload/reload; a lift moves immediately and is hidden by

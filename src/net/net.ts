@@ -1061,7 +1061,7 @@ export class LocalPredictor {
     if (p.laserChargeHeld || p.laserT > 0) {
       p.facing = this.authFacing;
       p.laserFacing = this.authFacing;
-      stepPlayerMotion(p, 0, 0, dt, arenaSolids(this.arena), this.arena.bounds);
+      stepPlayerMotion(p, 0, 0, dt, arenaSolids(this.arena), this.arena.bounds, this.arena.walls === 'open');
       const adx = this.authX - p.x;
       const ady = this.authY - p.y;
       const ad2 = adx * adx + ady * ady;
@@ -1186,7 +1186,7 @@ export class LocalPredictor {
     }
     p.chargeHeld = heldSwing;
 
-    stepPlayerMotion(p, input.mx, input.my, dt, arenaSolids(this.arena), this.arena.bounds);
+    stepPlayerMotion(p, input.mx, input.my, dt, arenaSolids(this.arena), this.arena.bounds, this.arena.walls === 'open');
 
     if (moveSq <= 0.0025 && p.swingPhase === 0 && p.dashT <= 0) {
       p.facing = this.authFacing;

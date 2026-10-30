@@ -2082,3 +2082,49 @@ eight-bot swarm 0.119 / 0.355, all under the 4 ms budget.
 **Next:** local input slots and the same-screen menu flow are still missing, so this is camera plumbing, not
 playable four-player co-op. Tune the fit threshold (`sharedZoomMin`, `groupPad`, `shareSlack`) and the
 slow-motion pair from production play; per-pane campaign/wave banners and a real team field remain open.
+
+## 2026-10-30 — Open-wall arenas: the floor ends at THE LEDGE
+
+**Goal:** some arenas should have solid walls and some should be open, so a body pushed over the edge
+de-rezzes and shoving is a real way to clear a threat. The bridge/pad/lift arena (TRANSIT) stays as it is.
+
+**Changes**
+- `ArenaDef.walls: 'solid' | 'open'` (default solid) is arena data. `stepPlayerMotion` takes the flag and
+  skips the boundary clamp on open arenas; `World` checks the lip right after motion and runs
+  `fallPlayer`, which clears dash iframes and feeds the ordinary `damagePlayer` death path with a new
+  `SRC.VOID` family. That means a fall loses the round, respawns on the training timer, ends a one-life
+  gauntlet run and fails a campaign node with no special case in any of them. The death camera has no body
+  to follow for `SRC.VOID` and falls back to the nearest living player.
+- Shove kills: the worm, virus and sentry bounds clamps are skipped on open arenas, so the existing kit
+  shoves can carry a threat out. `cullVoidThreats` deletes anything past the lip through its normal damage
+  path (worm/virus/sentry), so the gauntlet clear counter, pickup drop and de-rez event all still fire.
+  Sentries are leashed to a landing zone, so their clamp only ever mattered for a shove.
+- No ricochet off nothing: `bounceWalls` deactivates a shot at the lip instead of reflecting it. Committed
+  shapes (spear, thrown broom, bomb types 8/9) keep their geometry death, so a bomb still detonates at the
+  edge rather than vanishing.
+- Bots: `avoidFurniture` gets a wider, harder edge steer on open arenas (130-unit band, /45 falloff) on top
+  of the old 44-unit wall nudge, and `dashSafe` refuses an approach dash or a dodge dash that would end
+  past the lip. Without it, 16 bots walked off THE LEDGE in a 60 s four-bot brawl; with it, zero.
+- Presentation: the open lip is a dashed violet line over a black band that swallows the floor grid outside
+  the arena, with inward chevrons so the edge reads as "this way back". Corner brackets are dropped (a
+  closed bracket reads as a wall). The minimap inner rim and the picker preview use a dashed border, and
+  the camera clamp pads outward by `CAMERA.voidMargin` (90) so the drop is visible before it is stepped on.
+- New arena `THE LEDGE` (id 6): violet, ring signature, six pillars, an inset eight-point spawn ring. It
+  has the same 1894x998 span as the walled arenas so the camera behaves identically.
+- Bumped to v0.1.38 and refreshed the service worker cache.
+
+**Verification:** `npx tsc --noEmit` and `npm run build` clean. Headless probe, 18 checks: a shove over the
+lip kills and attributes `SRC.VOID`; the fall loses the round (score 1-0); training respawns and puts the
+body back inside; a dash/iframe frame still falls; a solid arena still clamps at 1920 on the same shove;
+walking over the lip falls; a bolt dies at the lip while the same bolt bounces (vx -900) on a walled
+arena; a virus past the lip is de-rezzed and `gauntletKills` goes 0 -> 1; four HARD bots play 60 s of
+THE LEDGE with zero falls (closest approach 35 units from the lip, 300 presses, 4.3 units/tick of movement
+so they were playing, not parked); Sweep's thrown broom carried a body from x 1902 to 1956 and killed it.
+Browser: the lip, chevrons and void band render, the picker shows seven cards with THE LEDGE dashed, a
+gauntlet autopilot run on THE LEDGE reached wave 4 with 6 kills, all three threat pools inside bounds and
+no console errors. `npm run bench`: gauntlet max 0.243 ms avg / 0.760 ms p99, eight-bot swarm 0.101 / 0.267.
+
+**Next:** playtest whether the 130-unit edge band makes bots too polite near the lip and whether a shove
+kill feels earned. A welcoming fix would be a hit-flash on the lip when a body is carried over, plus a
+dedicated fall sound; today it reuses the hit chirp and the death burst. A second open arena (narrow lip,
+or an island in the middle) is content, not a new system.

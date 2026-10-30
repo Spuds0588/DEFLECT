@@ -56,6 +56,12 @@ export interface ArenaDef {
   pillars: Rect[];
   /** Ordered around the perimeter. Spawn selection spreads evenly for any player count. */
   spawns: SpawnPoint[];
+  /**
+   * Outer wall. `solid` (the default) is the old behavior: the bounds are a hard wall.
+   * `open` means the floor simply ends: a body carried over the lip falls and de-rezzes,
+   * shots die at the edge instead of ricocheting, and a shove becomes a kill.
+   */
+  walls?: 'solid' | 'open';
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
 }
@@ -284,6 +290,39 @@ export const ARENAS: readonly ArenaDef[] = [
       ],
     },
   },
+  {
+    id: 6,
+    name: 'THE LEDGE',
+    tagline: 'No walls. Mind the drop.',
+    hudLabel: 'ARENA // THE LEDGE',
+    accent: '#c08bff',
+    accentSoft: 'rgba(192, 139, 255, 0.32)',
+    accentFaint: 'rgba(192, 139, 255, 0.03)',
+    signature: 2,
+    // Same span as the walled arenas so the camera behaves the same, but nothing stops
+    // a body at the edge: the floor ends and the drop does the killing.
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    walls: 'open',
+    pillars: [
+      { x: 700, y: 330, w: 150, h: 130 },
+      { x: 1090, y: 470, w: 160, h: 160 },
+      { x: 700, y: 690, w: 150, h: 130 },
+      { x: 1380, y: 250, w: 110, h: 190 },
+      { x: 1380, y: 760, w: 110, h: 190 },
+      { x: 330, y: 520, w: 110, h: 190 },
+    ],
+    // An inset ring. A spawn at the lip would be a free kill for anyone who arrives first.
+    spawns: [
+      { x: 995, y: 230 },
+      { x: 1560, y: 320 },
+      { x: 1760, y: 547 },
+      { x: 1560, y: 790 },
+      { x: 995, y: 880 },
+      { x: 430, y: 790 },
+      { x: 230, y: 547 },
+      { x: 430, y: 320 },
+    ],
+  },
 ];
 
 export function getArena(index: number): ArenaDef {
@@ -338,10 +377,19 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
   const mapX = (x: number): number => pad + (x - bounds.left) * sx;
   const mapY = (y: number): number => pad + (y - bounds.top) * sy;
 
+  const previewW = (bounds.right - bounds.left) * sx;
+  const previewH = (bounds.bottom - bounds.top) * sy;
   ctx.globalAlpha = 0.5;
   ctx.strokeStyle = arena.accent;
   ctx.lineWidth = 1;
-  ctx.strokeRect(mapX(bounds.left), mapY(bounds.top), (bounds.right - bounds.left) * sx, (bounds.bottom - bounds.top) * sy);
+  if (arena.walls === 'open') {
+    // A broken lip reads as "the floor ends here" even at thumbnail size.
+    ctx.setLineDash([5, 4]);
+    ctx.strokeRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.setLineDash([]);
+  } else {
+    ctx.strokeRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+  }
   ctx.globalAlpha = 1;
 
   // Multi-deck floor: raised deck tint, open trench, deck plate, then the transit plates.
