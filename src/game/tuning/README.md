@@ -15,7 +15,7 @@ there is no runtime fetch, which keeps snapshots, bot determinism and the PWA ca
 | `programs.json` | `WEDGE`, `FISHER`, `SWEEP`, `TOXIC`, `KABOOM`, `BUFFER`, `ATOMIZE` kits |
 | `threats.json` | `GAUNTLET` wave pacing, `WORM`, `VIRUS`, `SENTRY`, `CASCADING_ERROR`, `THRALL`, `FIREWALL` |
 | `campaign.json` | `CAMPAIGN` node pacing, drill/breach beat and score weights |
-| `world.json` | `CAMERA`, `FALL`, `FILE_PROP`, `ARENA`, `TRAVERSE`, `EMITTER`, `POWERUP`, `ROUND`, `TRAINING`, `NET`, `ATTRACT` |
+| `world.json` | `CAMERA`, `FALL`, `FILE_PROP`, `ARENA`, `TRAVERSE`, `EMITTER`, `POWERUP`, `ROUND`, `TRAINING`, `NET`, `ATTRACT`, `HAPTICS` |
 
 ## Units
 
@@ -48,3 +48,5 @@ break while tuning:
 - Atomize's type 11 electron uses `homing` as its own seek flag. Only type 0 runs the PATHFIND powerup's
   `steerPathBolt` axis search.
 - Bot kits use the human `InputFrame` path; there is no second control path for tuning.
+- Controller rumble is local device feedback, not a world rule. It reads `HAPTICS` cues and stays out of
+  `Snapshot`; never drive an attack or a hit from haptics.

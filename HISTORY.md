@@ -2844,3 +2844,30 @@ full 1 s check, confirming the real-run freeze is unchanged.
 
 **Next:** watch several full aftermaths and judge the death camera; a short fade at the run cut is a
 possible follow-up, but the freeze was the bug.
+
+## 2026-10-30 — Controller rumble through the Gamepad API (v0.1.61)
+
+**Goal:** controllers with haptics should feel local hits, deflects, explosions, dashes and deaths without
+adding a second input or snapshot path.
+
+**Changes:**
+- `src/game/haptics.ts` owns a small `Haptics` device layer. It calls the standard
+  `vibrationActuator.playEffect('dual-rumble', ...)` when available and falls back to the older
+  `hapticActuators[n].pulse(value, duration)` surface. A pad with neither is silent; sync throws and
+  rejected promises are swallowed.
+- `Input.activePad()` exposes the pad only while the gamepad owns input, so keyboard/mouse play never
+  rumbles a connected controller.
+- Six cues live in `tuning/world.json` under `HAPTICS`: `tap`, `guard`, `hit`, `blast`, `heavy`, `death`.
+  Light cues are spaced at least 55 ms apart so a frame cannot stack a swing, hit and death into noise.
+- `main.ts` wires cues to a local swing/dash, deflect, heavy beam, nearby explosion, a spent health
+  segment and death. Haptics are dormant in attract/kiosk and stress runs, under a menu overlay, and
+  during the loading intro. `SETTINGS > FEEDBACK > RUMBLE` persists at `deflect.rumble`; the existing
+  TEST HIT FEEDBACK button also proves a pad's actuator. Build stamped 0.1.61.
+
+**Verification:** `npx tsc --noEmit` clean; `npm run build` clean. In the dev gauntlet with a synthetic
+standard gamepad, `playEffect` recorded two 180 ms hit cues and a 70 ms dash tap. Swapping in a legacy
+`pulse` shim recorded 0.55/180 ms. Toggling RUMBLE OFF suppressed the test cue and ON restored it; a
+reload restored RUMBLE OFF from storage until it was turned back on. No physical pad was tested.
+
+**Next:** play a run on a real DualSense/Xbox pad and tune the six strengths/durations if any cue is too
+subtle or too strong at couch distance.

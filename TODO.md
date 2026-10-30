@@ -2,7 +2,30 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.60 demo death aftermath)
+Last updated: 2026-10-30 (v0.1.61 controller rumble)
+
+---
+
+## v0.1.61 — Controller rumble (2026-10-30)
+
+### Built
+- [x] `src/game/haptics.ts`: standard Gamepad `vibrationActuator.playEffect('dual-rumble')` with the older
+      `hapticActuators[n].pulse` fallback; silent when a pad has no actuator or the keyboard/mouse owns input
+- [x] Six cues (`tap`, `guard`, `hit`, `blast`, `heavy`, `death`) plus a 300-unit `blastRadius` in
+      `tuning/world.json` under `HAPTICS`; light cues are spaced at least 55 ms apart, death is not dropped
+- [x] Wired to a local swing/dash, deflect, heavy beam, nearby explosion, spent health segment and death;
+      dormant in attract/kiosk, the stress bench, menus, overlays and the loading intro
+- [x] `SETTINGS > FEEDBACK > RUMBLE` persists at `deflect.rumble` and resets with the other defaults;
+      `TEST HIT FEEDBACK` proves the connected pad's actuator without taking damage
+- [x] `Input.activePad()` returns only the pad that owns input. README, AGENTS D11 and the tuning README
+      updated; build stamped 0.1.61
+- [x] `npx tsc --noEmit` clean. Browser virtual pad: standard `playEffect` recorded the 180 ms hit cues and
+      a 70 ms dash tap; a legacy `pulse` shim recorded 0.55/180 ms; RUMBLE OFF suppressed the test cue and
+      ON restored it; a reload kept RUMBLE OFF until it was re-enabled. No physical pad was available
+
+### Next
+- [ ] Physical DualSense/Xbox pass: confirm the dual-rumble strengths read on real hardware and check the
+      legacy pulse path only if a browser needs it
 
 ---
 
@@ -1923,7 +1946,8 @@ arrive.
 - Guests do not predict their own projectiles or deflects; feedback lags by RTT.
 - No pause in multiplayer; leaving mid-match ends your session.
 - Dead players wait for the next round (no spectate camera).
-- Controller rumble not implemented.
+- Controller rumble is verified against a synthetic standard actuator and a legacy `pulse` shim, not
+  physical pads.
 - 8-player cap verified by simulation/render stress, not by eight real WebRTC peers.
 - PWA offline reload verified in a production build; install prompt not tested on a device.
 - Controller mapping verified with a standard-layout virtual pad only, not physical hardware.

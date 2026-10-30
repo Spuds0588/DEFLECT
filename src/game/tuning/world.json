@@ -134,5 +134,38 @@
     "wave": 72,
     "refill": 5,
     "restart": 4
+  },
+  "HAPTICS": {
+    "tap": {
+      "strong": 0.22,
+      "weak": 0.1,
+      "duration": 70
+    },
+    "guard": {
+      "strong": 0.55,
+      "weak": 0.25,
+      "duration": 110
+    },
+    "hit": {
+      "strong": 0.72,
+      "weak": 0.38,
+      "duration": 180
+    },
+    "blast": {
+      "strong": 0.62,
+      "weak": 0.3,
+      "duration": 220
+    },
+    "heavy": {
+      "strong": 0.8,
+      "weak": 0.45,
+      "duration": 260
+    },
+    "death": {
+      "strong": 1,
+      "weak": 0.65,
+      "duration": 420
+    },
+    "blastRadius": 300
   }
 }

@@ -1,4 +1,4 @@
-import { ATTRACT, AUTO_ATTACK, CAMERA, CAMPAIGN, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
+import { ATTRACT, AUTO_ATTACK, CAMERA, CAMPAIGN, HAPTICS, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
 import { CAMPAIGN_LEVELS, FIRST_CAMPAIGN_LEVEL } from './game/campaign';
 import { ARENAS, drawArenaPreview, getArena } from './game/arenas';
 import { BOT_NAMES, BOT_TIERS, BOT_TIER_LABELS, BotBrain, type BotTier } from './game/bot';
@@ -11,6 +11,7 @@ import {
   saveGauntletRuns,
   type GauntletRun,
 } from './game/gauntletRecords';
+import { Haptics, type RumbleCue } from './game/haptics';
 import { Input, type MenuEdges } from './game/input';
 import { Renderer, type RenderState } from './game/render';
 import { PROGRAM_ID, PROGRAMS, clampProgram, programDef } from './game/programs';
@@ -102,6 +103,7 @@ const menuVolumeValue = el('menu-volume-value');
 const scanlinesBtn = el<HTMLButtonElement>('btn-scanlines');
 const minimapBtn = el<HTMLButtonElement>('btn-minimap');
 const uiBtn = el<HTMLButtonElement>('btn-ui');
+const rumbleBtn = el<HTMLButtonElement>('btn-rumble');
 const autoLockBtn = el<HTMLButtonElement>('btn-auto-lock');
 const autoAttackBtn = el<HTMLButtonElement>('btn-auto-attack');
 const resetSettingsBtn = el<HTMLButtonElement>('btn-settings-reset');
@@ -149,6 +151,7 @@ const renderer = new Renderer(canvas);
 const input = new Input(canvas);
 const audio = new AudioEngine();
 const fx = new Fx();
+const haptics = new Haptics(() => input.activePad());
 
 let screen: Screen = 'title';
 let mode: Mode = 'none';
@@ -259,6 +262,8 @@ let lastCountdownText = '';
 let lastBounceSound = 0;
 let lastThreatSound = 0;
 let lastLocalHp = -1;
+/** Last own beam event, so a held overcharge beam cues once instead of every tick. */
+let lastLaserRumbleAt = -Infinity;
 let loading = false;
 let loadingUntil = 0;
 let bootShownAt = 0;
@@ -341,7 +346,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.60 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.61 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -427,6 +432,9 @@ function bindUi(): void {
   uiBtn.addEventListener('click', () => {
     applyUi(uiBtn.getAttribute('aria-pressed') !== 'true', true);
   });
+  rumbleBtn.addEventListener('click', () => {
+    applyRumble(rumbleBtn.getAttribute('aria-pressed') !== 'true', true);
+  });
   autoLockBtn.addEventListener('click', () => {
     applyAutoLock(autoLockBtn.getAttribute('aria-pressed') !== 'true', true);
   });
@@ -440,6 +448,9 @@ function bindUi(): void {
     audio.hit();
     fx.triggerHitRotation();
     fx.handle({ kind: EV.HIT, slot: 0, x: 640, y: 360, power: 0, dirX: 1, dirY: 0 });
+    // Settings is outside `playRumble`'s in-game gate, so this is the one place a
+    // controller can prove its actuator works without taking a hit.
+    haptics.play('hit');
   });
   resetSettingsBtn.addEventListener('click', resetSettings);
   el<HTMLButtonElement>('btn-lobby-back').addEventListener('click', leaveLobby);
@@ -652,6 +663,7 @@ function loadSettings(): void {
   let scanlines = true;
   let minimap = true;
   let ui = true;
+  let rumble = true;
   let autoLockOn = touchMode;
   let autoAttackOn = touchMode;
   try {
@@ -664,6 +676,7 @@ function loadSettings(): void {
     scanlines = localStorage.getItem('deflect.scanlines') !== '0';
     minimap = localStorage.getItem('deflect.minimap') !== '0';
     ui = localStorage.getItem('deflect.ui') !== '0';
+    rumble = localStorage.getItem('deflect.rumble') !== '0';
     // A phone starts with both assists on; a keyboard/pad session starts with them off
     // so the default one-stick feel is unchanged. An explicit save always wins.
     autoLockOn = localStorage.getItem('deflect.autoLock') === null ? touchMode : localStorage.getItem('deflect.autoLock') !== '0';
@@ -676,6 +689,7 @@ function loadSettings(): void {
   applyScanlines(scanlines, false);
   applyMinimap(minimap, false);
   applyUi(ui, false);
+  applyRumble(rumble, false);
   applyAutoLock(autoLockOn, false);
   applyAutoAttack(autoAttackOn, false);
   applyVolume(audio.volume, false);
@@ -780,6 +794,18 @@ function applyUi(on: boolean, persist: boolean): void {
   }
 }
 
+function applyRumble(on: boolean, persist: boolean): void {
+  haptics.setEnabled(on);
+  rumbleBtn.textContent = `RUMBLE: ${on ? 'ON' : 'OFF'}`;
+  rumbleBtn.setAttribute('aria-pressed', String(on));
+  if (!persist) return;
+  try {
+    localStorage.setItem('deflect.rumble', on ? '1' : '0');
+  } catch {
+    /* storage disabled */
+  }
+}
+
 function applyAutoLock(on: boolean, persist: boolean): void {
   autoLock = on;
   autoLockBtn.textContent = `AUTO LOCK: ${on ? 'ON' : 'OFF'}`;
@@ -814,6 +840,7 @@ function resetSettings(): void {
   applyScanlines(true, true);
   applyMinimap(true, true);
   applyUi(true, true);
+  applyRumble(true, true);
   applyAutoLock(touchMode, true);
   applyAutoAttack(touchMode, true);
   toast('SETTINGS RESTORED TO DEFAULTS');
@@ -1648,8 +1675,33 @@ function trackLocalHit(state: RenderState): void {
     lastLocalHp = -1;
     return;
   }
-  if (lastLocalHp >= 0 && local.hp < lastLocalHp) fx.triggerHitRotation();
+  if (lastLocalHp >= 0 && local.hp < lastLocalHp) {
+    fx.triggerHitRotation();
+    // Venom chips are below half a segment; only a real spent segment thumps.
+    if (lastLocalHp - local.hp >= 0.5) playRumble(local.hp <= 0 ? 'death' : 'hit');
+  }
   lastLocalHp = local.hp;
+}
+
+/** The body that owns this screen's local camera; guest views carry the same fields. */
+function localAvatar(): { x: number; y: number; alive: boolean } | null {
+  const state = guestView ?? world;
+  if (!state) return null;
+  return state.players[localSlot] ?? null;
+}
+
+/** Haptics only while a live local match owns the screen. */
+function playRumble(cue: RumbleCue): void {
+  if (attract || stress || screen !== 'game' || overlayKind !== 'none' || loading) return;
+  haptics.play(cue);
+}
+
+function nearLocalExplosion(x: number, y: number): boolean {
+  const local = localAvatar();
+  if (!local || !local.alive) return false;
+  const dx = x - local.x;
+  const dy = y - local.y;
+  return dx * dx + dy * dy <= HAPTICS.blastRadius * HAPTICS.blastRadius;
 }
 
 function stepSession(now: number, dt: number): void {
@@ -1766,6 +1818,21 @@ function processWorldEvents(w: World): void {
 function handleGameEvent(e: GameEvent, remote: boolean): void {
   fx.handle(e);
   const own = e.slot === localSlot;
+  // Haptics run before the guest's predicted-action sound skip, so a guest still
+  // feels their own swing and dash. Hits are read from the local health change.
+  if (own) {
+    if (e.kind === EV.SWING || e.kind === EV.DASH) {
+      playRumble('tap');
+    } else if (e.kind === EV.DEFLECT) {
+      playRumble('guard');
+    } else if (e.kind === EV.LASER) {
+      // An overcharge beam emits a LASER event on every refill tick. Only cue when a
+      // new beam starts, not sixteen times a second while the trigger is held.
+      const now = performance.now();
+      if (now - lastLaserRumbleAt > 400) playRumble('heavy');
+      lastLaserRumbleAt = now;
+    }
+  }
   if (remote && own && (e.kind === EV.SHOOT || e.kind === EV.PLANT_MINE || e.kind === EV.SWING || e.kind === EV.DASH)) {
     return;
   }
@@ -1795,6 +1862,7 @@ function handleGameEvent(e: GameEvent, remote: boolean): void {
     }
     case EV.EXPLODE:
       audio.explode();
+      if (nearLocalExplosion(e.x, e.y)) playRumble('blast');
       break;
     case EV.HIT:
       audio.hit();

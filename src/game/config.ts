@@ -85,6 +85,7 @@ export const ROUND = worldJson.ROUND;
 export const TRAINING = worldJson.TRAINING;
 export const NET = worldJson.NET;
 export const ATTRACT = worldJson.ATTRACT;
+export const HAPTICS = worldJson.HAPTICS;
 
 /** Player travel state kind. Kept in code because it is a state value, not tuning. */
 export const TRAVEL = {

@@ -116,8 +116,15 @@ those are the phone's controls.
 The title is a console menu: arrows or the left stick move the `>` cursor, Enter or `A` confirms, and
 Escape or `B` backs out. `HOW TO PLAY` holds the control tables and a short rules and program rundown;
 it shows a gamepad, touch or keyboard/mouse layout based on the input device. `SETTINGS` is the fourth
-option. Callsign editing is under `SETTINGS > SYSTEM`, alongside hit feedback, audio, scanline and reset
-options. `SETTINGS > CONTROLS` holds auto lock and auto attack.
+option. `SETTINGS > FEEDBACK` holds hit rotation, impact flash, scanlines, minimap, game UI, rumble and
+the hit-preview test; `SETTINGS > AUDIO` holds the volume controls; `SETTINGS > SYSTEM` holds the callsign
+and reset; `SETTINGS > CONTROLS` holds auto lock and auto attack.
+
+Controller rumble is on by default and can be switched off in `SETTINGS > FEEDBACK`. It uses the standard
+Gamepad `vibrationActuator` where the browser exposes it and falls back to the older `hapticActuators`
+pulse surface; a pad without either stays silent. Cues are short: a tap for a swing or dash, a light tick
+for a caught shot, a thump for a spent health segment, a boom for a nearby explosion, and a longer death
+thump.
 
 ## Attacks, skill, and health
 
@@ -339,8 +346,8 @@ drop its lure, then step out of the way instead of standing on it.
 - Stand in a firewall warning lane, then step behind a pillar. The beam should stop burning you behind
   cover. Take a bolt and a beam tick and check the push and triangle spray direction.
 - Open Settings and step through Feedback, Audio and System. Change hit rotation, impact flash, volume,
-  scanlines, the minimap toggle and the game-UI toggle; test the hit preview; then reset defaults. Cover
-  should read as a bright solid object, not floor texture.
+  scanlines, the minimap toggle, the game-UI toggle and rumble; test the hit preview with a connected
+  controller; then reset defaults. Cover should read as a bright solid object, not floor texture.
 - Host a room on a non-default arena, then join from a second tab. The guest must render the host's map.
 - Run a scored gauntlet long enough to trigger the new sentry pacing and pickups. The smaller minimap
   should sit tight in the bottom-left corner and track the local player plus every live threat family:

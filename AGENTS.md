@@ -378,14 +378,24 @@ minimap is one shared map: lower-left for a solo view, top-centre when the view 
 local is active.
 
 The DOM settings screen is tabbed: `FEEDBACK`, `CONTROLS`, `AUDIO`, `SYSTEM`. Persisted options are
-callsign, hit rotation, impact flash, scanlines, minimap, **game UI**, auto lock, auto attack, master
-volume, soundtrack, SFX, menu sounds, mute, and arena/bot preferences. New feedback options belong in the Feedback tab, not
-beside the title menu. The minimap is a small edge-anchored overlay showing cover, every local player
+callsign, hit rotation, impact flash, scanlines, minimap, **game UI**, controller rumble, auto lock, auto
+attack, master volume, soundtrack, SFX, menu sounds, mute, and arena/bot preferences. New feedback options
+belong in the Feedback tab, not beside the title menu. The minimap is a small edge-anchored overlay showing cover, every local player
 and every local threat family; it is off only by explicit player choice. `GAME UI` hides the whole
 canvas UI layer (match strip, wave banners, readiness docks, minimap) for a clean capture without
 changing the avatar's own health or lock marks; `?ui=0` does the same for one load and does not persist.
 On a gamepad, `VIEW`/`SELECT` toggles the same layer for the session without rewriting the saved choice;
 `START` is the only in-game menu button.
+
+**Controller rumble** is local feedback, owned by `src/game/haptics.ts` and gated on the gamepad owning the
+current input. It uses `vibrationActuator.playEffect('dual-rumble', ...)` with the older
+`hapticActuators[n].pulse` as a fallback; a pad without either is silent, and every promise is swallowed.
+Cues and magnitudes live in `tuning/world.json` under `HAPTICS` (`tap`, `guard`, `hit`, `blast`, `heavy`,
+`death`, plus `blastRadius`). Own swings and dashes tap, a caught shot ticks, a spent health segment
+thumps, a nearby explosion booms, a heavy beam drives a stronger cue, and a death gets a long thump.
+Rumble is suppressed in attract/kiosk and stress runs, while a menu overlay or the loading intro is up,
+and while the keyboard/mouse owns input. Do not add a second vibration path, put haptics in `World`, or
+send rumble through `Snapshot`; this is a local device channel, not game state.
 
 `HOW TO PLAY` is a top-level title option and the only home for control and kit explanations. It detects
 connected gamepads and draws a gamepad, touch or keyboard/mouse table; the pad name may appear in that

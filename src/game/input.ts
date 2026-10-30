@@ -412,6 +412,14 @@ export class Input {
     return this.padIndex !== null;
   }
 
+  /** The connected pad that owns input, or null when the keyboard/mouse is active. */
+  activePad(): Gamepad | null {
+    if (this.lastDevice !== 'gamepad' || this.padIndex === null) return null;
+    if (!navigator.getGamepads) return null;
+    const pad = navigator.getGamepads()[this.padIndex] ?? null;
+    return pad && pad.connected ? pad : null;
+  }
+
   /** Builds the local input frame from the most recently used device. */
   sample(): InputFrame {
     const padActive = this.lastDevice === 'gamepad';
