@@ -2821,3 +2821,26 @@ shortcut did not write the saved setting. A physical pad has not been tested.
 
 **Next:** check button 8 on a real Xbox and PlayStation pad and decide whether the table should say
 `VIEW`, `SELECT` or the platform's own label. Keyboard capture still has no equivalent shortcut.
+
+## 2026-10-30 — Keep the demo simulating through a death (v0.1.60)
+
+**Goal:** a death in the attract/kiosk gauntlet used to freeze the whole sim under the restart delay, so
+the demo looked paused for four seconds before cutting to the next run.
+
+**Changes:**
+- `World.step` now reads the real-run freeze as `gauntletOver && !attractMode`. A scored gauntlet,
+  campaign node and hosted match still stop under their result overlay; the attract world keeps threats,
+  projectiles, particles, wave timers and `gauntletT` moving through the death aftermath.
+- `gauntletOver` remains the demo pilot's restart signal, so `main.updateAttract` still waits
+  `ATTRACT.restart` (4 s) and then starts the next random program/arena. No record or overlay path changed.
+- README describes the live four-second aftermath. AGENTS D23 records the exception and says not to
+  freeze or respawn the demo pilot on death. Build stamped 0.1.60.
+
+**Verification:** `npx tsc --noEmit` clean. In the dev attract run, forcing the local pilot's death left
+`gauntletOver` true but the same world advanced `gauntletT` from 2135.8 to 2137.3 over 1.5 s; the live
+worm moved about 73 units and the live virus about 66. After 3 s the same world was still simulating, and
+by 7.5 s a new attract world was live. A forced death in `?gauntlet=1` left `gauntletT` at 5.0167 for the
+full 1 s check, confirming the real-run freeze is unchanged.
+
+**Next:** watch several full aftermaths and judge the death camera; a short fade at the run cut is a
+possible follow-up, but the freeze was the bug.

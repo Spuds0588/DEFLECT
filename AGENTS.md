@@ -797,7 +797,10 @@ boots the kiosk variant described below.
 
 - The demo is **presentation only**. It is a `World('gauntlet')` with `attractMode = true`, never a scored
   run, never a campaign node, never a room. It writes no record, and `syncPhaseUi` suppresses every
-  overlay while it runs. Do not route its result through the gauntlet record or the save slots.
+  overlay while it runs. Do not route its result through the gauntlet record or the save slots. A demo
+  death still sets `gauntletOver` so the pilot knows to restart, but `World.step` only freezes on that flag
+  outside attract mode: keep the death aftermath simulating for `ATTRACT.restart` seconds instead of
+  holding the last frame. Real gauntlet, campaign and hosted runs keep the freeze.
 - `World.seedAttractRun` jumps `gauntletT` to the target wave, then `fillAttractRoom` fills sentries,
   worms and viruses to the current caps around the player; error blocks come from the normal colony
   growth. While `attractMode` is set, a 5 s refill keeps the room at those caps (`ATTRACT.refill`) so the

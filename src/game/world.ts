@@ -793,8 +793,10 @@ export class World {
   /** Advances the simulation one fixed step. Consumes `pressed` bits from the provided frames. */
   step(dt: number, inputs: (InputFrame | null)[]): void {
     // A scored gauntlet death freezes the arena under the results overlay. Practice
-    // keeps the old endless-respawn behavior.
-    if (this.mode === 'gauntlet' && this.gauntletOver) {
+    // keeps the old endless-respawn behavior. The attract demo has no overlay, so its
+    // death aftermath keeps running until the pilot starts the next run; a still frame
+    // for the whole restart delay read as a paused game.
+    if (this.mode === 'gauntlet' && this.gauntletOver && !this.attractMode) {
       this.clearPressed(inputs);
       return;
     }

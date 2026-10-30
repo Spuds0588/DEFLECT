@@ -2,7 +2,27 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.59 gamepad UI toggle)
+Last updated: 2026-10-30 (v0.1.60 demo death aftermath)
+
+---
+
+## v0.1.60 — Keep the demo alive through a death (2026-10-30)
+
+### Built
+- [x] `World.step` keeps simulating when `gauntletOver` is set **and** `attractMode` is true. The death
+      frame no longer freezes the arena for the restart delay
+- [x] Real gauntlet, campaign and hosted runs still freeze under their result overlays; only the attract
+      and kiosk demos opt out
+- [x] The pilot still uses `gauntletOver` as the restart signal, so `ATTRACT.restart` (4 s) is now four
+      seconds of live aftermath instead of a still frame. README and AGENTS D23 updated; build 0.1.60
+- [x] `npx tsc --noEmit` clean. Browser attract run forced to a death: `gauntletT` advanced 1.5 s and the
+      worm/virus positions changed after the ring broke, the world stayed live for the 3 s check, and a new
+      demo world existed by 7.5 s. A real `?gauntlet=1` death left `gauntletT` unchanged for 1 s
+
+### Next
+- [ ] Watch a full 4 s aftermath repeatedly and check the death camera does not linger on an empty corner
+- [ ] Consider a short fade at the new-run cut once the aftermath is proven; the simulation transition is
+      fixed first
 
 ---
 

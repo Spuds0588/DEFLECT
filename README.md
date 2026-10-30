@@ -73,7 +73,8 @@ appear in a menu or a snapshot.
 
 Leave the title alone for 24 seconds and it starts an attract demo: a random program in a random arena,
 fighting a deep gauntlet wave with the canvas UI off. Any key, click, wheel or pad press brings the title
-back. For a showfloor or a capture, add `?demo=true`: the same run, but input cannot leave it and a
+back. If the pilot dies, the arena keeps simulating the death aftermath for four seconds before the next
+random run starts; it does not hold the last frame. For a showfloor or a capture, add `?demo=true`: the same run, but input cannot leave it and a
 centered `GAUNTLET` title card fades in and out on a 30-second cycle. `GAME UI` in Settings > Feedback
 hides the whole canvas UI layer for a clean capture. On a gamepad, `View` / `Select` toggles that layer
 for the current session without rewriting the saved choice; `Start` remains the in-game menu button.
