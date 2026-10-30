@@ -413,16 +413,21 @@ a bigger forward broom. Every hit locks facing and the hold is still the guard. 
 along the full `SWEEP.bigReach` shaft, not just `PLAYER.swingReach`. The broom is drawn upright in front
 of the avatar (binder on top, bristles under it) and strokes **straight up and down** across the lane; it
 does not swing on a curved arc, and the head never turns over. Hit one strokes down, hit two back up.
-- **Ranged**: a broom thrown at `SWEEP.shotSpeed` (near Fisher's spear) with a square dust trail. It does
-2 damage, stops on the body and shoves hard; it is type `6`, so every `type >= 3` hostile check must stay
-an explicit `=== 3 || === 4` or equivalent before adding another player projectile type.
+- **Ranged**: a thrown broom head at `SWEEP.shotSpeed` (500, deliberately slow). It is wide
+(`shotRadius` 15), does 2 damage, stops on the body and shoves hard, and **dies on geometry** rather than
+ricocheting. It draws no line trail and no handle: just the same upright comb as the melee, with the
+bristles at the bottom, plus a short puff of grey square dust from `emitBroomDust`. It is type `6`, so every `type >= 3` hostile check must stay an explicit
+`=== 3 || === 4` or equivalent before adding another player projectile type.
 - **Power**: the giant broom is generated **in front of the player** (`SWEEP.powerFront`), rises one
-stroke (`SWEEP.powerRise`) and comes back down the same lane over `SWEEP.powerDuration`. The head is a
+stroke (`SWEEP.powerRise`) and comes back down the same lane **twice as far** over
+`SWEEP.powerDuration`, so the return clears the ground below the player as well as the rise above. The head is a
 screen-wide character comb (`SWEEP.powerSpan` half-width) that damages each body once and carries it with
 the stroke (`SWEEP.powerCarry`), pushing up on the rise and down on the return so victims are not dragged
 toward the caster. Cover cuts the contact. Cooldown starts when the stroke ends.
-- **Skill**: two brooms start together in front and split along the tangent to `SWEEP.fanReach`, shoving
-bodies outward and clearing the lane. Bodies are hit once per cast, and cover still cuts the contact.
+- **Skill**: two brooms start together in front and split along the tangent to `SWEEP.fanReach` over
+`SWEEP.fanLife` (0.62s, deliberately slow), shoving bodies outward and clearing the lane. Both stay
+upright with the bristles down, draw no dust tail, and hit each body once per cast; cover still cuts the
+contact.
 
 All four broom shapes are drawn with **real characters**, not stroked polygons: a binder row
 (`/=====\`) over three dense bristle rows (`|||||||`), cached per size and stretched to span the head,

@@ -168,6 +168,8 @@ export class Renderer {
   private slideGap = new Float32Array(MAX_PLAYERS);
   private slideSeen = new Uint8Array(MAX_PLAYERS);
   private slideDustT = 0;
+  /** Cadence for the dust a thrown broom head drags behind it. */
+  private broomDustT = 0;
   /** Toggled from Settings > Feedback. */
   showMinimap = true;
 
@@ -267,6 +269,7 @@ export class Renderer {
       if (state.drone) this.drawDrone(state.drone, alpha, t);
     }
     this.emitSlideDust(state, alpha, fx, dt);
+    this.emitBroomDust(state, alpha, fx, dt);
     this.drawPlayers(state, alpha, t, intro);
     if (introDone) {
       this.drawTravelProgress(state);
@@ -1449,8 +1452,11 @@ export class Renderer {
           : particleColor(P_COLOR_ICE);
       const x = lerp(p.prevX, p.x, alpha);
       const y = lerp(p.prevY, p.y, alpha);
-      this.pushTrail(p, x, y);
-      if (p.trailCount < 2) continue;
+      // The thrown broom head is a solid object, not a bolt: no motion tail. Its body
+      // is drawn with the rest of the projectile shapes.
+      if (p.type !== 6) {
+        this.pushTrail(p, x, y);
+        if (p.trailCount >= 2) {
       // Hostile shots get a short tail so the screen does not fill with long lines.
       const count = p.type >= 3 ? Math.min(p.trailCount, 5) : p.trailCount;
       const start = (p.trailHead - count + TRAIL_LEN) % TRAIL_LEN;
@@ -1467,6 +1473,8 @@ export class Renderer {
       ctx.globalAlpha = hostile ? 0.55 : p.type === 1 ? 0.3 : 0.45 + Math.min(0.25, p.deflects * 0.05);
       ctx.lineWidth = hostile ? 1.6 : p.type === 1 ? 2 : 2.6;
       ctx.stroke();
+        }
+      }
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -1787,32 +1795,9 @@ export class Renderer {
         ctx.stroke();
         ctx.restore();
       } else if (p.type === 6) {
-        // Thrown broom: a short shaft and a hard bristle fan, leaving square dust.
-        const angle = Math.atan2(p.vy, p.vx);
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(angle);
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-        ctx.restore();
-        this.drawBroomText(
-          x - Math.cos(angle) * 13,
-          y - Math.sin(angle) * 13,
-          10,
-          26,
-          angle,
-          0.95,
-          color,
-        );
-        ctx.save();
-        ctx.fillStyle = '#9aa7b4';
-        for (let k = 0; k < 5; k++) {
-          const idx = (p.trailHead - 1 - k * 2 + TRAIL_LEN * 2) % TRAIL_LEN;
-          if (k * 2 >= p.trailCount) break;
-          ctx.globalAlpha = 0.3 - k * 0.05;
-          ctx.fillRect(p.trailX[idx] - 1.8, p.trailY[idx] - 1.8, 3.6, 3.6);
-        }
-        ctx.restore();
+        // Thrown broom: head only, held upright like every other broom this program
+        // draws. No handle, no motion tail, and it dies on geometry instead of bouncing.
+        this.drawBroomText(x, y - 16, 17, 32, Math.PI / 2, 0.95, color);
       } else if (p.type >= 3) {
         const angle = Math.atan2(p.vy, p.vx);
         ctx.save();
@@ -2166,6 +2151,43 @@ export class Renderer {
       4.5,
       2.5,
     );
+  }
+
+  /**
+   * A thrown broom head drags a short puff of dust behind it: grey squares that fade and
+   * drift, the same square dust the knockback slide kicks up. No line, so it never reads
+   * as a handle or a bolt trail.
+   */
+  private emitBroomDust(state: RenderState, alpha: number, fx: Fx, dt: number): void {
+    this.broomDustT -= dt;
+    if (this.broomDustT > 0) return;
+    this.broomDustT = 0.035;
+    const projectiles = state.projectiles;
+    for (let i = 0; i < projectiles.length; i++) {
+      const p = projectiles[i];
+      if (!p.active || p.type !== 6) continue;
+      const speed = Math.hypot(p.vx, p.vy);
+      if (speed < 30) continue;
+      const inv = 1 / speed;
+      const ux = p.vx * inv;
+      const uy = p.vy * inv;
+      const x = lerp(p.prevX, p.x, alpha) - ux * 18;
+      const y = lerp(p.prevY, p.y, alpha) - uy * 18;
+      const side = (Math.random() - 0.5) * 26;
+      const drift = 20 + Math.random() * 60;
+      fx.particles.spawn(
+        4,
+        x - uy * side,
+        y + ux * side,
+        -ux * drift + uy * side * 1.2,
+        -uy * drift - ux * side * 1.2,
+        0.18 + Math.random() * 0.2,
+        2.2 + Math.random() * 3,
+        P_COLOR_DUST,
+        4.5,
+        2.2,
+      );
+    }
   }
 
   private emitSlideDust(state: RenderState, alpha: number, fx: Fx, dt: number): void {
@@ -3216,14 +3238,7 @@ export class Renderer {
       ctx.translate(bx, by);
       ctx.rotate(angle);
       ctx.restore();
-      this.drawBroomText(bx - Math.cos(angle) * 13, by - Math.sin(angle) * 13, 15, 26, angle, 0.9, color);
-    }
-    ctx.fillStyle = '#9aa7b4';
-    for (let i = 0; i < 12; i++) {
-      const k = (i / 11) * 2 - 1;
-      const wobble = Math.sin(t * 12 + i) * 4;
-      ctx.globalAlpha = 0.22 * (1 - Math.abs(k));
-      ctx.fillRect(p.fanX + p.fanTx * spread * k + wobble, p.fanY + p.fanTy * spread * k, 3.4, 3.4);
+      this.drawBroomText(bx, by - 16, 22, 32, Math.PI / 2, 0.9, color);
     }
     ctx.restore();
   }

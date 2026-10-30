@@ -2234,9 +2234,12 @@ export class World {
   private tickBroomSweep(p: Player, dt: number): void {
     p.broT = Math.max(0, p.broT - dt);
     const pct = p.broDur > 0 ? 1 - p.broT / p.broDur : 1;
-    // One big stroke: up for the first half, back down through the same lane for the
-    // second. Bodies caught on the way up are carried back down, not into the caster.
-    p.broS = pct < 0.5 ? -SWEEP.powerRise * (pct / 0.5) : -SWEEP.powerRise + SWEEP.powerRise * ((pct - 0.5) / 0.5);
+    // One big stroke: up for the first half, then down through the same lane twice as
+    // far, so the return clears the ground below the player as well as the rise above.
+    p.broS =
+      pct < 0.5
+        ? -SWEEP.powerRise * (pct / 0.5)
+        : -SWEEP.powerRise + SWEEP.powerRise * 2 * ((pct - 0.5) / 0.5);
     this.resolveBroomSweep(p);
     if (p.broT > 0) return;
     p.laserCd = SWEEP.powerCooldown;
@@ -3274,8 +3277,8 @@ export class World {
       bounced = true;
     }
     if (!bounced) return;
-    if (proj.type === 5) {
-      // The spear is a committed line, not a ricochet. It dies on geometry.
+    if (proj.type === 5 || proj.type === 6) {
+      // Spear and thrown broom are committed lines, not ricochets. They die on geometry.
       proj.active = false;
       this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
       return;
@@ -3313,7 +3316,7 @@ export class World {
       const ny = wall.ny * side;
       proj.x = px + nx * (rr + 0.5);
       proj.y = py + ny * (rr + 0.5);
-      if (proj.type === 5) {
+      if (proj.type === 5 || proj.type === 6) {
         proj.active = false;
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
         return;
@@ -3339,7 +3342,7 @@ export class World {
   private bouncePillars(proj: Projectile): void {
     for (let i = 0; i < this.arena.pillars.length; i++) {
       if (!circleRect(proj.x, proj.y, proj.radius, this.arena.pillars[i], hitScratch)) continue;
-      if (proj.type === 5) {
+      if (proj.type === 5 || proj.type === 6) {
         proj.active = false;
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
         return;

@@ -268,12 +268,12 @@ export const FISHER = {
  * across the arena, and the skill splits two brooms outward to clear a lane.
  */
 export const SWEEP = {
-  /** Ranged: a thrown broom. Fisher's spear speed, shorter reach, much harder shove. */
+  /** Ranged: a thrown broom head. Wide and slow, and it dies on geometry, no ricochet. */
   shotCost: 9,
   shotDamage: 2,
-  shotSpeed: 760,
-  shotTtl: 0.82,
-  shotRadius: 8,
+  shotSpeed: 500,
+  shotTtl: 0.9,
+  shotRadius: 15,
   shotKnockback: 860,
   attackCooldown: 0.5,
   /** Melee combo: two diagonal pushes, then a bigger forward broom. */
@@ -305,9 +305,9 @@ export const SWEEP = {
   powerDamage: 2,
   powerKnockback: 1450,
   /** Skill: two brooms start together in front and split outward to clear a lane. */
-  fanLife: 0.42,
+  fanLife: 0.62,
   fanReach: 250,
-  fanWidth: 30,
+  fanWidth: 40,
   fanDamage: 1,
   fanKnockback: 1100,
   /** Cooldown for the split-broom skill. The tap also pays `BUG.cost` of energy. */

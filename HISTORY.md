@@ -1781,3 +1781,27 @@ pass in the dev arena for the melee pose, the heavy mid-stroke and the star core
 
 **Next:** playtest the stroke speeds and the carry feel; decide whether the thrown broom should also use
 the character head at projectile scale.
+
+## 2026-10-29 — Sweep.exe pass 3: head-only throw, wider skill, deeper return
+
+**Goal:** finish the broom feel notes: no tails on the thrown or split brooms, wider and slower
+projectiles that die on walls, and a power stroke that reaches twice as far below the player.
+
+**Changes**
+- Ranged broom: `shotSpeed` 760 → 500, `shotRadius` 8 → 15, `shotTtl` 0.82 → 0.9, and it now dies on
+  arena bounds, pillars and deployed walls like Fisher's spear instead of bouncing. The projectile draws
+  only the upright head (no handle, no motion trail) and its shared trail buffer is skipped entirely.
+- Skill brooms: `fanLife` 0.42 → 0.62 (slower split), `fanWidth` 30 → 40, wider heads, upright with the
+  bristles down, and the dust line in the lane is gone.
+- Power: the return stroke now travels twice the rise (`powerRise` 281 up, 562 down), so it clears bodies
+  above and below the player instead of ending back on the start line.
+- Added a short puff of grey square dust behind each thrown broom (`emitBroomDust`), the same particle the
+  knockback slide kicks up, so the throw reads as motion without a line trail or a handle.
+- Docs: D14 updated with the new numbers and the no-bounce rule.
+
+**Verification:** `npx tsc --noEmit` clean; headless check confirmed the thrown broom spawns at speed 500
+and radius 15, is gone after hitting a pillar with zero bounces, and a body 253 units below the start line
+takes the return stroke. Visual pass in the dev arena: three thrown heads with no tail, upright comb.
+
+**Next:** playtest the slower throw range and the deeper return; decide whether the thrown broom needs a
+slightly longer TTL to compensate for the lower speed.
