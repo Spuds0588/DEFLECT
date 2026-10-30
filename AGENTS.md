@@ -283,7 +283,7 @@ bolt:
   energy is handed back. Legacy kinds `1` trap, `2` wall shield and `3` ghost remain implemented
   prototypes for future programs; do not expose them as a random roll again. The host owns each player's
   skill; guests read it from the snapshot.
-- **Power attack (`Y` hold)**: program-specific heavy. Probe charges for 0.9 s, then **auto-fires**
+- **Power attack (`Y` hold)**: program-specific heavy. Probe charges for 0.63 s, then **auto-fires**
   without waiting for release for 3 s, rooted, sweeping at `PLAYER.laserTurnRate` (0.55 rad/s), piercing
   every enemy in the line and respecting pillar cover. Wedge plows forward with a bracket; Fisher draws a
   **freeform web**; Sweep assembles a giant broom at his side and sweeps it across a `SWEEP.powerBand`-
@@ -477,7 +477,7 @@ segments cut cleanly with no frame rim; the trim is half an edge at each segment
 - **Skill**: a 360° burst at the cast point, damaging and poisoning every body inside `sprayRadius` with
   cover cutting line of sight. It reads like the death shard burst, but the shards are **circles** and
   they keep coming for the whole `sprayLife` (particle kind 5, `P_COLOR_TOXIN`).
-- **Power**: a rooted, aimable **jet**, not an instant cone. Charge 0.8 s, then `streamTime` 1.25 s of
+- **Power**: a rooted, aimable **jet**, not an instant cone. Charge 0.56 s, then `streamTime` 1.25 s of
   narrow stream that ticks venom damage every 0.2 s. The body cannot move for the burst, but the stick
   steers facing at `streamTurnRate` (2.4 rad/s) — faster than the heavy beam, because a stream has to be
   walked onto a moving body. It stops at cover for both damage and the drawn shaft.

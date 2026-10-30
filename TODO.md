@@ -2,7 +2,16 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.39 recycling bin compactor, destructible plates, campaign score)
+Last updated: 2026-10-30 (v0.1.40 power-attack charge shortened)
+
+---
+
+## v0.1.40 — Power-attack charge cut 30% (2026-10-30)
+
+- [x] Probe beam 0.9 → **0.63 s**, Wedge plow 0.8 → **0.56 s**, Sweep broom 0.85 → **0.6 s**,
+      Toxic jet 0.8 → **0.56 s**, Kaboom carpet 0.85 → **0.6 s**. Fisher's net has no charge; it is drawn
+      by moving and released by the player, so it is unchanged
+- [x] Tap window (`heavyTapMax` 0.16 s) is untouched, so a quick tap still casts the skill
 
 ---
 

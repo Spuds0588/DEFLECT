@@ -203,7 +203,7 @@ export const PLAYER = {
   lockRange: 1600,
   lockAcquire: 0.12,
   /** Hold the strong-attack button to charge the beam. Release before this cancels. */
-  laserChargeTime: 0.9,
+  laserChargeTime: 0.63,
   /** Release sooner than this and the press uses the player's random bug instead of the beam. */
   heavyTapMax: 0.16,
   laserDuration: 3,
@@ -306,7 +306,7 @@ export const WEDGE = {
   bashKnockback: 2350,
   bashRecoil: 300,
   /** Hold strong to form the red triangle, then plow forward while it is live. */
-  chargeTime: 0.8,
+  chargeTime: 0.56,
   chargeDuration: 0.5,
   chargeCost: 55,
   chargeCooldown: 5,
@@ -400,7 +400,7 @@ export const SWEEP = {
    * back down through the same lane. One up-and-down pass, no net pull toward the caster.
    */
   powerCost: 55,
-  powerChargeTime: 0.85,
+  powerChargeTime: 0.6,
   powerCooldown: 6,
   powerDuration: 0.9,
   /** How far above its start line the head rises before the return stroke. */
@@ -463,7 +463,7 @@ export const TOXIC = {
   streamDamage: 0.3,
   streamTurnRate: 2.4,
   streamCooldown: 7,
-  streamChargeTime: 0.8,
+  streamChargeTime: 0.56,
 } as const;
 
 /**
@@ -493,7 +493,7 @@ export const KABOOM = {
   lobKnockback: 900,
   /** Power: five shells in a shallow row, each blast overlapping the next. */
   clusterCost: 55,
-  clusterChargeTime: 0.85,
+  clusterChargeTime: 0.6,
   clusterCooldown: 8,
   clusterCount: 5,
   clusterRange: 300,

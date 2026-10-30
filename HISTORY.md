@@ -2168,3 +2168,21 @@ leaves 5/6. Browser: trapezoid, hole, plate and props render on `?gauntlet=1&are
 **Next:** playtest the arm speed and the box weight in the bin. Destructible cover (pillars) is not built —
 it needs a data record before a map can ask for it. The wall's plate does not stop the charged laser; decide
 that before adding another map with cover.
+
+## 2026-10-30 — Power-attack charge cut by 30%
+
+**Goal:** shorten the wind-up before a power attack commits.
+
+**Changes**
+- Charge times cut by 30%: Probe `PLAYER.laserChargeTime` 0.9 → 0.63 s, Wedge `WEDGE.chargeTime`
+  0.8 → 0.56 s, Sweep `SWEEP.powerChargeTime` 0.85 → 0.6 s, Toxic `TOXIC.streamChargeTime`
+  0.8 → 0.56 s, Kaboom `KABOOM.clusterChargeTime` 0.85 → 0.6 s. Fisher's net is unchanged: it has no
+  charge timer, it is drawn by moving and released by the player.
+- `PLAYER.heavyTapMax` (0.16 s) is untouched, so a tap below it still casts the skill and a hold still
+  commits the heavy.
+- Bumped to v0.1.40 and refreshed the service-worker cache.
+
+**Verification:** `tsc --noEmit` and `npm run build` clean. Charge constants read back from the built page.
+
+**Next:** playtest whether 0.63 s still leaves the beam telegraphed enough for a dodge, and whether the
+shorter charges shift the balance toward heavies in bots matches.
