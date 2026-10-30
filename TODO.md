@@ -717,6 +717,43 @@ Last updated: 2026-10-29 (v0.1.27 SWEEP.EXE and the IN TESTING build label)
 
 ---
 
+## v0.1.30 — TOXIC.EXE, aimable jet and player-hull bots (2026-10-29)
+
+### TOXIC.EXE
+- [x] `TOXIC.EXE` is in `PROGRAMS` (id 4, role `VENOM`) with the green accent and a `☠` core
+- [x] Identity: six-point star hull (twelve equal edges, three clean segments), `coreScale 1.0`; the
+      portrait and the arena share the shape and mark
+- [x] Ranged: `†` needle (type 7) with venom on hit; no bounce, no motion tail
+- [x] Venom: 3.5 s, 0.34 per 0.75 s, refreshed by a new hit; poisoned bodies flash `☠` and a green rim
+- [x] Skill: 360° burst that damages and poisons through a clear line of sight, drawn as a steady spray of
+      neon circles (particle kind 5) for the whole `sprayLife`
+- [x] Power: rooted, aimable venom jet; 0.8 s charge, 1.25 s stream, 0.2 s damage ticks, cover cuts both
+      the shaft and the damage
+- [x] Bots: dedicated spray tap at close range; the generic heavy hold builds the jet
+
+### Identity and bots
+- [x] A program's colour, hull and glyph no longer change with mode: local modes always use program
+      identity, and only networked guests fall back to the slot palette
+- [x] Local bots draw the same three-segment program hull, glow and damage read as the local avatar, with
+      no heading arrow, energy arc or readiness column
+- [x] Score pips use program colours in local matches; the minimap drone ring uses the threat ice colour
+
+### Verification
+- [x] Headless probe: needle type 7 applies venom, spray hits and poisons in radius, the jet fires after
+      charge, roots movement (0 units), aims at 2.4 rad/s, ticks damage, and does nothing through cover
+- [x] Browser: program select shows all five cards; training and VS BOTS both draw the green star and
+      `☠`; a one-health Probe bot shows one lit arc and two ghosts with the local glow
+- [x] Browser: jet renders narrow with a bright spine, stops at the cover edge; spray circles spread
+      across the cloud for the duration
+- [x] `npx tsc --noEmit`, `npm run build`, `npm run bench`
+
+### Next
+- [ ] Decide whether gauntlet threats should carry the venom state (they take the damage, not the poison)
+- [ ] Playtest jet turn rate and duration; tune `streamTurnRate`, `streamTime` and the tick damage together
+- [ ] Give Toxic a charge tell of its own; the jet currently has no wind-up mark in the arena
+
+---
+
 ## v0.1.27 — SWEEP.EXE and the test build label (2026-10-29)
 
 ### SWEEP.EXE
@@ -1243,6 +1280,8 @@ arrive.
 - Wedge's wall is local-only, like Fisher's web and lure: it never enters a snapshot, so a guest does not
   see another player's wall. It blocks player bodies and projectiles; gauntlet threats still walk through
   it, and bots path around the static grid, not around a deployed wall.
+- Toxic's venom applies to players, local bots and the training drone. Gauntlet worms, viruses, sentries
+  and error blocks take spray/jet damage but cannot be poisoned yet.
 - Local multiplayer is a multiplayer-menu placeholder. No local slot, second input device, shared camera
   or local match exists yet; the only local multi-body paths today are bots and the gauntlet thrall.
 - Story mode lists three local save slots, but nothing writes or reads a run: the first playable sector

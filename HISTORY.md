@@ -1819,3 +1819,29 @@ slightly longer TTL to compensate for the lower speed.
 
 **Next:** confirm on a real pad that the push reads at gameplay zoom, and decide whether the melee combo
 needs the same treatment.
+
+## 2026-10-29 — Toxic.exe, mode-free identity, bot hulls and the aimable jet
+
+**Goal:** stand up the fifth program and fix the designer's notes: program identity must survive every
+local mode, bots need the player hull read, Toxic's power should be an aimed stream rather than a cone,
+and his skill should read as the death burst with circles.
+
+**Changes**
+- Identity is program-based in every local mode. `RenderState.online` replaces the old `mode === 'match'`
+  branch, so colour, hull and glyph come from the program in training, VS BOTS and gauntlet; only a
+  networked guest still falls back to slot identity.
+- Local bots draw the same program hull, three health segments and glow as the local avatar, with their
+  own health, and no heading arrow, energy arc or readiness column. Score pips follow program colour.
+- Toxic.exe added: needle (type 7), venom ticks, 360-degree spray, and a rooted aimable jet. The star hull
+  needed a real segment trim (0.05 → 0.5 of an edge) before the three pieces read at full health.
+- The spray is emitted as particle circles (kind 5) for the whole cloud life, matching the death shard
+  burst but round and green. The jet is clipped by cover and ticks venom every 0.2 s.
+- Bots gained a close-range spray branch; the generic heavy hold builds the jet.
+
+**Verification:** `npx tsc --noEmit` clean; headless checks covered needle → venom → spray → jet, rooting
+(0 units moved), 2.4 rad/s aim, damage ticks, and cover. Browser checks at 1920×1080 confirmed five
+program cards, program identity in training and VS BOTS, a one-health bot with one lit arc and two
+ghosts, the narrow jet stopping at cover, and the circle spray.
+
+**Next:** playtest the jet's turn rate and duration, decide whether gauntlet threats should carry venom,
+and give the jet a wind-up tell.

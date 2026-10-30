@@ -118,6 +118,15 @@ export interface Player {
   hp: number;
   maxHp: number;
   energy: number;
+  /** Toxic venom: seconds left, time to the next tick, and the slot that applied it. */
+  poisonT: number;
+  poisonTickT: number;
+  poisonSrc: number;
+  /** Gas cloud visual: remaining time, total duration, radius, and skill-vs-cone shape. */
+  toxT: number;
+  toxDur: number;
+  toxRadius: number;
+  toxCone: boolean;
   /** Fast-bolt shots left in the current burst. */
   burstLeft: number;
   /** Recharge remaining after the burst is emptied. */
@@ -291,7 +300,7 @@ export interface Projectile {
   active: boolean;
   serial: number;
   /** 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile, 5 Fisher spear, 6 Sweep broom. */
-  type: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;
@@ -344,6 +353,9 @@ export interface Drone {
   radius: number;
   /** Fisher's web holds the drone still, refreshed while it is caught. */
   netPinT: number;
+  /** Toxic venom: seconds left and time to the next tick. */
+  poisonT: number;
+  poisonTickT: number;
 }
 
 export interface GameEvent {

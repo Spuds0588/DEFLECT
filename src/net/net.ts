@@ -633,6 +633,8 @@ export function parseSnapshot(data: unknown[]): Snapshot | null {
 
 export class NetView {
   mode = 'match' as const;
+  /** Snapshots do not carry programs, so a networked room identifies by slot. */
+  readonly online = true;
   readonly arena: ArenaDef;
   phase: Phase = 'countdown';
   phaseTimer = 0;

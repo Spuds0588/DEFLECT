@@ -79,14 +79,17 @@ and do not occupy room slots. A future host-side bot slot is separate work.
 ### D4 — Identity: program silhouette + glyph, slot palette online (revised 2026-10-29)
 Every avatar carries a colored outline with a geometric glyph at its center. The **local** avatar's
 outline is split into three health segments; a hit drops that segment to a faint ghost, so the silhouette
-stays whole and low health still reads at a glance. Do not hide lost segments entirely. Bots and remote
-players keep the silhouette and glyph but draw no health segments, heading arrow, energy arc or readiness
-column; their action effects still render.
-Enemy and bot damage visuals are undecided, so do not add health pips back until that pass happens.
+stays whole and low health still reads at a glance. Do not hide lost segments entirely. Local bots are
+player characters too: they draw the same program hull, three health segments and glow, with their own
+damage. They keep no heading arrow, energy arc or readiness column, and their action effects still
+render. Networked guests keep the slot hull until `Snapshot` carries programs.
+Enemy damage visuals are undecided, so do not add health pips back for threat families until that pass
+happens.
 
 Offline play identifies by **program**, not by slot. Each program owns a hue (`PROGRAM_COLORS`) and a
 silhouette from `pathProgramHealth` in `src/game/identity.ts`: Probe is a cyan scan ring with `◎`, Wedge
-an amber diamond with `▣`, Fisher an indigo hex reel with `≈`, Sweep a lime octagon with `✷`. The select screen and the arena share that
+an amber diamond with `▣`, Fisher an indigo hex reel with `≈`, Sweep a lime octagon with `✷`, Toxic a green six-point star
+with `☠`. The select screen and the arena share that
 shape and glyph, so a program reads the same in the roster, intro and fight.A program's `glyph` may be a single character, a multi-character text combo, Unicode dingbats/wingdings, or a multi-line ASCII picture; `drawSymbol` scales it to the core and portrait, strips common indentation, and measures the real advance against the symbol font stack (`ui-monospace` first, then `Segoe UI Symbol`, `Noto Sans Symbols 2`, `Apple Symbols`, Wingdings, Webdings) so a wide mark shrinks instead of spilling through the hull. Prefer direction-neutral marks: a pointing glyph at the core reads as facing. Each program also owns `coreScale` so a tight hull keeps clearance from its
 rotating health segments: Probe `1.12`, Wedge `0.88` (the diamond's sides are the tightest core), Fisher
 `1.10`, Sweep `1.06`. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
@@ -440,6 +443,32 @@ dust; do not add a second knockback system. All numbers live in the `SWEEP` bloc
 the kit like any other program: the generic heavy hold builds the sweep, and a dedicated branch taps the
 split brooms at 50–210 units. Sweep is local-only for now; online matches still run Probe because
 `Snapshot` does not carry programs. Do not add kit fields to the snapshot without a protocol decision.
+
+### D15 — Toxic.exe: venom, needle, spray and jet (built 2026-10-29)
+
+`TOXIC.EXE` is the roster's **poison** specialist (id 4, `VENOM`). Identity: `PROGRAM_COLORS.toxic`
+(`#3dff6e`), a six-point star hull, and a `☠` core. The star has twelve equal edges, so the three health
+segments cut cleanly with no frame rim; the trim is half an edge at each segment end.
+
+- **Ranged**: a cheap needle dart (type 7) drawn as a `†` mark, 1 direct damage plus venom. It does not
+  bounce and carries no motion tail; a small green halo is the only glow. Its damage is deliberately
+  small because the venom is the payload.
+- **Venom**: 3.5 s, one tick every 0.75 s for 0.34 (about a third of a segment). A hit refreshes the whole
+  duration instead of stacking. Poisoned bodies get a pulsing green rim and a flashing `☠` above the
+  body — a status mark, not a health pip, so it is allowed on bots and remotes too.
+- **Skill**: a 360° burst at the cast point, damaging and poisoning every body inside `sprayRadius` with
+  cover cutting line of sight. It reads like the death shard burst, but the shards are **circles** and
+  they keep coming for the whole `sprayLife` (particle kind 5, `P_COLOR_TOXIN`).
+- **Power**: a rooted, aimable **jet**, not an instant cone. Charge 0.8 s, then `streamTime` 1.25 s of
+  narrow stream that ticks venom damage every 0.2 s. The body cannot move for the burst, but the stick
+  steers facing at `streamTurnRate` (2.4 rad/s) — faster than the heavy beam, because a stream has to be
+  walked onto a moving body. It stops at cover for both damage and the drawn shaft.
+- **Bots**: a dedicated close-range branch taps the spray inside `sprayRadius`; the generic heavy-hold
+  builds the jet.
+
+Venom on gauntlet threat families is not modelled; the spray and jet damage them, but worms, viruses,
+sentries and error blocks cannot be poisoned yet. Do not add poison fields to `Snapshot`; the kit is
+local-only like every other program.
 
 ---
 

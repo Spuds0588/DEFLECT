@@ -1,4 +1,4 @@
-import { slotColor, THREAT_COLORS } from './identity';
+import { PROGRAM_COLORS, slotColor, THREAT_COLORS } from './identity';
 
 export const P_COLOR_WHITE = -1;
 export const P_COLOR_DANGER = -2;
@@ -7,6 +7,7 @@ export const P_COLOR_WORM = -4;
 export const P_COLOR_VIRUS = -5;
 export const P_COLOR_FIREWALL = -6;
 export const P_COLOR_DUST = -7;
+export const P_COLOR_TOXIN = -8;
 
 export interface Particle {
   active: boolean;
@@ -35,6 +36,7 @@ export function particleColor(color: number): string {
   if (color === P_COLOR_VIRUS) return THREAT_COLORS.virus;
   if (color === P_COLOR_FIREWALL) return THREAT_COLORS.firewall;
   if (color === P_COLOR_DUST) return '#8d979e';
+  if (color === P_COLOR_TOXIN) return PROGRAM_COLORS.toxic;
   return '#9fd7e8';
 }
 
@@ -253,6 +255,13 @@ export class ParticleSystem {
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
           ctx.stroke();
+          break;
+        }
+        case 5: {
+          // Filled circle, used by Toxic's spray: the death-shard burst, but round.
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, Math.max(0.6, p.size * (0.45 + 0.55 * t)), 0, Math.PI * 2);
+          ctx.fill();
           break;
         }
         default: {

@@ -38,6 +38,7 @@ export const PROGRAM_COLORS = {
   wedge: '#ffb63c',
   fisher: '#8a7dff',
   sweep: '#b8ff3a',
+  toxic: '#3dff6e',
   lure: '#7dffd4',
 } as const;
 
@@ -156,6 +157,9 @@ export function programHullSides(programId: number): number {
   // Sweep's octagon keeps three equal perimeter segments clean; a pentagon cut
   // through its corners and read as arbitrary chunks.
   if (programId === 3) return 8;
+  // Toxic's six-point star has twelve equal edges, so three segments of four edges
+  // each fall exactly on two points apiece.
+  if (programId === 4) return 12;
   return 0;
 }
 
@@ -178,6 +182,43 @@ export function pathProgramHealth(
   const twoPi = Math.PI * 2;
   const sides = programHullSides(programId);
   ctx.beginPath();
+  // Toxic's hull is a pointed star rather than a regular polygon. Every edge is the
+  // same length by symmetry, so equal perimeter slices are exact: three runs of four
+  // edges, each covering two points.
+  if (programId === 4) {
+    const points = sides;
+    const innerR = r * 0.52;
+    const step = twoPi / points;
+    const perSeg = Math.max(1, Math.floor(points / segments));
+    // Trim almost a full edge end so the three segments read as separate arcs. At 0.05
+    // the gaps were sub-pixel and the full-health star looked unbroken.
+    const trim = 0.5;
+    for (let s = 0; s < freshSegments; s++) {
+      const first = s * perSeg;
+      for (let e = 0; e < perSeg; e++) {
+        const i0 = first + e;
+        const i1 = i0 + 1;
+        const a0 = spin + i0 * step;
+        const a1 = spin + i1 * step;
+        const r0 = i0 % 2 === 0 ? r : innerR;
+        const r1 = i1 % 2 === 0 ? r : innerR;
+        const x0 = cx + Math.cos(a0) * r0;
+        const y0 = cy + Math.sin(a0) * r0;
+        const x1 = cx + Math.cos(a1) * r1;
+        const y1 = cy + Math.sin(a1) * r1;
+        const t0 = e === 0 ? trim : 0;
+        const t1 = e === perSeg - 1 ? 1 - trim : 1;
+        const sx = x0 + (x1 - x0) * t0;
+        const sy = y0 + (y1 - y0) * t0;
+        const ex = x0 + (x1 - x0) * t1;
+        const ey = y0 + (y1 - y0) * t1;
+        if (e === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+        ctx.lineTo(ex, ey);
+      }
+    }
+    return;
+  }
   if (sides === 0) {
     const gap = 0.32;
     const span = (twoPi - gap * segments) / segments;

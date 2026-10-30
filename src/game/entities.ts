@@ -38,6 +38,13 @@ export function createPlayer(slot: number): Player {
     hp: PLAYER.hp,
     maxHp: PLAYER.hp,
     energy: PLAYER.energyMax,
+    poisonT: 0,
+    poisonTickT: 0,
+    poisonSrc: 0,
+    toxT: 0,
+    toxDur: 0,
+    toxRadius: 0,
+    toxCone: false,
     burstLeft: BOLT.burstCount,
     burstCd: 0,
     stringLeft: 0,
@@ -271,6 +278,8 @@ export function createDrone(): Drone {
     hitFlash: 0,
     radius: TRAINING.droneRadius,
     netPinT: 0,
+    poisonT: 0,
+    poisonTickT: 0,
   };
 }
 
@@ -414,6 +423,13 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.swingKind = 0;
   p.hp = p.maxHp;
   p.energy = PLAYER.energyMax;
+  p.poisonT = 0;
+  p.poisonTickT = 0;
+  p.poisonSrc = 0;
+  p.toxT = 0;
+  p.toxDur = 0;
+  p.toxRadius = 0;
+  p.toxCone = false;
   p.burstLeft = BOLT.burstCount;
   p.burstCd = 0;
   p.stringLeft = 0;

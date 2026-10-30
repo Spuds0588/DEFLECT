@@ -246,7 +246,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.27 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.30 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -2640,7 +2640,9 @@ if (import.meta.env.DEV) {
     getLobby: () => lobbyState,
     getArenaIndex: () => arenaIndex,
     getBots: () => botBrains,
+    getRenderer: () => renderer,
     startTraining,
+    startTrainingBots,
     startGauntlet,
     startBotMatch,
     startAutoplay,

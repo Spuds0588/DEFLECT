@@ -316,6 +316,47 @@ export const SWEEP = {
 } as const;
 
 /**
+ * TOXIC.EXE: the roster's poison specialist. Its needle and gas attacks carry a timed
+ * venom; the direct damage is deliberately small so the damage-over-time is the point.
+ */
+export const TOXIC = {
+  /** Ranged: a cheap needle dart. Low direct damage; the venom is the payload. */
+  needleCost: 8,
+  needleDamage: 1,
+  needleSpeed: 880,
+  needleTtl: 0.62,
+  needleRadius: 6,
+  needleKnockback: 300,
+  attackCooldown: 0.34,
+  /**
+   * Venom: 3.5 s of ticks every 0.75 s. The tick is a third of a health segment, so a
+   * full poison is roughly one segment and a half: pressure, not an execution.
+   */
+  poisonTime: 3.5,
+  poisonTick: 0.75,
+  poisonDamage: 0.34,
+  /** Skill: a 360-degree spray that poisons everything close. */
+  sprayRadius: 190,
+  sprayDamage: 0.5,
+  sprayCooldown: 6,
+  sprayLife: 0.7,
+  /**
+   * Power: a rooted, aimable jet of venom. Charge, then hold the line for a fixed
+   * burst: the body cannot move, but the stick still steers the stream. Damage is
+   * paid in ticks, so brushing the jet is a warning and standing in it is not.
+   */
+  streamCost: 55,
+  streamRange: 560,
+  streamHalfAngle: 0.16,
+  streamTime: 1.25,
+  streamTick: 0.2,
+  streamDamage: 0.3,
+  streamTurnRate: 2.4,
+  streamCooldown: 7,
+  streamChargeTime: 0.8,
+} as const;
+
+/**
  * Timed proximity mine. The old heavy bomb was replaced after the designer called it
  * overpowered: the mine cannot be thrown across the map, must be armed, and gives
  * opponents time to read and avoid it.
@@ -342,7 +383,7 @@ export const MINE = {
 export const BUG = {
   cost: 35,
   /** A static wall is stronger than a shove, so its slot in the table is longer. */
-  cooldown: [4.5, 5, 7, 8, 9, 8, 6],
+  cooldown: [4.5, 5, 7, 8, 9, 8, 6, 7],
   trapRadius: 62,
   trapDuration: 2.2,
   trapSlow: 0.42,

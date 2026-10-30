@@ -2,13 +2,15 @@ import { BOLT, BUG, CAMERA_ZOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
 import { drawGlyph, drawSymbol, pathProgramFrame, pathProgramHealth, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
-import { P_COLOR_DUST, P_COLOR_ICE, particleColor } from './particles';
+import { P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
 import type { Barrier, CascadingError, Drone, Firewall, GameMode, Lure, Net, Phase, Pickup, Player, Projectile, Sentry, Virus, Worm } from './types';
 
 export interface RenderState {
   mode: GameMode;
+  /** True only for a networked session; local modes always identify by program. */
+  online: boolean;
   arena: ArenaDef;
   phase: Phase;
   phaseTimer: number;
@@ -104,7 +106,9 @@ function lerpAngle(a: number, b: number, t: number): number {
  */
 function playerColor(state: RenderState, p: Player): string {
   if (p.thrall) return THREAT_COLORS.thrall;
-  if (state.mode === 'match') return slotColor(p.slot);
+  // A program's color, hull and kit are one identity. Only a networked guest, whose
+  // program the snapshot cannot carry, falls back to the room slot palette.
+  if (state.online) return slotColor(p.slot);
   return programDef(p.program).color;
 }
 
@@ -170,6 +174,8 @@ export class Renderer {
   private slideDustT = 0;
   /** Cadence for the dust a thrown broom head drags behind it. */
   private broomDustT = 0;
+  /** Rotating seed for Toxic's circular burst, so it needs no per-frame allocation. */
+  private toxicSeed = 1;
   /** Toggled from Settings > Feedback. */
   showMinimap = true;
 
@@ -265,11 +271,13 @@ export class Renderer {
       if (state.nets) this.drawNets(state, alpha, t);
       if (state.barriers) this.drawBarriers(state.barriers, t);
       if (state.lures) this.drawLures(state.lures, t);
+      this.drawGas(state, alpha, t);
       this.drawLasers(state, alpha, t);
       if (state.drone) this.drawDrone(state.drone, alpha, t);
     }
     this.emitSlideDust(state, alpha, fx, dt);
     this.emitBroomDust(state, alpha, fx, dt);
+    this.emitToxicBurst(state, alpha, fx);
     this.drawPlayers(state, alpha, t, intro);
     if (introDone) {
       this.drawTravelProgress(state);
@@ -1370,6 +1378,8 @@ export class Renderer {
         continue;
       }
       if (p.laserT <= 0) continue;
+      // Toxic's power is a venom jet, drawn by drawGas, not the heavy beam.
+      if (p.program === PROGRAM_ID.TOXIC) continue;
 
       const x = lerp(p.prevX, p.x, alpha);
       const y = lerp(p.prevY, p.y, alpha);
@@ -1452,9 +1462,9 @@ export class Renderer {
           : particleColor(P_COLOR_ICE);
       const x = lerp(p.prevX, p.x, alpha);
       const y = lerp(p.prevY, p.y, alpha);
-      // The thrown broom head is a solid object, not a bolt: no motion tail. Its body
-      // is drawn with the rest of the projectile shapes.
-      if (p.type !== 6) {
+      // The thrown broom head and the venom needle are solid objects, not bolts: no
+      // motion tail. Their bodies are drawn with the rest of the projectile shapes.
+      if (p.type !== 6 && p.type !== 7) {
         this.pushTrail(p, x, y);
         if (p.trailCount >= 2) {
       // Hostile shots get a short tail so the screen does not fill with long lines.
@@ -1798,6 +1808,20 @@ export class Renderer {
         // Thrown broom: head only, held upright like every other broom this program
         // draws. No handle, no motion tail, and it dies on geometry instead of bouncing.
         this.drawBroomText(x, y - 16, 17, 32, Math.PI / 2, 0.95, color);
+      } else if (p.type === 7) {
+        // Venom needle: a dagger mark turned along its flight, inside a soft venom halo.
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius * 2.1, 0, TWO_PI);
+        ctx.fill();
+        ctx.globalAlpha = 0.95;
+        ctx.rotate(angle);
+        drawSymbol(ctx, '†', 0, 0, p.radius * 1.9, 1);
+        ctx.restore();
       } else if (p.type >= 3) {
         const angle = Math.atan2(p.vy, p.vx);
         ctx.save();
@@ -2158,6 +2182,40 @@ export class Renderer {
    * drift, the same square dust the knockback slide kicks up. No line, so it never reads
    * as a handle or a bolt trail.
    */
+  /**
+   * Toxic's skill reads like the death burst: a steady spray of neon circles thrown in
+   * every direction for as long as the cloud lives. Render-side only; the damage was
+   * resolved when the skill fired.
+   */
+  private emitToxicBurst(state: RenderState, alpha: number, fx: Fx): void {
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      if (!p.active || !p.alive || p.toxT <= 0 || p.toxCone || p.toxDur <= 0) continue;
+      const x = lerp(p.prevX, p.x, alpha);
+      const y = lerp(p.prevY, p.y, alpha);
+      for (let e = 0; e < 3; e++) {
+        const seed = this.toxicSeed++;
+        const a = seed * 2.399 + p.slot * 0.7;
+        const speed = 240 + (seed % 11) * 28;
+        const size = 2.4 + (seed % 5) * 1.6;
+        fx.particles.spawn(
+          5,
+          x + Math.cos(a) * 8,
+          y + Math.sin(a) * 8,
+          Math.cos(a) * speed,
+          Math.sin(a) * speed,
+          0.5 + (seed % 4) * 0.08,
+          size,
+          P_COLOR_TOXIN,
+          1.1,
+          0,
+          0,
+          0,
+        );
+      }
+    }
+  }
+
   private emitBroomDust(state: RenderState, alpha: number, fx: Fx, dt: number): void {
     this.broomDustT -= dt;
     if (this.broomDustT > 0) return;
@@ -2556,10 +2614,15 @@ export class Renderer {
       }
 
       // Health outline is the program's silhouette (ring, diamond, hex), rotating slowly.
-      // It is a local-player readout; bots and remote players get no health display yet.
+      // Local bots are player characters and carry the same hull and three segments.
+      // Networked guests keep slot identity, and thralls are not player characters, so
+      // neither draws a program hull yet.
       const freshSegments = Math.max(0, Math.min(PLAYER.hp, Math.ceil(p.hp)));
       const hpFrac = Math.max(0, Math.min(1, p.hp / PLAYER.hp));
-      if (isLocal) {
+      // Bots are player characters: same program hull, health segments and glow.
+      // Networked guests keep slot identity, and thralls are not player characters.
+      const showHull = isLocal || (!state.online && !p.thrall);
+      if (showHull) {
         const spin = t * 0.22 + (1 - spinUp) * 18;
         const hullSpin = spin + (p.program === PROGRAM_ID.WEDGE ? Math.PI / 4 : 0);
         ctx.strokeStyle = p.hitFlash > 0 ? '#ffffff' : color;
@@ -2595,22 +2658,26 @@ export class Renderer {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'miter';
 
-        // Small heading arrow outside the outline. No extra full rings around the body.
-        const nx = Math.cos(facing);
-        const ny = Math.sin(facing);
-        const tip = PLAYER.radius + 8;
-        ctx.globalAlpha = 0.95;
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.moveTo(x + nx * tip, y + ny * tip);
-        ctx.lineTo(x + nx * (tip - 7) - ny * 4, y + ny * (tip - 7) + nx * 4);
-        ctx.lineTo(x + nx * (tip - 7) + ny * 4, y + ny * (tip - 7) - nx * 4);
-        ctx.closePath();
-        ctx.fill();
+        // Small heading arrow outside the outline. Local only: it is the player's own
+        // facing cue, not a marker on every body.
+        if (isLocal) {
+          const nx = Math.cos(facing);
+          const ny = Math.sin(facing);
+          const tip = PLAYER.radius + 8;
+          ctx.globalAlpha = 0.95;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(x + nx * tip, y + ny * tip);
+          ctx.lineTo(x + nx * (tip - 7) - ny * 4, y + ny * (tip - 7) + nx * 4);
+          ctx.lineTo(x + nx * (tip - 7) + ny * 4, y + ny * (tip - 7) - nx * 4);
+          ctx.closePath();
+          ctx.fill();
+        }
       }
 
-      // Remotes keep a stable core; damage and health visuals for them come later.
-      const coreHp = isLocal ? hpFrac : 1;
+      // Player characters show their own damage in the core; networked guests keep a
+      // stable core until the snapshot carries programs and health.
+      const coreHp = showHull ? hpFrac : 1;
       const coreR = PLAYER.radius * (0.3 + 0.28 * coreHp) * (1 + 0.035 * Math.sin(t * 4 + p.slot));
       ctx.save();
       ctx.globalCompositeOperation = 'source-over';
@@ -2662,7 +2729,7 @@ export class Renderer {
         ctx.strokeStyle = '#c39bff';
         ctx.lineWidth = 4;
         ctx.stroke();
-      } else if (state.mode === 'match') {
+      } else if (state.online) {
         // Networked matches still identify by slot until programs travel in the snapshot.
         drawGlyph(ctx, slotGlyph(p.slot), 0, 0, PLAYER.radius * 0.51);
       } else {
@@ -2670,6 +2737,24 @@ export class Renderer {
         drawSymbol(ctx, glyph.glyph, 0, 0, PLAYER.radius * (glyph.glyphRadius ?? 0.51), glyph.coreScale);
       }
       ctx.restore();
+
+      if (p.poisonT > 0) {
+        // Venom: one flashing skull above the body and a green rim. A status marker,
+        // not a health pip, so it is allowed on bots and remotes too.
+        const pulse = 0.5 + 0.5 * Math.sin(t * 9 + p.slot * 1.7);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.26 + 0.3 * pulse;
+        ctx.strokeStyle = PROGRAM_COLORS.toxic;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, PLAYER.radius + 5 + 2 * pulse, 0, TWO_PI);
+        ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.45 + 0.45 * pulse;
+        ctx.fillStyle = PROGRAM_COLORS.toxic;
+        drawSymbol(ctx, '☠', x, y - PLAYER.radius - 13, 8, 1);
+        ctx.globalAlpha = 1;
+      }
 
       if (p.ghostT > 0) {
         ctx.save();
@@ -2724,6 +2809,123 @@ export class Renderer {
     }
   }
 
+  /**
+   * Toxic's gas. The skill is a 360-degree burst, the power a forward cone; both are
+   * drawn as a green haze of square motes that expands once and fades, so the cloud
+   * reads as area denial rather than a projectile. Render-only: damage is already
+   * resolved the frame it was used.
+   */
+  private drawGas(state: RenderState, alpha: number, t: number): void {
+    const ctx = this.ctx;
+    let drew = false;
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      if (p.toxT <= 0 || p.toxDur <= 0) continue;
+      if (!drew) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = PROGRAM_COLORS.toxic;
+        ctx.strokeStyle = PROGRAM_COLORS.toxic;
+        drew = true;
+      }
+      const x = lerp(p.prevX, p.x, alpha);
+      const y = lerp(p.prevY, p.y, alpha);
+      const k = Math.max(0, Math.min(1, 1 - p.toxT / p.toxDur));
+      const fade = 1 - k;
+      const grow = 0.34 + 0.66 * Math.sqrt(k);
+      const span = p.toxRadius * grow;
+      if (p.toxCone) {
+        // The power is a jet, not a cloud: a narrow shaft the player steers while
+        // rooted. Cover cuts the drawn stream exactly where it cuts the damage.
+        const facing = p.facing;
+        const half = 0.1;
+        const fx = Math.cos(facing);
+        const fy = Math.sin(facing);
+        let reach = p.toxRadius;
+        for (let d = 24; d < p.toxRadius; d += 25) {
+          if (!this.beamClear(state.arena, x, y, x + fx * d, y + fy * d)) {
+            reach = Math.max(60, d - 25);
+            break;
+          }
+        }
+        const span = Math.min(reach, p.toxRadius * grow);
+        const flicker = 0.9 + 0.1 * Math.sin(t * 26 + p.slot);
+        ctx.globalAlpha = 0.14 * fade;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.arc(x, y, span, facing - half * 1.6, facing + half * 1.6);
+        ctx.closePath();
+        ctx.fill();
+        // Two offset spines sell a liquid stream better than concentric arcs.
+        ctx.globalAlpha = 0.34 * fade * flicker;
+        ctx.lineWidth = 1.4;
+        for (let e = 0; e < 2; e++) {
+          const side = (e === 0 ? -1 : 1) * half * 0.55;
+          ctx.beginPath();
+          for (let seg = 0; seg <= 6; seg++) {
+            const dist = 16 + (span - 16) * (seg / 6);
+            const drift = Math.sin(t * 20 + seg * 1.3 + p.slot + e * 2.1) * 2.2;
+            const sx = x + Math.cos(facing + side) * dist - Math.sin(facing + side) * drift;
+            const sy = y + Math.sin(facing + side) * dist + Math.cos(facing + side) * drift;
+            if (seg === 0) ctx.moveTo(sx, sy);
+            else ctx.lineTo(sx, sy);
+          }
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 0.72 * fade * flicker;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        for (let seg = 0; seg <= 6; seg++) {
+          const dist = 16 + (span - 16) * (seg / 6);
+          const drift = Math.sin(t * 22 + seg * 1.3 + p.slot) * 1.8;
+          const sx = x + fx * dist - fy * drift;
+          const sy = y + fy * dist + fx * drift;
+          if (seg === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        }
+        ctx.stroke();
+        // Motes ride the shaft outward and splash at the end.
+        ctx.globalAlpha = 0.66 * fade;
+        for (let d = 0; d < 26; d++) {
+          const u = (d * 0.37 + k * 2.1) % 1;
+          const dist = span * (0.1 + 0.9 * u);
+          const fan = Math.sin(t * 17 + d * 1.7 + p.slot) * half * (0.35 + 0.9 * u);
+          const a = facing + fan;
+          const s = 1.8 + 2 * (0.5 + 0.5 * Math.sin(t * 9 + d * 2.3));
+          ctx.fillRect(x + Math.cos(a) * dist - s * 0.5, y + Math.sin(a) * dist - s * 0.5, s, s);
+        }
+        ctx.globalAlpha = 0.45 * fade;
+        for (let d = 0; d < 8; d++) {
+          const a = facing + ((d / 7) * 2 - 1) * half * 2.6;
+          const dist = span * (0.96 + 0.04 * Math.sin(t * 14 + d));
+          const s = 2.2 + 1.6 * (0.5 + 0.5 * Math.sin(t * 12 + d * 2));
+          ctx.fillRect(x + Math.cos(a) * dist - s * 0.5, y + Math.sin(a) * dist - s * 0.5, s, s);
+        }
+      } else {
+        ctx.globalAlpha = 0.1 * fade;
+        ctx.beginPath();
+        ctx.arc(x, y, span, 0, TWO_PI);
+        ctx.fill();
+        ctx.globalAlpha = 0.46 * fade;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, span, 0, TWO_PI);
+        ctx.stroke();
+        ctx.globalAlpha = 0.3 * fade;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(x, y, span * 0.66, 0, TWO_PI);
+        ctx.stroke();
+        // The burst itself is a stream of green circles emitted by emitToxicBurst;
+        // the rings only mark where the cloud currently reaches.
+      }
+    }
+    if (drew) {
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  }
+
   private drawDrone(d: Drone, alpha: number, t: number): void {
     if (!d.active) return;
     const ctx = this.ctx;
@@ -2753,6 +2955,12 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(0, 0, d.radius + 5, 0, TWO_PI);
       ctx.stroke();
+    }
+    if (d.poisonT > 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 9);
+      ctx.globalAlpha = 0.45 + 0.45 * pulse;
+      ctx.fillStyle = PROGRAM_COLORS.toxic;
+      drawSymbol(ctx, '☠', 0, -d.radius - 12, 8, 1);
     }
     ctx.restore();
 
@@ -3300,7 +3508,7 @@ export class Renderer {
     if (glyphA > 0) {
       ctx.globalAlpha = glyphA;
       ctx.fillStyle = color;
-      if (state.mode === 'match') {
+      if (state.online) {
         drawGlyph(ctx, slotGlyph(p.slot), x, y + 1, PLAYER.radius * 0.51);
       } else {
         const glyph = programDef(p.program);
@@ -3507,7 +3715,7 @@ export class Renderer {
       }
     }
     if (state.drone && state.drone.active) {
-      ctx.strokeStyle = slotColor(0);
+      ctx.strokeStyle = particleColor(P_COLOR_ICE);
       ctx.lineWidth = 1.4;
       ctx.beginPath();
       ctx.arc(x0 + (state.drone.x - b.left) * sx, y0 + (state.drone.y - b.top) * sy, 2.8, 0, TWO_PI);
@@ -3581,7 +3789,7 @@ export class Renderer {
         const p = players[i];
         if (!p.active) continue;
         for (let s = 0; s < ROUND.winsNeeded; s++) {
-          ctx.fillStyle = s < p.score ? slotColor(p.slot) : 'rgba(120, 170, 190, 0.14)';
+          ctx.fillStyle = s < p.score ? (state.online ? slotColor(p.slot) : programDef(p.program).color) : 'rgba(120, 170, 190, 0.14)';
           ctx.fillRect(pipX, pipY, 4, 2);
           pipX += 6;
         }

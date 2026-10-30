@@ -1,4 +1,4 @@
-import { BOLT, BUG, FISHER, PLAYER, WEDGE, type Rect } from './config';
+import { BOLT, BUG, FISHER, PLAYER, TOXIC, WEDGE, type Rect } from './config';
 import { PROGRAM_ID } from './programs';
 import { arenaSolids, type ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
@@ -327,6 +327,29 @@ export class BotBrain {
     ) {
       out.mx = Math.cos(aim) * 0.8;
       out.my = Math.sin(aim) * 0.8;
+      out.pressed |= ACTION.CANDLE;
+      this.candleCd = this.rng.range(4.5, 6.5);
+      return;
+    }
+
+    // Toxic's spray is a close-quarters burst: poison everything around him as a
+    // target closes, then keep walking in. A tap, so it is the skill, never the cone.
+    if (
+      me.program === PROGRAM_ID.TOXIC &&
+      this.candleCd <= 0 &&
+      me.bugCd <= 0 &&
+      me.energy >= BUG.cost &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.laserT <= 0 &&
+      !me.laserChargeHeld &&
+      me.toxT <= 0 &&
+      !blocked &&
+      dist > 30 &&
+      dist < TOXIC.sprayRadius - 24
+    ) {
+      out.mx = Math.cos(aim) * 0.7;
+      out.my = Math.sin(aim) * 0.7;
       out.pressed |= ACTION.CANDLE;
       this.candleCd = this.rng.range(4.5, 6.5);
       return;

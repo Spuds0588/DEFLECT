@@ -15,6 +15,7 @@ import {
   POWERUP,
   ROUND,
   SENTRY,
+  TOXIC,
   THRALL,
   TRAINING,
   TRAVEL,
@@ -76,6 +77,8 @@ const EVENT_CAPACITY = MAX_EVENTS * 2;
  */
 export class World {
   readonly mode: GameMode;
+  /** Local simulation: identity always comes from the program, never the slot. */
+  readonly online = false;
   readonly arena: ArenaDef;
   /** Cover plus floor gaps. Bodies collide with this; shots only respect cover. */
   private readonly solids: readonly Rect[];
@@ -517,6 +520,9 @@ export class World {
       if (p.guardCd > 0) p.guardCd = Math.max(0, p.guardCd - dt);
       if (p.chargeDashCd > 0) p.chargeDashCd = Math.max(0, p.chargeDashCd - dt);
       if (p.laserCd > 0) p.laserCd = Math.max(0, p.laserCd - dt);
+      // Gas/stream visual lifetime. Damage resolved on use; this only retires the draw.
+      if (p.toxT > 0) p.toxT = Math.max(0, p.toxT - dt);
+      this.tickPlayerPoison(p, dt);
       if (p.laserT > 0) {
         p.laserT = Math.max(0, p.laserT - dt);
         p.laserTickT -= dt;
@@ -639,6 +645,24 @@ export class World {
             p.chargeT = 0;
             p.chargeHeld = false;
           }
+        } else if (p.program === PROGRAM_ID.TOXIC) {
+          // The gas cone auto-fires at full charge, like the other committed heavies.
+          if (canAct && heavyHeld) {
+            p.laserChargeT += dt;
+            if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+              p.facing = Math.atan2(input.my, input.mx);
+            }
+            p.laserFacing = p.facing;
+            if (p.laserChargeT >= TOXIC.streamChargeTime) this.startToxicStream(p);
+          } else if (p.laserChargeT >= TOXIC.streamChargeTime) {
+            this.startToxicStream(p);
+          } else {
+            if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            p.laserChargeHeld = false;
+            p.laserChargeT = 0;
+            p.chargeT = 0;
+            p.chargeHeld = false;
+          }
         } else if (p.program === PROGRAM_ID.WEDGE) {
           // Wedge plants the red triangle, then commits to a straight plow. The charge
           // auto-fires; the player never has to guess the release window.
@@ -680,7 +704,23 @@ export class World {
           if (p.laserT > 0) laserBusy = true;
         }
       } else if (p.laserT > 0) {
-        if (overcharged) {
+        if (p.program === PROGRAM_ID.TOXIC) {
+          // The jet is aimable while rooted. It turns faster than the heavy beam so a
+          // water-like stream can be walked onto a moving body, but it is still limited
+          // so a flick cannot wash the whole screen in venom.
+          if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+            let delta = Math.atan2(input.my, input.mx) - p.facing;
+            delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+            const maxTurn = TOXIC.streamTurnRate * dt;
+            p.facing += Math.max(-maxTurn, Math.min(maxTurn, delta));
+          }
+          p.laserFacing = p.facing;
+          p.laserTickT -= dt;
+          if (p.laserTickT <= 0) {
+            p.laserTickT += TOXIC.streamTick;
+            this.applyToxicStream(p);
+          }
+        } else if (overcharged) {
           // The overcharge beam is an instant-on weak attack: facing follows the stick
           // directly, and the beam can be switched off on the next frame.
           p.laserFacing = p.facing;
@@ -1695,6 +1735,25 @@ export class World {
       return;
     }
 
+    if (p.program === PROGRAM_ID.TOXIC) {
+      // A cheap needle stream. The direct hit is small; the venom is the payload.
+      if (p.autoFireT > 0 || p.energy < TOXIC.needleCost) return;
+      if (!this.spawnProjectile(
+        p,
+        0,
+        TOXIC.needleTtl,
+        TOXIC.needleSpeed,
+        false,
+        TOXIC.needleRadius,
+        TOXIC.needleDamage,
+        7,
+      )) return;
+      p.energy -= TOXIC.needleCost;
+      p.autoFireT = TOXIC.attackCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
     if (p.program === PROGRAM_ID.FISHER) {
       if (p.autoFireT > 0 || p.energy < FISHER.spearCost) return;
       if (!this.spawnProjectile(
@@ -1727,6 +1786,7 @@ export class World {
     if (p.program === PROGRAM_ID.WEDGE) return WEDGE.chargeCost;
     if (p.program === PROGRAM_ID.FISHER) return FISHER.netCost;
     if (p.program === PROGRAM_ID.SWEEP) return SWEEP.powerCost;
+    if (p.program === PROGRAM_ID.TOXIC) return TOXIC.streamCost;
     return PLAYER.laserCost;
   }
 
@@ -2490,6 +2550,180 @@ export class World {
     return !this.lineBlocked(bx, by, x, y);
   }
 
+  /** Applies the venom. A hit refreshes the whole duration instead of stacking ticks. */
+  private poisonPlayer(p: Player, sourceSlot: number): void {
+    p.poisonT = TOXIC.poisonTime;
+    p.poisonTickT = TOXIC.poisonTick;
+    p.poisonSrc = sourceSlot;
+  }
+
+  private poisonDrone(d: Drone): void {
+    d.poisonT = TOXIC.poisonTime;
+    d.poisonTickT = TOXIC.poisonTick;
+  }
+
+  private tickPlayerPoison(p: Player, dt: number): void {
+    if (p.poisonT <= 0) return;
+    p.poisonT = Math.max(0, p.poisonT - dt);
+    p.poisonTickT -= dt;
+    if (p.poisonTickT > 0) return;
+    p.poisonTickT += TOXIC.poisonTick;
+    this.damagePlayer(p, TOXIC.poisonDamage, p.poisonSrc, 0, -1, 0);
+  }
+
+  private tickDronePoison(d: Drone, dt: number): void {
+    if (d.poisonT <= 0) return;
+    d.poisonT = Math.max(0, d.poisonT - dt);
+    d.poisonTickT -= dt;
+    if (d.poisonTickT > 0) return;
+    d.poisonTickT += TOXIC.poisonTick;
+    this.damageDrone(TOXIC.poisonDamage, 0);
+  }
+
+  /**
+   * Toxic's skill: a 360-degree gas burst. Every body inside the cloud takes a little
+   * damage and the venom, with cover cutting the cloud like any other line of sight.
+   */
+  private startToxicSpray(p: Player): void {
+    p.toxT = TOXIC.sprayLife;
+    p.toxDur = TOXIC.sprayLife;
+    p.toxRadius = TOXIC.sprayRadius;
+    p.toxCone = false;
+    for (let i = 0; i < this.players.length; i++) {
+      const target = this.players[i];
+      if (target === p || !target.active || !target.alive || target.travelT > 0) continue;
+      const dx = target.x - p.x;
+      const dy = target.y - p.y;
+      if (dx * dx + dy * dy > (TOXIC.sprayRadius + PLAYER.radius) ** 2) continue;
+      if (this.lineBlocked(p.x, p.y, target.x, target.y)) continue;
+      const d = Math.hypot(dx, dy) || 1;
+      this.damagePlayer(target, TOXIC.sprayDamage, p.slot, dx / d, dy / d, TOXIC.needleKnockback);
+      this.poisonPlayer(target, p.slot);
+    }
+    if (this.mode === 'training' && this.drone.active) {
+      const dx = this.drone.x - p.x;
+      const dy = this.drone.y - p.y;
+      if (dx * dx + dy * dy <= (TOXIC.sprayRadius + this.drone.radius) ** 2 && !this.lineBlocked(p.x, p.y, this.drone.x, this.drone.y)) {
+        this.damageDrone(TOXIC.sprayDamage, p.slot);
+        this.poisonDrone(this.drone);
+      }
+    }
+    this.damageGauntletInCloud(p, TOXIC.sprayRadius, TOXIC.sprayDamage, false);
+  }
+
+  /**
+   * Toxic's power: a committed jet. Charging ends here; the body is rooted for
+   * `streamTime`, the stick still steers, and venom is paid out in ticks by
+   * `applyToxicStream` instead of one burst on the firing frame.
+   */
+  private startToxicStream(p: Player): void {
+    if (!p.alive) {
+      p.laserChargeHeld = false;
+      p.laserChargeT = 0;
+      return;
+    }
+    p.energy = Math.max(0, p.energy - TOXIC.streamCost);
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    p.laserT = TOXIC.streamTime;
+    p.laserTickT = TOXIC.streamTick;
+    p.laserFacing = p.facing;
+    p.toxT = TOXIC.streamTime;
+    p.toxDur = TOXIC.streamTime;
+    p.toxRadius = TOXIC.streamRange;
+    p.toxCone = true;
+    p.laserCd = TOXIC.streamCooldown;
+    p.lockActive = false;
+    p.lockKind = 0;
+    p.lockId = -1;
+    this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
+    this.applyToxicStream(p);
+  }
+
+  /** One damage tick of the jet. Every body in the narrow line takes venom again. */
+  private applyToxicStream(p: Player): void {
+    const half = TOXIC.streamHalfAngle;
+    for (let i = 0; i < this.players.length; i++) {
+      const target = this.players[i];
+      if (target === p || !target.active || !target.alive || target.travelT > 0) continue;
+      if (!this.inToxicLine(p, target.x, target.y, PLAYER.radius, half)) continue;
+      const dx = target.x - p.x;
+      const dy = target.y - p.y;
+      const d = Math.hypot(dx, dy) || 1;
+      this.damagePlayer(target, TOXIC.streamDamage, p.slot, dx / d, dy / d, TOXIC.needleKnockback * 0.25);
+      this.poisonPlayer(target, p.slot);
+    }
+    if (this.mode === 'training' && this.drone.active && this.inToxicLine(p, this.drone.x, this.drone.y, this.drone.radius, half)) {
+      this.damageDrone(TOXIC.streamDamage, p.slot);
+      this.poisonDrone(this.drone);
+    }
+    if (this.mode === 'gauntlet') this.damageGauntletInCloud(p, TOXIC.streamRange, TOXIC.streamDamage, true, half);
+  }
+
+  private inToxicLine(
+    p: Player,
+    x: number,
+    y: number,
+    radius: number,
+    half: number,
+    range: number = TOXIC.streamRange,
+  ): boolean {
+    const dx = x - p.x;
+    const dy = y - p.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > range + radius) return false;
+    if (dist > 1) {
+      const fx = Math.cos(p.facing);
+      const fy = Math.sin(p.facing);
+      if ((dx * fx + dy * fy) / dist < Math.cos(half)) return false;
+    }
+    return !this.lineBlocked(p.x, p.y, x, y);
+  }
+
+  /**
+   * Gas hurts the local threat families too. Venom on those bodies is a later pass;
+   * the cloud still damages them so the kit is usable in the gauntlet.
+   */
+  private damageGauntletInCloud(
+    p: Player,
+    radius: number,
+    amount: number,
+    cone: boolean,
+    half = 0.42,
+  ): void {
+    if (this.mode !== 'gauntlet') return;
+    const reaches = (x: number, y: number, r: number): boolean =>
+      cone ? this.inToxicLine(p, x, y, r, half, radius) : this.inToxicSpray(p, x, y, r, radius);
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active && reaches(s.x, s.y, s.radius)) this.damageSentry(s, amount, p.slot, 0, 0, 0);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (v.active && reaches(v.x, v.y, v.radius)) this.damageVirus(v, amount, p.slot, 0, 0, 0);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      let hit = reaches(w.x, w.y, WORM.headRadius);
+      for (let s = 0; s < w.segCount && !hit; s++) hit = reaches(w.segX[s], w.segY[s], WORM.segmentRadius);
+      if (hit) this.damageWorm(w, amount, p.slot, 0, 0, 0);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (e.active && reaches(e.x, e.y, CASCADING_ERROR.blockSize * 0.5)) this.damageError(e, amount, p.slot, 0, 0);
+    }
+  }
+
+  private inToxicSpray(p: Player, x: number, y: number, radius: number, spray: number): boolean {
+    const dx = x - p.x;
+    const dy = y - p.y;
+    if (dx * dx + dy * dy > (spray + radius) ** 2) return false;
+    return !this.lineBlocked(p.x, p.y, x, y);
+  }
+
   private startNetDraw(p: Player): void {
     let index = -1;
     for (let i = 0; i < this.nets.length; i++) {
@@ -2826,6 +3060,8 @@ export class World {
       p.ghostT = BUG.ghostDuration;
     } else if (p.bugKind === 6) {
       this.startFan(p);
+    } else if (p.bugKind === 7) {
+      this.startToxicSpray(p);
     } else if (p.bugKind === 4) {
       // Wedge's signature bug: a static bracket wall behind him. Refuse a wall that
       // would land inside cover and hand the energy back rather than eat the button.
@@ -3398,6 +3634,13 @@ export class World {
         proj.active = false;
         return true;
       }
+      if (proj.type === 7) {
+        // Needle: light damage, then the venom keeps working.
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, TOXIC.needleKnockback);
+        this.poisonPlayer(p, proj.owner);
+        proj.active = false;
+        return true;
+      }
       this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, BOLT.knockback);
       proj.active = false;
       return true;
@@ -3417,6 +3660,11 @@ export class World {
             this.damageDrone(proj.damage, proj.owner);
           }
           return false;
+        } else if (proj.type === 7) {
+          this.damageDrone(proj.damage, proj.owner);
+          this.poisonDrone(this.drone);
+          proj.active = false;
+          return true;
         } else {
           this.damageDrone(proj.damage, proj.owner);
           proj.active = false;
@@ -3764,6 +4012,7 @@ export class World {
       if (d.respawnT <= 0) this.spawnDrone(false);
       return;
     }
+    this.tickDronePoison(d, dt);
     d.prevX = d.x;
     d.prevY = d.y;
     d.rot += dt * 1.5;

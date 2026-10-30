@@ -10,6 +10,7 @@ export const PROGRAM_ID = {
   WEDGE: 1,
   FISHER: 2,
   SWEEP: 3,
+  TOXIC: 4,
 } as const;
 
 export interface ProgramDef {
@@ -86,6 +87,17 @@ export const PROGRAMS: readonly ProgramDef[] = [
     glyph: '✷',
     coreScale: 1.06,
     bugKind: 6,
+  },
+  {
+    id: PROGRAM_ID.TOXIC,
+    name: 'TOXIC.EXE',
+    role: 'VENOM',
+    note: 'NEEDLE DARTS // VENOM SPRAY // GAS CONE',
+    color: PROGRAM_COLORS.toxic,
+    /** Skull mark. Poisoned bodies flash the same skull so the status has one symbol. */
+    glyph: '☠',
+    coreScale: 1.0,
+    bugKind: 7,
   },
 ];
 
