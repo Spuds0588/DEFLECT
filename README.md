@@ -134,11 +134,11 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 ## Training and bot practice
 
 `SINGLE PLAYER → TRAINING → program` walks through the arena grid (navigate all four directions), bot count
-(`1 V 1`, `1 V 2`, or `1 V 3`), and difficulty. Difficulties stack vertically from `EASY` to `HARD`, with an
-`IMPOSSIBLE` tier reserved as the top of the ladder. Each choice advances immediately: pick an arena to
-choose the bot count, pick a count to choose difficulty, and pick a difficulty to start. There is no extra
-NEXT/RUN step. Training has **no rounds**: every dead body respawns and the session continues until you
-leave. Solo training with no bots keeps the sparring drone.
+(`NO BOTS` for the sparring drone, or `1 V 1` through `1 V 3`), and difficulty. Difficulties stack
+vertically from `EASY` to `HARD`, with an `IMPOSSIBLE` tier reserved as the top of the ladder. Each choice
+advances immediately: pick an arena to choose the bot count, pick a count to choose difficulty, and pick a
+difficulty to start. There is no extra NEXT/RUN step. Training has **no rounds**: every dead body respawns
+and the session continues until you leave. Training and VS BOTS remember their difficulty separately.
 
 `SINGLE PLAYER → VS BOTS` uses the same setup but runs the normal match flow: countdown, last-standing
 rounds, first to 3. Bots take the programs you leave unused, so a Wedge pick can face Probe and Fisher.
@@ -152,9 +152,10 @@ overlay with a rematch option.
 - `IMPOSSIBLE`: the reserved ceiling. Faster fire, no aim error, full dodge; still being tuned.
 
 Three styles alternate across the three bots: `DUELIST` closes distance, `TRICKSTER` orbits and
-looks for deflections, and `SIEGE` holds range and charges beams. Bots route around cover with a small
-per-arena grid path instead of hugging the nearest wall. They are local-only test opponents; they do
-not occupy multiplayer room slots.
+looks for deflections, and `SIEGE` holds range and charges beams. Wedge bots plant their bracket between
+themselves and incoming fire, and Fisher bots drop a lure before stepping away; a bot never chases its own
+beacon. Bots route around cover with a small per-arena grid path instead of hugging the nearest wall. They
+are local-only test opponents; they do not occupy multiplayer room slots.
 
 ## Gauntlet
 
@@ -199,8 +200,11 @@ This build is a test rig as much as a game. A useful pass:
 
 - All five arenas in training. Learn `THE RING`'s four side gates, `SWITCHBACK`'s ricochet lanes and
   `MAINFRAME`'s linked districts.
+- Start training with `NO BOTS`. The sparring drone should drift, fire slow bolts and respawn.
 - 1v1, 1v2 and 1v3 at each tier. `EASY` is a moving target; `HARD` punishes slow attacks and bad dashes.
   Training never ends on a round; bots respawn after each defeat.
+- Watch a Wedge bot under fire turn away and plant a wall between itself and the bolt. Watch a Fisher bot
+drop its lure, then step out of the way instead of standing on it.
 - Break line of sight behind cover. Bots should walk a route around the block, not scrape against it.
 - Fight inside `THE RING`'s center. Every entrance is a gate; a charged beam down a gate is a trap.
 - Bank bolts around `SWITCHBACK`'s bars. Deflected bolts gain speed and damage.

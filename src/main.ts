@@ -184,6 +184,8 @@ let botBrains: (BotBrain | null)[] = [];
 let arenaIndex = 0;
 let botCount = 3;
 let botTier: BotTier = 'veteran';
+/** Training and VS BOTS keep separate difficulty picks; gauntlet/campaign use the training slot. */
+const botTierPrefs: Record<'training' | 'bots', BotTier> = { training: 'veteran', bots: 'veteran' };
 let stress = false;
 let stressBots = 0;
 let stressTick = 0;
@@ -244,7 +246,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.24 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.25 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -431,6 +433,8 @@ function showMenuStage(stage: MenuStage): void {
   menuOnline.hidden = stage !== 'online';
   if (stage === 'soloProgram') renderProgramPicker();
   if (stage === 'soloArena') updateSoloArenaCopy();
+  // Count and tier options depend on the mode: training can be solo, VS BOTS cannot.
+  if (stage === 'soloBots' || stage === 'soloTier') renderBotControls();
   if (stage === 'gauntlet') renderGauntletSetup();
   if (stage === 'story') renderStorySetup();
   if (stage === 'storyBots') renderStoryBots();
@@ -443,6 +447,10 @@ function showMenuStage(stage: MenuStage): void {
 /** Mode first, then the program: SINGLE PLAYER > mode > program > that mode's setup. */
 function openProgramSelect(program: SoloProgram): void {
   soloProgram = program;
+  // Restore the tier for this mode instead of carrying VS BOTS' pick into training.
+  botTier = botTierPrefs[program === 'bots' ? 'bots' : 'training'];
+  // "NO BOTS" is a training-only choice; a versus match always needs an opponent.
+  if (program !== 'training' && botCount < 1) botCount = 1;
   storyStatusLine.textContent = '';
   showMenuStage('soloProgram');
 }
@@ -498,9 +506,22 @@ function loadArenaPrefs(): void {
     const savedArena = Number(localStorage.getItem('deflect.arena') ?? '0');
     if (Number.isFinite(savedArena)) arenaIndex = ((savedArena % ARENAS.length) + ARENAS.length) % ARENAS.length;
     const savedCount = Number(localStorage.getItem('deflect.botCount') ?? '3');
-    if (savedCount >= 1 && savedCount <= 3) botCount = savedCount;
+    if (savedCount >= 0 && savedCount <= 3) botCount = savedCount;
+    // Migrate the old shared tier key, then prefer the per-mode keys when present.
     const savedTier = localStorage.getItem('deflect.botTier');
-    if (savedTier && (BOT_TIERS as readonly string[]).includes(savedTier)) botTier = savedTier as BotTier;
+    if (savedTier && (BOT_TIERS as readonly string[]).includes(savedTier)) {
+      botTierPrefs.training = savedTier as BotTier;
+      botTierPrefs.bots = savedTier as BotTier;
+    }
+    const savedTrainingTier = localStorage.getItem('deflect.botTier.training');
+    if (savedTrainingTier && (BOT_TIERS as readonly string[]).includes(savedTrainingTier)) {
+      botTierPrefs.training = savedTrainingTier as BotTier;
+    }
+    const savedBotsTier = localStorage.getItem('deflect.botTier.bots');
+    if (savedBotsTier && (BOT_TIERS as readonly string[]).includes(savedBotsTier)) {
+      botTierPrefs.bots = savedBotsTier as BotTier;
+    }
+    botTier = botTierPrefs.training;
     selectedProgram = clampProgram(Number(localStorage.getItem('deflect.program') ?? String(PROGRAM_ID.PROBE)));
   } catch {
     /* storage disabled: use defaults */
@@ -647,6 +668,8 @@ function persistArenaPrefs(): void {
     localStorage.setItem('deflect.arena', String(arenaIndex));
     localStorage.setItem('deflect.botCount', String(botCount));
     localStorage.setItem('deflect.botTier', botTier);
+    localStorage.setItem('deflect.botTier.training', botTierPrefs.training);
+    localStorage.setItem('deflect.botTier.bots', botTierPrefs.bots);
     localStorage.setItem('deflect.program', String(selectedProgram));
   } catch {
     /* storage disabled */
@@ -1061,16 +1084,22 @@ function renderGauntletRecords(): void {
   }
 }
 
+function botCountLabel(count: number): string {
+  if (count < 1) return 'NO BOTS';
+  return count === 1 ? '1 V 1' : `1 V ${count}`;
+}
+
 function renderBotControls(): void {
   clearChildren(botCountEl);
-  const counts = [1, 2, 3];
+  // Training can be a solo drone session; versus needs at least one opponent.
+  const counts = soloProgram === 'training' ? [0, 1, 2, 3] : [1, 2, 3];
   for (let i = 0; i < counts.length; i++) {
     const count = counts[i];
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `console-choice${botCount === count ? ' selected' : ''}`;
     button.dataset.nav = '';
-    button.textContent = count === 1 ? '1 V 1' : `1 V ${count}`;
+    button.textContent = botCountLabel(count);
     button.setAttribute('aria-pressed', String(botCount === count));
     button.addEventListener('click', () => {
       setBotCount(count);
@@ -1100,13 +1129,15 @@ function renderBotControls(): void {
 }
 
 function setBotCount(count: number): void {
-  botCount = Math.max(1, Math.min(3, count));
+  botCount = Math.max(0, Math.min(3, count));
+  if (soloProgram !== 'training' && botCount === 0) botCount = 1;
   persistArenaPrefs();
   renderBotControls();
 }
 
 function setBotTier(tier: BotTier): void {
   botTier = tier;
+  botTierPrefs[soloProgram === 'bots' ? 'bots' : 'training'] = tier;
   persistArenaPrefs();
   renderBotControls();
 }
@@ -1114,7 +1145,7 @@ function setBotTier(tier: BotTier): void {
 function updateBotSummary(): void {
   const def = programDef(selectedProgram);
   const label = soloProgram === 'bots' ? 'VS BOTS' : 'TRAINING';
-  botStageLabel.textContent = `${label} // ${def.name} // BOT COUNT // ${botCount === 1 ? '1 V 1' : `1 V ${botCount}`}`;
+  botStageLabel.textContent = `${label} // ${def.name} // BOT COUNT // ${botCountLabel(botCount)}`;
   tierStageLabel.textContent = `${label} // ${def.name} // DIFFICULTY // ${BOT_TIER_LABELS[botTier]}`;
 }
 
@@ -1496,6 +1527,7 @@ function startGauntlet(): void {
 function startAutoplay(count: number): void {
   if (busy) return;
   soloProgram = 'bots';
+  botTier = botTierPrefs.bots;
   botCount = Math.max(1, Math.min(MAX_PLAYERS - 1, Math.floor(count)));
   startBotMatch(true);
   toast(`AUTOPLAY // ${botCount + 1} OPERATORS`);
@@ -1503,6 +1535,7 @@ function startAutoplay(count: number): void {
 
 function startBotMatch(aiLocal = false): void {
   if (busy) return;
+  if (botCount < 1) botCount = 1;
   teardownSession();
   mode = 'bots';
   localSlot = 0;

@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-29 (v0.1.24 VS BOTS, autoplay self-play, traversal and magic-user plans)
+Last updated: 2026-10-29 (v0.1.25 bot skill pass, solo training, traversal and magic-user plans)
 
 ---
 
@@ -717,6 +717,37 @@ Last updated: 2026-10-29 (v0.1.24 VS BOTS, autoplay self-play, traversal and mag
 
 ---
 
+## v0.1.25 — Bot skill pass and solo training (2026-10-29)
+
+### Bots
+- [x] Wedge bots answer a long incoming bolt by turning away from it and planting the wall between the
+      threat and themselves; the old close-range random tap put the wall behind him facing the target
+- [x] Wedge bots also close a lane while reloading or at one health, then leave through it
+- [x] Fisher bots drop the lure at 160–280 units and step away, so the decoy has room to pull a chaser
+- [x] Bots ignore their own lure; `nearestLureIndex` takes an optional owner to skip
+- [x] Training and VS BOTS keep separate difficulty preferences, with the old shared tier key migrated
+
+### Solo training
+- [x] `TRAINING` exposes `NO BOTS` alongside `1 V 1`–`1 V 3`; versus matches keep one to three opponents
+- [x] `NO BOTS` starts a one-player room and restores the sparring drone
+
+### Verification
+- [x] Browser: TRAINING shows `NO BOTS / 1 V 1 / 1 V 2 / 1 V 3`; VS BOTS shows only the three versus
+      choices after switching modes in the same session
+- [x] Browser: `NO BOTS` → EASY starts with one active player, zero brains and a live drone (hp 4)
+- [x] Browser: training EASY → VS BOTS HARD → training EASY persisted as
+      `deflect.botTier.training = rookie` / `deflect.botTier.bots = digital`
+- [x] Browser `?autoplay=2`: a Fisher bot's lure went live (4.2 s life) and a Wedge bot's wall went live
+      (4.6 s life) on CROSSROADS; the Fisher brain kept targeting its opponent, not its own beacon
+- [x] `npx tsc --noEmit` and `npm run build` clean; bench rerun recorded in HISTORY
+
+### Next
+- [ ] Tune how often the new wall/lure branches fire after a live match; they are deterministic now but
+      not yet paced by playtest
+- [ ] Tune `IMPOSSIBLE` now that it is selectable, then decide whether VS BOTS should expose 4–7 bots
+
+---
+
 ## v0.1.24 — Bot players and unattended self-play (2026-10-29)
 
 ### Bots
@@ -749,10 +780,6 @@ Last updated: 2026-10-29 (v0.1.24 VS BOTS, autoplay self-play, traversal and mag
 ### Next
 - [ ] Wire campaign companions to the same brains so the bot count chosen in a new campaign run actually
       spawns
-- [ ] Teach Wedge to place walls relative to incoming fire and Fisher to drop lures ahead of a chase; the
-      current skill use is opportunistic
-- [ ] Tune `IMPOSSIBLE` now that it is selectable, then decide whether VS BOTS should expose 4–7 bots
-- [ ] Add a per-mode bot preference instead of sharing one tier between training and VS BOTS
 
 ---
 

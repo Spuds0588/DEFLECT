@@ -1606,3 +1606,40 @@ still the largest missing bot consumer.
 
 **Next:** road-map items remain intentionally open: campaign node loader and saves, local multiplayer,
 bridges/pads/lifts, magic users, Sweep.exe's kit, and IMPOSSIBLE tuning.
+
+## 2026-10-29 — Session 38: deliberate bot skills and solo training (v0.1.25)
+
+**Goal:** Improve the local bots while the designer tests v0.1.24 in production, and restore the
+sparring-drone training path that the bot-count menu had hidden.
+
+**Changed:**
+- Wedge bots now answer an incoming bolt by turning away from the threat and planting the wall between
+  the bolt and themselves. They also close a lane while reloading or at one health, then leave through
+  it. The old opportunistic cast fired at close range facing the target, which put the wall behind him.
+- Fisher bots drop the lure at 160–280 units, then step away so the decoy has room to pull a chaser.
+  `nearestLureIndex` takes an optional owner so a bot no longer gets pulled toward its own beacon.
+- Training exposes `NO BOTS` beside `1 V 1`–`1 V 3`; versus matches keep one to three opponents. A
+  no-bots training run starts a one-player room and restores the sparring drone.
+- Training and VS BOTS keep separate difficulty preferences. The old shared `deflect.botTier` key is
+  migrated into both, then per-mode keys take over.
+- Version 0.1.25; title header, settings footer, boot log and service-worker cache bumped together.
+- README, AGENTS D6 and TODO updated; README also had stale tier names and the removed Controls settings
+  tab corrected.
+
+**Verification:**
+- `npx tsc --noEmit` and `npm run build` clean.
+- Bench: 2P 0.014 / 0.066 ms, 8P bot swarm 0.060 / 0.257 ms, gauntlet max 0.142 / 0.579 ms with 27.3
+  live threats. All well under the 4 ms average budget.
+- Browser dev: TRAINING shows `NO BOTS / 1 V 1 / 1 V 2 / 1 V 3`; selecting NO BOTS and EASY starts one
+  active player, zero brains and a live drone at hp 4. VS BOTS shows only the three versus choices after
+  switching modes in the same session.
+- Per-mode preference: training EASY → VS BOTS HARD → back to training EASY. Storage settled at
+  `deflect.botTier.training=rookie`, `deflect.botTier.bots=digital`.
+- Browser `?autoplay=2`: a Fisher lure went live with 4.2 s life and a Wedge wall with 4.6 s life on
+  CROSSROADS; the Fisher brain kept its opponent as the target while its own beacon was live.
+- Production preview build v0.1.25: NO BOTS training reached the arena, VS BOTS reached a HARD match, and
+  the console showed only the state logs.
+
+**Next:** This batch is committed locally but intentionally not pushed while the v0.1.24 production test
+is running. Tune wall/lure cadence after a live match, then IMPOSSIBLE. Campaign companions still need the
+sector loader.

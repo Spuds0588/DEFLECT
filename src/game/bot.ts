@@ -1,4 +1,4 @@
-import { BOLT, BUG, PLAYER } from './config';
+import { BOLT, BUG, FISHER, PLAYER, WEDGE } from './config';
 import { PROGRAM_ID } from './programs';
 import type { ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
@@ -221,7 +221,7 @@ export class BotBrain {
     let fy = target.y;
     let fvx = target.vx;
     let fvy = target.vy;
-    const lureIndex = world.nearestLureIndex(me.x, me.y);
+    const lureIndex = world.nearestLureIndex(me.x, me.y, this.slot);
     if (lureIndex >= 0) {
       const lure = world.lures[lureIndex];
       const playerDist = Math.hypot(target.x - me.x, target.y - me.y);
@@ -272,6 +272,30 @@ export class BotBrain {
       return;
     }
 
+    // Fisher's beacon is a deliberate disengage: put it at his feet, then step
+    // away so the pursuer has to choose between the player and the decoy. The
+    // old opportunistic cast fired at close range while he was still aiming in.
+    if (
+      me.program === PROGRAM_ID.FISHER &&
+      this.candleCd <= 0 &&
+      me.bugCd <= 0 &&
+      me.energy >= BUG.cost &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.laserT <= 0 &&
+      !me.laserChargeHeld &&
+      me.wedgeT <= 0 &&
+      !blocked &&
+      dist > 160 &&
+      dist < FISHER.lureRadius - 20
+    ) {
+      out.mx = -dx / dist;
+      out.my = -dy / dist;
+      out.pressed |= ACTION.CANDLE;
+      this.candleCd = this.rng.range(8, 10);
+      return;
+    }
+
     // The shot direction is the movement direction. Stepping into the aim is the
     // single-stick cost every player pays. Bot-owned bolts travel slower than a
     // human's, so range and lead must use the speed this brain actually fires.
@@ -299,7 +323,35 @@ export class BotBrain {
       return;
     }
 
+    // Wedge closes a lane when he reloads or is nearly dead: turn away from the
+    // target and plant the bracket between them, then leave through it. A wall
+    // planted while facing the target would sit behind him and do nothing.
     if (
+      me.program === PROGRAM_ID.WEDGE &&
+      this.candleCd <= 0 &&
+      me.bugCd <= 0 &&
+      me.energy >= BUG.cost &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.laserT <= 0 &&
+      !me.laserChargeHeld &&
+      me.wedgeT <= 0 &&
+      !blocked &&
+      dist > 110 &&
+      dist < 280 &&
+      (me.hp <= 1 || me.burstCd > 0.1)
+    ) {
+      out.mx = -dx / dist;
+      out.my = -dy / dist;
+      out.pressed |= ACTION.CANDLE;
+      this.candleCd = this.rng.range(4.5, 6.5);
+      return;
+    }
+
+    // Probe still uses its opportunistic mine cast. Wedge and Fisher have their
+    // own deliberate skill branches above and should not roll a random tap.
+    if (
+      me.program === PROGRAM_ID.PROBE &&
       !blocked &&
       this.candleCd <= 0 &&
       me.bugCd <= 0 &&
@@ -471,6 +523,30 @@ export class BotBrain {
     const dist = Math.hypot(dx, dy) || 1;
     const dirX = dx / dist;
     const dirY = dy / dist;
+
+    // Wedge answers a long bolt with the bracket instead of a swat. Moving away
+    // from the threat points his back at it; the wall lands between the two.
+    if (
+      me.program === PROGRAM_ID.WEDGE &&
+      this.candleCd <= 0 &&
+      me.bugCd <= 0 &&
+      me.energy >= BUG.cost &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.laserT <= 0 &&
+      !me.laserChargeHeld &&
+      me.wedgeT <= 0 &&
+      this.threatDist > WEDGE.wallOffset + PLAYER.radius + 8 &&
+      this.threatDist < 340 &&
+      this.threatTime > 0.08 &&
+      this.threatTime < 0.55
+    ) {
+      out.mx = -dirX;
+      out.my = -dirY;
+      out.pressed |= ACTION.CANDLE;
+      this.candleCd = this.rng.range(4.5, 6.5);
+      return true;
+    }
 
     // Candles are never safe to swat at close range. Own bolts are a ricochet
     // problem, so evade rather than trying to re-deflect a bad shot.

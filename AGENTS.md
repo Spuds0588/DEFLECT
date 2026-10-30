@@ -117,10 +117,10 @@ swing / dash** sounds locally for immediacy; deflect and hit feedback come back 
 Solo training includes one simple drone: it drifts, fires slow bolts, and respawns. It exists so the
 designer can test feel without a second human; do not grow the drone into pathfinding or prediction.
 
-Training has a second program: **endless bot practice**. The player picks 1–3 bots and a tier, and the
-room runs in `World('training')` with no rounds or score. Every dead body, human or bot, respawns on the
-training timer, so the session continues until the player leaves. The sparring drone is suppressed when
-bots are present. Do not route this through the match round flow.
+Training has a second program: **endless bot practice**. The player picks 0–3 bots and a tier, and the
+room runs in `World('training')` with no rounds or score. `NO BOTS` keeps the sparring drone; any bot
+suppresses it. Every dead body, human or bot, respawns on the training timer, so the session continues
+until the player leaves. Do not route this through the match round flow.
 
 `SINGLE PLAYER > VS BOTS` runs the same brains through the normal match round flow (`World('match')`,
 first to 3). Bots write ordinary `InputFrame`s and are bound by the same single-stick facing, swing locks,
@@ -133,7 +133,10 @@ labelled `EASY`, `MEDIUM`, `HARD` and `IMPOSSIBLE` (the last is the reserved cei
 network authority or direct world mutation. AI-owned bolts travel at `BOLT.enemySpeedMult`; bot lead,
 maximum fire range and style engagement range must use that slowed speed, not the human bolt speed. A
 style may not hold outside the distance its own bolt can reach. Bots scale engagement range by program
-and commit to program heavies on a cooldown by holding the power button.
+and commit to program heavies on a cooldown by holding the power button. Wedge bots turn away from a
+threat to plant the wall between it and themselves, and place one while reloading; Fisher bots drop the
+lure before disengaging and ignore their own beacon when looking for a decoy. Training and VS BOTS keep
+separate difficulty preferences.
 
 `?autoplay=N` is a QA-only boot hook: it starts a VS BOTS match with bots in every slot, including
 slot 0, and auto-rematches when the match ends. It must stay out of menus and snapshots.

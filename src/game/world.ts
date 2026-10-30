@@ -2238,13 +2238,16 @@ export class World {
     }
   }
 
-  /** Nearest live lure inside its attraction radius, or -1. Local bots read it as a decoy. */
-  nearestLureIndex(x: number, y: number): number {
+  /**
+   * Nearest live lure inside its attraction radius, or -1. Local bots read it as a
+   * decoy and pass their own slot so their beacon does not pull them off the chase.
+   */
+  nearestLureIndex(x: number, y: number, ignoreOwner = -1): number {
     let best = -1;
     let bestD2 = FISHER.lureRadius * FISHER.lureRadius;
     for (let i = 0; i < this.lures.length; i++) {
       const lure = this.lures[i];
-      if (!lure.active) continue;
+      if (!lure.active || lure.owner === ignoreOwner) continue;
       const dx = lure.x - x;
       const dy = lure.y - y;
       const d2 = dx * dx + dy * dy;
