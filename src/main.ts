@@ -1,24 +1,40 @@
 import { MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
 import { ARENAS, drawArenaPreview, getArena } from './game/arenas';
-import { BOT_NAMES, BOT_STYLE_LABELS, BOT_TIERS, BOT_TIER_LABELS, BotBrain, type BotTier } from './game/bot';
+import { BOT_NAMES, BOT_TIERS, BOT_TIER_LABELS, BotBrain, type BotTier } from './game/bot';
 import { AudioEngine } from './game/audio';
 import { Fx } from './game/fx';
+import {
+  formatGauntletTime,
+  loadGauntletRuns,
+  recordGauntletRun,
+  saveGauntletRuns,
+  type GauntletRun,
+} from './game/gauntletRecords';
 import { Input, type MenuEdges } from './game/input';
 import { Renderer, type RenderState } from './game/render';
+import { PROGRAM_ID, PROGRAMS, clampProgram, programDef } from './game/programs';
+import { STORY_SLOT_COUNT, loadStorySlots } from './game/saves';
+import { SECTORS } from './game/sectors';
 import { ACTION, EV, type GameEvent, type InputFrame, type LobbyPlayer, type LobbyState, type Phase } from './game/types';
 import { World } from './game/world';
 import { GuestNet, HostNet, NetView, type Snapshot } from './net/net';
 import { clearChildren, drawAvatar, el, toast } from './ui/dom';
-import { randomCallsign, sanitizeName, slotColor } from './game/identity';
+import { drawSymbol, pathProgramFrame, pathProgramHealth, randomCallsign, sanitizeName, slotColor } from './game/identity';
 
-type Screen = 'title' | 'lobby' | 'game' | 'settings';
-type SettingsTab = 'controls' | 'feedback' | 'audio' | 'system';
+type Screen = 'title' | 'lobby' | 'game' | 'settings' | 'howto';
+type SettingsTab = 'feedback' | 'audio' | 'system';
 type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'gauntlet';
-type OverlayKind = 'none' | 'round' | 'match' | 'leave';
+type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 const canvas = el<HTMLCanvasElement>('arena');
 const titleScreen = el('screen-title');
 const settingsScreen = el('screen-settings');
+const howtoScreen = el('screen-howto');
+const howtoDeviceTitle = el('howto-device-title');
+const howtoDeviceName = el('howto-device-name');
+const howtoControlsPad = el('howto-controls-pad');
+const howtoControlsKeys = el('howto-controls-keys');
+const howtoPrograms = el('howto-programs');
 const settingsMuteBtn = el<HTMLButtonElement>('btn-settings-mute');
 const lobbyScreen = el('screen-lobby');
 const gameUi = el('game-ui');
@@ -32,10 +48,13 @@ const countdownLabel = el('countdown-label');
 const countdownValue = el<HTMLElement>('countdown-value');
 const perfEl = el('perf');
 const settingsBtn = el<HTMLButtonElement>('btn-settings');
+const howtoBtn = el<HTMLButtonElement>('btn-howto');
+const howtoBackBtn = el<HTMLButtonElement>('btn-howto-back');
 const callsignInput = el<HTMLInputElement>('callsign');
 const roomCodeInput = el<HTMLInputElement>('room-code');
 const titleStatus = el('title-status');
 const trainingBtn = el<HTMLButtonElement>('btn-training');
+const soloBotsBtn = el<HTMLButtonElement>('btn-solo-bots');
 const createBtn = el<HTMLButtonElement>('btn-create');
 const joinBtn = el<HTMLButtonElement>('btn-join');
 const lobbyCodeEl = el('lobby-code');
@@ -49,11 +68,15 @@ const startBtn = el<HTMLButtonElement>('btn-start');
 const copyBtn = el<HTMLButtonElement>('btn-copy');
 const arenaPicker = el('arena-picker');
 const arenaStageLabel = el('arena-stage-label');
+const menuGauntlet = el('menu-gauntlet');
+const gauntletStageLabel = el('gauntlet-stage-label');
+const gauntletStartBtn = el<HTMLButtonElement>('btn-gauntlet-start');
+const gauntletRecordsEl = el<HTMLOListElement>('gauntlet-records');
+const gauntletBestValue = el('gauntlet-best');
 const botCountEl = el('bot-count');
 const botTierEl = el('bot-tier');
 const botStageLabel = el('bot-stage-label');
 const tierStageLabel = el('tier-stage-label');
-const botRoster = el('bot-roster');
 const gauntletBtn = el<HTMLButtonElement>('btn-gauntlet');
 const lobbyArenaBtn = el<HTMLButtonElement>('btn-arena-cycle');
 const hitRotationInput = el<HTMLInputElement>('hit-rotation');
@@ -74,13 +97,36 @@ const minimapBtn = el<HTMLButtonElement>('btn-minimap');
 const resetSettingsBtn = el<HTMLButtonElement>('btn-settings-reset');
 const testFeedbackBtn = el<HTMLButtonElement>('btn-test-feedback');
 const menuHub = el('menu-hub');
+const menuSoloProgram = el('menu-solo-program');
+const programPicker = el('program-picker');
+const programStageLabel = el('program-stage-label');
+const programBackBtn = el<HTMLButtonElement>('btn-program-back');
 const menuSolo = el('menu-solo');
+const menuStory = el('menu-story');
+const storySlotsEl = el('story-slots');
+const storyStatusLine = el('story-status');
+const storyBackBtn = el<HTMLButtonElement>('btn-story-back');
+const menuStoryBots = el('menu-story-bots');
+const storyBotsLabel = el('story-bots-label');
+const storyBotsBackBtn = el<HTMLButtonElement>('btn-story-bots-back');
 const menuArena = el('menu-arena');
 const menuSoloBots = el('menu-solo-bots');
 const menuSoloTier = el('menu-solo-tier');
 const menuMulti = el('menu-multi');
+const menuOnline = el('menu-online');
+const menuLocal = el('menu-local');
+const campaignBotsEl = el('campaign-bots');
+const soloCampaignBtn = el<HTMLButtonElement>('btn-solo-campaign');
+
 const modeSoloBtn = el<HTMLButtonElement>('btn-mode-solo');
 const modeMultiBtn = el<HTMLButtonElement>('btn-mode-multi');
+const multiOnlineBtn = el<HTMLButtonElement>('btn-multi-online');
+const localBtn = el<HTMLButtonElement>('btn-local');
+const onlineBackBtn = el<HTMLButtonElement>('btn-online-back');
+const localBackBtn = el<HTMLButtonElement>('btn-local-back');
+const localArenaBtn = el<HTMLButtonElement>('btn-local-arena');
+const localGauntletBtn = el<HTMLButtonElement>('btn-local-gauntlet');
+const localStatusLine = el('local-status');
 const soloBackBtn = el<HTMLButtonElement>('btn-solo-back');
 const multiBackBtn = el<HTMLButtonElement>('btn-multi-back');
 const bootScreen = el('boot');
@@ -94,6 +140,9 @@ const fx = new Fx();
 
 let screen: Screen = 'title';
 let mode: Mode = 'none';
+/** QA self-play: bots drive every slot in a bot match, including slot 0. */
+let autoplay = false;
+let autoplayRestartAt = 0;
 let world: World | null = null;
 let hostNet: HostNet | null = null;
 let guestNet: GuestNet | null = null;
@@ -102,11 +151,30 @@ let lobbyState: LobbyState | null = null;
 let localSlot = 0;
 let busy = false;
 let overlayKind: OverlayKind = 'none';
-type MenuStage = 'hub' | 'solo' | 'soloArena' | 'soloBots' | 'soloTier' | 'multi';
-type SoloProgram = 'training' | 'gauntlet';
+type MenuStage =
+  | 'hub'
+  | 'soloProgram'
+  | 'solo'
+  | 'soloArena'
+  | 'soloBots'
+  | 'soloTier'
+  | 'gauntlet'
+  | 'story'
+  | 'storyBots'
+  | 'local'
+  | 'multi'
+  | 'online';
+type SoloProgram = 'training' | 'bots' | 'gauntlet' | 'campaign';
 let menuStage: MenuStage = 'hub';
 let soloProgram: SoloProgram = 'training';
-let settingsTab: SettingsTab = 'controls';
+let selectedProgram: number = PROGRAM_ID.PROBE;
+let settingsTab: SettingsTab = 'feedback';
+let gauntletRecords: GauntletRun[] = [];
+let gauntletRecorded = false;
+/** Solo campaign companions. Saved for the first playable sector; not simulated yet. */
+let campaignBots = 0;
+/** Save-slot index for a new campaign run; -1 when no slot is being set up. */
+let storySlot = -1;
 
 const localFrame: InputFrame = { mx: 0, my: 0, held: 0, pressed: 0 };
 let trainingInputs: (InputFrame | null)[] = [localFrame];
@@ -134,6 +202,7 @@ let lastRoundWinner = -2;
 let lastMatchWinner = -2;
 let goUntil = 0;
 let perfTimer = 0;
+let howtoDevicePollAt = 0;
 let lastCountdownText = '';
 let lastBounceSound = 0;
 let lastThreatSound = 0;
@@ -149,34 +218,60 @@ function boot(): void {
   const stored = loadName();
   callsignInput.value = stored;
   loadArenaPrefs();
+  loadCampaignPrefs();
   loadSettings();
   updateMuteLabel();
   bindUi();
+  gauntletRecords = loadGauntletRuns();
+  updateGauntletBestLabel();
+  renderProgramPicker();
   renderArenaPicker();
   renderBotControls();
-  showMenuStage('hub', false);
+  renderGauntletSetup();
+  renderHowToPrograms();
+  showMenuStage('hub');
   parseInviteHash();
   refreshTitleButtons();
   registerServiceWorker();
-  if (screen === 'title') focusMenuStage();
 
-  const stressParam = Number(new URLSearchParams(location.search).get('stress') ?? '0');
+  const params = new URLSearchParams(location.search);
+  const stressParam = Number(params.get('stress') ?? '0');
+  const autoplayParam = Number(params.get('autoplay') ?? '0');
   if (stressParam >= 2 && stressParam <= MAX_PLAYERS) {
     window.setTimeout(() => startStress(stressParam), 250);
+  } else if (autoplayParam >= 1) {
+    window.setTimeout(() => startAutoplay(autoplayParam), 250);
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.10 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.24 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
   modeSoloBtn.addEventListener('click', () => showMenuStage('solo'));
   modeMultiBtn.addEventListener('click', () => showMenuStage('multi'));
+  multiOnlineBtn.addEventListener('click', () => showMenuStage('online'));
+  localBtn.addEventListener('click', () => showMenuStage('local'));
+  onlineBackBtn.addEventListener('click', () => showMenuStage('multi'));
+  localBackBtn.addEventListener('click', () => showMenuStage('multi'));
+  localArenaBtn.addEventListener('click', () => {
+    localStatusLine.textContent = 'LOCAL ARENA // NOT WIRED YET. THE SETUP SCREEN COMES FIRST.';
+  });
+  localGauntletBtn.addEventListener('click', () => {
+    localStatusLine.textContent = 'LOCAL GAUNTLET // NOT WIRED YET. THE SETUP SCREEN COMES FIRST.';
+  });
+  programBackBtn.addEventListener('click', () => programStageBack());
   soloBackBtn.addEventListener('click', () => showMenuStage('hub'));
   multiBackBtn.addEventListener('click', () => showMenuStage('hub'));
-  trainingBtn.addEventListener('click', () => openSoloArena('training'));
-  gauntletBtn.addEventListener('click', () => openSoloArena('gauntlet'));
-  el<HTMLButtonElement>('btn-arena-back').addEventListener('click', () => showMenuStage('solo'));
+  trainingBtn.addEventListener('click', () => openProgramSelect('training'));
+  soloBotsBtn.addEventListener('click', () => openProgramSelect('bots'));
+  gauntletBtn.addEventListener('click', () => openProgramSelect('gauntlet'));
+  soloCampaignBtn.addEventListener('click', openStory);
+  storyBackBtn.addEventListener('click', () => showMenuStage('solo'));
+  storyBotsBackBtn.addEventListener('click', () => showMenuStage('story'));
+  el<HTMLButtonElement>('btn-arena-back').addEventListener('click', () => showMenuStage('soloProgram'));
+  el<HTMLButtonElement>('btn-gauntlet-back').addEventListener('click', () => showMenuStage('soloArena'));
+  gauntletStartBtn.addEventListener('click', () => startGauntlet());
   el<HTMLButtonElement>('btn-bots-back').addEventListener('click', () => showMenuStage('soloArena'));
   el<HTMLButtonElement>('btn-tier-back').addEventListener('click', () => showMenuStage('soloBots'));
   createBtn.addEventListener('click', () => void createRoom());
@@ -185,15 +280,14 @@ function bindUi(): void {
     toggleMute();
   });
   settingsBtn.addEventListener('click', openSettings);
-  // Follow real mouse movement only. A stationary pointer over-announcing every
-  // newly revealed stage would steal focus from the controller/keyboard cursor.
-  titleScreen.addEventListener('pointermove', (event) => {
-    const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('#screen-title button[data-nav]');
-    if (!button || button.disabled || document.activeElement === button) return;
-    resetNavFocus();
-    button.classList.add('nav-focus');
-    button.focus({ preventScroll: true });
-  });
+  howtoBtn.addEventListener('click', openHowToPlay);
+  howtoBackBtn.addEventListener('click', () => setScreen('title'));
+  // The pointer only hovers. Selection stays with the keyboard or pad until the
+  // player actually clicks, so a resting cursor never marks an option for them.
+  document.addEventListener('pointerdown', clearMenuSelection);
+  // Hover feedback waits for a real pointer move. A stage that appears under a
+  // resting cursor must not look pre-selected.
+  document.addEventListener('pointermove', markPointerLive, { passive: true });
   el<HTMLButtonElement>('btn-settings-back').addEventListener('click', () => setScreen('title'));
   settingsTabs.addEventListener('click', (event) => {
     const target = event.target as HTMLElement | null;
@@ -272,7 +366,9 @@ function bindUi(): void {
       audio.ui();
     }
   });
-  window.addEventListener('resize', () => renderer.resize());
+  window.addEventListener('resize', () => {
+    renderer.resize();
+  });
 }
 
 function unlockAudio(): void {
@@ -317,80 +413,81 @@ function updateLoadSequence(now: number): void {
 
 // Title menu stages --------------------------------------------------------------------------
 
-function showMenuStage(stage: MenuStage, focus = true): void {
+function showMenuStage(stage: MenuStage): void {
   menuStage = stage;
+  // The DEFLECT logo belongs to the hub. Every sub-stage gets that height back.
+  titleScreen.classList.toggle('stage-open', stage !== 'hub');
   menuHub.hidden = stage !== 'hub';
+  menuSoloProgram.hidden = stage !== 'soloProgram';
   menuSolo.hidden = stage !== 'solo';
   menuArena.hidden = stage !== 'soloArena';
+  menuGauntlet.hidden = stage !== 'gauntlet';
   menuSoloBots.hidden = stage !== 'soloBots';
   menuSoloTier.hidden = stage !== 'soloTier';
+  menuStory.hidden = stage !== 'story';
+  menuStoryBots.hidden = stage !== 'storyBots';
+  menuLocal.hidden = stage !== 'local';
   menuMulti.hidden = stage !== 'multi';
+  menuOnline.hidden = stage !== 'online';
+  if (stage === 'soloProgram') renderProgramPicker();
   if (stage === 'soloArena') updateSoloArenaCopy();
-  resetNavFocus();
-  if (focus) focusMenuStage();
+  if (stage === 'gauntlet') renderGauntletSetup();
+  if (stage === 'story') renderStorySetup();
+  if (stage === 'storyBots') renderStoryBots();
+  if (stage === 'local') localStatusLine.textContent = '';
+  clearMenuSelection();
+  // A taller TV-scale menu can put the next stage's first control above the fold.
+  document.getElementById('screen-title')?.scrollTo({ top: 0 });
 }
 
-function openSoloArena(program: SoloProgram): void {
+/** Mode first, then the program: SINGLE PLAYER > mode > program > that mode's setup. */
+function openProgramSelect(program: SoloProgram): void {
   soloProgram = program;
-  showMenuStage('soloArena');
+  storyStatusLine.textContent = '';
+  showMenuStage('soloProgram');
+}
+
+function updateProgramStageLabel(): void {
+  programStageLabel.textContent =
+    soloProgram === 'training'
+      ? 'TRAINING // PROGRAM SELECT'
+      : soloProgram === 'bots'
+        ? 'VS BOTS // PROGRAM SELECT'
+        : soloProgram === 'gauntlet'
+          ? 'GAUNTLET // PROGRAM SELECT'
+          : 'CAMPAIGN // PLAYER SELECT';
 }
 
 function updateSoloArenaCopy(): void {
-  const training = soloProgram === 'training';
-  arenaStageLabel.textContent = training
-    ? 'TRAINING // SELECT ARENA'
-    : 'GAUNTLET // SELECT ARENA TO START';
+  const def = programDef(selectedProgram);
+  const label = soloProgram === 'training' ? 'TRAINING' : soloProgram === 'bots' ? 'VS BOTS' : 'GAUNTLET';
+  arenaStageLabel.textContent = `${label} // ${def.name} // SELECT ARENA`;
 }
 
-function focusMenuStage(): void {
-  if (menuStage === 'hub') {
-    resetNavFocus();
-    modeSoloBtn.classList.add('nav-focus');
-    modeSoloBtn.focus({ preventScroll: true });
-    return;
-  }
-  if (menuStage === 'solo') {
-    resetNavFocus();
-    trainingBtn.classList.add('nav-focus');
-    trainingBtn.focus({ preventScroll: true });
-    return;
-  }
-  if (menuStage === 'soloArena') {
-    const card =
-      arenaPicker.querySelector<HTMLButtonElement>('.console-arena-card.selected') ??
-      arenaPicker.querySelector<HTMLButtonElement>('button');
-    resetNavFocus();
-    if (!card) return;
-    card.classList.add('nav-focus');
-    card.focus({ preventScroll: true });
-    return;
-  }
-  if (menuStage === 'soloBots') {
-    const card = botCountEl.querySelector<HTMLButtonElement>('.selected') ?? botCountEl.querySelector<HTMLButtonElement>('button');
-    resetNavFocus();
-    if (!card) return;
-    card.classList.add('nav-focus');
-    card.focus({ preventScroll: true });
-    return;
-  }
-  if (menuStage === 'soloTier') {
-    const card = botTierEl.querySelector<HTMLButtonElement>('.selected') ?? botTierEl.querySelector<HTMLButtonElement>('button');
-    resetNavFocus();
-    if (!card) return;
-    card.classList.add('nav-focus');
-    card.focus({ preventScroll: true });
-    return;
-  }
+/** Clear any visible selection. A stage opens with nothing highlighted until real input. */
+function clearMenuSelection(): void {
   resetNavFocus();
-  createBtn.classList.add('nav-focus');
-  createBtn.focus({ preventScroll: true });
+  document.body.classList.remove('pointer-live');
+  const active = document.activeElement;
+  if (active instanceof HTMLButtonElement) active.blur();
+}
+
+function markPointerLive(): void {
+  document.body.classList.add('pointer-live');
 }
 
 function menuBack(): void {
   if (screen !== 'title') return;
   if (menuStage === 'soloTier') showMenuStage('soloBots');
   else if (menuStage === 'soloBots') showMenuStage('soloArena');
-  else if (menuStage === 'soloArena') showMenuStage('solo');
+  else if (menuStage === 'gauntlet') showMenuStage('soloArena');
+  else if (menuStage === 'soloArena') showMenuStage('soloProgram');
+  else if (menuStage === 'storyBots') showMenuStage('story');
+  else if (menuStage === 'story') showMenuStage('solo');
+  else if (menuStage === 'soloProgram') showMenuStage(soloProgram === 'campaign' ? 'storyBots' : 'solo');
+  else if (menuStage === 'solo') showMenuStage('hub');
+  else if (menuStage === 'online') showMenuStage('multi');
+  else if (menuStage === 'local') showMenuStage('multi');
   else if (menuStage !== 'hub') showMenuStage('hub');
 }
 
@@ -404,6 +501,7 @@ function loadArenaPrefs(): void {
     if (savedCount >= 1 && savedCount <= 3) botCount = savedCount;
     const savedTier = localStorage.getItem('deflect.botTier');
     if (savedTier && (BOT_TIERS as readonly string[]).includes(savedTier)) botTier = savedTier as BotTier;
+    selectedProgram = clampProgram(Number(localStorage.getItem('deflect.program') ?? String(PROGRAM_ID.PROBE)));
   } catch {
     /* storage disabled: use defaults */
   }
@@ -549,6 +647,7 @@ function persistArenaPrefs(): void {
     localStorage.setItem('deflect.arena', String(arenaIndex));
     localStorage.setItem('deflect.botCount', String(botCount));
     localStorage.setItem('deflect.botTier', botTier);
+    localStorage.setItem('deflect.program', String(selectedProgram));
   } catch {
     /* storage disabled */
   }
@@ -566,7 +665,6 @@ function selectArena(index: number): void {
 }
 
 function renderArenaPicker(): void {
-  const keepFocus = arenaPicker.contains(document.activeElement);
   clearChildren(arenaPicker);
   for (let i = 0; i < ARENAS.length; i++) {
     const option = ARENAS[i];
@@ -591,17 +689,379 @@ function renderArenaPicker(): void {
     card.addEventListener('click', () => {
       selectArena(i);
       if (menuStage !== 'soloArena' || screen !== 'title') return;
-      if (soloProgram === 'training') showMenuStage('soloBots');
-      else startGauntlet();
+      if (soloProgram === 'gauntlet') showMenuStage('gauntlet');
+      else showMenuStage('soloBots');
     });
     arenaPicker.appendChild(card);
   }
-  if (keepFocus) arenaPicker.querySelector<HTMLButtonElement>('.selected')?.focus({ preventScroll: true });
+}
+
+function selectProgram(index: number): void {
+  selectedProgram = clampProgram(index);
+  persistArenaPrefs();
+  renderProgramPicker();
+  updateBotSummary();
+}
+
+function renderProgramPicker(): void {
+  updateProgramStageLabel();
+  clearChildren(programPicker);
+  for (let i = 0; i < PROGRAMS.length; i++) {
+    const def = PROGRAMS[i];
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = `console-program-card${def.id === selectedProgram ? ' selected' : ''}`;
+    card.dataset.nav = '';
+    card.title = def.note;
+    card.setAttribute('aria-pressed', String(def.id === selectedProgram));
+    card.setAttribute('aria-label', `${def.name}. ${def.role}`);
+
+    const portrait = document.createElement('canvas');
+    portrait.width = 240;
+    portrait.height = 240;
+    portrait.setAttribute('aria-hidden', 'true');
+    drawProgramPortrait(portrait, def.id);
+
+    const name = document.createElement('span');
+    name.className = 'console-program-name';
+    name.textContent = def.name;
+    const role = document.createElement('span');
+    role.className = 'console-program-role';
+    role.textContent = def.role;
+    card.append(portrait, name, role);
+    card.addEventListener('click', () => {
+      selectProgram(def.id);
+      if (menuStage !== 'soloProgram' || screen !== 'title') return;
+      if (soloProgram === 'campaign') {
+        if (storySlot < 0) {
+          showMenuStage('story');
+          return;
+        }
+        const bots = campaignBots === 0 ? 'NO BOTS' : `${campaignBots} BOT${campaignBots === 1 ? '' : 'S'}`;
+        storyStatusLine.textContent = `SLOT ${storySlot + 1} // NEW GAME // ${def.name} + ${bots} // NOT WIRED YET.`;
+        showMenuStage('story');
+        return;
+      }
+      showMenuStage('soloArena');
+    });
+    programPicker.appendChild(card);
+  }
+}
+
+/** Procedural program portrait: the same shapes the arena uses, at poster size. */
+function drawProgramPortrait(canvas: HTMLCanvasElement, programId: number): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const def = programDef(programId);
+  const size = 240;
+  const cx = size * 0.5;
+  const cy = size * 0.52;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#04080e';
+  ctx.fillRect(0, 0, size, size);
+
+  // Faint circuit floor behind the program.
+  ctx.strokeStyle = def.color;
+  ctx.globalAlpha = 0.08;
+  ctx.lineWidth = 1;
+  for (let i = -3; i <= 3; i++) {
+    const y = cy + i * 26;
+    ctx.beginPath();
+    ctx.moveTo(22, y);
+    ctx.lineTo(size - 22, y);
+    ctx.stroke();
+  }
+  for (let i = -2; i <= 2; i++) {
+    const x = cx + i * 42;
+    ctx.beginPath();
+    ctx.moveTo(x, 24);
+    ctx.lineTo(x, size - 24);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.18;
+  ctx.strokeStyle = def.color;
+  ctx.strokeRect(10.5, 10.5, size - 21, size - 21);
+  ctx.beginPath();
+  ctx.moveTo(10, 34);
+  ctx.lineTo(34, 10);
+  ctx.moveTo(size - 10, size - 34);
+  ctx.lineTo(size - 34, size - 10);
+  ctx.stroke();
+
+  ctx.globalCompositeOperation = 'lighter';
+  // The program's own health silhouette: ring, diamond or hex, three segments.
+  const ring = 74;
+  const spin = programId * 0.45 - Math.PI / 2 + (programId === PROGRAM_ID.WEDGE ? Math.PI / 4 : 0);
+  ctx.strokeStyle = def.color;
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'round';
+  // Complete the four-corner hull behind Wedge's three health brackets.
+  ctx.globalAlpha = 0.34;
+  ctx.lineWidth = 1.4;
+  pathProgramFrame(ctx, programId, cx, cy, ring, spin);
+  ctx.stroke();
+  ctx.globalAlpha = 0.1;
+  pathProgramHealth(ctx, programId, cx, cy, ring, spin, 3, 3);
+  ctx.globalAlpha = 0.1;
+  ctx.lineWidth = 18;
+  ctx.stroke();
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 2.4;
+  ctx.stroke();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'miter';
+
+  // Heading arrow, same language as the avatar.
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = def.color;
+  ctx.beginPath();
+  ctx.moveTo(cx + ring + 20, cy);
+  ctx.lineTo(cx + ring + 4, cy - 9);
+  ctx.lineTo(cx + ring + 4, cy + 9);
+  ctx.closePath();
+  ctx.fill();
+
+  // Center mark: the same glyph that sits at the avatar's core, at poster size.
+  ctx.save();
+  ctx.translate(cx, cy + 2);
+  ctx.scale(4.4, 4.4);
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = def.color;
+  drawSymbol(ctx, def.glyph, 0, 0, 10);
+  ctx.restore();
+
+  // Signature accent ticks below the mark so each card has a kit silhouette hint.
+  ctx.globalAlpha = 0.6;
+  ctx.strokeStyle = def.color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (programId === PROGRAM_ID.WEDGE) {
+    ctx.moveTo(cx - 26, cy + 42);
+    ctx.lineTo(cx + 26, cy + 42);
+    ctx.lineTo(cx + 26, cy + 32);
+  } else if (programId === PROGRAM_ID.FISHER) {
+    ctx.moveTo(cx - 28, cy + 36);
+    ctx.lineTo(cx + 28, cy + 44);
+    ctx.moveTo(cx - 28, cy + 44);
+    ctx.lineTo(cx + 28, cy + 36);
+  } else {
+    ctx.moveTo(cx - 22, cy + 44);
+    ctx.lineTo(cx - 8, cy + 44);
+    ctx.moveTo(cx - 2, cy + 44);
+    ctx.lineTo(cx + 12, cy + 44);
+  }
+  ctx.stroke();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+}
+
+function updateGauntletBestLabel(): void {
+  const best = gauntletRecords[0];
+  gauntletBestValue.textContent = best ? `BEST W${best.wave}` : 'SCORED';
+  gauntletBestValue.title = best
+    ? `Best: wave ${best.wave}, ${formatGauntletTime(best.seconds)}, ${best.kills} kills`
+    : 'No scored runs yet';
+}
+
+function renderGauntletSetup(): void {
+  const arena = getArena(arenaIndex);
+  const def = programDef(selectedProgram);
+  gauntletStageLabel.textContent = `GAUNTLET // ${def.name} // ${arena.name}`;
+  renderGauntletRecords();
+}
+
+/**
+ * Campaign entry. Slots come first: an empty slot starts a new run and continues to the
+ * bot count and player select; a filled slot resumes the run stored on it. Nothing is
+ * playable yet, so a resume press only reports that.
+ */
+function openStory(): void {
+  soloProgram = 'campaign';
+  storySlot = -1;
+  storyStatusLine.textContent = '';
+  showMenuStage('story');
+}
+
+function renderStorySetup(): void {
+  renderStorySlots();
+}
+
+function renderStoryBots(): void {
+  loadCampaignPrefs();
+  storyBotsLabel.textContent = storySlot >= 0 ? `CAMPAIGN // BOTS // SLOT ${storySlot + 1}` : 'CAMPAIGN // BOTS';
+  renderCampaignBots();
+}
+
+function chooseCampaignBots(count: number): void {
+  setCampaignBots(count);
+  if (menuStage !== 'storyBots') return;
+  showMenuStage('soloProgram');
+}
+
+function programStageBack(): void {
+  showMenuStage(soloProgram === 'campaign' ? 'storyBots' : 'solo');
+}
+
+function renderStorySlots(): void {
+  const slots = loadStorySlots();
+  clearChildren(storySlotsEl);
+  for (let i = 0; i < STORY_SLOT_COUNT; i++) {
+    const save = slots[i];
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'console-option';
+    button.dataset.nav = '';
+
+    const key = document.createElement('span');
+    key.className = 'option-key option-key-wide';
+    key.textContent = `SLOT ${i + 1}`;
+    const label = document.createElement('span');
+    label.className = 'option-label';
+    const value = document.createElement('span');
+    value.className = 'option-value';
+
+    if (save) {
+      const sector = SECTORS[save.sector];
+      const where = sector ? sector.name : `CAMPAIGN ${save.sector + 1}`;
+      label.textContent = save.level > 0 ? `${where} // LV ${save.level}` : where;
+      value.textContent = `${save.players} PLAYER${save.players === 1 ? '' : 'S'}`;
+      button.setAttribute('aria-label', `Slot ${i + 1}, ${label.textContent}, ${value.textContent}, resume`);
+    } else {
+      label.textContent = 'START NEW GAME';
+      button.setAttribute('aria-label', `Slot ${i + 1}, start a new game`);
+    }
+
+    button.append(key, label, value);
+    button.addEventListener('click', () => {
+      if (save) {
+        storyStatusLine.textContent = `SLOT ${i + 1} // ${label.textContent} // ${value.textContent} // RESUME IS NOT WIRED YET.`;
+        return;
+      }
+      storySlot = i;
+      storyStatusLine.textContent = '';
+      showMenuStage('storyBots');
+    });
+    storySlotsEl.appendChild(button);
+  }
+}
+
+function loadCampaignPrefs(): void {
+  try {
+    const saved = Number(localStorage.getItem('deflect.campaignBots') ?? '0');
+    if (Number.isFinite(saved) && saved >= 0 && saved <= 3) campaignBots = Math.round(saved);
+  } catch {
+    /* storage disabled: no companions */
+  }
+}
+
+function setCampaignBots(count: number): void {
+  campaignBots = Math.max(0, Math.min(3, count));
+  try {
+    localStorage.setItem('deflect.campaignBots', String(campaignBots));
+  } catch {
+    /* storage disabled */
+  }
+  renderCampaignBots();
+}
+
+/**
+ * New-run bot count. Picking a count moves on to player select; bots take whatever
+ * programs the human players leave unused.
+ */
+function renderCampaignBots(): void {
+  if (campaignBotsEl.childElementCount === 0) {
+    const labels = ['NO BOTS', '1 BOT', '2 BOTS', '3 BOTS'];
+    for (let i = 0; i < labels.length; i++) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'console-choice';
+      button.dataset.nav = '';
+      button.textContent = labels[i];
+      button.addEventListener('click', () => chooseCampaignBots(i));
+      campaignBotsEl.appendChild(button);
+    }
+  }
+  const buttons = campaignBotsEl.querySelectorAll<HTMLButtonElement>('button');
+  for (let i = 0; i < buttons.length; i++) {
+    const selected = i === campaignBots;
+    buttons[i].classList.toggle('selected', selected);
+    buttons[i].setAttribute('aria-pressed', String(selected));
+  }
+}
+
+function renderHowToPrograms(): void {
+  clearChildren(howtoPrograms);
+  for (let i = 0; i < PROGRAMS.length; i++) {
+    const def = PROGRAMS[i];
+    const card = document.createElement('div');
+    card.className = 'howto-program';
+    card.style.setProperty('--program-color', def.color);
+
+    const glyph = document.createElement('span');
+    glyph.className = 'howto-program-glyph';
+    glyph.textContent = def.glyph;
+    const name = document.createElement('b');
+    name.textContent = def.name;
+    const role = document.createElement('span');
+    role.className = 'howto-program-role';
+    role.textContent = def.role;
+    const note = document.createElement('span');
+    note.className = 'howto-program-note';
+    note.textContent = def.note;
+
+    card.append(glyph, name, role, note);
+    howtoPrograms.appendChild(card);
+  }
+}
+
+function renderGauntletRecords(): void {
+  clearChildren(gauntletRecordsEl);
+  const head = document.createElement('li');
+  head.className = 'console-record-head';
+  head.setAttribute('aria-hidden', 'true');
+  const headings = ['RK', 'OPERATOR', 'WAVE', 'TIME', 'ARENA'];
+  for (let i = 0; i < headings.length; i++) {
+    const cell = document.createElement('span');
+    cell.textContent = headings[i];
+    head.appendChild(cell);
+  }
+  gauntletRecordsEl.appendChild(head);
+
+  if (gauntletRecords.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'console-record-empty';
+    empty.textContent = 'NO RUNS YET';
+    gauntletRecordsEl.appendChild(empty);
+    return;
+  }
+
+  for (let i = 0; i < gauntletRecords.length; i++) {
+    const run = gauntletRecords[i];
+    const row = document.createElement('li');
+    const rank = document.createElement('span');
+    rank.className = 'console-record-rank';
+    rank.textContent = String(i + 1).padStart(2, '0');
+    const name = document.createElement('span');
+    name.className = 'console-record-name';
+    name.textContent = run.name;
+    const wave = document.createElement('span');
+    wave.className = 'console-record-wave';
+    wave.textContent = `W${run.wave}`;
+    const time = document.createElement('span');
+    time.className = 'console-record-time';
+    time.textContent = formatGauntletTime(run.seconds);
+    const arena = document.createElement('span');
+    arena.className = 'console-record-arena';
+    arena.textContent = getArena(run.arenaId).name;
+    row.append(rank, name, wave, time, arena);
+    gauntletRecordsEl.appendChild(row);
+  }
 }
 
 function renderBotControls(): void {
-  const keepCount = botCountEl.contains(document.activeElement);
-  const keepTier = botTierEl.contains(document.activeElement);
   clearChildren(botCountEl);
   const counts = [1, 2, 3];
   for (let i = 0; i < counts.length; i++) {
@@ -630,13 +1090,13 @@ function renderBotControls(): void {
     button.setAttribute('aria-pressed', String(botTier === tier));
     button.addEventListener('click', () => {
       setBotTier(tier);
-      if (menuStage === 'soloTier') startTrainingBots();
+      if (menuStage !== 'soloTier') return;
+      if (soloProgram === 'bots') startBotMatch();
+      else startTrainingBots();
     });
     botTierEl.appendChild(button);
   }
   updateBotSummary();
-  if (keepCount) botCountEl.querySelector<HTMLButtonElement>('.selected')?.focus();
-  else if (keepTier) botTierEl.querySelector<HTMLButtonElement>('.selected')?.focus();
 }
 
 function setBotCount(count: number): void {
@@ -652,11 +1112,10 @@ function setBotTier(tier: BotTier): void {
 }
 
 function updateBotSummary(): void {
-  botStageLabel.textContent = `TRAINING // BOT COUNT // ${botCount === 1 ? '1 V 1' : `1 V ${botCount}`}`;
-  tierStageLabel.textContent = `TRAINING // DIFFICULTY // ${BOT_TIER_LABELS[botTier]}`;
-  botRoster.textContent = `STYLES // ${BOT_NAMES.slice(0, botCount)
-    .map((name, i) => `${name} ${BOT_STYLE_LABELS[i]}`)
-    .join(' / ')}`;
+  const def = programDef(selectedProgram);
+  const label = soloProgram === 'bots' ? 'VS BOTS' : 'TRAINING';
+  botStageLabel.textContent = `${label} // ${def.name} // BOT COUNT // ${botCount === 1 ? '1 V 1' : `1 V ${botCount}`}`;
+  tierStageLabel.textContent = `${label} // ${def.name} // DIFFICULTY // ${BOT_TIER_LABELS[botTier]}`;
 }
 
 function cycleLobbyArena(): void {
@@ -683,6 +1142,10 @@ function loop(now: number): void {
   const wasGame = screen === 'game';
   input.poll();
   handleGamepad(input.readMenuEdges());
+  if (screen === 'howto' && now >= howtoDevicePollAt) {
+    howtoDevicePollAt = now + 500;
+    syncHowToDevice();
+  }
 
   const sampled = input.sample();
   localFrame.mx = sampled.mx;
@@ -713,10 +1176,13 @@ function loop(now: number): void {
     }
   }
 
-  updatePerf(dt);
-  if (perfEl.hidden) {
-    /* nothing */
+  // Unattended QA: keep a bot match cycling so rounds cannot park on the result overlay.
+  if (autoplay && mode === 'bots' && world && world.phase === 'matchend') {
+    if (autoplayRestartAt === 0) autoplayRestartAt = now + 3200;
+    else if (now >= autoplayRestartAt) localRematch();
   }
+
+  updatePerf(dt);
 }
 
 function trackLocalHit(state: RenderState): void {
@@ -786,7 +1252,8 @@ function stepSession(now: number, dt: number): void {
       fxCursor = 0;
     }
   } else if (mode === 'bots' && world && !pausedLocal) {
-    botInputs[0] = localFrame;
+    if (autoplay) botBrains[0]?.think(world, botInputs[0], SIM_DT);
+    else botInputs[0] = localFrame;
     acc += dt;
     let steps = 0;
     while (acc >= SIM_DT && steps < 4) {
@@ -947,13 +1414,26 @@ function guestLocalFeedback(pressed: number): void {
 
 // Sessions ----------------------------------------------------------------------------------
 
+/** Local bots take the programs the human did not pick, repeating if there are more bots. */
+function botProgramList(count: number): number[] {
+  const unused: number[] = [];
+  for (let i = 0; i < PROGRAMS.length; i++) {
+    if (PROGRAMS[i].id !== selectedProgram) unused.push(PROGRAMS[i].id);
+  }
+  const list: number[] = [];
+  for (let slot = 1; slot <= count; slot++) {
+    list[slot] = unused.length > 0 ? unused[(slot - 1) % unused.length] : PROGRAM_ID.PROBE;
+  }
+  return list;
+}
+
 function startTraining(): void {
   if (busy) return;
   teardownSession();
   mode = 'training';
   localSlot = 0;
   const arena = getArena(arenaIndex);
-  world = new World('training', [getCallsign()], 0, arena);
+  world = new World('training', [getCallsign()], 0, arena, false, selectedProgram);
   trainingInputs = [localFrame];
   stress = false;
   resetCounters();
@@ -975,7 +1455,8 @@ function startTrainingBots(): void {
   const names = new Array(MAX_PLAYERS).fill('');
   names[0] = getCallsign();
   for (let i = 1; i <= botCount; i++) names[i] = BOT_NAMES[(i - 1) % BOT_NAMES.length];
-  world = new World('training', names, 0, arena);
+  const botPrograms = botProgramList(botCount);
+  world = new World('training', names, 0, arena, false, selectedProgram, botCount, botPrograms);
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
   botBrains = new Array(MAX_PLAYERS).fill(null);
@@ -996,11 +1477,12 @@ function startTrainingBots(): void {
 function startGauntlet(): void {
   if (busy) return;
   teardownSession();
+  hideOverlayInternal();
   mode = 'gauntlet';
   localSlot = 0;
   stress = false;
   const arena = getArena(arenaIndex);
-  world = new World('gauntlet', [getCallsign()], 0, arena);
+  world = new World('gauntlet', [getCallsign()], 0, arena, false, selectedProgram);
   trainingInputs = [localFrame];
   resetCounters();
   fx.reset();
@@ -1008,35 +1490,50 @@ function startGauntlet(): void {
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
-  console.log('[DEFLECT-STATE] Gauntlet start', arena.name);
+  console.log('[DEFLECT-STATE] Gauntlet start', arena.name, 'one life');
 }
 
-function startBotMatch(): void {
+function startAutoplay(count: number): void {
+  if (busy) return;
+  soloProgram = 'bots';
+  botCount = Math.max(1, Math.min(MAX_PLAYERS - 1, Math.floor(count)));
+  startBotMatch(true);
+  toast(`AUTOPLAY // ${botCount + 1} OPERATORS`);
+}
+
+function startBotMatch(aiLocal = false): void {
   if (busy) return;
   teardownSession();
   mode = 'bots';
   localSlot = 0;
   stress = false;
+  autoplay = aiLocal;
+  autoplayRestartAt = 0;
   const arena = getArena(arenaIndex);
   const names = new Array(MAX_PLAYERS).fill('');
   names[0] = getCallsign();
   for (let i = 1; i <= botCount; i++) names[i] = BOT_NAMES[(i - 1) % BOT_NAMES.length];
 
-  world = new World('match', names, 0, arena);
+  const botPrograms = botProgramList(botCount);
+  world = new World('match', names, 0, arena, false, selectedProgram, botCount, botPrograms);
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
   botBrains = new Array(MAX_PLAYERS).fill(null);
   for (let i = 1; i <= botCount; i++) {
     botBrains[i] = new BotBrain(i, botTier, i - 1, 0x51f15e + arena.id * 997 + i * 131);
   }
-  botInputs[0] = localFrame;
+  if (aiLocal) {
+    botBrains[0] = new BotBrain(0, botTier, 0, 0x51f15e + arena.id * 991 + 17);
+  } else {
+    botInputs[0] = localFrame;
+  }
   resetCounters();
   fx.reset();
   setScreen('game');
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
-  console.log('[DEFLECT-STATE] Bot match', botCount, botTier, arena.name);
+  console.log('[DEFLECT-STATE] Bot match', botCount, botTier, arena.name, aiLocal ? 'AUTOPLAY' : '');
 }
 
 async function createRoom(): Promise<void> {
@@ -1303,7 +1800,8 @@ function localRematch(): void {
   if (mode !== 'bots' || !world) return;
   world.clearEvents();
   world.resetMatch();
-  for (let i = 1; i < botBrains.length; i++) botBrains[i]?.reset();
+  for (let i = 0; i < botBrains.length; i++) botBrains[i]?.reset();
+  autoplayRestartAt = 0;
   fxCursor = 0;
   netCursor = 0;
   lastPhase = '';
@@ -1336,7 +1834,7 @@ function leaveLobby(): void {
 
 function leaveToTitle(): void {
   teardownSession();
-  showMenuStage('hub', false);
+  showMenuStage('hub');
   setScreen('title');
   busy = false;
   refreshTitleButtons();
@@ -1359,6 +1857,8 @@ function teardownSession(): void {
   stress = false;
   botBrains = [];
   botInputs = [];
+  autoplay = false;
+  autoplayRestartAt = 0;
   localFrame.pressed = 0;
   fx.reset();
   audio.stopMusic();
@@ -1378,6 +1878,7 @@ function resetCounters(): void {
   goUntil = 0;
   lastCountdownText = '';
   lastLocalHp = -1;
+  gauntletRecorded = false;
 }
 
 // Screens & overlays ------------------------------------------------------------------------
@@ -1385,15 +1886,41 @@ function resetCounters(): void {
 function openSettings(): void {
   setScreen('settings');
   showSettingsTab(settingsTab);
-  const back = el<HTMLButtonElement>('btn-settings-back');
-  back.classList.add('nav-focus');
-  back.focus({ preventScroll: true });
+}
+
+function openHowToPlay(): void {
+  setScreen('howto');
+  syncHowToDevice();
+}
+
+/**
+ * The controls page shows one input device at a time. A connected pad wins the couch
+ * layout; with no pad, the keyboard and mouse table is the only thing worth showing.
+ */
+function syncHowToDevice(): void {
+  let padName = '';
+  if (navigator.getGamepads) {
+    const pads = navigator.getGamepads();
+    for (let i = 0; i < pads.length; i++) {
+      const pad = pads[i];
+      if (pad && pad.connected) {
+        padName = pad.id.slice(0, 48);
+        break;
+      }
+    }
+  }
+  const gamepad = padName.length > 0;
+  howtoControlsPad.hidden = !gamepad;
+  howtoControlsKeys.hidden = gamepad;
+  howtoDeviceTitle.textContent = gamepad ? 'GAMEPAD' : 'KEYBOARD + MOUSE';
+  howtoDeviceName.textContent = gamepad ? padName : 'DETECTED';
 }
 
 function setScreen(next: Screen): void {
   screen = next;
   titleScreen.classList.toggle('active', next === 'title');
   settingsScreen.classList.toggle('active', next === 'settings');
+  howtoScreen.classList.toggle('active', next === 'howto');
   lobbyScreen.classList.toggle('active', next === 'lobby');
   gameUi.hidden = next !== 'game';
   document.body.classList.toggle('playing', next === 'game');
@@ -1407,8 +1934,7 @@ function setScreen(next: Screen): void {
     bootScreen.hidden = true;
     bootScreen.classList.remove('active', 'leaving');
   }
-  if (next === 'title') focusMenuStage();
-  else resetNavFocus();
+  clearMenuSelection();
 }
 
 function syncCountdownFlash(now: number): void {
@@ -1452,6 +1978,10 @@ function syncPhaseUi(state: RenderState): void {
     if (overlayKind !== 'leave') hideOverlayInternal();
     return;
   }
+  if (state.mode === 'gauntlet' && state.gauntletOver && overlayKind === 'none') {
+    showGauntletOverOverlay(state);
+    return;
+  }
   const phaseChanged =
     state.phase !== lastPhase ||
     state.round !== lastRound ||
@@ -1483,6 +2013,63 @@ function showRoundOverlay(state: RenderState): void {
   const title = winner >= 0 ? `${nameOf(state, winner)} TAKES ROUND ${state.round}` : `ROUND ${state.round} DRAW`;
   const sub = `${scoreLine(state)} // ${state.matchWinner >= 0 ? 'MATCH POINT SECURED' : `FIRST TO ${ROUND.winsNeeded}`}`;
   setOverlay('round', 'ROUND COMPLETE', title, sub, []);
+}
+
+function showGauntletOverOverlay(state: RenderState): void {
+  if (overlayKind === 'leave' || overlayKind === 'runover') return;
+  const wave = Math.max(1, state.wave ?? 1);
+  const seconds = Math.max(0, state.gauntletTime ?? 0);
+  const kills = Math.max(0, state.gauntletKills ?? 0);
+  const previousBest = gauntletRecords[0];
+  const newBest =
+    !previousBest ||
+    wave > previousBest.wave ||
+    (wave === previousBest.wave &&
+      (seconds > previousBest.seconds ||
+        (seconds === previousBest.seconds && kills > previousBest.kills)));
+
+  let rank = 0;
+  if (!gauntletRecorded) {
+    const run: GauntletRun = {
+      name: getCallsign(),
+      arenaId: arenaIndex,
+      wave,
+      seconds,
+      kills,
+      at: Date.now(),
+    };
+    const result = recordGauntletRun(gauntletRecords, run);
+    gauntletRecords = result.runs;
+    rank = result.rank;
+    gauntletRecorded = true;
+    saveGauntletRuns(gauntletRecords);
+    updateGauntletBestLabel();
+    renderGauntletRecords();
+  }
+
+  const place = rank > 0 ? `RANK #${rank} OF ${gauntletRecords.length}` : 'OUTSIDE TOP 8';
+  const resultLine = newBest ? 'NEW PERSONAL BEST' : place;
+  const actions: OverlayAction[] = [
+    { label: 'RETRY', primary: true, onClick: startGauntlet },
+    { label: 'SETUP', onClick: returnToGauntletSetup },
+    { label: 'TITLE', onClick: leaveToTitle },
+  ];
+  setOverlay(
+    'runover',
+    'GAUNTLET // RING BROKEN',
+    `WAVE ${wave} // ${formatGauntletTime(seconds)}`,
+    `${kills} KILLS // ${resultLine} // ${state.arena.name}`,
+    actions,
+  );
+}
+
+function returnToGauntletSetup(): void {
+  teardownSession();
+  soloProgram = 'gauntlet';
+  showMenuStage('gauntlet');
+  setScreen('title');
+  refreshTitleButtons();
+  setTitleStatus('');
 }
 
 function showMatchOverlay(state: RenderState): void {
@@ -1528,7 +2115,7 @@ function setOverlay(kind: OverlayKind, kicker: string, title: string, sub: strin
     overlayActions.appendChild(btn);
   }
   overlay.hidden = false;
-  resetNavFocus();
+  clearMenuSelection();
 }
 
 function hideOverlayInternal(): void {
@@ -1547,7 +2134,7 @@ function closeLeave(): void {
 }
 
 function openLeave(): void {
-  if (mode === 'none' || overlayKind === 'leave') return;
+  if (mode === 'none' || overlayKind === 'leave' || overlayKind === 'runover') return;
   const local = mode === 'training' || mode === 'bots' || mode === 'gauntlet';
   const training = mode === 'training' && !stress;
   const botMatch = mode === 'bots';
@@ -1785,14 +2372,22 @@ function onUiKey(e: KeyboardEvent): void {
     return;
   }
   if (e.code === 'Escape') {
+    if (overlayKind === 'runover') return;
     if (overlayKind === 'leave') closeLeave();
     else if (screen === 'title') menuBack();
-    else if (screen === 'settings') setScreen('title');
+    else if (screen === 'settings' || screen === 'howto') setScreen('title');
     else if (screen === 'game') openLeave();
     else if (screen === 'lobby') leaveLobby();
     return;
   }
   if (screen !== 'game' || overlayKind !== 'none') {
+    // With no default highlight there is no focused button to receive Enter/Space,
+    // so the menu has to activate the current (or first) option itself.
+    if (e.code === 'Enter' || e.code === 'Space') {
+      e.preventDefault();
+      activateNav();
+      return;
+    }
     if (e.code === 'ArrowDown') {
       e.preventDefault();
       moveNavDir(0, 1);
@@ -1818,9 +2413,10 @@ function handleGamepad(edges: MenuEdges): void {
     else if (edges.right) moveNavDir(1, 0);
     if (edges.confirm) activateNav();
     if (edges.back || edges.menu) {
+      if (overlayKind === 'runover') return;
       if (overlayKind === 'leave') closeLeave();
       else if (screen === 'title') menuBack();
-      else if (screen === 'settings') setScreen('title');
+      else if (screen === 'settings' || screen === 'howto') setScreen('title');
       else if (screen === 'game') openLeave();
       else if (screen === 'lobby') leaveLobby();
     }
@@ -1846,6 +2442,14 @@ function resetNavFocus(): void {
   for (let i = 0; i < active.length; i++) active[i].classList.remove('nav-focus');
 }
 
+function preferredNavItem(items: HTMLButtonElement[]): HTMLButtonElement {
+  return (
+    items.find((b) => b.classList.contains('selected')) ??
+    items.find((b) => !b.classList.contains('console-back') && !b.classList.contains('btn-ghost')) ??
+    items[0]
+  );
+}
+
 function moveNavDir(dx: number, dy: number): void {
   const items = navItems();
   if (items.length === 0) return;
@@ -1853,10 +2457,12 @@ function moveNavDir(dx: number, dy: number): void {
   let current = active && items.includes(active as HTMLButtonElement) ? (active as HTMLButtonElement) : null;
   if (!current) current = items.find((b) => b.classList.contains('nav-focus')) ?? null;
   if (!current) {
-    const first = items[0];
+    // The first nudge lands on the stage's real entry point, not its BACK row.
+    const first = preferredNavItem(items);
     resetNavFocus();
     first.classList.add('nav-focus');
     first.focus({ preventScroll: true });
+    first.scrollIntoView({ block: 'nearest' });
     return;
   }
   const from = current.getBoundingClientRect();
@@ -1894,6 +2500,9 @@ function moveNavDir(dx: number, dy: number): void {
   resetNavFocus();
   target.classList.add('nav-focus');
   target.focus({ preventScroll: true });
+  // Keep controller focus inside the viewport on a TV-sized menu without
+  // yanking the page around when the next row is already visible.
+  target.scrollIntoView({ block: 'nearest' });
 }
 
 function activateNav(): void {
@@ -1902,7 +2511,11 @@ function activateNav(): void {
   const active = document.activeElement as HTMLElement | null;
   let target: HTMLButtonElement | undefined;
   if (active && items.includes(active as HTMLButtonElement)) target = active as HTMLButtonElement;
-  else target = items.find((b) => b.classList.contains('nav-focus')) ?? items[0];
+  else target = items.find((b) => b.classList.contains('nav-focus'));
+  // No cursor yet: use the stage's first real option. A screen whose only control is
+  // a back row (How to Play) must not close on an accidental confirm.
+  if (!target) target = items.find((b) => !b.classList.contains('console-back') && !b.classList.contains('btn-ghost'));
+  if (!target) return;
   resetNavFocus();
   target.classList.add('nav-focus');
   target.click();
@@ -1942,11 +2555,17 @@ function isValidCode(code: string): boolean {
 function refreshTitleButtons(): void {
   modeSoloBtn.disabled = busy;
   modeMultiBtn.disabled = busy;
+  multiOnlineBtn.disabled = busy;
+  localBtn.disabled = busy;
   settingsBtn.disabled = busy;
+  howtoBtn.disabled = busy;
   trainingBtn.disabled = busy;
+  soloBotsBtn.disabled = busy;
   createBtn.disabled = busy;
   joinBtn.disabled = busy || !isValidCode(roomCodeInput.value);
   gauntletBtn.disabled = busy;
+  gauntletStartBtn.disabled = busy;
+  soloCampaignBtn.disabled = busy;
 }
 
 function parseInviteHash(): void {
@@ -1955,7 +2574,7 @@ function parseInviteHash(): void {
   if (isValidCode(code)) {
     roomCodeInput.value = code;
     setTitleStatus('INVITE CODE LOADED // PRESS JOIN');
-    showMenuStage('multi');
+    showMenuStage('online');
     refreshTitleButtons();
   }
 }
@@ -1982,6 +2601,7 @@ if (import.meta.env.DEV) {
     startTraining,
     startGauntlet,
     startBotMatch,
+    startAutoplay,
     startStress,
     selectArena,
     setBotTier,

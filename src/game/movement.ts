@@ -1,4 +1,4 @@
-import { BUG, PLAYER, type Bounds, type Rect } from './config';
+import { BUG, PLAYER, WEDGE, type Bounds, type Rect } from './config';
 import type { ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
 import type { Player } from './types';
@@ -17,7 +17,12 @@ export function stepPlayerMotion(
 ): void {
   const movingSq = mx * mx + my * my;
 
-  if (p.dashT > 0) {
+  if (p.wedgeT > 0) {
+    // Wedge's plow is a committed straight line. No steering, no turn.
+    p.vx = p.wedgeDirX * WEDGE.chargeSpeed;
+    p.vy = p.wedgeDirY * WEDGE.chargeSpeed;
+    p.facing = Math.atan2(p.wedgeDirY, p.wedgeDirX);
+  } else if (p.dashT > 0) {
     const speed = p.dashKind === 1 ? PLAYER.chargeDashSpeed : PLAYER.dashSpeed;
     p.vx = p.dashDirX * speed;
     p.vy = p.dashDirY * speed;
@@ -34,8 +39,10 @@ export function stepPlayerMotion(
           ? PLAYER.swingSlow
           : 1;
     const trapFactor = p.slowT > 0 ? BUG.trapSlow : 1;
-    const tx = mx * PLAYER.speed * slow * trapFactor;
-    const ty = my * PLAYER.speed * slow * trapFactor;
+    // A caught body can still turn and look around, but its feet are webbed.
+    const held = p.netPinT > 0 ? 0 : 1;
+    const tx = held * mx * PLAYER.speed * slow * trapFactor;
+    const ty = held * my * PLAYER.speed * slow * trapFactor;
     const k = 1 - Math.exp(-PLAYER.accel * dt);
     p.vx += (tx - p.vx) * k;
     p.vy += (ty - p.vy) * k;

@@ -20,6 +20,9 @@ export const ACTION = {
   CANDLE: 4,
   DASH: 8,
   LOCK: 16,
+  /** Edge action: move the held lock to the next/previous valid target. */
+  LOCK_NEXT: 32,
+  LOCK_PREV: 64,
 } as const;
 
 /** Player snapshot flags. Keep in sync with net.ts pack/unpack. */
@@ -93,6 +96,8 @@ export interface Player {
   connected: boolean;
   slot: number;
   name: string;
+  /** Program roster id. Probe 0, Wedge 1, Fisher 2. */
+  program: number;
 
   x: number;
   y: number;
@@ -117,6 +122,9 @@ export interface Player {
   burstLeft: number;
   /** Recharge remaining after the burst is emptied. */
   burstCd: number;
+  /** Wedge's three-shot string: shots left and the gap before the next one. */
+  stringLeft: number;
+  stringT: number;
   score: number;
   alive: boolean;
   /** Local gauntlet-only: this body is a virus-controlled copy. */
@@ -142,6 +150,25 @@ export interface Player {
   dashHitErrors: number;
   dashHitSentries: number;
   dashHitDrone: boolean;
+  /** Wedge bracket bash visual and per-bash hit masks. */
+  bashT: number;
+  bashFacing: number;
+  bashHitPlayers: number;
+  bashHitWorms: number;
+  bashHitViruses: number;
+  bashHitErrors: number;
+  bashHitSentries: number;
+  bashHitDrone: boolean;
+  /** Wedge charge plow: remaining active time and committed direction. */
+  wedgeT: number;
+  wedgeDirX: number;
+  wedgeDirY: number;
+  wedgeHitPlayers: number;
+  wedgeHitWorms: number;
+  wedgeHitViruses: number;
+  wedgeHitErrors: number;
+  wedgeHitSentries: number;
+  wedgeHitDrone: boolean;
   iframes: number;
 
   swingPhase: number; // 0 none, 1 startup, 2 active, 3 recovery
@@ -158,6 +185,11 @@ export interface Player {
   laserTickT: number;
   /** Facing committed when the beam begins. */
   laserFacing: number;
+  /** Fisher net deployment: drawing state, elapsed draw, and tether origin. */
+  netDrawing: boolean;
+  netT: number;
+  /** Net slot owned by an in-progress draw; -1 when nothing is in hand. */
+  netIndex: number;
   /** Seconds the deflect button has been held; feeds the shield wave. */
   chargeT: number;
   /** Remaining seconds of the held 180 degree guard. */
@@ -179,6 +211,12 @@ export interface Player {
   wallFacing: number;
   /** Trap slow remaining (applies to movement speed). */
   slowT: number;
+  /**
+   * Fisher's web holds this body in place. Refreshed every tick it is inside a web,
+   * so a caught player, bot or thrall stays stuck until the web expires; a dash tears
+   * through it because a dodge phases geometry.
+   */
+  netPinT: number;
   /** Active pickup effect, -1 when none. See powerups.ts. */
   powerupKind: number;
   powerupT: number;
@@ -189,7 +227,7 @@ export interface Player {
   comboStage: number;
   comboT: number;
 
-  /** 0 none, 1 player, 2 worm, 3 virus, 4 drone. */
+  /** 0 none, 1 player, 2 worm, 3 virus, 4 drone, 5 sentry, 6 cascading error. */
   lockKind: number;
   lockId: number;
   lockT: number;
@@ -203,8 +241,8 @@ export interface Player {
 export interface Projectile {
   active: boolean;
   serial: number;
-  /** 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile. */
-  type: 0 | 1 | 2 | 3 | 4;
+  /** 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile, 5 Fisher spear. */
+  type: 0 | 1 | 2 | 3 | 4 | 5;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;
@@ -223,6 +261,13 @@ export interface Projectile {
   homing: boolean;
   /** 0 horizontal, 1 vertical. */
   pathAxis: number;
+  /** Piercing spear hit masks, so one throw damages each hostile once. */
+  hitPlayers: number;
+  hitWorms: number;
+  hitViruses: number;
+  hitErrors: number;
+  hitSentries: number;
+  hitDrone: boolean;
 
   /** Renderer-owned trail ring buffer (also used by network views). */
   trailX: Float32Array;
@@ -248,6 +293,8 @@ export interface Drone {
   targetY: number;
   hitFlash: number;
   radius: number;
+  /** Fisher's web holds the drone still, refreshed while it is caught. */
+  netPinT: number;
 }
 
 export interface GameEvent {
@@ -272,6 +319,14 @@ export interface Worm {
   angle: number;
   hp: number;
   maxHp: number;
+  /** Territory center. Worms patrol this patch instead of beelining to the player. */
+  anchorX: number;
+  anchorY: number;
+  patrolX: number;
+  patrolY: number;
+  retargetT: number;
+  /** Time left before a provoked worm loses interest and returns to its patch. */
+  aggroT: number;
   segCount: number;
   segX: Float32Array;
   segY: Float32Array;
@@ -286,6 +341,8 @@ export interface Worm {
   phase: number;
   /** Counts down while the chain assembles; movement is held until it reaches 0. */
   spawnT: number;
+  /** Fisher net snare: movement is held while this is above zero. */
+  pinT: number;
 }
 
 export interface Virus {
@@ -299,8 +356,13 @@ export interface Virus {
   hp: number;
   maxHp: number;
   radius: number;
-  /** -1 targets the player; otherwise a worm index. */
+  /** -1 targets the player or a roam point; otherwise a worm index. */
   targetWorm: number;
+  /** False means this virus is spreading to a roam point, not chasing a player. */
+  targetPlayer: boolean;
+  roamX: number;
+  roamY: number;
+  retargetT: number;
   orbitSign: number;
   phase: number;
   contactCd: number;
@@ -308,6 +370,8 @@ export interface Virus {
   kx: number;
   ky: number;
   spawnT: number;
+  /** Fisher net snare: movement is held while this is above zero. */
+  pinT: number;
 }
 
 export interface Sentry {
@@ -329,7 +393,13 @@ export interface Sentry {
   phase: number;
   hitFlash: number;
   orbitSign: number;
+  /** Sentries guard a landing zone instead of following the player across the map. */
+  anchorX: number;
+  anchorY: number;
+  leash: number;
   spawnT: number;
+  /** Fisher net snare: movement is held while this is above zero. */
+  pinT: number;
 }
 
 export interface Firewall {
@@ -371,6 +441,52 @@ export interface Pickup {
   y: number;
   phase: number;
   life: number;
+}
+
+/**
+ * Wedge's deployed wall. A static bracket segment behind him: solid to bodies and
+ * shots, so it can close a lane without being a free projectile delete.
+ */
+export interface Barrier {
+  active: boolean;
+  owner: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /** Unit normal, pointing from the wall back toward its owner. */
+  nx: number;
+  ny: number;
+  life: number;
+  maxLife: number;
+  phase: number;
+}
+
+/** Fisher's deployed web. A line segment that reflects shots and snares hostiles. */
+/**
+ * Fisher's deployed web. A freeform polyline sampled while it is drawn, so it can curve
+ * and turn hard. It reflects shots and holds anything that touches it until it expires.
+ */
+export interface Net {
+  active: boolean;
+  owner: number;
+  xs: Float32Array;
+  ys: Float32Array;
+  count: number;
+  /** Total drawn length, used for the minimum length and the point budget. */
+  length: number;
+  life: number;
+  phase: number;
+}
+
+/** Fisher's lure bug. Hostiles are drawn to it while it is live. */
+export interface Lure {
+  active: boolean;
+  owner: number;
+  x: number;
+  y: number;
+  life: number;
+  phase: number;
 }
 
 export interface LobbyPlayer {

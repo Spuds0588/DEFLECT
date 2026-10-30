@@ -3,7 +3,8 @@
  * Measures ms per 60 Hz tick for representative player/projectile loads.
  * Rendering is measured separately in the browser with `?stress=N` + F3.
  */
-import { MAX_PLAYERS, SIM_DT } from '../src/game/config';
+import { CASCADING_ERROR, GAUNTLET, MAX_PLAYERS, SENTRY, SIM_DT } from '../src/game/config';
+import { ARENAS } from '../src/game/arenas';
 import { BotBrain } from '../src/game/bot';
 import { ACTION, type InputFrame } from '../src/game/types';
 import { World } from '../src/game/world';
@@ -90,7 +91,8 @@ function run(scenario: Scenario): void {
 }
 
 function runGauntlet(): void {
-  const world = new World('gauntlet', ['BENCH']);
+  // The bench stresses the endless threat pool; a scored run would freeze on death.
+  const world = new World('gauntlet', ['BENCH'], 0, ARENAS[0], true);
   const inputs: (InputFrame | null)[] = [{ mx: 0, my: 0, held: 0, pressed: 0 }];
   const priv = world as unknown as {
     spawnWorm: () => void;
@@ -110,7 +112,7 @@ function runGauntlet(): void {
       for (let i = worms; i < 2; i++) priv.spawnWorm();
       let viruses = 0;
       for (const v of world.viruses) if (v.active) viruses++;
-      for (let i = viruses; i < 12; i++) priv.spawnVirus(200 + i * 70, 160 + (i % 4) * 110);
+      for (let i = viruses; i < GAUNTLET.maxViruses; i++) priv.spawnVirus(200 + i * 70, 160 + (i % 4) * 110);
       let firewalls = 0;
       for (const f of world.firewalls) if (f.active) firewalls++;
       for (let i = firewalls; i < 2; i++) priv.spawnFirewall();
@@ -120,7 +122,7 @@ function runGauntlet(): void {
       if (errors === 0) priv.spawnErrorColony();
       let sentries = 0;
       for (const s of world.sentries) if (s.active) sentries++;
-      if (sentries < 6) priv.spawnSentryPack();
+      if (sentries < SENTRY.max) priv.spawnSentryPack();
       // Keep the colony alive for the whole measurement: this is the max-load case.
       for (const e of world.errors) if (e.active) e.hp = 999;
     }
@@ -163,7 +165,7 @@ function runGauntlet(): void {
   console.log(
     `Gauntlet max   avg ${avg.toFixed(3)}ms  p99 ${p99.toFixed(3)}ms  max ${max.toFixed(3)}ms  threats ${(
       threatSum / MEASURE
-    ).toFixed(1)}  (2W/12V/2F/28E + sentries + thrall)`,
+    ).toFixed(1)}  (${GAUNTLET.maxWorms}W/${GAUNTLET.maxViruses}V/2F/${CASCADING_ERROR.maxBlocks}E + sentries + thrall)`,
   );
 }
 

@@ -3,7 +3,7 @@
  * Shell is precached; hashed build assets are cached at runtime after the first controlled load.
  * A full Workbox precache manifest is a later optimization (see TODO.md).
  */
-const VERSION = 'deflect-0.1.10';
+const VERSION = 'deflect-0.1.24';
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];

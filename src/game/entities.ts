@@ -1,9 +1,12 @@
-import { BOLT, MINE, CASCADING_ERROR, MAX_PROJECTILES, PLAYER, POWERUP, SENTRY, TRAIL_LEN, TRAINING, VIRUS, WORM } from './config';
+import { BOLT, FISHER, MINE, CASCADING_ERROR, MAX_PROJECTILES, PLAYER, POWERUP, SENTRY, TRAIL_LEN, TRAINING, VIRUS, WORM } from './config';
 import {
   PF,
+  type Barrier,
   type CascadingError,
   type Drone,
   type Firewall,
+  type Lure,
+  type Net,
   type Pickup,
   type Player,
   type Projectile,
@@ -18,6 +21,7 @@ export function createPlayer(slot: number): Player {
     connected: false,
     slot,
     name: '',
+    program: 0,
     x: 0,
     y: 0,
     prevX: 0,
@@ -35,6 +39,8 @@ export function createPlayer(slot: number): Player {
     energy: PLAYER.energyMax,
     burstLeft: BOLT.burstCount,
     burstCd: 0,
+    stringLeft: 0,
+    stringT: 0,
     score: 0,
     alive: false,
     thrall: false,
@@ -55,6 +61,23 @@ export function createPlayer(slot: number): Player {
     dashHitErrors: 0,
     dashHitSentries: 0,
     dashHitDrone: false,
+    bashT: 0,
+    bashFacing: 0,
+    bashHitPlayers: 0,
+    bashHitWorms: 0,
+    bashHitViruses: 0,
+    bashHitErrors: 0,
+    bashHitSentries: 0,
+    bashHitDrone: false,
+    wedgeT: 0,
+    wedgeDirX: 1,
+    wedgeDirY: 0,
+    wedgeHitPlayers: 0,
+    wedgeHitWorms: 0,
+    wedgeHitViruses: 0,
+    wedgeHitErrors: 0,
+    wedgeHitSentries: 0,
+    wedgeHitDrone: false,
     iframes: 0,
     swingPhase: 0,
     swingT: 0,
@@ -66,6 +89,9 @@ export function createPlayer(slot: number): Player {
     laserCd: 0,
     laserTickT: 0,
     laserFacing: 0,
+    netDrawing: false,
+    netT: 0,
+    netIndex: -1,
     chargeT: 0,
     chargeHeld: false,
     guardT: 0,
@@ -79,6 +105,7 @@ export function createPlayer(slot: number): Player {
     wallT: 0,
     wallFacing: 0,
     slowT: 0,
+    netPinT: 0,
     waveT: 0,
     waveCd: 0,
     comboStage: 0,
@@ -114,6 +141,12 @@ export function createProjectile(): Projectile {
     armed: false,
     homing: false,
     pathAxis: 0,
+    hitPlayers: 0,
+    hitWorms: 0,
+    hitViruses: 0,
+    hitErrors: 0,
+    hitSentries: 0,
+    hitDrone: false,
     trailX: new Float32Array(TRAIL_LEN),
     trailY: new Float32Array(TRAIL_LEN),
     trailHead: 0,
@@ -125,6 +158,46 @@ export function createProjectilePool(): Projectile[] {
   const pool: Projectile[] = new Array(MAX_PROJECTILES);
   for (let i = 0; i < pool.length; i++) pool[i] = createProjectile();
   return pool;
+}
+
+export function createNet(): Net {
+  return {
+    active: false,
+    owner: 0,
+    xs: new Float32Array(FISHER.netPoints),
+    ys: new Float32Array(FISHER.netPoints),
+    count: 0,
+    length: 0,
+    life: 0,
+    phase: 0,
+  };
+}
+
+export function createBarrier(): Barrier {
+  return {
+    active: false,
+    owner: 0,
+    x1: 0,
+    y1: 0,
+    x2: 0,
+    y2: 0,
+    nx: 1,
+    ny: 0,
+    life: 0,
+    maxLife: 1,
+    phase: 0,
+  };
+}
+
+export function createLure(): Lure {
+  return {
+    active: false,
+    owner: 0,
+    x: 0,
+    y: 0,
+    life: 0,
+    phase: 0,
+  };
 }
 
 export function createPickup(): Pickup {
@@ -162,6 +235,7 @@ export function createDrone(): Drone {
     targetY: 360,
     hitFlash: 0,
     radius: TRAINING.droneRadius,
+    netPinT: 0,
   };
 }
 
@@ -177,6 +251,12 @@ export function createWorm(): Worm {
     angle: 0,
     hp: WORM.hp,
     maxHp: WORM.hp,
+    anchorX: 0,
+    anchorY: 0,
+    patrolX: 0,
+    patrolY: 0,
+    retargetT: 0,
+    aggroT: 0,
     segCount: 0,
     segX: new Float32Array(WORM.maxSegments),
     segY: new Float32Array(WORM.maxSegments),
@@ -190,6 +270,7 @@ export function createWorm(): Worm {
     infected: false,
     phase: 0,
     spawnT: 0,
+    pinT: 0,
   };
 }
 
@@ -206,6 +287,10 @@ export function createVirus(): Virus {
     maxHp: VIRUS.hp,
     radius: VIRUS.radius,
     targetWorm: -1,
+    targetPlayer: false,
+    roamX: 0,
+    roamY: 0,
+    retargetT: 0,
     orbitSign: 1,
     phase: 0,
     contactCd: 0,
@@ -213,6 +298,7 @@ export function createVirus(): Virus {
     kx: 0,
     ky: 0,
     spawnT: 0,
+    pinT: 0,
   };
 }
 
@@ -256,7 +342,11 @@ export function createSentry(): Sentry {
     phase: 0,
     hitFlash: 0,
     orbitSign: 1,
+    anchorX: 0,
+    anchorY: 0,
+    leash: 0,
     spawnT: 0,
+    pinT: 0,
   };
 }
 
@@ -290,6 +380,8 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.energy = PLAYER.energyMax;
   p.burstLeft = BOLT.burstCount;
   p.burstCd = 0;
+  p.stringLeft = 0;
+  p.stringT = 0;
   p.alive = true;
   p.dashT = 0;
   p.dashCd = 0;
@@ -306,6 +398,23 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.dashHitErrors = 0;
   p.dashHitSentries = 0;
   p.dashHitDrone = false;
+  p.bashT = 0;
+  p.bashFacing = facing;
+  p.bashHitPlayers = 0;
+  p.bashHitWorms = 0;
+  p.bashHitViruses = 0;
+  p.bashHitErrors = 0;
+  p.bashHitSentries = 0;
+  p.bashHitDrone = false;
+  p.wedgeT = 0;
+  p.wedgeDirX = Math.cos(facing);
+  p.wedgeDirY = Math.sin(facing);
+  p.wedgeHitPlayers = 0;
+  p.wedgeHitWorms = 0;
+  p.wedgeHitViruses = 0;
+  p.wedgeHitErrors = 0;
+  p.wedgeHitSentries = 0;
+  p.wedgeHitDrone = false;
   p.iframes = 0;
   p.swingPhase = 0;
   p.swingT = 0;
@@ -317,6 +426,9 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.laserCd = 0;
   p.laserTickT = 0;
   p.laserFacing = facing;
+  p.netDrawing = false;
+  p.netT = 0;
+  p.netIndex = -1;
   p.chargeT = 0;
   p.chargeHeld = false;
   p.guardT = 0;

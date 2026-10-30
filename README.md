@@ -8,10 +8,22 @@ drawn from simple neon shapes and every sound is synthesized in the browser — 
 assets, only generated PWA icons. The soundtrack is an 82 BPM lofi-house loop built from MIDI note
 numbers, with a vinyl-crackle bed.
 
-**Playable now:** solo training against a sparring drone or endless 1v1–1v3 bot practice, a wave-based
-local **GAUNTLET** against worms, viruses, cascading errors, shooters and infected thralls, or host/join
-a room for up to 8 players. Five arenas are selectable from the title screen, including the multi-district
-`MAINFRAME`. Match modes are first to 3 rounds; training and gauntlet are continuous practice spaces.
+**Playable now:** solo training against a sparring drone or endless 1v1–1v3 bot practice, **VS BOTS**
+round matches against one to three local opponents, a scored local **GAUNTLET** against worms, viruses,
+cascading errors, shooters and infected thralls, or host/join a room for up to 8 players. Five arenas are selectable from the title screen, including the multi-district
+`MAINFRAME`. Match modes are first to 3 rounds; training is continuous practice, while gauntlet is a
+one-life score chase with a local top-runs table.
+
+**Campaign (story mode):** `SINGLE PLAYER > CAMPAIGN` opens three local save slots first. An empty slot
+starts a new run: pick the bot count (none to three), then your program. A filled slot shows the level
+and player count and resumes the run, skipping both steps. Bots take the programs you leave unused. The
+run is meant to save after every completed level. Nothing is playable yet and no slot is written until
+the first sector exists. The layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
+
+**Multiplayer menu:** `MULTIPLAYER` offers `ONLINE` (host a room or join by code) and `LOCAL` (same-screen
+play, not built yet). Local lists its two modes, `ARENA` and `GAUNTLET`, as placeholders until the setup
+screen exists. Public room discovery is planned: it will search for game codes with a shared prefix,
+while private rooms keep an unprefixed code.
 
 ## Play
 
@@ -43,57 +55,67 @@ The build is a static PWA in `dist/`; serve it over HTTPS to install it and to u
 Gamepad and keyboard/mouse are both supported. The most recently used device takes over; there is no
 on-screen input-mode badge.
 
+For unattended testing, add `?autoplay=2` to the local URL. Bots drive every slot, including the local
+one, and the match auto-rematches so it keeps running without input. This is a QA hook, not a menu mode.
+
 | Action | Gamepad | Keyboard/mouse |
 | --- | --- | --- |
 | Move + face | Left stick | `WASD` / arrows |
-| Deflect / combo | `B` | Left mouse / `J` |
-| Weak burst | `X` | Right mouse / `K` |
-| Strong: bug tap / beam hold | `Y` | `E` or `L` / middle mouse |
+| Melee attack / guard | `B` | Left mouse / `J` |
+| Ranged attack | `X` | Right mouse / `K` |
+| Power attack (hold) / skill (tap) | `Y` | `E` or `L` / middle mouse |
 | Lock target | `LT` | `Q` |
+| Cycle lock target (hold `LT`) | `RB` / right stick left-right | — |
 | Dash / charged dash | `A` or `L3` | `Shift` / `Space` |
 | Confirm / menu | `A` / `Start`, D-pad | `Enter`, arrows, focused button + `Space` |
 | In-game menu | `Start` / `View` | `Escape` |
 | Mute | — | `M` |
 | Perf HUD | — | `F3` |
 
-There is no aim stick. **Movement is facing.** Swinging locks the direction you commit to. Dashing
+There is no aim stick. **Movement is facing.** Melee attacks lock the direction you commit to. Dashing
 commits to the **last movement direction**, even while target lock is holding your facing, so strafing
 past an enemy and dashing goes sideways. Standing still keeps your last facing.
 
 The title is a console menu: arrows or the left stick move the `>` cursor, Enter or `A` confirms, and
-Escape or `B` backs out. `SETTINGS` is option 03. Callsign editing is under `SETTINGS > SYSTEM`, alongside
-hit feedback, audio, scanline and reset options.
+Escape or `B` backs out. `HOW TO PLAY` holds the control tables and a short rules and program rundown;
+it shows a gamepad or keyboard/mouse layout based on what is plugged in. `SETTINGS` is the fourth option.
+Callsign editing is under `SETTINGS > SYSTEM`, alongside hit feedback, audio, scanline and reset options.
 
-## Weapons, bug, and health
+## Attacks, skill, and health
 
-Every avatar has three health segments built into its rotating outer ring. A hit removes one segment
-completely, leaving a gap that everyone can see. There is no separate health bar or name plate: the ring,
-the inner energy arc, and the floating ability icons are the whole readout.
+Your avatar has three health segments built into its rotating program outline. A hit drops that segment
+to a dim ghost, so the silhouette always stays whole while the damage still reads at a glance. There is
+no separate health bar or name plate: the outline, the inner energy arc, and the top-left readiness dock
+are the local readout. Bots and remote players show no health or readiness telemetry yet.
 
 | Option | Input | Role |
 | --- | --- | --- |
-| **BURST BOLT** | `X` / right mouse / `K` | Fast, short range (about 390 units), 1 damage. A five-shot stream with a low per-shot cost and a **0.2 s** recharge; hold for near-continuous fire. One bank before it expires. Remaining shots are drawn as dots behind you. |
-| **DEFLECT** | `B` / left mouse / `J` | A 180° arc covers the full direction you face. Tap in rhythm for left, right, then forward shield wave; each arc reflects incoming fire. **Hold** briefly to raise a shield for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. Lock on to flatten caught shots toward the target. The swing also punches at close range. |
-| **BUG (tap)** | `Y` / `E` / `L` / middle mouse | A random skill each match: **mine**, **trap**, **wall shield**, or **ghost**. The icon floating behind the avatar shows which one you have and whether it is ready. Ghost makes you translucent and immune to damage and aggro until the timer ends or you attack. |
-| **CHARGED BEAM (hold)** | `Y` / `E` / `L` | Two dots orbit from your back to your front; when they meet, the beam auto-fires for 3 s. You are rooted, but can sweep slowly at 0.55 rad/s. It passes through every enemy in the line, respecting cover. Long cooldown after the beam ends. |
+| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear. Holding keeps the fire coming at the program's cadence. |
+| **MELEE ATTACK** | `B` / left mouse / `J` | **Tap** for a fast spiked lash across the 180° arc in front of you. It shoves what it hits sideways and reflects shots it catches. |
+| **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. Lock on to flatten caught shots toward the target. |
+| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades. It commits you: you cannot move freely while it runs, and it has a long cooldown. |
+| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon. Its mark in the top-left readiness dock shows when it is ready. |
 | **DASH** | `A` / `Shift` / `Space` | Two charges. Tap to phase through enemies and cover in your last movement direction. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. |
 
-The burst is the close-range pressure tool; a sustained stream can delete a full-health target. The
-bug/beam button is the commitment button: tap for your random tool, hold to plant your feet and carve a
-line. Every option obeys the same facing rules. Energy still gates the heavy tools; the basic stream is
+Ranged fire is the pressure tool. Melee is the answer to incoming fire: tap to lash, hold to guard. The
+power/skill button is the commitment button: tap for your program's skill, hold to plant your feet and
+run the heavy. Every option obeys the same facing rules. Energy still gates the heavies; basic fire is
 cheap enough to hold.
 
 ## Pickups
 
-Training and gauntlet drop local pickups. `RESTORE_STATUS` refills the health ring and clears negative
-status. Timed drops replace each other, last 11–15 s, and float their icon behind the avatar:
+Most pickups are dropped by enemies you destroy. Small kills roll rarely, heavy silhouettes roll
+generously, and drops share a 5.5 s cooldown. At most two pickups sit on the field at once. A rare
+ambient pickup (first at 24 s, then every 42 s) keeps a dry run from stalling. Training and gauntlet only.
+`RESTORE_STATUS` refills health and clears negative status. Timed drops replace each other,
+last 11–15 s, and show their icon at the right end of the readiness dock:
 
-- `MACHINE GUN`: held weak fire becomes a low-damage spray.
+- `MACHINE GUN`: held ranged fire becomes a low-damage spray.
 - `SCATTER`: short-range fan of pellets.
-- `OVERCHARGE`: weak fire becomes an instant-on/off beam, dodge distance triples, and the core becomes a
+- `OVERCHARGE`: ranged fire becomes an instant-on/off beam, dodge distance triples, and the core becomes a
   lightning bolt.
-- `BARBED WHIP`: the reflect becomes a red lash with four times the reach and damage.
-- `PATHFIND`: weak bolts seek by axis-aligned right turns.
+- `BARBED WHIP`: the melee lash and guard become a red lash with four times the reach and damage.
+- `PATHFIND`: ranged bolts seek by axis-aligned right turns.
 
 Pickups are local-only; they do not appear in competitive rooms or network snapshots.
 
@@ -111,19 +133,23 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 
 ## Training and bot practice
 
-`SINGLE PLAYER → TRAINING` walks through the arena grid (navigate all four directions), bot count
-(`1 V 1`, `1 V 2`, or `1 V 3`), and difficulty. Each choice advances immediately: pick an arena to choose
-the bot count, pick a count to choose difficulty, and pick a difficulty to start. There is no extra
+`SINGLE PLAYER → TRAINING → program` walks through the arena grid (navigate all four directions), bot count
+(`1 V 1`, `1 V 2`, or `1 V 3`), and difficulty. Difficulties stack vertically from `EASY` to `HARD`, with an
+`IMPOSSIBLE` tier reserved as the top of the ladder. Each choice advances immediately: pick an arena to
+choose the bot count, pick a count to choose difficulty, and pick a difficulty to start. There is no extra
 NEXT/RUN step. Training has **no rounds**: every dead body respawns and the session continues until you
 leave. Solo training with no bots keeps the sparring drone.
 
-Bots use the same movement, facing, swing, dash and energy rules as you; they cannot aim independently
-of movement. The same brains also run local bot matches in the codebase, but the title flow now treats
-them as endless practice partners.
+`SINGLE PLAYER → VS BOTS` uses the same setup but runs the normal match flow: countdown, last-standing
+rounds, first to 3. Bots take the programs you leave unused, so a Wedge pick can face Probe and Fisher.
+They use the same movement, facing, melee, dash, skill and heavy rules as you; they cannot aim
+independently of movement. Training keeps the endless respawn loop, while VS BOTS ends on the match
+overlay with a rematch option.
 
-- `ROOKIE`: slow reactions, loose aim, forgiving fire cadence.
-- `VETERAN`: reads projectiles, leads movement, uses bugs, beams and dashes.
-- `DIGITAL`: 55 ms reactions, near-perfect lead, aggressive deflects and spacing.
+- `EASY`: slow reactions, loose aim, forgiving fire cadence.
+- `MEDIUM`: reads projectiles, leads movement, uses skills, power attacks and dashes.
+- `HARD`: 55 ms reactions, near-perfect lead, aggressive deflects and spacing.
+- `IMPOSSIBLE`: the reserved ceiling. Faster fire, no aim error, full dodge; still being tuned.
 
 Three styles alternate across the three bots: `DUELIST` closes distance, `TRICKSTER` orbits and
 looks for deflections, and `SIEGE` holds range and charges beams. Bots route around cover with a small
@@ -132,22 +158,35 @@ not occupy multiplayer room slots.
 
 ## Gauntlet
 
-`GAUNTLET` starts an endless local survival run. It is a threat sandbox, not ranked PvP and not
-networked. Threat spawning accelerates every 30 s wave. Pick the arena on the title screen first; each
-arena changes how the threats path.
+`GAUNTLET` is a local threat sandbox, not ranked PvP and not networked. Pick an arena and begin a
+one-life run. When your last health segment goes, the run ends and the results overlay records your callsign, arena,
+wave reached, survival time and kills. There is no in-run respawn; training is the practice space.
 
-- **WORMS**: trailing chains of red squares. They are blocked by cover, chase you, damage on touch, and
-eat bolts and viruses. Every meal grows the chain and heals it. The charged beam hits body segments, not
-just the head.
-- **VIRUSES**: magenta diamonds that drift in a swarm, separate, and replicate on a timer. Touching you
-fills the infection meter; at full meter a **THRALL** copy of you spawns nearby and fights with your own
-single-stick rules. Viruses also infect worms, turning them magenta and faster.- **FIREWALLS**: orange beams that warn, then sweep across the arena burning players, worms and viruses.
+The setup screen shows the local top eight runs, ranked by wave, then survival time, then kills. The title
+menu shows your best wave beside the gauntlet option. Records live in `localStorage` and never enter a
+network snapshot. Waves are 30 s and the ramp is deliberately slow: worms arrive at wave 3, viruses at 6,
+triplex shooters at 9, cascading errors at 12, homing pods at 15 and flocks at 18. Spawn intervals tighten
+across roughly 120 waves, and live caps grow one step at a time. A wave never forces a synchronized burst
+of every threat; existing countdowns keep running. Each arena changes the zones the threats hold.
+
+- **WORMS**: trailing chains of red squares. They patrol a territory anchor, eat bolts and viruses, and
+damage on touch. They only commit to you if you enter their patch or hit them, then lose interest after
+5.5 s and return. Longer chains move slower. Cover blocks them. A virus that catches one turns it into a
+faster hunter.
+- **VIRUSES**: magenta diamonds that spread toward roam points instead of beelining across the map. They
+pursue a player only inside 310 units, or an uninfected worm inside 560 units. Touching you fills the
+infection meter; at full meter a **THRALL** copy of you spawns nearby and fights with your own single-stick
+rules. They still infect worms and split on a timer.
+- **SENTRIES**: pulse squares, triplex shotguns, homing trapezoids and dart flocks. They land in a zone
+and hold it, with a 100–250 unit leash instead of following you across the arena. Heavy triplex and homing
+silhouettes are much slower than the pulse and flock. Packs arrive one at a time, low-tier shots are
+short-ranged and disperse on cover, and enemy fire damages other enemies too.
+- **CASCADING ERRORS**: yellow blocks stamped with red exclamation marks. They spread outward like a
+  plant, one block every 4.0 s early and 2.0 s at full pressure, hurt on contact, and take three hits to
+  delete a single block. The first colony starts at four blocks and the live cap grows over many waves.
+- **FIREWALLS**: orange beams that warn, then sweep across the arena burning players, worms and viruses.
 Pillars cut both the visible beam and the damage. Automatic firewalls are **off**; they are reserved for
 a future destructible switch on selected arenas.
-- **CASCADING ERRORS**: yellow blocks stamped with red exclamation marks. They spread outward like a
-  plant, hurt on contact, and take three hits to delete a single block.
-- **SENTRIES**: pulse squares, triplex shotguns, homing trapezoids and dart flocks. Packs arrive one at a
-  time, low-tier shots are short-ranged and disperse on cover, and enemy fire damages other enemies too.
 - **HEALTH**: enemy hit points are deliberately low so a crowded screen can be cleared. Worms, viruses,
   errors and shooters all die faster than in v0.1.8; firewalls burn enemy factions harder.
 
@@ -160,27 +199,34 @@ This build is a test rig as much as a game. A useful pass:
 
 - All five arenas in training. Learn `THE RING`'s four side gates, `SWITCHBACK`'s ricochet lanes and
   `MAINFRAME`'s linked districts.
-- 1v1, 1v2 and 1v3 at each tier. `ROOKIE` is a moving target; `DIGITAL` punishes slow swings and bad
-dashes. Training never ends on a round; bots respawn after each defeat.
+- 1v1, 1v2 and 1v3 at each tier. `EASY` is a moving target; `HARD` punishes slow attacks and bad dashes.
+  Training never ends on a round; bots respawn after each defeat.
 - Break line of sight behind cover. Bots should walk a route around the block, not scrape against it.
 - Fight inside `THE RING`'s center. Every entrance is a gate; a charged beam down a gate is a trap.
 - Bank bolts around `SWITCHBACK`'s bars. Deflected bolts gain speed and damage.
-- Hold weak fire and feel the five-shot stream. Watch the ammo dots drain, then the short 0.2 s recharge.
-  Losing ring segments should be readable from across the arena.
+- Hold ranged attack and feel the stream. Watch the ammo dots drain, then the short recharge. Losing
+  health segments should be readable from across the arena.
 - Hold `B` and walk into a sentry volley. The 180° shield should catch every shot in front, burn down as
   it eats them, and force a quick cooldown when it breaks. Release early and it drops immediately.
 - Lock on with `LT` and hold the shield. Reflected shots should flatten toward the target instead of
-  flying off at the incoming angle.
-- Spend both dodge charges, then watch the two chevrons behind the avatar refill one at a time.
+  flying off at the incoming angle. The reticle should acquire pulse squares, triplexes, homing pods,
+  flocks and cascading-error blocks as readily as worms.
+- Spend both dodge charges, then watch the two chevrons in the top-left readiness dock refill one at a time.
 - Hold `Y` through the full charge. The two orbit dots should meet at your front and the beam should fire
   on its own, root you, sweep slowly, and pierce every target in the line while pillars cut it off.
-- Tap `Y` at the start of a match to discover your random bug. Try all four: mine, trap, wall shield,
-  ghost. Ghost should dim your avatar and let you pass through enemies until you attack.
-- Deflect a `DIGITAL` bolt back at it. Higher tiers try to dodge their own armed ricochets.
+- Tap `Y` for the program's skill: Probe's proximity mine, Wedge's bracket wall, or Fisher's lure
+  beacon. The mark in the top-left readiness dock should match the program and show readiness. Wedge's
+  wall should stop bodies and reflect shots; a lure should pull local bots off you.
+- Reflect a `HARD` bolt back at it. Higher tiers try to dodge their own armed ricochets.
 - Leave endless training and return. The arena choice persists and a fresh session starts cleanly; there
   is no round or match overlay to clear.
-- Enter the gauntlet on each arena. On `SWITCHBACK`, watch a worm route around the bars instead of
-  passing through them. Automatic firewalls should never appear.
+- Enter the gauntlet on each arena. Confirm the setup screen shows the arena, one-life note and local top
+  runs. On the large arenas the first 20 seconds should contain two slow pulse shooters that land inside
+  the camera window, not one distant shooter or a wave of threats. On `SWITCHBACK`, watch a worm route
+  around the bars instead of passing through them. Automatic firewalls should never appear.
+- Finish a gauntlet run. Losing the last segment should freeze the arena and open the result card with
+  wave, time and kills; the run should appear in the setup table and update the title menu's `BEST W` value.
+  There should be no respawn or practice choice in the gauntlet setup.
 - Let a sentry miss you and hit a worm, virus or error block. Enemy fire should damage other factions
   instead of passing through them.
 - Watch a sentry pack arrive. The silhouettes should land one at a time over several seconds, not all at
@@ -190,16 +236,20 @@ dashes. Training never ends on a round; bots respawn after each defeat.
 - Let viruses stack on you until the infection bar fills. A thrall should spawn nearby, chase you, swing
   and shoot, and drop when eliminated.
 - Pick up each timed drop: machine gun, scatter, overcharge (instant beam, triple dodge, lightning core),
-  barbed whip (long red lash), and pathfinding (right-angle seekers). `RESTORE_STATUS` should refill the
-  health ring.
+  barbed whip (long red lash), and pathfinding (right-angle seekers). `RESTORE_STATUS` should refill your
+  health segments.
 - Stand in a firewall warning lane, then step behind a pillar. The beam should stop burning you behind
   cover. Take a bolt and a beam tick and check the push and triangle spray direction.
-- Open Settings and step through Controls, Feedback, Audio and System. Change hit rotation, impact
-  flash, volume, scanlines and the minimap toggle; test the hit preview; then reset defaults. Cover should
-  read as a bright solid object, not floor texture.
+- Open Settings and step through Feedback, Audio and System. Change hit rotation, impact flash, volume,
+  scanlines and the minimap toggle; test the hit preview; then reset defaults. Cover should read as a
+  bright solid object, not floor texture.
 - Host a room on a non-default arena, then join from a second tab. The guest must render the host's map.
-- Run a full gauntlet round long enough to trigger the new sentry pacing and pickups, and watch the
-  lower-left minimap track the local player and nearby threat dots.
+- Run a scored gauntlet long enough to trigger the new sentry pacing and pickups. The smaller minimap
+  should sit tight in the bottom-left corner and track the local player plus every live threat family:
+  worms, viruses, sentries, error blocks and firewalls. The training drone should appear there too.
+- Tap `B` three times. The lash should sweep left, right, left with no shield fill and no forward wave.
+  Hold `B` instead and the 180° shield should appear. Take a max-range own bolt, let it bounce, and confirm
+  it cannot damage you.
 
 ## Development
 

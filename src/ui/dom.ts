@@ -10,6 +10,36 @@ export function clearChildren(node: Element): void {
   while (node.firstChild) node.removeChild(node.firstChild);
 }
 
+/**
+ * Sizes a layout canvas to its CSS box at device pixel ratio and returns a context
+ * already transformed into design units, so drawings stay crisp at any width and
+ * label sizes are readable rather than baked into a fixed bitmap. Caller restores.
+ */
+export function fitCanvas(
+  canvas: HTMLCanvasElement,
+  designW: number,
+  designH: number,
+): CanvasRenderingContext2D | null {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const cssW = Math.max(240, Math.round(canvas.clientWidth || designW));
+  const cssH = Math.round((cssW * designH) / designW);
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.round(cssW * dpr);
+  const h = Math.round(cssH * dpr);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  canvas.style.aspectRatio = `${designW} / ${designH}`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  ctx.save();
+  const k = cssW / designW;
+  ctx.scale(k, k);
+  return ctx;
+}
+
 export function toast(message: string, tone: 'info' | 'warn' | 'error' = 'info'): void {
   const host = document.getElementById('toasts');
   if (!host) return;

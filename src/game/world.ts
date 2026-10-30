@@ -1,9 +1,12 @@
 import {
   BOLT,
   BUG,
+  CAMERA_ZOOM,
   CASCADING_ERROR,
+  FISHER,
   MINE,
   FIREWALL,
+  WEDGE,
   GAUNTLET,
   MAX_EVENTS,
   MAX_PLAYERS,
@@ -13,6 +16,8 @@ import {
   SENTRY,
   THRALL,
   TRAINING,
+  VIEW_H,
+  VIEW_W,
   VIRUS,
   WORM,
 } from './config';
@@ -20,9 +25,12 @@ import { ARENAS, type ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
 import {
   clearPlayerForSpawn,
+  createBarrier,
   createCascadingError,
   createDrone,
   createFirewall,
+  createLure,
+  createNet,
   createPickupPool,
   createPlayer,
   createProjectilePool,
@@ -30,18 +38,22 @@ import {
   createVirus,
   createWorm,
 } from './entities';
+import { PROGRAM_ID, clampProgram, programDef } from './programs';
 import { computeSpawns, stepPlayerMotion } from './movement';
 import { POWERUP_KIND, isTimedPowerup, powerupDef, rollPowerup } from './powerups';
 import { Rng } from './rng';
 import {
   ACTION,
   EV,
+  type Barrier,
   type CascadingError,
   type Drone,
   type Firewall,
   type GameEvent,
   type GameMode,
   type InputFrame,
+  type Lure,
+  type Net,
   type Phase,
   type Pickup,
   type Player,
@@ -61,6 +73,7 @@ const EVENT_CAPACITY = MAX_EVENTS * 2;
 export class World {
   readonly mode: GameMode;
   readonly arena: ArenaDef;
+  readonly selectedProgram: number;
   readonly players: Player[];
   readonly projectiles: Projectile[];
   readonly drone: Drone;
@@ -70,8 +83,19 @@ export class World {
   readonly errors: CascadingError[];
   readonly sentries: Sentry[];
   readonly pickups: Pickup[];
+  /** Local-only Fisher webs, lure beacons and Wedge walls. Never enter a match snapshot. */
+  readonly nets: Net[];
+  readonly lures: Lure[];
+  readonly barriers: Barrier[];
+  /** Reused smoothing scratch, so deploying a web allocates nothing. */
+  private readonly netScratchX = new Float32Array(FISHER.netPoints);
+  private readonly netScratchY = new Float32Array(FISHER.netPoints);
   infection = 0;
   gauntletKills = 0;
+  /** True after a scored gauntlet run has ended; the simulation holds the last frame. */
+  gauntletOver = false;
+  /** Internal bench/headless path: endless respawns and max threat caps. Not exposed in the UI. */
+  readonly gauntletPractice: boolean;
   /** Escalation wave in gauntlet mode. Purely local presentation + spawn pacing. */
   wave = 1;
   waveBannerT = 0;
@@ -108,12 +132,30 @@ export class World {
   private errorSpawnT: number = CASCADING_ERROR.spawnDelay;
   private errorGrowT: number = CASCADING_ERROR.growthInterval;
   private virusSplitT: number = VIRUS.splitInterval;
+  private virusSeeded = false;
   private powerupSpawnT: number = POWERUP.firstSpawn;
+  private powerupDropT = 0;
   private pathTargetX = 0;
   private pathTargetY = 0;
   private pathFound = false;
   private pathBest2 = 0;
   private gauntletT = 0;
+  /** Local bot match: slots 1..botSlots are AI, not network guests. */
+  private botSlots = 0;
+  /** Scratch for the current lock target, so target reads never allocate. */
+  private lockTX = 0;
+  private lockTY = 0;
+  /** Scratch for one lock-cycle step. */
+  private cyclePlayer: Player | null = null;
+  private cycleBase = 0;
+  private cycleForward = true;
+  private cycleFound = false;
+  private cycleBestDelta = 0;
+  private cycleBestKind = 0;
+  private cycleBestId = -1;
+  private cycleWrapDelta = 0;
+  private cycleWrapKind = 0;
+  private cycleWrapId = -1;
   private thrallFrame: InputFrame = { mx: 0, my: 0, held: 0, pressed: 0 };
   private thrallShootT = 0;
   private thrallSwingT = 0;
@@ -127,10 +169,22 @@ export class World {
     return (this.arena.bounds.top + this.arena.bounds.bottom) * 0.5;
   }
 
-  constructor(mode: GameMode, names: string[], localSlot = 0, arena: ArenaDef = ARENAS[0]) {
+  constructor(
+    mode: GameMode,
+    names: string[],
+    localSlot = 0,
+    arena: ArenaDef = ARENAS[0],
+    gauntletPractice = false,
+    program: number = PROGRAM_ID.PROBE,
+    botSlots = 0,
+    botPrograms: readonly number[] | null = null,
+  ) {
     this.mode = mode;
+    this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
+    this.gauntletPractice = gauntletPractice;
     this.localSlot = localSlot;
+    this.selectedProgram = clampProgram(program);
     this.players = new Array(MAX_PLAYERS);
     for (let i = 0; i < MAX_PLAYERS; i++) this.players[i] = createPlayer(i);
     this.projectiles = createProjectilePool();
@@ -146,6 +200,12 @@ export class World {
     this.sentries = new Array(SENTRY.max);
     for (let i = 0; i < this.sentries.length; i++) this.sentries[i] = createSentry();
     this.pickups = createPickupPool();
+    this.nets = new Array(2);
+    for (let i = 0; i < this.nets.length; i++) this.nets[i] = createNet();
+    this.lures = new Array(2);
+    for (let i = 0; i < this.lures.length; i++) this.lures[i] = createLure();
+    this.barriers = new Array(4);
+    for (let i = 0; i < this.barriers.length; i++) this.barriers[i] = createBarrier();
     this.events = new Array(EVENT_CAPACITY);
     for (let i = 0; i < EVENT_CAPACITY; i++) this.events[i] = { kind: 0, slot: 0, x: 0, y: 0, power: 0, dirX: 0, dirY: 0 };
 
@@ -159,9 +219,14 @@ export class World {
         p.score = 0;
       }
     }
-    // Each operator gets one random bug for the session. No loadout choice.
+    // Programs own their signature bug. Slot 0 is the selected local program; local bots
+    // take the programs the human left unused, while online opponents stay Probe until
+    // the net protocol carries kits.
     for (let i = 0; i < MAX_PLAYERS; i++) {
-      this.players[i].bugKind = Math.floor(this.rng.next() * 4);
+      const p = this.players[i];
+      const botProgram = botPrograms && botPrograms[i] !== undefined ? botPrograms[i] : null;
+      p.program = i === 0 ? this.selectedProgram : botProgram !== null ? clampProgram(botProgram) : PROGRAM_ID.PROBE;
+      p.bugKind = programDef(p.program).bugKind;
     }
 
     if (mode === 'training') {
@@ -203,6 +268,7 @@ export class World {
     this.infection = 0;
     this.gauntletKills = 0;
     this.gauntletT = 0;
+    this.gauntletOver = false;
     this.wave = 1;
     this.waveBannerT = 0;
     this.wormSpawnT = GAUNTLET.wormSpawnDelay;
@@ -216,8 +282,13 @@ export class World {
     this.errorSpawnT = CASCADING_ERROR.spawnDelay;
     this.errorGrowT = CASCADING_ERROR.growthInterval;
     this.virusSplitT = VIRUS.splitInterval;
+    this.virusSeeded = false;
     this.powerupSpawnT = POWERUP.firstSpawn;
+    this.powerupDropT = 0;
     for (let i = 0; i < this.pickups.length; i++) this.pickups[i].active = false;
+    for (let i = 0; i < this.nets.length; i++) this.nets[i].active = false;
+    for (let i = 0; i < this.lures.length; i++) this.lures[i].active = false;
+    for (let i = 0; i < this.barriers.length; i++) this.barriers[i].active = false;
     for (let i = 0; i < this.worms.length; i++) this.worms[i].active = false;
     for (let i = 0; i < this.viruses.length; i++) this.viruses[i].active = false;
     for (let i = 0; i < this.firewalls.length; i++) this.firewalls[i].active = false;
@@ -227,6 +298,65 @@ export class World {
       this.players[i].active = false;
       this.players[i].alive = false;
     }
+  }
+
+  /** Seconds survived in the current gauntlet run; frozen once the run ends. */
+  get gauntletTime(): number {
+    return this.gauntletT;
+  }
+
+  /** 0 at wave 1, 1 at fullPressureWave. The bench's practice path always runs at full pressure. */
+  private gauntletPressure(): number {
+    if (this.gauntletPractice) return 1;
+    const span = Math.max(1, GAUNTLET.fullPressureWave - 1);
+    return Math.min(1, Math.max(0, (this.wave - 1) / span));
+  }
+
+  private gauntletInterval(max: number, min: number): number {
+    return max + (min - max) * this.gauntletPressure();
+  }
+
+  private wormLimit(): number {
+    if (this.gauntletPractice) return GAUNTLET.maxWorms;
+    return Math.min(
+      GAUNTLET.maxWorms,
+      1 + Math.floor(Math.max(0, this.wave - GAUNTLET.wormWave) / GAUNTLET.wormCapStep),
+    );
+  }
+
+  private virusLimit(): number {
+    if (this.gauntletPractice) return GAUNTLET.maxViruses;
+    return Math.min(
+      GAUNTLET.maxViruses,
+      GAUNTLET.virusCapBase +
+        Math.floor(Math.max(0, this.wave - GAUNTLET.virusWave) / GAUNTLET.virusCapStep),
+    );
+  }
+
+  private virusClusterCount(): number {
+    if (this.gauntletPractice) return GAUNTLET.virusCluster;
+    return Math.min(
+      GAUNTLET.virusCluster,
+      GAUNTLET.virusClusterStart +
+        Math.floor(Math.max(0, this.wave - GAUNTLET.virusWave) / GAUNTLET.virusClusterStep),
+    );
+  }
+
+  private sentryLimit(): number {
+    if (this.gauntletPractice) return SENTRY.max;
+    return Math.min(
+      SENTRY.max,
+      SENTRY.startCap + Math.floor(Math.max(0, this.wave - 1) / SENTRY.capStep),
+    );
+  }
+
+  private errorLimit(): number {
+    if (this.gauntletPractice) return CASCADING_ERROR.maxBlocks;
+    return Math.min(
+      CASCADING_ERROR.maxBlocks,
+      CASCADING_ERROR.startBlocks +
+        Math.floor(Math.max(0, this.wave - GAUNTLET.errorWave) / CASCADING_ERROR.blockCapStep),
+    );
   }
 
   activeCount(): number {
@@ -298,6 +428,12 @@ export class World {
 
   /** Advances the simulation one fixed step. Consumes `pressed` bits from the provided frames. */
   step(dt: number, inputs: (InputFrame | null)[]): void {
+    // A scored gauntlet death freezes the arena under the results overlay. Practice
+    // keeps the old endless-respawn behavior.
+    if (this.mode === 'gauntlet' && this.gauntletOver) {
+      this.clearPressed(inputs);
+      return;
+    }
     if (this.mode === 'match') {
       if (this.phase === 'matchend') {
         this.clearPressed(inputs);
@@ -344,7 +480,7 @@ export class World {
           p.thrall = false;
           continue;
         }
-        if (this.mode === 'training' || this.mode === 'gauntlet') {
+        if (this.mode === 'training' || (this.mode === 'gauntlet' && this.gauntletPractice)) {
           p.respawnT -= dt;
           if (p.respawnT <= 0) this.respawnTrainingPlayer(p);
         }
@@ -385,6 +521,10 @@ export class World {
       if (p.waveCd > 0) p.waveCd = Math.max(0, p.waveCd - dt);
       if (p.bugCd > 0) p.bugCd = Math.max(0, p.bugCd - dt);
       if (p.autoFireT > 0) p.autoFireT = Math.max(0, p.autoFireT - dt);
+      if (p.bashT > 0) p.bashT = Math.max(0, p.bashT - dt);
+      if (p.wedgeT > 0) p.wedgeT = Math.max(0, p.wedgeT - dt);
+      if (p.stringT > 0) p.stringT = Math.max(0, p.stringT - dt);
+      if (p.stringLeft > 0 && p.stringT <= 0) this.fireWedgeStringShot(p);
       if (p.powerupT > 0) {
         p.powerupT = Math.max(0, p.powerupT - dt);
         if (p.powerupT === 0) {
@@ -398,6 +538,7 @@ export class World {
       if (p.ghostT > 0) p.ghostT = Math.max(0, p.ghostT - dt);
       if (p.wallT > 0) p.wallT = Math.max(0, p.wallT - dt);
       if (p.slowT > 0) p.slowT = Math.max(0, p.slowT - dt);
+      if (p.netPinT > 0) p.netPinT = Math.max(0, p.netPinT - dt);
       if (p.comboT > 0) {
         p.comboT = Math.max(0, p.comboT - dt);
         if (p.comboT === 0) p.comboStage = 0;
@@ -412,7 +553,11 @@ export class World {
         p.moveDirY = input.my;
       }
       const overcharged = p.powerupKind === POWERUP_KIND.OVERCHARGE && p.powerupT > 0;
-      let laserBusy = (p.laserT > 0 && !overcharged) || p.laserChargeHeld;
+      // Fisher is not rooted by the net wind-up: he has to move to draw the web out.
+      let laserBusy =
+        (p.laserT > 0 && !overcharged) ||
+        p.wedgeT > 0 ||
+        (p.laserChargeHeld && p.program !== PROGRAM_ID.FISHER);
       this.updateLock(p, laserBusy ? null : canAct ? input : null, canAct, dt);
       // Facing must follow the stick before the action snapshot is taken, otherwise a
       // dash/swing started while turning would use last frame's facing.
@@ -431,7 +576,50 @@ export class World {
       // releasing after the charge fires it. Either state roots the player.
       const heavyHeld = !!input && canAct && (input.held & ACTION.CANDLE) !== 0;
       if (p.laserChargeHeld) {
-        if (canAct && heavyHeld) {
+        if (p.program === PROGRAM_ID.FISHER) {
+          // The net is drawn by movement, not by rooting. Hold to pay out the line,
+          // release to detach it as a shield and snare.
+          if (canAct && heavyHeld) {
+            p.laserChargeT += dt;
+            if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+              p.facing = Math.atan2(input.my, input.mx);
+            }
+            p.laserFacing = p.facing;
+            if (!p.netDrawing && p.laserChargeT >= PLAYER.heavyTapMax) this.startNetDraw(p);
+            if (p.netDrawing) {
+              p.netT += dt;
+              // The web is drawn by moving: every step samples the trail behind him, so
+              // a curve or a hard turn is part of the shape instead of a straight line.
+              this.sampleNet(p);
+              if (p.netT >= FISHER.netDrawTime) this.detachNet(p);
+            }
+          } else {
+            if (p.netDrawing) this.detachNet(p);
+            else if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            p.laserChargeHeld = false;
+            p.laserChargeT = 0;
+            p.chargeT = 0;
+            p.chargeHeld = false;
+          }
+        } else if (p.program === PROGRAM_ID.WEDGE) {
+          // Wedge plants the red triangle, then commits to a straight plow. The charge
+          // auto-fires; the player never has to guess the release window.
+          if (canAct && heavyHeld) {
+            p.laserChargeT += dt;
+            if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+              p.facing = Math.atan2(input.my, input.mx);
+            }
+            p.laserFacing = p.facing;
+            if (p.laserChargeT >= WEDGE.chargeTime) this.fireWedgeCharge(p);
+          } else {
+            if (canAct && p.laserChargeT >= WEDGE.chargeTime) this.fireWedgeCharge(p);
+            else if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            p.laserChargeHeld = false;
+            p.laserChargeT = 0;
+            p.chargeT = 0;
+            p.chargeHeld = false;
+          }
+        } else if (canAct && heavyHeld) {
           p.laserChargeT += dt;
           // Rooted feet, free aim: the beam can be swept while charging.
           if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
@@ -517,9 +705,10 @@ export class World {
         if (input.pressed & ACTION.CANDLE) {
           if (
             p.laserCd <= 0 &&
-            p.energy >= PLAYER.laserCost &&
+            p.energy >= this.heavyCost(p) &&
             p.swingPhase === 0 &&
             p.dashT <= 0 &&
+            p.wedgeT <= 0 &&
             p.waveT <= 0
           ) {
             p.laserChargeHeld = true;
@@ -546,7 +735,7 @@ export class World {
 
       // Overcharge: holding weak attack keeps the beam alive; releasing it stops on the
       // next tick. The normal charged beam still owns `laserT` outside this powerup.
-      if (overcharged) {
+      if (overcharged && !p.laserChargeHeld && p.wedgeT <= 0) {
         if (canAct && input && (input.held & ACTION.BOLT) !== 0 && p.swingPhase === 0 && p.dashT <= 0) {
           if (p.laserT <= 0) this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
           p.laserT = Math.max(p.laserT, 0.06);
@@ -558,11 +747,13 @@ export class World {
       }
 
       const autoFireKind = p.powerupT > 0 ? p.powerupKind : -1;
+      const heavyLock = p.wedgeT > 0 || (p.laserChargeHeld && p.program === PROGRAM_ID.WEDGE);
       if (
         canAct &&
         input &&
         (input.held & ACTION.BOLT) !== 0 &&
         (autoFireKind === -1 || autoFireKind === POWERUP_KIND.MACHINE_GUN) &&
+        !heavyLock &&
         p.swingPhase === 0 &&
         p.dashT <= 0
       ) {
@@ -586,11 +777,18 @@ export class World {
         this.arena.pillars,
         this.arena.bounds,
       );
+      this.resolveBarrier(p);
+      this.resolveNets(p);
       if (p.dashT > 0 && p.dashKind === 1) this.resolveChargeDash(p);
+      if (p.wedgeT > 0) this.resolveWedgeCharge(p);
+      if (p.bashT > 0) this.resolveBracket(p);
     }
 
     if (this.mode === 'training' || this.mode === 'gauntlet') this.updatePickups(dt);
     this.updateDrone(dt);
+    this.updateNets(dt);
+    this.updateLures(dt);
+    this.updateBarriers(dt);
     this.updateProjectiles(dt);
     if (this.mode === 'gauntlet') this.updateGauntlet(dt);
 
@@ -676,6 +874,13 @@ export class World {
     p.dashDirX = Math.cos(dir);
     p.dashDirY = Math.sin(dir);
     p.iframes = Math.max(p.iframes, PLAYER.dashIframes);
+    if (p.program === PROGRAM_ID.WEDGE) {
+      // The bracket is both shield and shove: it snaps open in front, then the
+      // recoil kicks Wedge the other way instead of letting him drift.
+      this.startBracket(p, dir);
+      p.kx -= p.dashDirX * WEDGE.bashRecoil;
+      p.ky -= p.dashDirY * WEDGE.bashRecoil;
+    }
     this.emit(EV.DASH, p.slot, p.x, p.y, dir);
   }
 
@@ -701,10 +906,8 @@ export class World {
 
   private handleDeflectPress(p: Player): void {
     p.ghostT = 0;
-    if (p.comboStage === 2 && p.comboT > 0) {
-      if (p.waveCd <= 0 && p.swingPhase === 0) this.fireShieldWave(p);
-      return;
-    }
+    // Every quick press is a lash: left, right, left, right. The shield is the
+    // hold, never a third tap, so the two actions stay readable.
     const dir = p.comboStage === 1 && p.comboT > 0 ? -1 : 1;
     if (!this.trySwing(p, dir)) return;
     p.comboStage = dir === -1 ? 2 : 1;
@@ -954,34 +1157,10 @@ export class World {
     p.lockT += dt;
     let tx = 0;
     let ty = 0;
-    let valid = false;
-    if (p.lockKind === 1) {
-      const target = this.players[p.lockId];
-      if (target && target.active && target.alive) {
-        tx = target.x;
-        ty = target.y;
-        valid = true;
-      }
-    } else if (p.lockKind === 2) {
-      const target = this.worms[p.lockId];
-      if (target && target.active) {
-        tx = target.x;
-        ty = target.y;
-        valid = true;
-      }
-    } else if (p.lockKind === 3) {
-      const target = this.viruses[p.lockId];
-      if (target && target.active) {
-        tx = target.x;
-        ty = target.y;
-        valid = true;
-      }
-    } else if (p.lockKind === 4) {
-      if (this.drone.active) {
-        tx = this.drone.x;
-        ty = this.drone.y;
-        valid = true;
-      }
+    let valid = this.lockTargetPos(p);
+    if (valid) {
+      tx = this.lockTX;
+      ty = this.lockTY;
     }
     const maxD2 = PLAYER.lockRange * PLAYER.lockRange;
     if (valid) {
@@ -1033,6 +1212,32 @@ export class World {
         tx = target.x;
         ty = target.y;
       }
+      for (let i = 0; i < this.sentries.length; i++) {
+        const target = this.sentries[i];
+        if (!target.active) continue;
+        const dx = target.x - p.x;
+        const dy = target.y - p.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= best || this.lineBlocked(p.x, p.y, target.x, target.y)) continue;
+        best = d2;
+        p.lockKind = 5;
+        p.lockId = i;
+        tx = target.x;
+        ty = target.y;
+      }
+      for (let i = 0; i < this.errors.length; i++) {
+        const target = this.errors[i];
+        if (!target.active) continue;
+        const dx = target.x - p.x;
+        const dy = target.y - p.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= best || this.lineBlocked(p.x, p.y, target.x, target.y)) continue;
+        best = d2;
+        p.lockKind = 6;
+        p.lockId = i;
+        tx = target.x;
+        ty = target.y;
+      }
       if (this.mode === 'training' && this.drone.active) {
         const dx = this.drone.x - p.x;
         const dy = this.drone.y - p.y;
@@ -1044,11 +1249,163 @@ export class World {
           ty = this.drone.y;
         }
       }
+      if (p.lockKind !== 0) valid = true;
     }
+    // Right bumper / right stick steps around the available ring of targets. The
+    // newest target is used immediately instead of restarting the acquisition delay.
+    if (valid && p.lockKind !== 0) {
+      const pressed = input ? input.pressed : 0;
+      const next = (pressed & ACTION.LOCK_NEXT) !== 0;
+      const prev = (pressed & ACTION.LOCK_PREV) !== 0;
+      if (next !== prev) {
+        this.cycleLock(p, next, tx, ty);
+        if (this.lockTargetPos(p)) {
+          tx = this.lockTX;
+          ty = this.lockTY;
+        }
+      }
+    }
+
     p.lockActive = p.lockKind !== 0 && p.lockT >= PLAYER.lockAcquire;
     if (p.lockActive) {
       p.lockFacing = Math.atan2(ty - p.y, tx - p.x);
       p.facing = p.lockFacing;
+    }
+  }
+
+  /** Reads the current lock target into lockTX/lockTY. Returns false if it is gone. */
+  private lockTargetPos(p: Player): boolean {
+    if (p.lockKind === 1) {
+      const target = this.players[p.lockId];
+      if (target && target.active && target.alive) {
+        this.lockTX = target.x;
+        this.lockTY = target.y;
+        return true;
+      }
+    } else if (p.lockKind === 2) {
+      const target = this.worms[p.lockId];
+      if (target && target.active) {
+        this.lockTX = target.x;
+        this.lockTY = target.y;
+        return true;
+      }
+    } else if (p.lockKind === 3) {
+      const target = this.viruses[p.lockId];
+      if (target && target.active) {
+        this.lockTX = target.x;
+        this.lockTY = target.y;
+        return true;
+      }
+    } else if (p.lockKind === 4) {
+      if (this.drone.active) {
+        this.lockTX = this.drone.x;
+        this.lockTY = this.drone.y;
+        return true;
+      }
+    } else if (p.lockKind === 5) {
+      const target = this.sentries[p.lockId];
+      if (target && target.active) {
+        this.lockTX = target.x;
+        this.lockTY = target.y;
+        return true;
+      }
+    } else if (p.lockKind === 6) {
+      const target = this.errors[p.lockId];
+      if (target && target.active) {
+        this.lockTX = target.x;
+        this.lockTY = target.y;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Steps the held lock to the next or previous valid target in angular order around
+   * the player. Range and line of sight use the same rules as acquisition, and the
+   * current target is skipped so one press always moves.
+   */
+  private cycleLock(p: Player, forward: boolean, fromX: number, fromY: number): void {
+    this.cyclePlayer = p;
+    this.cycleForward = forward;
+    this.cycleBase = Math.atan2(fromY - p.y, fromX - p.x);
+    this.cycleFound = false;
+    this.cycleBestDelta = 0;
+    this.cycleBestKind = 0;
+    this.cycleBestId = -1;
+    this.cycleWrapDelta = forward ? -Math.PI - 1 : Math.PI + 1;
+    this.cycleWrapKind = 0;
+    this.cycleWrapId = -1;
+
+    for (let i = 0; i < this.players.length; i++) {
+      const t = this.players[i];
+      if (t === p || !t.active || !t.alive) continue;
+      this.offerCycle(1, i, t.x, t.y);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const t = this.worms[i];
+      if (t.active) this.offerCycle(2, i, t.x, t.y);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const t = this.viruses[i];
+      if (t.active) this.offerCycle(3, i, t.x, t.y);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const t = this.sentries[i];
+      if (t.active) this.offerCycle(5, i, t.x, t.y);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const t = this.errors[i];
+      if (t.active) this.offerCycle(6, i, t.x, t.y);
+    }
+    if (this.mode === 'training' && this.drone.active) this.offerCycle(4, 0, this.drone.x, this.drone.y);
+
+    const kind = this.cycleFound ? this.cycleBestKind : this.cycleWrapKind;
+    const id = this.cycleFound ? this.cycleBestId : this.cycleWrapId;
+    this.cyclePlayer = null;
+    if (kind === 0) return;
+    p.lockKind = kind;
+    p.lockId = id;
+  }
+
+  private offerCycle(kind: number, id: number, x: number, y: number): void {
+    const p = this.cyclePlayer;
+    if (!p) return;
+    if (kind === p.lockKind && id === p.lockId) return;
+    const dx = x - p.x;
+    const dy = y - p.y;
+    const maxD2 = PLAYER.lockRange * PLAYER.lockRange;
+    if (dx * dx + dy * dy > maxD2) return;
+    if (this.lineBlocked(p.x, p.y, x, y)) return;
+    let delta = Math.atan2(dy, dx) - this.cycleBase;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta <= -Math.PI) delta += Math.PI * 2;
+
+    if (this.cycleForward) {
+      if (delta > 0.0005) {
+        if (!this.cycleFound || delta < this.cycleBestDelta) {
+          this.cycleFound = true;
+          this.cycleBestDelta = delta;
+          this.cycleBestKind = kind;
+          this.cycleBestId = id;
+        }
+      } else if (delta > this.cycleWrapDelta) {
+        // Nothing ahead: wrap to the closest target behind, so one press still moves.
+        this.cycleWrapDelta = delta;
+        this.cycleWrapKind = kind;
+        this.cycleWrapId = id;
+      }
+    } else if (delta < -0.0005) {
+      if (!this.cycleFound || delta > this.cycleBestDelta) {
+        this.cycleFound = true;
+        this.cycleBestDelta = delta;
+        this.cycleBestKind = kind;
+        this.cycleBestId = id;
+      }
+    } else if (delta < this.cycleWrapDelta) {
+      this.cycleWrapDelta = delta;
+      this.cycleWrapKind = kind;
+      this.cycleWrapId = id;
     }
   }
 
@@ -1090,6 +1447,35 @@ export class World {
       return;
     }
 
+    if (p.program === PROGRAM_ID.WEDGE) {
+      // Three quick bracket shards in a string. The string owns its cadence; holding
+      // the button starts a new string only after the old one has finished.
+      if (p.stringLeft > 0 || p.burstCd > 0) return;
+      if (p.energy < WEDGE.shotCost) return;
+      p.stringLeft = WEDGE.shotCount;
+      p.stringT = 0;
+      this.fireWedgeStringShot(p);
+      return;
+    }
+
+    if (p.program === PROGRAM_ID.FISHER) {
+      if (p.autoFireT > 0 || p.energy < FISHER.spearCost) return;
+      if (!this.spawnProjectile(
+        p,
+        0,
+        FISHER.spearTtl,
+        FISHER.spearSpeed,
+        false,
+        FISHER.spearRadius,
+        FISHER.spearDamage,
+        5,
+      )) return;
+      p.energy -= FISHER.spearCost;
+      p.autoFireT = FISHER.attackCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
     if (p.burstCd > 0 || p.burstLeft <= 0) return;
     if (p.energy < BOLT.cost) return;
     if (!this.spawnProjectile(p)) return;
@@ -1098,6 +1484,776 @@ export class World {
     p.autoFireT = BOLT.autoInterval;
     if (p.burstLeft <= 0) p.burstCd = BOLT.burstCooldown;
     this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+  }
+
+  private heavyCost(p: Player): number {
+    if (p.program === PROGRAM_ID.WEDGE) return WEDGE.chargeCost;
+    if (p.program === PROGRAM_ID.FISHER) return FISHER.netCost;
+    return PLAYER.laserCost;
+  }
+
+  /** One shard of Wedge's three-shot string. The string owns its own cadence. */
+  private fireWedgeStringShot(p: Player): void {
+    if (!p.alive || p.energy < WEDGE.shotCost) {
+      p.stringLeft = 0;
+      return;
+    }
+    if (!this.spawnProjectile(
+      p,
+      0,
+      WEDGE.shotTtl,
+      WEDGE.shotSpeed,
+      false,
+      BOLT.radius,
+      WEDGE.shotDamage,
+    )) {
+      p.stringLeft = 0;
+      return;
+    }
+    p.energy -= WEDGE.shotCost;
+    p.stringLeft--;
+    p.stringT = WEDGE.shotInterval;
+    if (p.stringLeft === 0) p.burstCd = WEDGE.attackCooldown;
+    this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+  }
+
+  /**
+   * Plants Wedge's wall one body-length behind him, across his facing. The wall is a
+   * segment plus thickness: solid to bodies, reflective to shots.
+   */
+  private deployBarrier(p: Player): boolean {
+    let wall: Barrier | null = null;
+    for (let i = 0; i < this.barriers.length; i++) {
+      if (!this.barriers[i].active) {
+        wall = this.barriers[i];
+        break;
+      }
+    }
+    if (!wall) {
+      // The pool is full: recycle the oldest so one player cannot stack a maze.
+      wall = this.barriers[0];
+      for (let i = 1; i < this.barriers.length; i++) {
+        if (this.barriers[i].life < wall.life) wall = this.barriers[i];
+      }
+    }
+
+    const fx = Math.cos(p.facing);
+    const fy = Math.sin(p.facing);
+    const cx = p.x - fx * WEDGE.wallOffset;
+    const cy = p.y - fy * WEDGE.wallOffset;
+    // Tangent is perpendicular to facing; the bracket arms point back at Wedge.
+    const tx = -fy;
+    const ty = fx;
+    const half = WEDGE.wallHalfLength;
+    const x1 = cx - tx * half;
+    const y1 = cy - ty * half;
+    const x2 = cx + tx * half;
+    const y2 = cy + ty * half;
+
+    // Keep the whole wall inside the playfield and out of cover.
+    const inset = WEDGE.wallThickness * 0.5 + 2;
+    const b = this.arena.bounds;
+    if (
+      x1 < b.left + inset ||
+      x1 > b.right - inset ||
+      x2 < b.left + inset ||
+      x2 > b.right - inset ||
+      y1 < b.top + inset ||
+      y1 > b.bottom - inset ||
+      y2 < b.top + inset ||
+      y2 > b.bottom - inset
+    ) {
+      return false;
+    }
+    const probe = WEDGE.wallThickness * 0.5 + PLAYER.radius * 0.35;
+    for (let i = 0; i < this.arena.pillars.length; i++) {
+      const pillar = this.arena.pillars[i];
+      if (circleRect(cx, cy, probe, pillar, hitScratch)) return false;
+      if (circleRect(x1, y1, probe, pillar, hitScratch)) return false;
+      if (circleRect(x2, y2, probe, pillar, hitScratch)) return false;
+    }
+
+    wall.active = true;
+    wall.owner = p.slot;
+    wall.x1 = x1;
+    wall.y1 = y1;
+    wall.x2 = x2;
+    wall.y2 = y2;
+    wall.nx = fx;
+    wall.ny = fy;
+    wall.life = WEDGE.wallLife;
+    wall.maxLife = WEDGE.wallLife;
+    wall.phase = this.rng.range(0, Math.PI * 2);
+    return true;
+  }
+
+  private updateBarriers(dt: number): void {
+    for (let i = 0; i < this.barriers.length; i++) {
+      const wall = this.barriers[i];
+      if (!wall.active) continue;
+      wall.life -= dt;
+      if (wall.life <= 0) {
+        wall.life = 0;
+        wall.active = false;
+      }
+    }
+  }
+
+  /** Pushes a body out of a deployed wall. Dodges still phase through it. */
+  private resolveBarrier(p: Player): void {
+    if (p.dashT > 0) return;
+    const r = PLAYER.radius;
+    const rr = r + WEDGE.wallThickness * 0.5;
+    for (let i = 0; i < this.barriers.length; i++) {
+      const wall = this.barriers[i];
+      if (!wall.active) continue;
+      const vx = wall.x2 - wall.x1;
+      const vy = wall.y2 - wall.y1;
+      const len2 = vx * vx + vy * vy;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - wall.x1) * vx + (p.y - wall.y1) * vy) / len2)) : 0;
+      const px = wall.x1 + vx * t;
+      const py = wall.y1 + vy * t;
+      const dx = p.x - px;
+      const dy = p.y - py;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > rr * rr) continue;
+      const side = dx * wall.nx + dy * wall.ny >= 0 ? 1 : -1;
+      const nx = wall.nx * side;
+      const ny = wall.ny * side;
+      p.x = px + nx * (rr + 0.01);
+      p.y = py + ny * (rr + 0.01);
+      const vn = p.vx * nx + p.vy * ny;
+      if (vn < 0) {
+        p.vx -= vn * nx;
+        p.vy -= vn * ny;
+      }
+    }
+  }
+
+  /** Opens Wedge's bracket for the dodge bash. */
+  private startBracket(p: Player, facing: number): void {
+    p.bashT = WEDGE.bashTime;
+    p.bashFacing = facing;
+    p.bashHitPlayers = 0;
+    p.bashHitWorms = 0;
+    p.bashHitViruses = 0;
+    p.bashHitErrors = 0;
+    p.bashHitSentries = 0;
+    p.bashHitDrone = false;
+    p.ghostT = 0;
+  }
+
+  /** Damage and reflection inside the open bracket. The shape is a directional wall. */
+  private resolveBracket(p: Player): void {
+    const reach = WEDGE.bashReach;
+    const halfWidth = WEDGE.bashHalfWidth;
+    const damage = WEDGE.bashDamage;
+    const force = WEDGE.bashKnockback;
+    const cos = Math.cos(p.bashFacing);
+    const sin = Math.sin(p.bashFacing);
+
+    for (let i = 0; i < this.players.length; i++) {
+      const target = this.players[i];
+      if (target === p || !target.active || !target.alive || target.iframes > 0) continue;
+      const bit = 1 << target.slot;
+      if ((p.bashHitPlayers & bit) !== 0) continue;
+      const dx = target.x - p.x;
+      const dy = target.y - p.y;
+      const forward = dx * cos + dy * sin;
+      const lateral = Math.abs(dx * sin - dy * cos);
+      if (forward < 0 || forward > reach + PLAYER.radius || lateral > halfWidth + PLAYER.radius) continue;
+      if (this.lineBlocked(p.x, p.y, target.x, target.y)) continue;
+      p.bashHitPlayers |= bit;
+      this.damagePlayer(target, damage, p.slot, cos, sin, force);
+    }
+
+    if (this.mode === 'training' && this.drone.active && !p.bashHitDrone) {
+      const dx = this.drone.x - p.x;
+      const dy = this.drone.y - p.y;
+      const forward = dx * cos + dy * sin;
+      const lateral = Math.abs(dx * sin - dy * cos);
+      if (
+        forward >= 0 &&
+        forward <= reach + this.drone.radius &&
+        lateral <= halfWidth + this.drone.radius &&
+        !this.lineBlocked(p.x, p.y, this.drone.x, this.drone.y)
+      ) {
+        p.bashHitDrone = true;
+        this.damageDrone(damage, p.slot);
+      }
+    }
+
+    if (this.mode === 'gauntlet') {
+      for (let i = 0; i < this.sentries.length; i++) {
+        const s = this.sentries[i];
+        if (!s.active) continue;
+        const bit = 1 << i;
+        if ((p.bashHitSentries & bit) !== 0) continue;
+        const dx = s.x - p.x;
+        const dy = s.y - p.y;
+        const forward = dx * cos + dy * sin;
+        const lateral = Math.abs(dx * sin - dy * cos);
+        if (forward < 0 || forward > reach + s.radius || lateral > halfWidth + s.radius) continue;
+        if (this.lineBlocked(p.x, p.y, s.x, s.y)) continue;
+        p.bashHitSentries |= bit;
+        this.damageSentry(s, damage, p.slot, cos, sin, force);
+      }
+      for (let i = 0; i < this.viruses.length; i++) {
+        const v = this.viruses[i];
+        if (!v.active) continue;
+        const bit = 1 << i;
+        if ((p.bashHitViruses & bit) !== 0) continue;
+        const dx = v.x - p.x;
+        const dy = v.y - p.y;
+        const forward = dx * cos + dy * sin;
+        const lateral = Math.abs(dx * sin - dy * cos);
+        if (forward < 0 || forward > reach + v.radius || lateral > halfWidth + v.radius) continue;
+        if (this.lineBlocked(p.x, p.y, v.x, v.y)) continue;
+        p.bashHitViruses |= bit;
+        this.damageVirus(v, damage, p.slot, cos, sin, force);
+      }
+      for (let i = 0; i < this.worms.length; i++) {
+        const w = this.worms[i];
+        if (!w.active) continue;
+        const bit = 1 << i;
+        if ((p.bashHitWorms & bit) !== 0) continue;
+        let hitX = w.x;
+        let hitY = w.y;
+        let touching = false;
+        for (let s = -1; s < w.segCount && !touching; s++) {
+          const tx = s < 0 ? w.x : w.segX[s];
+          const ty = s < 0 ? w.y : w.segY[s];
+          const radius = s < 0 ? WORM.headRadius : WORM.segmentRadius;
+          const dx = tx - p.x;
+          const dy = ty - p.y;
+          const forward = dx * cos + dy * sin;
+          const lateral = Math.abs(dx * sin - dy * cos);
+          if (forward < 0 || forward > reach + radius || lateral > halfWidth + radius) continue;
+          if (this.lineBlocked(p.x, p.y, tx, ty)) continue;
+          touching = true;
+          hitX = tx;
+          hitY = ty;
+        }
+        if (!touching) continue;
+        p.bashHitWorms |= bit;
+        this.damageWorm(w, damage, p.slot, cos, sin, force);
+        void hitX;
+        void hitY;
+      }
+      for (let i = 0; i < this.errors.length; i++) {
+        const e = this.errors[i];
+        if (!e.active) continue;
+        const bit = 1 << i;
+        if ((p.bashHitErrors & bit) !== 0) continue;
+        const radius = CASCADING_ERROR.blockSize * 0.5;
+        const dx = e.x - p.x;
+        const dy = e.y - p.y;
+        const forward = dx * cos + dy * sin;
+        const lateral = Math.abs(dx * sin - dy * cos);
+        if (forward < 0 || forward > reach + radius || lateral > halfWidth + radius) continue;
+        if (this.lineBlocked(p.x, p.y, e.x, e.y)) continue;
+        p.bashHitErrors |= bit;
+        this.damageError(e, damage, p.slot, cos, sin);
+      }
+    }
+
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const proj = this.projectiles[i];
+      if (!proj.active || proj.owner === p.slot || proj.type === 1 || proj.type === 2) continue;
+      const dx = proj.x - p.x;
+      const dy = proj.y - p.y;
+      const forward = dx * cos + dy * sin;
+      const lateral = Math.abs(dx * sin - dy * cos);
+      if (forward < 0 || forward > reach + proj.radius || lateral > halfWidth + proj.radius) continue;
+      if (this.lineBlocked(p.x, p.y, proj.x, proj.y)) continue;
+      const wasMissile = proj.type === 4;
+      if (proj.type >= 3) proj.type = 0;
+      proj.homing = false;
+      const speed = Math.min(
+        BOLT.maxSpeed,
+        Math.max(Math.hypot(proj.vx, proj.vy), wasMissile ? BOLT.speed : 0) * BOLT.deflectMult,
+      );
+      proj.vx = cos * speed;
+      proj.vy = sin * speed;
+      proj.owner = p.slot;
+      proj.deflects++;
+      proj.damage = BOLT.damage + proj.deflects;
+      proj.bounces = 0;
+      proj.armed = false;
+      proj.grace = 0;
+      p.swingHit = true;
+      this.emit(EV.DEFLECT, p.slot, proj.x, proj.y, proj.deflects);
+    }
+  }
+
+  /** Commits Wedge's triangle plow. It runs forward and cannot steer. */
+  private fireWedgeCharge(p: Player): void {
+    if (!p.alive || p.energy < WEDGE.chargeCost) {
+      p.laserChargeHeld = false;
+      p.laserChargeT = 0;
+      return;
+    }
+    p.energy = Math.max(0, p.energy - WEDGE.chargeCost);
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    p.wedgeT = WEDGE.chargeDuration;
+    p.wedgeDirX = Math.cos(p.facing);
+    p.wedgeDirY = Math.sin(p.facing);
+    p.wedgeHitPlayers = 0;
+    p.wedgeHitWorms = 0;
+    p.wedgeHitViruses = 0;
+    p.wedgeHitErrors = 0;
+    p.wedgeHitSentries = 0;
+    p.wedgeHitDrone = false;
+    p.iframes = Math.max(p.iframes, WEDGE.chargeIframes);
+    p.laserCd = WEDGE.chargeCooldown;
+    p.lockActive = false;
+    p.lockKind = 0;
+    p.lockId = -1;
+    p.comboStage = 0;
+    p.comboT = 0;
+    this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
+  }
+
+  /** The plow shoves bodies and shots sideways out of the triangle as it crosses. */
+  private resolveWedgeCharge(p: Player): void {
+    const fx = p.wedgeDirX;
+    const fy = p.wedgeDirY;
+    const radius = WEDGE.chargeRadius;
+
+    for (let i = 0; i < this.players.length; i++) {
+      const target = this.players[i];
+      if (target === p || !target.active || !target.alive || target.iframes > 0) continue;
+      const bit = 1 << target.slot;
+      if ((p.wedgeHitPlayers & bit) !== 0) continue;
+      const dx = target.x - p.x;
+      const dy = target.y - p.y;
+      const rr = radius + PLAYER.radius;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      p.wedgeHitPlayers |= bit;
+      const side = fx * dy - fy * dx >= 0 ? 1 : -1;
+      this.damagePlayer(target, WEDGE.chargeDamage, p.slot, -fy * side, fx * side, WEDGE.chargeKnockback);
+    }
+
+    if (this.mode === 'training' && this.drone.active && !p.wedgeHitDrone) {
+      const dx = this.drone.x - p.x;
+      const dy = this.drone.y - p.y;
+      const rr = radius + this.drone.radius;
+      if (dx * dx + dy * dy <= rr * rr) {
+        p.wedgeHitDrone = true;
+        this.damageDrone(WEDGE.chargeDamage, p.slot);
+      }
+    }
+
+    if (this.mode === 'gauntlet') {
+      for (let i = 0; i < this.sentries.length; i++) {
+        const s = this.sentries[i];
+        if (!s.active) continue;
+        const bit = 1 << i;
+        if ((p.wedgeHitSentries & bit) !== 0) continue;
+        const dx = s.x - p.x;
+        const dy = s.y - p.y;
+        const rr = radius + s.radius;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        p.wedgeHitSentries |= bit;
+        const side = fx * dy - fy * dx >= 0 ? 1 : -1;
+        this.damageSentry(s, WEDGE.chargeDamage, p.slot, -fy * side, fx * side, WEDGE.chargeKnockback);
+      }
+      for (let i = 0; i < this.viruses.length; i++) {
+        const v = this.viruses[i];
+        if (!v.active) continue;
+        const bit = 1 << i;
+        if ((p.wedgeHitViruses & bit) !== 0) continue;
+        const dx = v.x - p.x;
+        const dy = v.y - p.y;
+        const rr = radius + v.radius;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        p.wedgeHitViruses |= bit;
+        const side = fx * dy - fy * dx >= 0 ? 1 : -1;
+        this.damageVirus(v, WEDGE.chargeDamage, p.slot, -fy * side, fx * side, WEDGE.chargeKnockback * 0.7);
+      }
+      for (let i = 0; i < this.worms.length; i++) {
+        const w = this.worms[i];
+        if (!w.active) continue;
+        const bit = 1 << i;
+        if ((p.wedgeHitWorms & bit) !== 0) continue;
+        let touching = false;
+        let hx = w.x - p.x;
+        let hy = w.y - p.y;
+        if (hx * hx + hy * hy <= (radius + WORM.headRadius) * (radius + WORM.headRadius)) touching = true;
+        if (!touching) {
+          for (let s = 0; s < w.segCount; s++) {
+            hx = w.segX[s] - p.x;
+            hy = w.segY[s] - p.y;
+            const rr = radius + WORM.segmentRadius;
+            if (hx * hx + hy * hy <= rr * rr) {
+              touching = true;
+              break;
+            }
+          }
+        }
+        if (!touching) continue;
+        p.wedgeHitWorms |= bit;
+        const side = fx * hy - fy * hx >= 0 ? 1 : -1;
+        this.damageWorm(w, WEDGE.chargeDamage, p.slot, -fy * side, fx * side, WEDGE.chargeKnockback);
+      }
+      for (let i = 0; i < this.errors.length; i++) {
+        const e = this.errors[i];
+        if (!e.active) continue;
+        const bit = 1 << i;
+        if ((p.wedgeHitErrors & bit) !== 0) continue;
+        const errR = CASCADING_ERROR.blockSize * 0.5;
+        const dx = e.x - p.x;
+        const dy = e.y - p.y;
+        const rr = radius + errR;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        p.wedgeHitErrors |= bit;
+        this.damageError(e, WEDGE.chargeDamage, p.slot, -fy, fx);
+      }
+    }
+
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const proj = this.projectiles[i];
+      if (!proj.active || proj.owner === p.slot || proj.type === 1 || proj.type === 2) continue;
+      const dx = proj.x - p.x;
+      const dy = proj.y - p.y;
+      const rr = radius + proj.radius;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      const side = fx * dy - fy * dx >= 0 ? 1 : -1;
+      const wasMissile = proj.type === 4;
+      if (proj.type >= 3) proj.type = 0;
+      proj.homing = false;
+      const speed = Math.min(
+        BOLT.maxSpeed,
+        Math.max(Math.hypot(proj.vx, proj.vy), wasMissile ? BOLT.speed : 0) * BOLT.deflectMult,
+      );
+      proj.vx = -fy * side * speed;
+      proj.vy = fx * side * speed;
+      proj.owner = p.slot;
+      proj.deflects++;
+      proj.damage = BOLT.damage + proj.deflects;
+      proj.bounces = 0;
+      proj.armed = false;
+      proj.grace = 0;
+      this.emit(EV.DEFLECT, p.slot, proj.x, proj.y, proj.deflects);
+    }
+  }
+
+  private startNetDraw(p: Player): void {
+    let index = -1;
+    for (let i = 0; i < this.nets.length; i++) {
+      if (!this.nets[i].active && this.nets[i].count === 0) {
+        index = i;
+        break;
+      }
+    }
+    if (index < 0) {
+      p.laserChargeHeld = false;
+      p.laserChargeT = 0;
+      return;
+    }
+    const net = this.nets[index];
+    net.owner = p.slot;
+    net.count = 1;
+    net.length = 0;
+    net.life = 0;
+    net.phase = this.rng.range(0, Math.PI * 2);
+    net.xs[0] = p.x - Math.cos(p.facing) * 22;
+    net.ys[0] = p.y - Math.sin(p.facing) * 22;
+    p.netDrawing = true;
+    p.netT = 0;
+    p.netIndex = index;
+  }
+
+  /** Appends the player's current position once he has moved far enough from the tip. */
+  private sampleNet(p: Player): void {
+    if (p.netIndex < 0) return;
+    const net = this.nets[p.netIndex];
+    if (!net) return;
+    if (net.count >= FISHER.netPoints || net.length >= FISHER.netMaxLength) return;
+    const px = net.xs[net.count - 1];
+    const py = net.ys[net.count - 1];
+    const dx = p.x - px;
+    const dy = p.y - py;
+    const d = Math.hypot(dx, dy);
+    if (d < FISHER.netPointSpacing) return;
+    net.xs[net.count] = p.x;
+    net.ys[net.count] = p.y;
+    net.count++;
+    net.length += d;
+  }
+
+  /** Releases a claimed, in-progress web back to the pool. */
+  private releaseNetDraft(p: Player): void {
+    if (p.netIndex < 0) return;
+    const net = this.nets[p.netIndex];
+    if (net && !net.active) {
+      net.count = 0;
+      net.length = 0;
+    }
+    p.netIndex = -1;
+    p.netDrawing = false;
+    p.netT = 0;
+  }
+
+  /** Drops the drawn web. The cost is paid on release; nothing is charged for a stub. */
+  private detachNet(p: Player): void {
+    if (!p.netDrawing) return;
+    const index = p.netIndex;
+    p.netDrawing = false;
+    p.netT = 0;
+    p.netIndex = -1;
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    p.laserFacing = p.facing;
+    const net = index >= 0 ? this.nets[index] : null;
+    if (!net) return;
+    if (net.count < 2 || net.length < FISHER.netMinLength || p.energy < FISHER.netCost) {
+      net.count = 0;
+      net.length = 0;
+      p.laserCd = Math.max(p.laserCd, 0.8);
+      return;
+    }
+
+    p.energy = Math.max(0, p.energy - FISHER.netCost);
+    p.laserCd = FISHER.netCooldown;
+    this.smoothNet(net);
+    net.active = true;
+    net.life = FISHER.netLife;
+    const mid = net.count >> 1;
+    this.emit(EV.SHIELD_WAVE, p.slot, net.xs[mid], net.ys[mid], p.facing);
+  }
+
+  /**
+   * Rounds out a drawn curve once, on deploy, so the stored collision shape matches the
+   * smooth line the renderer traces. A hard turn keeps its corner: the point's turn is
+   * tested against `netCornerCos` before it is blended with its neighbours.
+   */
+  private smoothNet(net: Net): void {
+    const n = net.count;
+    if (n < 3) return;
+    const sx = this.netScratchX;
+    const sy = this.netScratchY;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < n; i++) {
+        sx[i] = net.xs[i];
+        sy[i] = net.ys[i];
+      }
+      for (let i = 1; i < n - 1; i++) {
+        const ax = sx[i] - sx[i - 1];
+        const ay = sy[i] - sy[i - 1];
+        const bx = sx[i + 1] - sx[i];
+        const by = sy[i + 1] - sy[i];
+        const la = Math.hypot(ax, ay);
+        const lb = Math.hypot(bx, by);
+        if (la < 0.001 || lb < 0.001) continue;
+        if ((ax * bx + ay * by) / (la * lb) <= FISHER.netCornerCos) continue;
+        net.xs[i] = (sx[i - 1] + 2 * sx[i] + sx[i + 1]) * 0.25;
+        net.ys[i] = (sy[i - 1] + 2 * sy[i] + sy[i + 1]) * 0.25;
+      }
+    }
+  }
+
+  /**
+   * A deployed web holds whatever touches it: hostiles pin in place and player bodies
+   * are pushed out and stopped. It does no damage, and it lasts until `netLife` runs out.
+   */
+  private updateNets(dt: number): void {
+    for (let i = 0; i < this.nets.length; i++) {
+      const net = this.nets[i];
+      if (!net.active) continue;
+      net.life -= dt;
+      net.phase += dt;
+      if (net.life <= 0) {
+        net.active = false;
+        net.count = 0;
+        net.length = 0;
+        continue;
+      }
+
+      for (let s = 0; s < this.sentries.length; s++) {
+        const sentry = this.sentries[s];
+        if (!sentry.active) continue;
+        if (!this.netReaches(net, sentry.x, sentry.y, sentry.radius)) continue;
+        sentry.pinT = Math.max(sentry.pinT, FISHER.netHold);
+      }
+      for (let s = 0; s < this.viruses.length; s++) {
+        const virus = this.viruses[s];
+        if (!virus.active) continue;
+        if (!this.netReaches(net, virus.x, virus.y, virus.radius)) continue;
+        virus.pinT = Math.max(virus.pinT, FISHER.netHold);
+      }
+      if (this.drone.active && this.netReaches(net, this.drone.x, this.drone.y, this.drone.radius)) {
+        this.drone.netPinT = FISHER.netHold;
+      }
+      for (let s = 0; s < this.worms.length; s++) {
+        const worm = this.worms[s];
+        if (!worm.active) continue;
+        let touching = this.netReaches(net, worm.x, worm.y, WORM.headRadius);
+        if (!touching) {
+          for (let g = 0; g < worm.segCount; g++) {
+            if (this.netReaches(net, worm.segX[g], worm.segY[g], WORM.segmentRadius)) {
+              touching = true;
+              break;
+            }
+          }
+        }
+        if (!touching) continue;
+        worm.pinT = Math.max(worm.pinT, FISHER.netHold);
+      }
+    }
+  }
+
+  /**
+   * Bodies are caught, not bounced: a player, bot or thrall inside the web is held where
+   * it touched until the web expires. Fisher is exempt from his own web, and a dodge or
+   * his plow tears straight through because those moves phase geometry.
+   */
+  private resolveNets(p: Player): void {
+    if (p.dashT > 0 || p.wedgeT > 0) return;
+    const r = PLAYER.radius;
+    for (let i = 0; i < this.nets.length; i++) {
+      const net = this.nets[i];
+      if (!net.active || net.owner === p.slot) continue;
+      if (!this.netReaches(net, p.x, p.y, r)) continue;
+      p.netPinT = FISHER.netHold;
+      p.vx = 0;
+      p.vy = 0;
+      p.kx = 0;
+      p.ky = 0;
+    }
+  }
+
+  private netReaches(net: Net, x: number, y: number, radius: number): boolean {
+    const rr = FISHER.netWidth + radius;
+    const rr2 = rr * rr;
+    for (let s = 1; s < net.count; s++) {
+      const ax = net.xs[s - 1];
+      const ay = net.ys[s - 1];
+      const vx = net.xs[s] - ax;
+      const vy = net.ys[s] - ay;
+      const len2 = vx * vx + vy * vy;
+      const t = len2 > 0.0001 ? Math.max(0, Math.min(1, ((x - ax) * vx + (y - ay) * vy) / len2)) : 0;
+      const dx = x - (ax + vx * t);
+      const dy = y - (ay + vy * t);
+      if (dx * dx + dy * dy <= rr2) return true;
+    }
+    return false;
+  }
+
+  /** Shots reflect off the nearest strand of the web, whatever shape it was drawn in. */
+  private netBlocksProjectile(proj: Projectile): boolean {
+    for (let i = 0; i < this.nets.length; i++) {
+      const net = this.nets[i];
+      if (!net.active || proj.owner === net.owner || proj.type === 1 || proj.type === 2) continue;
+      const rr = FISHER.netWidth + proj.radius;
+      const rr2 = rr * rr;
+      let hit = false;
+      let hx = 0;
+      let hy = 0;
+      let nx = 0;
+      let ny = 0;
+      let nearest = rr2;
+      for (let s = 1; s < net.count; s++) {
+        const ax = net.xs[s - 1];
+        const ay = net.ys[s - 1];
+        const vx = net.xs[s] - ax;
+        const vy = net.ys[s] - ay;
+        const len2 = vx * vx + vy * vy;
+        if (len2 < 0.0001) continue;
+        const t = Math.max(0, Math.min(1, ((proj.x - ax) * vx + (proj.y - ay) * vy) / len2));
+        const px = ax + vx * t;
+        const py = ay + vy * t;
+        const dx = proj.x - px;
+        const dy = proj.y - py;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > rr2 || d2 >= nearest) continue;
+        nearest = d2;
+        const len = Math.sqrt(len2);
+        nx = -vy / len;
+        ny = vx / len;
+        hx = px;
+        hy = py;
+        hit = true;
+      }
+      if (!hit) continue;
+
+      const side = (proj.x - hx) * nx + (proj.y - hy) * ny;
+      const vn = proj.vx * nx + proj.vy * ny;
+      const wasMissile = proj.type === 4;
+      if (proj.type >= 3) proj.type = 0;
+      proj.homing = false;
+      proj.vx -= 2 * vn * nx;
+      proj.vy -= 2 * vn * ny;
+      const speed = Math.min(
+        BOLT.maxSpeed,
+        Math.max(Math.hypot(proj.vx, proj.vy), wasMissile ? BOLT.speed : 0) * FISHER.netReflectMult,
+      );
+      const mag = Math.hypot(proj.vx, proj.vy) || 1;
+      proj.vx = (proj.vx / mag) * speed;
+      proj.vy = (proj.vy / mag) * speed;
+      const push = side >= 0 ? 1 : -1;
+      proj.x += nx * push * (FISHER.netWidth + proj.radius + 2);
+      proj.y += ny * push * (FISHER.netWidth + proj.radius + 2);
+      proj.owner = net.owner;
+      proj.deflects++;
+      proj.damage = BOLT.damage + proj.deflects;
+      proj.bounces = 0;
+      proj.armed = false;
+      proj.grace = 0;
+      this.emit(EV.DEFLECT, net.owner, proj.x, proj.y, proj.deflects);
+      return true;
+    }
+    return false;
+  }
+
+  private spawnLure(p: Player): void {
+    let lure: Lure | null = null;
+    for (let i = 0; i < this.lures.length; i++) {
+      if (!this.lures[i].active) {
+        lure = this.lures[i];
+        break;
+      }
+    }
+    if (!lure) return;
+    lure.active = true;
+    lure.owner = p.slot;
+    lure.x = p.x;
+    lure.y = p.y;
+    lure.life = FISHER.lureLife;
+    lure.phase = this.rng.range(0, Math.PI * 2);
+  }
+
+  private updateLures(dt: number): void {
+    for (let i = 0; i < this.lures.length; i++) {
+      const lure = this.lures[i];
+      if (!lure.active) continue;
+      lure.life -= dt;
+      lure.phase += dt;
+      if (lure.life <= 0) lure.active = false;
+    }
+  }
+
+  /** Nearest live lure inside its attraction radius, or -1. Local bots read it as a decoy. */
+  nearestLureIndex(x: number, y: number): number {
+    let best = -1;
+    let bestD2 = FISHER.lureRadius * FISHER.lureRadius;
+    for (let i = 0; i < this.lures.length; i++) {
+      const lure = this.lures[i];
+      if (!lure.active) continue;
+      const dx = lure.x - x;
+      const dy = lure.y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = i;
+      }
+    }
+    return best;
   }
 
   /** Fires the randomly assigned bug on the strong-attack tap. */
@@ -1114,8 +2270,18 @@ export class World {
     } else if (p.bugKind === 2) {
       p.wallT = BUG.wallDuration;
       p.wallFacing = p.facing;
-    } else {
+    } else if (p.bugKind === 3) {
       p.ghostT = BUG.ghostDuration;
+    } else if (p.bugKind === 4) {
+      // Wedge's signature bug: a static bracket wall behind him. Refuse a wall that
+      // would land inside cover and hand the energy back rather than eat the button.
+      if (!this.deployBarrier(p)) {
+        p.bugCd = 0;
+        p.energy = Math.min(PLAYER.energyMax, p.energy + BUG.cost);
+        return;
+      }
+    } else {
+      this.spawnLure(p);
     }
     this.emit(EV.BUG, p.slot, p.x, p.y, p.bugKind, Math.cos(p.facing), Math.sin(p.facing));
   }
@@ -1150,6 +2316,12 @@ export class World {
     proj.armed = false;
     proj.homing = false;
     proj.pathAxis = 0;
+    proj.hitPlayers = 0;
+    proj.hitWorms = 0;
+    proj.hitViruses = 0;
+    proj.hitErrors = 0;
+    proj.hitSentries = 0;
+    proj.hitDrone = false;
     proj.trailHead = 0;
     proj.trailCount = 0;
     this.emit(EV.PLANT_MINE, p.slot, p.x, p.y, p.facing);
@@ -1184,6 +2356,12 @@ export class World {
     proj.armed = false;
     proj.homing = false;
     proj.pathAxis = 0;
+    proj.hitPlayers = 0;
+    proj.hitWorms = 0;
+    proj.hitViruses = 0;
+    proj.hitErrors = 0;
+    proj.hitSentries = 0;
+    proj.hitDrone = false;
     proj.trailHead = 0;
     proj.trailCount = 0;
   }
@@ -1195,6 +2373,8 @@ export class World {
     speed: number = BOLT.speed,
     homing = false,
     radius: number = BOLT.radius,
+    damage: number = BOLT.damage,
+    type: Projectile['type'] = 0,
   ): boolean {
     let proj: Projectile | null = null;
     for (let i = 0; i < this.projectiles.length; i++) {
@@ -1208,6 +2388,9 @@ export class World {
     const angle = p.facing + angleOffset;
     const c = Math.cos(angle);
     const s = Math.sin(angle);
+    // Enemy-controlled kits (training/bot-match AI and the gauntlet thrall) shoot slower than a human.
+    const aiOwned = p.thrall || (p.slot !== this.localSlot && (this.mode === 'training' || p.slot <= this.botSlots));
+    const enemyScale = aiOwned ? BOLT.enemySpeedMult : 1;
     const x = p.x + c * BOLT.spawnOffset;
     const y = p.y + s * BOLT.spawnOffset;
     for (let i = 0; i < this.arena.pillars.length; i++) {
@@ -1218,16 +2401,16 @@ export class World {
 
     proj.active = true;
     proj.serial = ++this.serial;
-    proj.type = 0;
+    proj.type = type;
     proj.owner = p.slot;
     proj.x = x;
     proj.y = y;
     proj.prevX = x;
     proj.prevY = y;
-    proj.vx = c * speed;
-    proj.vy = s * speed;
+    proj.vx = c * speed * enemyScale;
+    proj.vy = s * speed * enemyScale;
     proj.radius = radius;
-    proj.damage = BOLT.damage;
+    proj.damage = damage;
     proj.deflects = 0;
     proj.bounces = 0;
     proj.fuse = ttl;
@@ -1235,6 +2418,12 @@ export class World {
     proj.armed = false;
     proj.homing = homing;
     proj.pathAxis = 0;
+    proj.hitPlayers = 0;
+    proj.hitWorms = 0;
+    proj.hitViruses = 0;
+    proj.hitErrors = 0;
+    proj.hitSentries = 0;
+    proj.hitDrone = false;
     proj.trailHead = 0;
     proj.trailCount = 0;
     return true;
@@ -1434,6 +2623,9 @@ export class World {
         if (!proj.active) break;
         this.bouncePillars(proj);
         if (!proj.active) break;
+        this.bounceBarriers(proj);
+        if (!proj.active) break;
+        if (this.netBlocksProjectile(proj)) break;
         if (this.wallBlocksProjectile(proj)) break;
         if (this.projectileHits(proj)) break;
         if (this.mode === 'gauntlet' && this.projectileHitsGauntlet(proj)) break;
@@ -1528,6 +2720,12 @@ export class World {
       bounced = true;
     }
     if (!bounced) return;
+    if (proj.type === 5) {
+      // The spear is a committed line, not a ricochet. It dies on geometry.
+      proj.active = false;
+      this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
+      return;
+    }
     if (proj.owner < 0 && proj.type >= 3) {
       // Low-tier hostile fire disperses on geometry. Bouncing is a stronger-enemy trait.
       proj.active = false;
@@ -1540,9 +2738,58 @@ export class World {
     if (proj.bounces > BOLT.maxBounces) proj.active = false;
   }
 
+  /** Deployed walls are real geometry: shots reflect off them like a pillar. */
+  private bounceBarriers(proj: Projectile): void {
+    for (let i = 0; i < this.barriers.length; i++) {
+      const wall = this.barriers[i];
+      if (!wall.active) continue;
+      const vx = wall.x2 - wall.x1;
+      const vy = wall.y2 - wall.y1;
+      const len2 = vx * vx + vy * vy;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((proj.x - wall.x1) * vx + (proj.y - wall.y1) * vy) / len2)) : 0;
+      const px = wall.x1 + vx * t;
+      const py = wall.y1 + vy * t;
+      const dx = proj.x - px;
+      const dy = proj.y - py;
+      const rr = WEDGE.wallThickness * 0.5 + proj.radius;
+      if (dx * dx + dy * dy > rr * rr) continue;
+
+      const side = (dx * wall.nx + dy * wall.ny) >= 0 ? 1 : -1;
+      const nx = wall.nx * side;
+      const ny = wall.ny * side;
+      proj.x = px + nx * (rr + 0.5);
+      proj.y = py + ny * (rr + 0.5);
+      if (proj.type === 5) {
+        proj.active = false;
+        this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
+        return;
+      }
+      if (proj.owner < 0 && proj.type >= 3) {
+        proj.active = false;
+        this.emit(EV.SENTRY_HIT, -1, proj.x, proj.y, 0, nx, ny);
+        return;
+      }
+      const vn = proj.vx * nx + proj.vy * ny;
+      if (vn < 0) {
+        proj.vx -= 2 * vn * nx;
+        proj.vy -= 2 * vn * ny;
+      }
+      this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 0);
+      proj.armed = true;
+      proj.bounces++;
+      if (proj.bounces > BOLT.maxBounces) proj.active = false;
+      return;
+    }
+  }
+
   private bouncePillars(proj: Projectile): void {
     for (let i = 0; i < this.arena.pillars.length; i++) {
       if (!circleRect(proj.x, proj.y, proj.radius, this.arena.pillars[i], hitScratch)) continue;
+      if (proj.type === 5) {
+        proj.active = false;
+        this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
+        return;
+      }
       if (proj.owner < 0 && proj.type >= 3) {
         proj.active = false;
         this.emit(EV.SENTRY_HIT, -1, proj.x, proj.y, 0, hitScratch.nx, hitScratch.ny);
@@ -1567,7 +2814,8 @@ export class World {
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
       if (!p.active || !p.alive || p.iframes > 0 || p.ghostT > 0) continue;
-      if (proj.owner === p.slot && !proj.armed) continue;
+      // Your own fire can never damage you, even after a wall bounce arms it.
+      if (proj.owner === p.slot) continue;
       if (proj.type === 1 && proj.owner === p.slot && proj.grace > 0) continue;
       const dx = proj.x - p.x;
       const dy = proj.y - p.y;
@@ -1579,6 +2827,14 @@ export class World {
         return true;
       }
       const speed = Math.hypot(proj.vx, proj.vy) || 1;
+      if (proj.type === 5) {
+        // Spear: damage each player once and keep travelling.
+        const bit = 1 << p.slot;
+        if ((proj.hitPlayers & bit) !== 0) continue;
+        proj.hitPlayers |= bit;
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, FISHER.spearKnockback);
+        continue;
+      }
       this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, BOLT.knockback);
       proj.active = false;
       return true;
@@ -1591,11 +2847,18 @@ export class World {
       if (dx * dx + dy * dy <= rr * rr) {
         if (proj.type === 1) {
           this.explodeMine(proj, proj.owner);
+          return true;
+        } else if (proj.type === 5) {
+          if (!proj.hitDrone) {
+            proj.hitDrone = true;
+            this.damageDrone(proj.damage, proj.owner);
+          }
+          return false;
         } else {
           this.damageDrone(proj.damage, proj.owner);
           proj.active = false;
+          return true;
         }
-        return true;
       }
     }
     return false;
@@ -1627,6 +2890,12 @@ export class World {
       p.laserChargeT = 0;
       p.laserT = 0;
       p.waveT = 0;
+      // A web still being drawn is dropped with the body; an in-flight one stays.
+      this.releaseNetDraft(p);
+      p.wedgeT = 0;
+      p.bashT = 0;
+      p.stringLeft = 0;
+      p.stringT = 0;
       p.comboStage = 0;
       p.comboT = 0;
       p.lockActive = false;
@@ -1636,8 +2905,18 @@ export class World {
         p.active = false;
         p.thrall = false;
         this.gauntletKills++;
+        this.dropPickupFromKill(p.x, p.y, true);
         this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
         return;
+      }
+      if (this.mode === 'gauntlet' && !this.gauntletPractice && p.slot === 0) {
+        this.gauntletOver = true;
+        p.respawnT = 0;
+        this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
+        return;
+      }
+      if (this.mode === 'training' && p.slot > 0) {
+        this.dropPickupFromKill(p.x, p.y, false);
       }
       p.respawnT = this.mode === 'gauntlet' ? GAUNTLET.playerRespawn : TRAINING.playerRespawn;
       this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
@@ -1908,6 +3187,11 @@ export class World {
 
   private updateDrone(dt: number): void {
     if (this.mode !== 'training') return;
+    // Bot practice replaces the sparring drone; a second body in the room means the
+    // drone stays gone instead of respawning behind the bots.
+    let activePlayers = 0;
+    for (let i = 0; i < this.players.length; i++) if (this.players[i].active) activePlayers++;
+    if (activePlayers > 1) return;
     const d = this.drone;
     if (!d.active) {
       d.respawnT -= dt;
@@ -1918,6 +3202,13 @@ export class World {
     d.prevY = d.y;
     d.rot += dt * 1.5;
     if (d.hitFlash > 0) d.hitFlash = Math.max(0, d.hitFlash - dt);
+    // Caught in Fisher's web: no drift, no shots, until the web expires.
+    if (d.netPinT > 0) {
+      d.netPinT = Math.max(0, d.netPinT - dt);
+      d.vx = 0;
+      d.vy = 0;
+      return;
+    }
 
     const tx = d.targetX - d.x;
     const ty = d.targetY - d.y;
@@ -1992,6 +3283,7 @@ export class World {
     d.vx = 0;
     d.vy = 0;
     d.hitFlash = 0;
+    d.netPinT = 0;
     this.pickDroneTarget();
     const initialSpawn = this.arena.spawns[2];
     d.x = initial ? initialSpawn.x : this.rng.range(this.arena.bounds.left + 150, this.arena.bounds.right - 150);
@@ -2100,10 +3392,11 @@ export class World {
   private updatePickups(dt: number): void {
     const p = this.players[0];
     this.powerupSpawnT -= dt;
+    if (this.powerupDropT > 0) this.powerupDropT = Math.max(0, this.powerupDropT - dt);
     let activeCount = 0;
     for (let i = 0; i < this.pickups.length; i++) if (this.pickups[i].active) activeCount++;
     if (activeCount < POWERUP.maxActive && this.powerupSpawnT <= 0 && p.alive) {
-      this.spawnPickup(p.x, p.y);
+      this.spawnPickup(p.x, p.y, POWERUP.spawnRadiusMin, POWERUP.spawnRadiusMax);
       this.powerupSpawnT = POWERUP.spawnInterval;
     }
 
@@ -2130,7 +3423,7 @@ export class World {
     }
   }
 
-  private spawnPickup(originX: number, originY: number): void {
+  private spawnPickup(originX: number, originY: number, minDist: number, maxDist: number): void {
     let slot: Pickup | null = null;
     for (let i = 0; i < this.pickups.length; i++) {
       if (!this.pickups[i].active) {
@@ -2142,7 +3435,7 @@ export class World {
     const pad = POWERUP.pickupPadding;
     for (let attempt = 0; attempt < 16; attempt++) {
       const angle = this.rng.range(0, Math.PI * 2);
-      const dist = this.rng.range(160, 340);
+      const dist = this.rng.range(minDist, maxDist);
       const x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, originX + Math.cos(angle) * dist));
       const y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, originY + Math.sin(angle) * dist));
       let blocked = false;
@@ -2162,6 +3455,19 @@ export class World {
       slot.life = POWERUP.life;
       return;
     }
+  }
+
+  /** Kill drops are the main pickup faucet. Ambient spawns are only a safety net. */
+  private dropPickupFromKill(x: number, y: number, elite: boolean): void {
+    if (this.mode !== 'gauntlet' && this.mode !== 'training') return;
+    if (this.powerupDropT > 0) return;
+    let activeCount = 0;
+    for (let i = 0; i < this.pickups.length; i++) if (this.pickups[i].active) activeCount++;
+    if (activeCount >= POWERUP.maxActive) return;
+    const chance = elite ? POWERUP.eliteDropChance : POWERUP.dropChance;
+    if (this.rng.next() > chance) return;
+    this.spawnPickup(x, y, POWERUP.dropRadiusMin, POWERUP.dropRadiusMax);
+    this.powerupDropT = POWERUP.dropCooldown;
   }
 
   private collectPickup(p: Player, pickup: Pickup): void {
@@ -2189,54 +3495,61 @@ export class World {
     const nextWave = 1 + Math.floor(this.gauntletT / GAUNTLET.waveDuration);
     if (nextWave !== this.wave) {
       this.wave = nextWave;
-      this.waveBannerT = 3;
-      // A new wave arrives early instead of waiting out the old timer.
-      if (this.wormSpawnT > 1.4) this.wormSpawnT = 1.4;
-      if (this.virusSpawnT > 1.4) this.virusSpawnT = 1.4;
-      if (GAUNTLET.autoFirewalls && this.firewallSpawnT > 2.2) this.firewallSpawnT = 2.2;
-      if (this.sentrySpawnT > 2.2) this.sentrySpawnT = 2.2;
-      if (this.errorSpawnT > 2.2) this.errorSpawnT = 2.2;
+      this.waveBannerT = 2.4;
+      // Waves tighten the timers; they do not force a synchronized burst of every threat.
+      // Keeping the existing countdowns prevents a wall of silhouettes landing together.
     }
     if (this.waveBannerT > 0) this.waveBannerT = Math.max(0, this.waveBannerT - dt);
-    const ramp = (this.wave - 1) * GAUNTLET.waveSpawnRamp;
     this.infection = Math.max(0, this.infection - GAUNTLET.infectionDecay * dt);
 
-    let wormCount = 0;
-    for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) wormCount++;
-    if (wormCount < GAUNTLET.maxWorms) {
-      this.wormSpawnT -= dt;
-      if (this.wormSpawnT <= 0) {
-        this.spawnWorm();
-        this.wormSpawnT = Math.max(GAUNTLET.waveMinInterval, GAUNTLET.wormInterval - ramp);
+    if (this.wave >= GAUNTLET.wormWave) {
+      let wormCount = 0;
+      for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) wormCount++;
+      if (wormCount < this.wormLimit()) {
+        this.wormSpawnT -= dt;
+        if (this.wormSpawnT <= 0) {
+          this.spawnWorm();
+          this.wormSpawnT = this.gauntletInterval(GAUNTLET.wormInterval, GAUNTLET.wormMinInterval);
+        }
       }
     }
 
-    let virusCount = 0;
-    for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) virusCount++;
-    if (virusCount === 0) {
-      if (this.virusSpawnT > GAUNTLET.virusRetry) this.virusSpawnT = GAUNTLET.virusRetry;
-      this.virusSpawnT -= dt;
-      if (this.virusSpawnT <= 0) {
-        this.spawnVirusCluster();
-        this.virusSpawnT = Math.max(GAUNTLET.waveMinInterval, GAUNTLET.virusInterval - ramp);
-        virusCount = GAUNTLET.virusCluster;
+    if (this.wave >= GAUNTLET.virusWave) {
+      let virusCount = 0;
+      for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) virusCount++;
+      if (virusCount === 0) {
+        // The first cluster waits the full unlock delay. A retry after a wipe is short.
+        if (this.virusSeeded && this.virusSpawnT > GAUNTLET.virusRetry) {
+          this.virusSpawnT = GAUNTLET.virusRetry;
+        }
+        this.virusSpawnT -= dt;
+        if (this.virusSpawnT <= 0) {
+          this.spawnVirusCluster();
+          this.virusSeeded = true;
+          this.virusSpawnT = this.gauntletInterval(GAUNTLET.virusInterval, GAUNTLET.virusMinInterval);
+          virusCount = this.virusClusterCount();
+        }
+      }
+
+      this.virusSplitT -= dt;
+      if (this.virusSplitT <= 0) {
+        this.virusSplitT = this.gauntletInterval(VIRUS.splitInterval, VIRUS.splitMinInterval);
+        if (virusCount < this.virusLimit()) this.splitVirus();
       }
     }
 
-    this.virusSplitT -= dt;
-    if (this.virusSplitT <= 0) {
-      this.virusSplitT = VIRUS.splitInterval;
-      if (virusCount < GAUNTLET.maxViruses) this.splitVirus();
-    }
-
+    this.drainSentryQueue(dt);
     let sentryCount = 0;
     for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) sentryCount++;
-    this.drainSentryQueue(dt);
-    if (sentryCount < SENTRY.max && this.sentryQueueCount === 0) {
+    if (sentryCount < this.sentryLimit() && this.sentryQueueCount === 0) {
       this.sentrySpawnT -= dt;
       if (this.sentrySpawnT <= 0) {
         this.spawnSentryPack();
-        this.sentrySpawnT = Math.max(SENTRY.minInterval, SENTRY.interval - ramp * 0.8);
+        const nextInterval =
+          !this.gauntletPractice && this.wave <= SENTRY.openingWaves
+            ? SENTRY.openingInterval
+            : SENTRY.interval;
+        this.sentrySpawnT = this.gauntletInterval(nextInterval, SENTRY.minInterval);
       }
     }
 
@@ -2249,7 +3562,7 @@ export class World {
         this.firewallSpawnT -= dt;
         if (this.firewallSpawnT <= 0) {
           this.spawnFirewall();
-          this.firewallSpawnT = Math.max(GAUNTLET.waveMinInterval, GAUNTLET.firewallInterval - ramp);
+          this.firewallSpawnT = GAUNTLET.firewallInterval;
         }
       }
     }
@@ -2270,32 +3583,38 @@ export class World {
     // arenas are wider than a screen; spawning at the far edge delayed all shooting.
     const p = this.players[0];
     const angle = this.rng.range(0, Math.PI * 2);
-    const dist = this.rng.range(480, 700);
-    const margin = 150;
+    // Use the camera window, not a fixed radius: a vertical 480-unit offset is
+    // off-screen even though it is "close" on a wide arena.
+    const spreadX = (VIEW_W / CAMERA_ZOOM) * SENTRY.spawnViewX;
+    const spreadY = (VIEW_H / CAMERA_ZOOM) * SENTRY.spawnViewY;
+    const margin = SENTRY.spawnMargin;
     this.sentryQueueX = Math.max(
       this.arena.bounds.left + margin,
-      Math.min(this.arena.bounds.right - margin, p.x + Math.cos(angle) * dist),
+      Math.min(this.arena.bounds.right - margin, p.x + Math.cos(angle) * spreadX),
     );
     this.sentryQueueY = Math.max(
       this.arena.bounds.top + margin,
-      Math.min(this.arena.bounds.bottom - margin, p.y + Math.sin(angle) * dist),
+      Math.min(this.arena.bounds.bottom - margin, p.y + Math.sin(angle) * spreadY),
     );
     const pack = this.sentryPack++;
     let n = 0;
-    if (pack === 0) {
-      n = this.pushQueue(0, SENTRY.initialPulses, n);
-    } else if (pack === 1) {
-      n = this.pushQueue(1, 1, n);
-      n = this.pushQueue(3, SENTRY.flockSize, n);
-    } else if (pack === 2) {
-      n = this.pushQueue(2, 1, n);
+    if (!this.gauntletPractice && this.wave <= SENTRY.openingWaves) {
+      // Two pulse squares open the run and then hold the same small firing line.
+      // One lone square on a wide arena read as an empty level.
+      n = this.pushQueue(0, 2, n);
+    } else if (!this.gauntletPractice && this.wave < GAUNTLET.triplexWave) {
       n = this.pushQueue(0, 1, n);
+    } else if (!this.gauntletPractice && this.wave < GAUNTLET.homingWave) {
+      n = this.pushQueue((pack & 1) === 0 ? 0 : 1, 1, n);
+    } else if (!this.gauntletPractice && this.wave < GAUNTLET.flockWave) {
+      const lane = pack % 3;
+      n = this.pushQueue(lane === 0 ? 0 : lane === 1 ? 1 : 2, 1, n);
     } else {
-      const pulseCount = 1 + Math.min(2, Math.floor(this.wave / 2));
-      n = this.pushQueue(0, pulseCount, n);
-      n = this.pushQueue(1, 1, n);
-      n = this.pushQueue(3, SENTRY.flockSize, n);
-      n = this.pushQueue(2, 1, n);
+      const lane = pack & 3;
+      if (lane === 0) n = this.pushQueue(0, 1, n);
+      else if (lane === 1) n = this.pushQueue(1, 1, n);
+      else if (lane === 2) n = this.pushQueue(2, 1, n);
+      else n = this.pushQueue(3, SENTRY.flockSize, n);
     }
     this.sentryQueueCount = n;
     this.sentryQueueIndex = 0;
@@ -2311,6 +3630,15 @@ export class World {
   /** Drops one queued silhouette every packStagger seconds. */
   private drainSentryQueue(dt: number): void {
     if (this.sentryQueueIndex >= this.sentryQueueCount) return;
+    let active = 0;
+    for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) active++;
+    if (active >= this.sentryLimit()) {
+      // A pack can be larger than the remaining slots. Land what fits, then stop;
+      // otherwise a four-silhouette pack pushes the live count past the wave cap.
+      this.sentryQueueCount = 0;
+      this.sentryQueueIndex = 0;
+      return;
+    }
     this.sentryQueueT -= dt;
     if (this.sentryQueueT > 0) return;
     this.sentryQueueT = SENTRY.packStagger;
@@ -2334,15 +3662,19 @@ export class World {
 
     let radius: number = SENTRY.pulse.radius;
     let hp: number = SENTRY.pulse.hp;
+    let leash: number = SENTRY.pulse.leash;
     if (kind === 1) {
       radius = SENTRY.triplex.radius;
       hp = SENTRY.triplex.hp;
+      leash = SENTRY.triplex.leash;
     } else if (kind === 2) {
       radius = SENTRY.homing.radius;
       hp = SENTRY.homing.hp;
+      leash = SENTRY.homing.leash;
     } else if (kind === 3) {
       radius = SENTRY.flock.radius;
       hp = SENTRY.flock.hp;
+      leash = SENTRY.flock.leash;
     }
 
     let x = anchorX;
@@ -2368,15 +3700,29 @@ export class World {
     s.ky = 0;
     s.hp = s.maxHp = hp;
     s.radius = radius;
-    s.fireT = this.rng.range(0.9, 2.2);
+    s.anchorX = x;
+    s.anchorY = y;
+    s.leash = leash;
+    s.fireT = this.gauntletPractice
+      ? this.rng.range(0.9, 2.2)
+      : this.wave <= SENTRY.openingWaves
+        ? this.rng.range(SENTRY.openingFireMin, SENTRY.openingFireMax)
+        : this.rng.range(0.9, 2.2);
     s.phase = this.rng.range(0, Math.PI * 2);
     s.hitFlash = 0;
     s.orbitSign = this.rng.next() < 0.5 ? -1 : 1;
     s.spawnT = SENTRY.spawnTime;
+    s.pinT = 0;
     return true;
   }
 
   private sentryClear(x: number, y: number, radius: number): boolean {
+    if (!this.pointClearOfCover(x, y, radius)) return false;
+    const p = this.players[0];
+    return !p.alive || Math.hypot(x - p.x, y - p.y) > 240;
+  }
+
+  private pointClearOfCover(x: number, y: number, radius: number): boolean {
     if (
       x < this.arena.bounds.left + radius ||
       x > this.arena.bounds.right - radius ||
@@ -2388,8 +3734,7 @@ export class World {
     for (let i = 0; i < this.arena.pillars.length; i++) {
       if (circleRect(x, y, radius + 4, this.arena.pillars[i], hitScratch)) return false;
     }
-    const p = this.players[0];
-    return !p.alive || Math.hypot(x - p.x, y - p.y) > 240;
+    return true;
   }
 
   /** Fly, keep a range band, and fire. Cover blocks both shots and movement. */
@@ -2400,6 +3745,12 @@ export class World {
     if (s.hitFlash > 0) s.hitFlash = Math.max(0, s.hitFlash - dt);
     if (s.spawnT > 0) {
       s.spawnT = Math.max(0, s.spawnT - dt);
+      s.vx = 0;
+      s.vy = 0;
+      return;
+    }
+    if (s.pinT > 0) {
+      s.pinT = Math.max(0, s.pinT - dt);
       s.vx = 0;
       s.vy = 0;
       return;
@@ -2439,27 +3790,51 @@ export class World {
     }
 
     const p = this.players[0];
-    const tx = p.alive ? p.x : this.centerX;
-    const ty = p.alive ? p.y : this.centerY;
+    // Fisher's lure overshadows the player while it is live. Sentries aim at the
+    // beacon, which buys the Fisher space even if they keep firing.
+    const lureIndex = this.nearestLureIndex(s.x, s.y);
+    const lure = lureIndex >= 0 ? this.lures[lureIndex] : null;
+    const tx = lure ? lure.x : p.alive ? p.x : s.anchorX;
+    const ty = lure ? lure.y : p.alive ? p.y : s.anchorY;
     const dx = tx - s.x;
     const dy = ty - s.y;
     const dist = Math.hypot(dx, dy) || 1;
     const ux = dx / dist;
     const uy = dy / dist;
+    const anchorDx = s.anchorX - s.x;
+    const anchorDy = s.anchorY - s.y;
+    const anchorDist = Math.hypot(anchorDx, anchorDy);
+    const anchorUx = anchorDist > 1 ? anchorDx / anchorDist : 0;
+    const anchorUy = anchorDist > 1 ? anchorDy / anchorDist : 0;
+    // Sentries hold their landing zone. They engage only inside the leash + weapon
+    // range; outside that they drift back to the anchor instead of following the player.
+    const engaged = (p.alive || lure !== null) && dist < s.leash + range;
     let desiredX = 0;
     let desiredY = 0;
-    if (dist < keepMin) {
-      desiredX -= ux;
-      desiredY -= uy;
-    } else if (dist > keepMax) {
-      desiredX += ux;
-      desiredY += uy;
+    if (engaged) {
+      if (dist < keepMin) {
+        desiredX -= ux;
+        desiredY -= uy;
+      } else if (dist > keepMax) {
+        desiredX += ux;
+        desiredY += uy;
+      }
+      desiredX += -uy * strafe * s.orbitSign;
+      desiredY += ux * strafe * s.orbitSign;
+      if (s.kind === 3) {
+        desiredX += Math.sin(s.phase * 3.4 + s.orbitSign) * 0.45;
+        desiredY += Math.cos(s.phase * 3.1) * 0.45;
+      }
+    } else if (anchorDist > 36) {
+      desiredX = anchorUx;
+      desiredY = anchorUy;
+    } else {
+      desiredX = Math.cos(s.phase * 0.42 * s.orbitSign) * 0.18;
+      desiredY = Math.sin(s.phase * 0.37 * s.orbitSign) * 0.18;
     }
-    desiredX += -uy * strafe * s.orbitSign;
-    desiredY += ux * strafe * s.orbitSign;
-    if (s.kind === 3) {
-      desiredX += Math.sin(s.phase * 3.4 + s.orbitSign) * 0.45;
-      desiredY += Math.cos(s.phase * 3.1) * 0.45;
+    if (anchorDist > s.leash) {
+      desiredX += anchorUx * 2.4;
+      desiredY += anchorUy * 2.4;
     }
     const dm = Math.hypot(desiredX, desiredY) || 1;
     desiredX /= dm;
@@ -2476,10 +3851,10 @@ export class World {
     s.y = Math.max(this.arena.bounds.top + s.radius, Math.min(this.arena.bounds.bottom - s.radius, s.y));
     this.pushOutOfCover(s, s.radius);
 
-    if (!p.alive) return;
+    if (!p.alive && !lure) return;
     s.fireT -= dt;
     if (s.fireT > 0 || dist > range) return;
-    if (this.lineBlocked(s.x, s.y, p.x, p.y)) {
+    if (this.lineBlocked(s.x, s.y, tx, ty)) {
       s.fireT = 0.35;
       return;
     }
@@ -2515,7 +3890,9 @@ export class World {
         );
       }
     }
-    s.fireT = this.rng.range(fireMin, fireMax);
+    s.fireT =
+      this.rng.range(fireMin, fireMax) *
+      (!this.gauntletPractice && this.wave <= SENTRY.openingWaves ? SENTRY.openingCadenceMult : 1);
   }
 
   /** True collision with cover, used by worms and sentries. */
@@ -2567,6 +3944,12 @@ export class World {
     proj.armed = true;
     proj.homing = false;
     proj.pathAxis = 0;
+    proj.hitPlayers = 0;
+    proj.hitWorms = 0;
+    proj.hitViruses = 0;
+    proj.hitErrors = 0;
+    proj.hitSentries = 0;
+    proj.hitDrone = false;
     proj.trailHead = 0;
     proj.trailCount = 0;
     this.emit(EV.SENTRY_SHOOT, -1, x, y, angle);
@@ -2581,7 +3964,10 @@ export class World {
     this.emit(EV.SENTRY_HIT, sourceSlot, s.x, s.y, amount, dirX, dirY);
     if (s.hp > 0) return;
     s.active = false;
-    if (sourceSlot === 0) this.gauntletKills++;
+    if (sourceSlot === 0) {
+      this.gauntletKills++;
+      this.dropPickupFromKill(s.x, s.y, s.kind !== 0);
+    }
     this.emit(EV.SENTRY_KILL, sourceSlot, s.x, s.y, s.radius * 4);
   }
 
@@ -2619,6 +4005,7 @@ export class World {
     }
 
     if (active === 0) {
+      if (!this.gauntletPractice && this.wave < GAUNTLET.errorWave) return;
       this.errorSpawnT -= dt;
       if (this.errorSpawnT <= 0) this.spawnErrorColony();
       return;
@@ -2626,7 +4013,10 @@ export class World {
 
     this.errorGrowT -= dt;
     if (this.errorGrowT <= 0) {
-      this.errorGrowT = CASCADING_ERROR.growthInterval;
+      this.errorGrowT = this.gauntletInterval(
+        CASCADING_ERROR.growthInterval,
+        CASCADING_ERROR.growthMinInterval,
+      );
       this.growError();
     }
   }
@@ -2687,11 +4077,18 @@ export class World {
     e.phase = this.rng.range(0, Math.PI * 2);
     e.spawnT = CASCADING_ERROR.spawnTime;
     this.errorSpawnT = CASCADING_ERROR.reseedDelay;
-    this.errorGrowT = CASCADING_ERROR.growthInterval;
+    this.errorGrowT = this.gauntletInterval(
+      CASCADING_ERROR.growthInterval,
+      CASCADING_ERROR.growthMinInterval,
+    );
     this.emit(EV.ERROR_SPAWN, -1, x, y, CASCADING_ERROR.blockSize);
   }
 
   private growError(): void {
+    let active = 0;
+    for (let i = 0; i < this.errors.length; i++) if (this.errors[i].active) active++;
+    if (active >= this.errorLimit()) return;
+
     let parent: CascadingError | null = null;
     for (let attempt = 0; attempt < 12; attempt++) {
       const index = Math.floor(this.rng.next() * this.errors.length);
@@ -2734,7 +4131,10 @@ export class World {
     this.emit(EV.ERROR_HIT, sourceSlot, e.x, e.y, amount, dirX, dirY);
     if (e.hp > 0) return;
     e.active = false;
-    if (sourceSlot === 0) this.gauntletKills++;
+    if (sourceSlot === 0) {
+      this.gauntletKills++;
+      this.dropPickupFromKill(e.x, e.y, false);
+    }
     this.emit(EV.ERROR_BREAK, sourceSlot, e.x, e.y, CASCADING_ERROR.blockSize);
   }
 
@@ -2765,14 +4165,19 @@ export class World {
       }
     }
     if (!w) return;
-    const p = this.players[0];
-    const spawn = this.arena.spawns[this.farSpawnIndex()];
+    const spawn = this.arena.spawns[this.wormAnchorIndex()];
     w.active = true;
     w.x = spawn.x;
     w.y = spawn.y;
     w.prevX = w.x;
     w.prevY = w.y;
-    w.angle = Math.atan2((p.alive ? p.y : this.centerY) - w.y, (p.alive ? p.x : this.centerX) - w.x);
+    w.anchorX = spawn.x;
+    w.anchorY = spawn.y;
+    w.patrolX = spawn.x;
+    w.patrolY = spawn.y;
+    w.retargetT = 0;
+    w.aggroT = 0;
+    w.angle = Math.atan2(this.centerY - w.y, this.centerX - w.x);
     w.vx = 0;
     w.vy = 0;
     w.kx = 0;
@@ -2785,6 +4190,8 @@ export class World {
     w.infected = false;
     w.phase = this.rng.range(0, Math.PI * 2);
     w.spawnT = WORM.spawnTime;
+    w.pinT = 0;
+    this.pickWormPatrol(w);
     const ca = Math.cos(w.angle);
     const sa = Math.sin(w.angle);
     for (let i = 0; i < WORM.maxSegments; i++) {
@@ -2800,6 +4207,43 @@ export class World {
     }
   }
 
+  private wormAnchorIndex(): number {
+    const p = this.players[0];
+    let best = 0;
+    let bestD = -1;
+    for (let i = 0; i < 4; i++) {
+      const index = Math.floor(this.rng.next() * this.arena.spawns.length);
+      const s = this.arena.spawns[index];
+      const dx = s.x - p.x;
+      const dy = s.y - p.y;
+      const d = dx * dx + dy * dy;
+      if (d > bestD) {
+        best = index;
+        bestD = d;
+      }
+      if (d > 520 * 520) return index;
+    }
+    return bestD > 420 * 420 ? best : this.farSpawnIndex();
+  }
+
+  private pickWormPatrol(w: Worm): void {
+    const pad = WORM.headRadius + 8;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const angle = this.rng.range(0, Math.PI * 2);
+      const dist = this.rng.range(24, WORM.patrolRadius);
+      const x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.anchorX + Math.cos(angle) * dist));
+      const y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.anchorY + Math.sin(angle) * dist));
+      if (!this.pointClearOfCover(x, y, pad)) continue;
+      w.patrolX = x;
+      w.patrolY = y;
+      w.retargetT = this.rng.range(WORM.retargetMin, WORM.retargetMax);
+      return;
+    }
+    w.patrolX = w.anchorX;
+    w.patrolY = w.anchorY;
+    w.retargetT = this.rng.range(WORM.retargetMin, WORM.retargetMax);
+  }
+
   private updateWorm(w: Worm, dt: number): void {
     w.prevX = w.x;
     w.prevY = w.y;
@@ -2812,10 +4256,52 @@ export class World {
       w.vy = 0;
       return;
     }
+    if (w.pinT > 0) {
+      w.pinT = Math.max(0, w.pinT - dt);
+      w.vx = 0;
+      w.vy = 0;
+      return;
+    }
 
     const p = this.players[0];
-    const tx = p.alive ? p.x : this.centerX;
-    const ty = p.alive ? p.y : this.centerY;
+    const lureIndex = this.nearestLureIndex(w.x, w.y);
+    const lure = lureIndex >= 0 ? this.lures[lureIndex] : null;
+    const pdx = p.x - w.x;
+    const pdy = p.y - w.y;
+    const aggroSq = WORM.aggroRadius * WORM.aggroRadius;
+    if (w.infected || lure) {
+      w.aggroT = WORM.aggroTime;
+    } else if (p.alive && pdx * pdx + pdy * pdy < aggroSq) {
+      w.aggroT = WORM.aggroTime;
+    } else {
+      w.aggroT = Math.max(0, w.aggroT - dt);
+    }
+    w.retargetT -= dt;
+
+    const anchorDx = w.anchorX - w.x;
+    const anchorDy = w.anchorY - w.y;
+    const anchorDist = Math.hypot(anchorDx, anchorDy);
+    let tx = w.patrolX;
+    let ty = w.patrolY;
+    if (lure) {
+      tx = lure.x;
+      ty = lure.y;
+    } else if (w.aggroT > 0 && p.alive) {
+      tx = p.x;
+      ty = p.y;
+    } else if (anchorDist > WORM.territoryRadius) {
+      tx = w.anchorX;
+      ty = w.anchorY;
+    } else {
+      const patrolDx = w.patrolX - w.x;
+      const patrolDy = w.patrolY - w.y;
+      if (w.retargetT <= 0 || patrolDx * patrolDx + patrolDy * patrolDy < 24 * 24) {
+        this.pickWormPatrol(w);
+        tx = w.patrolX;
+        ty = w.patrolY;
+      }
+    }
+
     const desired =
       Math.atan2(ty - w.y, tx - w.x) +
       Math.sin(w.phase * WORM.seekWobbleFreq + w.y * 0.01) * WORM.seekWobbleAmp;
@@ -2824,7 +4310,15 @@ export class World {
     while (diff < -Math.PI) diff += Math.PI * 2;
     const turn = WORM.turnRate * dt;
     w.angle += Math.max(-turn, Math.min(turn, diff));
-    const speed = WORM.speed * (w.infected ? WORM.infectedSpeedMult : 1);
+    const growSlow = Math.max(
+      WORM.minSpeedMult,
+      1 - (w.segCount - WORM.segments) * WORM.lengthSlow,
+    );
+    const speed =
+      WORM.speed *
+      growSlow *
+      (w.infected ? WORM.infectedSpeedMult : 1) *
+      (w.aggroT > 0 ? 1 : WORM.patrolSpeedMult);
     w.vx = Math.cos(w.angle) * speed;
     w.vy = Math.sin(w.angle) * speed;
     w.x += (w.vx + w.kx) * dt;
@@ -2911,6 +4405,7 @@ export class World {
       if (hit) {
         const d = Math.hypot(hdx, hdy) || 1;
         this.damagePlayer(p, WORM.touchDamage, -1, hdx / d, hdy / d, WORM.knockback);
+        w.aggroT = WORM.aggroTime;
         w.touchCd = WORM.touchCooldown;
       }
     }
@@ -2920,12 +4415,18 @@ export class World {
     if (!w.active) return;
     w.hp -= amount;
     w.hitFlash = 0.2;
+    // Only the player provokes a worm. Crossfire between rival factions should not
+    // turn every worm into a player-seeking missile.
+    if (sourceSlot === 0) w.aggroT = WORM.aggroTime;
     w.kx += dirX * force;
     w.ky += dirY * force;
     this.emit(EV.WORM_HIT, sourceSlot, w.x, w.y, amount, dirX, dirY);
     if (w.hp <= 0) {
       w.active = false;
-      if (sourceSlot === 0) this.gauntletKills++;
+      if (sourceSlot === 0) {
+        this.gauntletKills++;
+        this.dropPickupFromKill(w.x, w.y, true);
+      }
       this.emit(EV.WORM_KILL, sourceSlot, w.x, w.y, 90 + w.segCount * 12, dirX, dirY);
     }
   }
@@ -2976,13 +4477,42 @@ export class World {
     v.maxHp = VIRUS.hp;
     v.radius = VIRUS.radius;
     v.targetWorm = -1;
+    v.targetPlayer = false;
+    v.roamX = v.x;
+    v.roamY = v.y;
+    v.retargetT = 0;
     v.orbitSign = this.rng.next() < 0.5 ? -1 : 1;
     v.phase = this.rng.range(0, Math.PI * 2);
     v.contactCd = this.rng.range(0, 0.5);
     v.hitFlash = 0;
     v.spawnT = VIRUS.spawnTime;
+    v.pinT = 0;
     this.nudgeVirusFromCover(v);
+    this.pickVirusRoam(v);
     return v;
+  }
+
+  private pickVirusRoam(v: Virus): void {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const angle = this.rng.range(0, Math.PI * 2);
+      const dist = this.rng.range(VIRUS.roamMin, VIRUS.roamMax);
+      const x = Math.max(
+        this.arena.bounds.left + VIRUS.radius + 6,
+        Math.min(this.arena.bounds.right - VIRUS.radius - 6, v.x + Math.cos(angle) * dist),
+      );
+      const y = Math.max(
+        this.arena.bounds.top + VIRUS.radius + 6,
+        Math.min(this.arena.bounds.bottom - VIRUS.radius - 6, v.y + Math.sin(angle) * dist),
+      );
+      if (!this.pointClearOfCover(x, y, VIRUS.radius + 2)) continue;
+      v.roamX = x;
+      v.roamY = y;
+      v.retargetT = this.rng.range(VIRUS.retargetMin, VIRUS.retargetMax);
+      return;
+    }
+    v.roamX = v.x;
+    v.roamY = v.y;
+    v.retargetT = this.rng.range(VIRUS.retargetMin, VIRUS.retargetMax);
   }
 
   private nudgeVirusFromCover(v: Virus): void {
@@ -2996,10 +4526,11 @@ export class World {
 
   private spawnVirusCluster(): void {
     const anchor = this.arena.spawns[this.farSpawnIndex()];
+    const count = this.virusClusterCount();
     let spawned = 0;
-    for (let i = 0; i < GAUNTLET.virusCluster; i++) {
+    for (let i = 0; i < count; i++) {
       const a =
-        (i / GAUNTLET.virusCluster) * Math.PI * 2 +
+        (i / count) * Math.PI * 2 +
         this.rng.range(-VIRUS.clusterAngleJitter, VIRUS.clusterAngleJitter);
       const r = this.rng.range(VIRUS.clusterRadiusMin, VIRUS.clusterRadiusMax);
       if (this.spawnVirus(anchor.x + Math.cos(a) * r, anchor.y + Math.sin(a) * r)) spawned++;
@@ -3035,31 +4566,66 @@ export class World {
       v.vy = 0;
       return;
     }
-
+    if (v.pinT > 0) {
+      v.pinT = Math.max(0, v.pinT - dt);
+      v.vx = 0;
+      v.vy = 0;
+      return;
+    }
     const p = this.players[0];
     let targetWorm = -1;
+    let targetPlayer = false;
+    let lureTarget = false;
     let bestScore = Infinity;
-    let tx = p.alive ? p.x : this.centerX;
-    let ty = p.alive ? p.y : this.centerY;
+    let tx = v.roamX;
+    let ty = v.roamY;
     if (p.alive) {
       const dx = p.x - v.x;
       const dy = p.y - v.y;
-      bestScore = dx * dx + dy * dy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < VIRUS.huntRadius * VIRUS.huntRadius) {
+        bestScore = d2;
+        targetPlayer = true;
+        tx = p.x;
+        ty = p.y;
+      }
     }
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active || w.infected) continue;
       const dx = w.x - v.x;
       const dy = w.y - v.y;
-      const score = (dx * dx + dy * dy) * VIRUS.targetWormBias;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > VIRUS.wormHuntRadius * VIRUS.wormHuntRadius) continue;
+      const score = d2 * VIRUS.targetWormBias;
       if (score < bestScore) {
         bestScore = score;
         targetWorm = i;
+        targetPlayer = false;
         tx = w.x;
         ty = w.y;
       }
     }
+    const lureIndex = this.nearestLureIndex(v.x, v.y);
+    if (lureIndex >= 0) {
+      const lure = this.lures[lureIndex];
+      targetWorm = -1;
+      targetPlayer = false;
+      lureTarget = true;
+      tx = lure.x;
+      ty = lure.y;
+    }
     v.targetWorm = targetWorm;
+    v.targetPlayer = targetPlayer;
+
+    v.retargetT -= dt;
+    if (!lureTarget && !targetPlayer && targetWorm < 0) {
+      const rdx = v.roamX - v.x;
+      const rdy = v.roamY - v.y;
+      if (v.retargetT <= 0 || rdx * rdx + rdy * rdy < 30 * 30) this.pickVirusRoam(v);
+      tx = v.roamX;
+      ty = v.roamY;
+    }
 
     const dx = tx - v.x;
     const dy = ty - v.y;
@@ -3069,12 +4635,13 @@ export class World {
     let desiredX = ux;
     let desiredY = uy;
     if (
-      targetWorm < 0 &&
+      targetPlayer &&
       p.alive &&
       dist < VIRUS.orbit + VIRUS.orbitBand &&
       dist > VIRUS.orbit - VIRUS.orbitBand
     ) {
       const radial = (dist - VIRUS.orbit) * VIRUS.orbitRadial;
+
       desiredX = -uy * v.orbitSign + ux * radial;
       desiredY = ux * v.orbitSign + uy * radial;
     }
@@ -3327,12 +4894,19 @@ export class World {
     this.emit(EV.VIRUS_HIT, sourceSlot, v.x, v.y, amount, dirX, dirY);
     if (v.hp <= 0) {
       v.active = false;
-      if (sourceSlot === 0) this.gauntletKills++;
+      if (sourceSlot === 0) {
+        this.gauntletKills++;
+        this.dropPickupFromKill(v.x, v.y, false);
+      }
       this.emit(EV.VIRUS_KILL, sourceSlot, v.x, v.y, v.radius * 4, dirX, dirY);
     }
   }
 
   private projectileHitsGauntlet(proj: Projectile): boolean {
+    if (proj.type === 5) {
+      this.spearHitsGauntlet(proj);
+      return false;
+    }
     // Enemy fire is not a friendly-fire-free laser tag beam. A missed sentry shot can
     // chew through a worm, a virus, or an error block. Sentries ignore their own pack,
     // because a projectile has no source silhouette to exclude safely.
@@ -3445,6 +5019,95 @@ export class World {
     return false;
   }
 
+  /** Spear pass: every hostile on the line takes damage once, then the spear keeps going. */
+  private spearHitsGauntlet(proj: Projectile): void {
+    const speed = Math.hypot(proj.vx, proj.vy) || 1;
+    const ux = proj.vx / speed;
+    const uy = proj.vy / speed;
+
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitErrors & bit) !== 0) continue;
+      const rr = proj.radius + CASCADING_ERROR.blockSize * 0.5;
+      const dx = proj.x - e.x;
+      const dy = proj.y - e.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitErrors |= bit;
+      this.damageError(e, proj.damage, proj.owner, ux, uy);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitSentries & bit) !== 0) continue;
+      const rr = proj.radius + s.radius;
+      const dx = proj.x - s.x;
+      const dy = proj.y - s.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitSentries |= bit;
+      this.damageSentry(s, proj.damage, proj.owner, ux, uy, FISHER.spearKnockback);
+      if (s.active && this.nearCoverAhead(s.x, s.y, ux, uy, FISHER.spearPinRange)) s.pinT = FISHER.spearPin;
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitViruses & bit) !== 0) continue;
+      const rr = proj.radius + v.radius;
+      const dx = proj.x - v.x;
+      const dy = proj.y - v.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitViruses |= bit;
+      this.damageVirus(v, proj.damage, proj.owner, ux, uy, FISHER.spearKnockback * 0.6);
+      if (v.active && this.nearCoverAhead(v.x, v.y, ux, uy, FISHER.spearPinRange)) v.pinT = FISHER.spearPin;
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitWorms & bit) !== 0) continue;
+      let hitX = w.x;
+      let hitY = w.y;
+      let touching = false;
+      const hr = proj.radius + WORM.headRadius;
+      if ((proj.x - w.x) * (proj.x - w.x) + (proj.y - w.y) * (proj.y - w.y) <= hr * hr) {
+        touching = true;
+      } else {
+        for (let s = 0; s < w.segCount; s++) {
+          const sr = proj.radius + WORM.segmentRadius;
+          const dx = proj.x - w.segX[s];
+          const dy = proj.y - w.segY[s];
+          if (dx * dx + dy * dy > sr * sr) continue;
+          touching = true;
+          hitX = w.segX[s];
+          hitY = w.segY[s];
+          break;
+        }
+      }
+      if (!touching) continue;
+      proj.hitWorms |= bit;
+      this.damageWorm(w, proj.damage, proj.owner, ux, uy, FISHER.spearKnockback);
+      if (w.active && this.nearCoverAhead(hitX, hitY, ux, uy, FISHER.spearPinRange)) w.pinT = FISHER.spearPin;
+    }
+  }
+
+  /** True when cover or an arena wall sits just ahead of a point. */
+  private nearCoverAhead(x: number, y: number, ux: number, uy: number, range: number): boolean {
+    const aheadX = x + ux * range;
+    const aheadY = y + uy * range;
+    if (
+      aheadX < this.arena.bounds.left ||
+      aheadX > this.arena.bounds.right ||
+      aheadY < this.arena.bounds.top ||
+      aheadY > this.arena.bounds.bottom
+    ) {
+      return true;
+    }
+    return this.lineBlocked(x, y, aheadX, aheadY);
+  }
+
   /** Close-range punch layered onto the deflect swing. Projectiles keep priority. */
   private resolveSwingContact(p: Player): void {
     if (p.swingHit) return;
@@ -3455,6 +5118,11 @@ export class World {
     const reach = PLAYER.punchReach * whipMult;
     const damage = PLAYER.punchDamage * whipMult;
     const force = (p.thrall ? PLAYER.thrallSwingKnockback : PLAYER.punchKnockback) * (whip ? 1.8 : 1);
+    // A sweep shoves sideways, not straight away. The two tap directions throw
+    // targets opposite ways, so the lash reads as a physical arc rather than a shove.
+    const sweepDir = p.swingDir < 0 ? -1 : 1;
+    const shoveX = -sin * sweepDir;
+    const shoveY = cos * sweepDir;
 
     for (let i = 0; i < this.players.length; i++) {
       const target = this.players[i];
@@ -3464,7 +5132,7 @@ export class World {
       const d = Math.hypot(dx, dy);
       if (d > reach + PLAYER.radius || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
-      this.damagePlayer(target, damage, p.slot, dx / d, dy / d, force);
+      this.damagePlayer(target, damage, p.slot, shoveX, shoveY, force);
       this.markSwingHit(p);
       return;
     }
@@ -3489,7 +5157,7 @@ export class World {
       const d = Math.hypot(dx, dy);
       if (d > reach + s.radius || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
-      this.damageSentry(s, damage, p.slot, dx / d, dy / d, force);
+      this.damageSentry(s, damage, p.slot, shoveX, shoveY, force);
       this.markSwingHit(p);
       return;
     }
@@ -3501,7 +5169,7 @@ export class World {
       const d = Math.hypot(dx, dy);
       if (d > reach + v.radius || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
-      this.damageVirus(v, damage, p.slot, dx / d, dy / d, force);
+      this.damageVirus(v, damage, p.slot, shoveX, shoveY, force);
       this.markSwingHit(p);
       return;
     }
@@ -3513,7 +5181,7 @@ export class World {
       const d = Math.hypot(dx, dy);
       if (d > reach + WORM.headRadius || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
-      this.damageWorm(w, damage, p.slot, dx / d, dy / d, force);
+      this.damageWorm(w, damage, p.slot, shoveX, shoveY, force);
       this.markSwingHit(p);
       return;
     }
@@ -3526,7 +5194,7 @@ export class World {
       const d = Math.hypot(dx, dy);
       if (d > reach + radius || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
-      this.damageError(e, damage, p.slot, dx / d, dy / d);
+      this.damageError(e, damage, p.slot, shoveX, shoveY);
       this.markSwingHit(p);
       return;
     }

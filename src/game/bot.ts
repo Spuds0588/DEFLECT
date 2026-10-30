@@ -1,4 +1,5 @@
 import { BOLT, BUG, PLAYER } from './config';
+import { PROGRAM_ID } from './programs';
 import type { ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
 import { Rng } from './rng';
@@ -6,12 +7,13 @@ import { arenaNav, NAV_MAX_PATH } from './nav';
 import { ACTION, type InputFrame, type Player } from './types';
 import type { World } from './world';
 
-export const BOT_TIERS = ['rookie', 'veteran', 'digital'] as const;
+export const BOT_TIERS = ['rookie', 'veteran', 'digital', 'impossible'] as const;
 export type BotTier = (typeof BOT_TIERS)[number];
 export const BOT_TIER_LABELS: Record<BotTier, string> = {
-  rookie: 'ROOKIE',
-  veteran: 'VETERAN',
-  digital: 'DIGITAL',
+  rookie: 'EASY',
+  veteran: 'MEDIUM',
+  digital: 'HARD',
+  impossible: 'IMPOSSIBLE',
 };
 export const BOT_NAMES = ['VEX', 'GLITCH', 'RIFT'] as const;
 export const BOT_STYLE_LABELS = ['DUELIST', 'TRICKSTER', 'SIEGE'] as const;
@@ -58,6 +60,18 @@ const TUNING: Record<BotTier, BotTuning> = {
     candleMax: 4.4,
     dodge: 0.94,
   },
+  // Placeholder top difficulty. It is selectable so the ceiling can be felt and tuned;
+  // the values are deliberately beyond HARD and can move without a UI change.
+  impossible: {
+    reaction: 0.02,
+    aimError: 0,
+    lead: 1,
+    fireMin: 0.26,
+    fireMax: 0.42,
+    candleMin: 1.8,
+    candleMax: 2.6,
+    dodge: 1,
+  },
 };
 
 interface BotStyle {
@@ -83,6 +97,8 @@ export class BotBrain {
   readonly slot: number;
   readonly tier: BotTier;
   readonly style: number;
+  /** QA telemetry: how many heavy attacks this brain has committed to. */
+  heavyCount = 0;
 
   private readonly tune: BotTuning;
   private readonly rule: BotStyle;
@@ -92,6 +108,8 @@ export class BotBrain {
   private targetTimer = 0;
   private fireCd = 0;
   private candleCd = 0;
+  private heavyCd = 0;
+  private heavyHold = 0;
   private swingCd = 0;
   private scanT = 0;
   private reactT = 0;
@@ -127,6 +145,7 @@ export class BotBrain {
     this.strafeDir = slot % 2 === 0 ? 1 : -1;
     this.fireCd = this.rng.range(0.5, 1.4);
     this.candleCd = this.rng.range(2.5, 5);
+    this.heavyCd = this.rng.range(6, 11);
   }
 
   reset(): void {
@@ -134,6 +153,9 @@ export class BotBrain {
     this.targetTimer = 0;
     this.fireCd = this.rng.range(0.4, 1.1);
     this.candleCd = this.rng.range(2.5, 5);
+    this.heavyCd = this.rng.range(6, 11);
+    this.heavyHold = 0;
+    this.heavyCount = 0;
     this.swingCd = 0;
     this.scanT = 0;
     this.reactT = 0;
@@ -157,6 +179,7 @@ export class BotBrain {
     this.thrust += dt;
     this.fireCd = Math.max(0, this.fireCd - dt);
     this.candleCd = Math.max(0, this.candleCd - dt);
+    this.heavyCd = Math.max(0, this.heavyCd - dt);
     this.swingCd = Math.max(0, this.swingCd - dt);
     this.targetTimer -= dt;
     this.reactT = Math.max(0, this.reactT - dt);
@@ -191,15 +214,74 @@ export class BotBrain {
     const target = this.target >= 0 ? world.players[this.target] : null;
     if (!target || !target.active || !target.alive) return;
 
-    const dx = target.x - me.x;
-    const dy = target.y - me.y;
+    // Fisher's beacon is a decoy for bots too: inside its radius it becomes the
+    // focus, so a bot walks to it and shoots it while the Fisher repositions. A
+    // player already in the bot's face still outranks the beacon.
+    let fx = target.x;
+    let fy = target.y;
+    let fvx = target.vx;
+    let fvy = target.vy;
+    const lureIndex = world.nearestLureIndex(me.x, me.y);
+    if (lureIndex >= 0) {
+      const lure = world.lures[lureIndex];
+      const playerDist = Math.hypot(target.x - me.x, target.y - me.y);
+      if (playerDist > PLAYER.radius * 4) {
+        fx = lure.x;
+        fy = lure.y;
+        fvx = 0;
+        fvy = 0;
+      }
+    }
+
+    const dx = fx - me.x;
+    const dy = fy - me.y;
     const dist = Math.hypot(dx, dy) || 1;
-    const aim = this.computeAim(me, target, dist);
-    const blocked = this.lineBlocked(me, target.x, target.y, world.arena.pillars);
+    const aim = this.computeAim(me, fx, fy, fvx, fvy, dist);
+    const blocked = this.lineBlocked(me, fx, fy, world.arena.pillars);
+
+    // Heavy attack: commit to a held power button now and then. The program owns what
+    // that does (beam, plow or web), so the bot only has to hold, aim and release.
+    if (this.heavyHold > 0) {
+      this.heavyHold -= dt;
+      out.mx = Math.cos(aim) * 0.5;
+      out.my = Math.sin(aim) * 0.5;
+      out.held |= ACTION.CANDLE;
+      return;
+    }
+    if (
+      this.heavyCd <= 0 &&
+      !blocked &&
+      me.laserCd <= 0 &&
+      me.laserT <= 0 &&
+      me.wedgeT <= 0 &&
+      me.waveT <= 0 &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.energy >= 50 &&
+      dist > 110 &&
+      dist < 440 &&
+      this.rng.next() < 0.006
+    ) {
+      out.mx = Math.cos(aim) * 0.5;
+      out.my = Math.sin(aim) * 0.5;
+      out.pressed |= ACTION.CANDLE;
+      out.held |= ACTION.CANDLE;
+      this.heavyCount++;
+      this.heavyHold = me.program === PROGRAM_ID.FISHER ? 2.6 : 1.4;
+      this.heavyCd = this.rng.range(11, 17);
+      return;
+    }
 
     // The shot direction is the movement direction. Stepping into the aim is the
-    // single-stick cost every player pays.
-    const boltRange = BOLT.speed * BOLT.ttl;
+    // single-stick cost every player pays. Bot-owned bolts travel slower than a
+    // human's, so range and lead must use the speed this brain actually fires.
+    const boltSpeed = BOLT.speed * BOLT.enemySpeedMult;
+    const boltRange = boltSpeed * BOLT.ttl;
+    // Keep every style inside the distance its slowed bolt can actually reach.
+    // The siege style used to hold at 355 while its bolt died at ~310.
+    // Wedge wants to be closer for the bracket and plow; Fisher's spear reaches farther.
+    const rangeScale = me.program === PROGRAM_ID.WEDGE ? 0.72 : me.program === PROGRAM_ID.FISHER ? 1.12 : 1;
+    const engageRange = Math.min(this.rule.range * rangeScale, boltRange - 24);
     if (
       !blocked &&
       this.fireCd <= 0 &&
@@ -241,23 +323,23 @@ export class BotBrain {
     if (blocked) {
       // Walk around cover with a grid route. Corner-only steering can pinch
       // bots between two blocks; the route handles concave layouts.
-      if (this.followPath(me, target.x, target.y, world.arena)) {
+      if (this.followPath(me, fx, fy, world.arena)) {
         moveX = this.detourX;
         moveY = this.detourY;
       } else {
         moveX = (-dy / dist) * this.strafeDir;
         moveY = (dx / dist) * this.strafeDir;
       }
-    } else if (dist > this.rule.range + 34) {
+    } else if (dist > engageRange + 34) {
       moveX = dx / dist;
       moveY = dy / dist;
-    } else if (dist < this.rule.range - 48) {
+    } else if (dist < engageRange - 48) {
       moveX = -dx / dist;
       moveY = -dy / dist;
     } else {
       moveX = (-dy / dist) * this.strafeDir;
       moveY = (dx / dist) * this.strafeDir;
-      const correction = (dist - this.rule.range) * 0.01;
+      const correction = (dist - engageRange) * 0.01;
       moveX += (dx / dist) * correction;
       moveY += (dy / dist) * correction;
     }
@@ -507,11 +589,21 @@ export class BotBrain {
     return true;
   }
 
-  private computeAim(me: Player, target: Player, dist: number): number {
-    const lead = Math.min(0.45, dist / BOLT.speed) * this.tune.lead;
-    const tx = target.x + target.vx * lead;
-    const ty = target.y + target.vy * lead;
-    const base = Math.atan2(ty - me.y, tx - me.x);
+  private computeAim(
+    me: Player,
+    tx: number,
+    ty: number,
+    tvx: number,
+    tvy: number,
+    dist: number,
+  ): number {
+    // Match the lead to the bot's actual bolt speed. Using the human BOLT.speed
+    // here made every slowed bot shot trail a moving target.
+    const boltSpeed = BOLT.speed * BOLT.enemySpeedMult;
+    const lead = Math.min(0.45, dist / boltSpeed) * this.tune.lead;
+    const px = tx + tvx * lead;
+    const py = ty + tvy * lead;
+    const base = Math.atan2(py - me.y, px - me.x);
     return base + Math.sin(this.thrust * 2.1 + this.slot * 1.7) * this.tune.aimError;
   }
 

@@ -6,6 +6,7 @@ export const P_COLOR_ICE = -3;
 export const P_COLOR_WORM = -4;
 export const P_COLOR_VIRUS = -5;
 export const P_COLOR_FIREWALL = -6;
+export const P_COLOR_DUST = -7;
 
 export interface Particle {
   active: boolean;
@@ -33,6 +34,7 @@ export function particleColor(color: number): string {
   if (color === P_COLOR_WORM) return THREAT_COLORS.worm;
   if (color === P_COLOR_VIRUS) return THREAT_COLORS.virus;
   if (color === P_COLOR_FIREWALL) return THREAT_COLORS.firewall;
+  if (color === P_COLOR_DUST) return '#8d979e';
   return '#9fd7e8';
 }
 

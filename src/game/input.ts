@@ -76,6 +76,8 @@ export class Input {
   private padX = 0;
   private padY = 0;
   private padSwingDown = false;
+  /** Right stick is an edge control: one target step per flick, not one per frame. */
+  private padCycleLatched = false;
   /** Ignore a brief missing-pad frame (Chrome drops pads for a poll after focus changes). */
   private padGraceUntil = 0;
   private padLastSeen = 0;
@@ -132,6 +134,7 @@ export class Input {
     this.padPressed = 0;
     this.padX = 0;
     this.padY = 0;
+    this.padCycleLatched = false;
     this.menuDir = 0;
     this.menuStickDir = 0;
     this.padPrev.fill(false);
@@ -301,6 +304,21 @@ export class Input {
     }
     this.padX = x;
     this.padY = y;
+
+    // Lock cycling: right bumper steps forward, a right-stick flick steps either way.
+    if (btn(PAD.RB) && !this.padPrev[PAD.RB]) {
+      this.padPressed |= ACTION.LOCK_NEXT;
+      this.lastDevice = 'gamepad';
+    }
+    const rx = axis[2] ?? 0;
+    const cycleThreshold = this.padCycleLatched ? 0.3 : 0.6;
+    if (!this.padCycleLatched && Math.abs(rx) > cycleThreshold) {
+      this.padPressed |= rx > 0 ? ACTION.LOCK_NEXT : ACTION.LOCK_PREV;
+      this.padCycleLatched = true;
+      this.lastDevice = 'gamepad';
+    } else if (this.padCycleLatched && Math.abs(rx) < 0.3) {
+      this.padCycleLatched = false;
+    }
 
     let held = 0;
     if (swingDown) held |= ACTION.SWING;

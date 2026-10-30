@@ -36,8 +36,8 @@ export interface Bounds {
 }
 
 export const PLAYER = {
-  /** Bigger avatars make the code-symbol core and rotating health ring readable. */
-  radius: 20,
+  /** Bigger avatars make the code-symbol core and rotating health ring readable. 10% over the old 20. */
+  radius: 22,
   speed: 248,
   /** Velocity smoothing rate. Higher = snappier. */
   accel: 20,
@@ -57,7 +57,8 @@ export const PLAYER = {
   swingStartup: 0.006,
   /** Generous active window; press timing and catch distance grade the return. */
   swingActive: 0.24,
-  swingWhiffRecovery: 0.18,
+  /** Quick taps should string together; the old 0.18 s whiff tail felt sticky. */
+  swingWhiffRecovery: 0.12,
   /** Max return-angle error on an early or far-edge catch. */
   deflectMaxAngle: 0.24,
   /** Early catches lose a little of the return speed. */
@@ -67,7 +68,7 @@ export const PLAYER = {
   swingHalfAngle: Math.PI / 2,
   /** Keep the deflect band tight around the avatar, not out at arm's length. */
   swingReach: 52,
-  /** The deflect swing also punches anything hostile inside this close arc. */
+  /** The quick lash also shoves anything hostile inside this close arc. */
   punchReach: 72,
   punchDamage: 1,
   punchKnockback: 560,
@@ -125,6 +126,10 @@ export const PLAYER = {
   thrallSwingKnockback: 800,
   knockDrag: 7,
   hitFlash: 0.18,
+  /** Slide dust only shears off a body moving faster than this, so a normal run stays clean. */
+  slideDustSpeed: 470,
+  /** World units of travel between square dust puffs while a body is sliding. */
+  slideDustSpacing: 12,
 } as const;
 
 /** Fast close-range bolt. A near-continuous five-shot stream with a short recharge. */
@@ -142,8 +147,91 @@ export const BOLT = {
   autoInterval: 0.1,
   deflectMult: 1.4,
   maxSpeed: 2800,
+  /** Training bots and thralls fire slower than a human so their shots can be read and reflected. */
+  enemySpeedMult: 0.8,
   spawnOffset: 26,
   knockback: 680,
+} as const;
+
+/** Program kits. Every number for Wedge and Fisher lives here. */
+export const WEDGE = {
+  /** Three quick shots in a string, slightly slower than the baseline bolt. */
+  shotCount: 3,
+  shotCost: 3,
+  shotDamage: 1,
+  shotSpeed: 730,
+  shotTtl: 0.4,
+  shotInterval: 0.075,
+  attackCooldown: 0.52,
+  /** Dodge opens a bracket in front, shoves the target back, then recoils the player. */
+  bashTime: 0.22,
+  bashReach: 86,
+  bashHalfWidth: 54,
+  bashDamage: 1,
+  /** The bracket is displacement first: a caught body keeps sliding well past the swing. */
+  bashKnockback: 2350,
+  bashRecoil: 300,
+  /** Hold strong to form the red triangle, then plow forward while it is live. */
+  chargeTime: 0.8,
+  chargeDuration: 0.5,
+  chargeCost: 55,
+  chargeCooldown: 5,
+  chargeSpeed: 690,
+  chargeRadius: 68,
+  chargeDamage: 1,
+  chargeKnockback: 2650,
+  chargeIframes: 0.64,
+  /**
+   * Bug: a static bracket wall planted behind him. Solid to bodies and shots, so it
+   * closes the lane he just left instead of being another shove.
+   */
+  wallLife: 4.6,
+  wallOffset: 58,
+  wallHalfLength: 46,
+  wallThickness: 12,
+} as const;
+
+export const FISHER = {
+  /** A piercing spear. Slower cadence, two damage, stops only on geometry. */
+  spearCost: 7,
+  spearDamage: 2,
+  spearSpeed: 780,
+  spearTtl: 0.7,
+  spearRadius: 5,
+  spearKnockback: 440,
+  /** If the target is already close to cover, the spear staples it there briefly. */
+  spearPin: 1.4,
+  spearPinRange: 54,
+  attackCooldown: 0.48,
+  /**
+   * Hold strong to draw a freeform web behind the player, then release to deploy it.
+   * The line is sampled as he moves, so curves and hard turns are part of the shape.
+   * A deployed web reflects shots and holds anything that touches it until it expires;
+   * it does no damage.
+   */
+  netCost: 50,
+  netCooldown: 5,
+  netDrawTime: 2.4,
+  netMinLength: 44,
+  netMaxLength: 420,
+  netWidth: 15,
+  netLife: 6,
+  /** Polyline budget per web. Sampled at `netPointSpacing` world units. */
+  netPoints: 40,
+  netPointSpacing: 11,
+  /**
+   * Corner-preserving smoothing on deploy. A bend gentler than this cosine is rounded
+   * out; a sharper turn keeps its hard corner so a deliberate hinge still traps.
+   */
+  netCornerCos: 0.45,
+  /** Re-applied every tick a body is inside the web, so a victim stays held. */
+  netHold: 0.12,
+  netReflectMult: 1.25,
+  /** Bug: a beacon that pulls sentries, viruses and worms toward it. */
+  lureCost: 30,
+  lureCooldown: 8,
+  lureLife: 4.2,
+  lureRadius: 300,
 } as const;
 
 /**
@@ -158,19 +246,22 @@ export const MINE = {
   armTime: 0.55,
   /** Maximum armed lifetime before it self-detonates. */
   life: 2.8,
-  triggerRadius: 58,
-  blastRadius: 105,
+  triggerRadius: 52,
+  /** Small enough to read as a trap, not a room-clearing bomb. */
+  blastRadius: 82,
   blastDamage: 1,
   knockback: 760,
 } as const;
 
 /**
- * Random per-player "bug" skill on the strong-attack tap. Hold still charges the laser.
- * Kind order: 0 mine, 1 trap, 2 wall shield, 3 ghost.
+ * Signature bug skill on the strong-attack tap. Programs own their bug now:
+ * Probe 0 mine, Wedge 4 rear bracket, Fisher 5 lure. Kinds 1-3 remain implemented
+ * prototypes for future programs. Hold still charges the program's heavy attack.
  */
 export const BUG = {
   cost: 35,
-  cooldown: [4.5, 5, 7, 8],
+  /** A static wall is stronger than a shove, so its slot in the table is longer. */
+  cooldown: [4.5, 5, 7, 8, 9, 8],
   trapRadius: 62,
   trapDuration: 2.2,
   trapSlow: 0.42,
@@ -183,12 +274,22 @@ export const BUG = {
 
 /** Local pickup loop. Definitions and weights live in `powerups.ts`. */
 export const POWERUP = {
-  firstSpawn: 6,
-  spawnInterval: 13,
-  maxActive: 3,
+  /** Ambient pickups are rare; most should come from a kill. */
+  firstSpawn: 24,
+  spawnInterval: 42,
+  maxActive: 2,
   radius: 14,
   life: 22,
   pickupPadding: 5,
+  /** Kill drops. Small enemies roll rarely, heavy silhouettes roll generously. */
+  dropChance: 0.04,
+  eliteDropChance: 0.25,
+  dropCooldown: 5.5,
+  dropRadiusMin: 36,
+  dropRadiusMax: 92,
+  /** Ambient spawn scatter, kept away from the player so it asks for a decision. */
+  spawnRadiusMin: 160,
+  spawnRadiusMax: 340,
   /** Timed effects; restore is instant. */
   duration: 15,
   shotgunDuration: 13,
@@ -229,51 +330,80 @@ export const TRAINING = {
   droneSpeed: 58,
   droneFireMin: 2.1,
   droneFireMax: 3.4,
-  droneBoltSpeed: 520,
+  droneBoltSpeed: 450,
   droneBoltTtl: 4.5,
   droneRespawn: 2.2,
   playerRespawn: 1.6,
 } as const;
 
 export const GAUNTLET = {
+  /** Only used by the headless practice/bench path; a scored run ends on death. */
   playerRespawn: 1.3,
-  /** Seconds per escalation wave. Every wave spawns threats sooner. */
+  /** Seconds per wave. A normal run sees many small steps, not a fast difficulty spike. */
   waveDuration: 30,
-  /** Seconds shaved off each threat interval per wave. */
-  waveSpawnRamp: 1.4,
-  /** Floor so late waves stay playable rather than a solid wall of threats. */
-  waveMinInterval: 5.5,
-  wormSpawnDelay: 4.5,
-  wormInterval: 15,
-  maxWorms: 3,
-  virusSpawnDelay: 7,
-  virusInterval: 12,
-  virusCluster: 6,
-  maxViruses: 16,
+  /** Wave where the slow interval taper reaches its floor. Long on purpose. */
+  fullPressureWave: 120,
+
+  /** Threat families arrive one at a time instead of all at once. */
+  wormWave: 3,
+  virusWave: 6,
+  triplexWave: 9,
+  errorWave: 12,
+  homingWave: 15,
+  flockWave: 18,
+
+  wormSpawnDelay: 8,
+  wormInterval: 34,
+  wormMinInterval: 14,
+  maxWorms: 2,
+  /** Add one live worm every this many waves after the family unlocks. */
+  wormCapStep: 20,
+
+  virusSpawnDelay: 10,
+  virusInterval: 34,
+  virusMinInterval: 13,
+  virusCluster: 4,
+  virusClusterStart: 2,
+  virusClusterStep: 14,
+  maxViruses: 10,
+  virusCapBase: 4,
+  virusCapStep: 10,
+  /** Retry delay when every virus is dead and a new cluster is due. */
+  virusRetry: 5,
+
   /** Firewalls wait for a damage-triggered switch; no automatic sweeps in the sandbox. */
   autoFirewalls: false,
-  firewallSpawnDelay: 8,
-  firewallInterval: 14,
+  firewallSpawnDelay: 10,
+  firewallInterval: 16,
   maxFirewalls: 3,
   infectionPerTouch: 0.08,
   infectionDecay: 0.015,
   /** Meter value after a thrall spawns, so the next copy is not instant. */
   infectionReset: 0.3,
-  /** Retry delay when every virus is dead and a new cluster is due. */
-  virusRetry: 3,
 } as const;
 
 /** Segmented red worm. It is blocked by cover, but eats projectiles and viruses. */
 export const WORM = {
   /** Assembly time before the chain starts moving. */
   spawnTime: 1.05,
-  speed: 78,
+  speed: 74,
   turnRate: 2.1,
   headRadius: 16,
   segmentRadius: 10,
   segments: 7,
   maxSegments: 12,
   spacing: 15,
+  /** Enter this radius and the worm leaves its patch to defend it. */
+  aggroRadius: 310,
+  aggroTime: 5.5,
+  territoryRadius: 230,
+  patrolRadius: 150,
+  patrolSpeedMult: 0.72,
+  retargetMin: 2.2,
+  retargetMax: 4.8,
+  /** A longer meal makes a heavier, slower chain. */
+  lengthSlow: 0.045,
+  minSpeedMult: 0.62,
   hp: 5,
   touchDamage: 1,
   touchCooldown: 0.8,
@@ -295,73 +425,92 @@ export const WORM = {
  * 0 pulse square, 1 nested triplex (shotgun), 2 trapezoid homing pod, 3 flock dart.
  */
 export const SENTRY = {
-  max: 8,
+  max: 5,
   /** Drop-in animation before the turret wakes up. */
   spawnTime: 0.7,
-  spawnDelay: 11,
-  interval: 17,
-  minInterval: 12,
-  initialPulses: 1,
+  spawnDelay: 9,
+  interval: 30,
+  minInterval: 9,
+  /** First packs land sooner so the wide arenas are not empty at the start. */
+  openingInterval: 24,
+  /** Live shooters at wave 1, then +1 every capStep waves. */
+  startCap: 2,
+  capStep: 9,
+  /** Waves that use the close opening pack and the longer first-shot delay. */
+  openingWaves: 3,
+  /** The opening pack orbits inside the camera window instead of at the far edge. */
+  spawnViewX: 0.3,
+  spawnViewY: 0.24,
+  spawnMargin: 150,
+  /** Opening silhouettes land first, then wait this long before their first shot. */
+  openingFireMin: 5.5,
+  openingFireMax: 7.5,
+  /** The opening pair fires more slowly until the heavier families begin to arrive. */
+  openingCadenceMult: 2.4,
   flockSize: 3,
   /** One silhouette lands at a time instead of an entire pack at once. */
-  packStagger: 0.65,
+  packStagger: 1.3,
   /** Common hit feedback. */
   knockDrag: 8,
   pulse: {
     radius: 18,
     hp: 2,
-    speed: 92,
-    keepMin: 220,
-    keepMax: 380,
-    strafe: 0.6,
-    fireMin: 1.6,
-    fireMax: 2.5,
-    range: 400,
-    boltSpeed: 430,
+    speed: 82,
+    keepMin: 200,
+    keepMax: 340,
+    strafe: 0.5,
+    fireMin: 1.9,
+    fireMax: 2.8,
+    range: 380,
+    boltSpeed: 365,
     boltTtl: 1.15,
+    leash: 160,
   },
   triplex: {
     radius: 23,
     hp: 4,
-    speed: 68,
-    keepMin: 280,
-    keepMax: 460,
-    strafe: 0.35,
-    fireMin: 2.6,
-    fireMax: 3.6,
-    range: 480,
-    boltSpeed: 380,
+    speed: 46,
+    keepMin: 260,
+    keepMax: 430,
+    strafe: 0.18,
+    fireMin: 3.2,
+    fireMax: 4.4,
+    range: 460,
+    boltSpeed: 320,
     boltTtl: 1.45,
+    leash: 100,
   },
   homing: {
     radius: 21,
     hp: 3,
-    speed: 58,
-    keepMin: 360,
+    speed: 30,
+    keepMin: 380,
     keepMax: 560,
-    strafe: 0.22,
-    fireMin: 3.4,
-    fireMax: 4.6,
-    range: 660,
+    strafe: 0.1,
+    fireMin: 4.2,
+    fireMax: 5.4,
+    range: 640,
+    leash: 120,
   },
   flock: {
     radius: 10,
     hp: 1,
-    speed: 150,
+    speed: 138,
     keepMin: 150,
     keepMax: 280,
-    strafe: 1.35,
-    fireMin: 2.1,
-    fireMax: 3.1,
-    range: 320,
-    boltSpeed: 340,
+    strafe: 1.25,
+    fireMin: 2.4,
+    fireMax: 3.4,
+    range: 300,
+    boltSpeed: 290,
     boltTtl: 0.95,
+    leash: 250,
   },
   /** Small direct shots and tight shotgun pellets. */
   boltRadius: 5,
   boltDamage: 1,
   missileRadius: 10,
-  missileSpeed: 150,
+  missileSpeed: 130,
   missileTurn: 2.2,
   missileTtl: 6.5,
 } as const;
@@ -374,10 +523,19 @@ export const VIRUS = {
   hp: 1,
   contactCooldown: 0.9,
   knockDrag: 9,
-  splitInterval: 9,
-  orbit: 110,
+  splitInterval: 20,
+  splitMinInterval: 10,
+  orbit: 140,
   separation: 32,
-  targetWormBias: 0.7,
+  /** Lower score weighting makes an uninfected worm the preferred host. */
+  targetWormBias: 0.55,
+  /** Only chase a player who comes this close; otherwise spread across the sector. */
+  huntRadius: 310,
+  wormHuntRadius: 560,
+  roamMin: 160,
+  roamMax: 380,
+  retargetMin: 2.4,
+  retargetMax: 4.6,
   orbitBand: 54,
   orbitRadial: 0.009,
   separationPush: 1.5,
@@ -393,13 +551,17 @@ export const VIRUS = {
 /** Cascading Error: a spreading field of yellow/red blocks in the gauntlet. */
 export const CASCADING_ERROR = {
   spawnTime: 0.45,
-  spawnDelay: 11,
+  spawnDelay: 8,
   /** Delay after the last block dies before a new root can appear. */
-  reseedDelay: 16,
-  growthInterval: 1.4,
+  reseedDelay: 30,
+  growthInterval: 4,
+  growthMinInterval: 2,
   blockSize: 30,
   cell: 36,
-  maxBlocks: 28,
+  maxBlocks: 14,
+  /** The first colony starts small and grows its block cap over many waves. */
+  startBlocks: 4,
+  blockCapStep: 6,
   /** Three fast bolts, or three mine blasts, to clear one block. */
   hp: 3,
   growTime: 0.3,

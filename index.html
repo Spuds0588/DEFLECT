@@ -29,19 +29,22 @@
 ██████╔╝███████╗██║     ███████╗███████╗╚██████╗   ██║   
 ╚═════╝ ╚══════╝╚═╝     ╚══════╝╚══════╝ ╚═════╝   ╚═╝   </pre><span class="caret" aria-hidden="true">_</span>
             </h1>
-            <p class="console-version">v0.1.10</p>
+            <p class="console-version">v0.1.24</p>
           </header>
 
           <div class="console-shell">
             <div id="menu-hub" class="menu-stage console-menu">
               <button id="btn-mode-solo" class="console-option" data-nav>
-                <span class="option-key">01</span><span class="option-label">SINGLE PLAYER</span>
+                <span class="option-label">SINGLE PLAYER</span>
               </button>
               <button id="btn-mode-multi" class="console-option" data-nav>
-                <span class="option-key">02</span><span class="option-label">MULTIPLAYER</span>
+                <span class="option-label">MULTIPLAYER</span>
+              </button>
+              <button id="btn-howto" class="console-option" data-nav>
+                <span class="option-label">HOW TO PLAY</span>
               </button>
               <button id="btn-settings" class="console-option" data-nav>
-                <span class="option-key">03</span><span class="option-label">SETTINGS</span>
+                <span class="option-label">SETTINGS</span>
               </button>
             </div>
 
@@ -49,14 +52,28 @@
               <button id="btn-solo-back" class="console-option console-back" data-nav>
                 <span class="option-key">ESC</span><span class="option-label">BACK</span>
               </button>
-              <p class="console-stage-label">SINGLE PLAYER // SELECT PROGRAM</p>
+              <p class="console-stage-label">SINGLE PLAYER // GAMEPLAY MODE</p>
 
               <button id="btn-training" class="console-option" data-nav>
-                <span class="option-key">01</span><span class="option-label">TRAINING</span><span class="option-value">BOTS</span>
+                <span class="option-key">01</span><span class="option-label">TRAINING</span><span class="option-value">PRACTICE</span>
+              </button>
+              <button id="btn-solo-bots" class="console-option" data-nav>
+                <span class="option-key">02</span><span class="option-label">VS BOTS</span><span class="option-value">ROUNDS</span>
               </button>
               <button id="btn-gauntlet" class="console-option" data-nav>
-                <span class="option-key">02</span><span class="option-label">GAUNTLET</span><span class="option-value">ENDLESS</span>
+                <span class="option-key">03</span><span class="option-label">GAUNTLET</span><span id="gauntlet-best" class="option-value">SCORED</span>
               </button>
+              <button id="btn-solo-campaign" class="console-option" data-nav>
+                <span class="option-key">04</span><span class="option-label">CAMPAIGN</span><span class="option-value">STORY</span>
+              </button>
+            </div>
+
+            <div id="menu-solo-program" class="menu-stage console-menu" hidden>
+              <button id="btn-program-back" class="console-option console-back" data-nav>
+                <span class="option-key">ESC</span><span class="option-label">BACK</span>
+              </button>
+              <p id="program-stage-label" class="console-stage-label">PROGRAM SELECT</p>
+              <div id="program-picker" class="console-program-grid" role="group" aria-label="Select program"></div>
             </div>
 
             <div id="menu-arena" class="menu-stage console-menu" hidden>
@@ -67,6 +84,42 @@
               <div id="arena-picker" class="console-arena-grid" role="group" aria-label="Arena"></div>
             </div>
 
+            <div id="menu-gauntlet" class="menu-stage console-menu" hidden>
+              <button id="btn-gauntlet-back" class="console-option console-back" data-nav>
+                <span class="option-key">ESC</span><span class="option-label">BACK</span>
+              </button>
+              <p id="gauntlet-stage-label" class="console-stage-label">GAUNTLET // RUN SETUP</p>
+
+              <button id="btn-gauntlet-start" class="console-option" data-nav>
+                <span class="option-key">01</span><span class="option-label">BEGIN RUN</span><span class="option-value">SCORED</span>
+              </button>
+
+              <div class="console-group console-group-tight">
+                <p class="console-stage-label">TOP RUNS // LOCAL</p>
+                <ol id="gauntlet-records" class="console-records" aria-label="Local gauntlet top runs"></ol>
+              </div>
+            </div>
+
+            <div id="menu-story" class="menu-stage console-menu" hidden>
+              <button id="btn-story-back" class="console-option console-back" data-nav>
+                <span class="option-key">ESC</span><span class="option-label">BACK</span>
+              </button>
+              <p class="console-stage-label">CAMPAIGN // SAVE SLOTS</p>
+
+              <div id="story-slots" class="console-menu" role="group" aria-label="Campaign save slots"></div>
+
+              <p id="story-status" class="console-status-line" role="status"></p>
+            </div>
+
+            <div id="menu-story-bots" class="menu-stage console-menu" hidden>
+              <button id="btn-story-bots-back" class="console-option console-back" data-nav>
+                <span class="option-key">ESC</span><span class="option-label">BACK</span>
+              </button>
+              <p id="story-bots-label" class="console-stage-label">CAMPAIGN // BOTS</p>
+
+              <div id="campaign-bots" class="console-choices" role="group" aria-label="Bot companions"></div>
+            </div>
+
             <div id="menu-solo-bots" class="menu-stage console-menu" hidden>
               <button id="btn-bots-back" class="console-option console-back" data-nav>
                 <span class="option-key">ESC</span><span class="option-label">BACK</span>
@@ -74,8 +127,6 @@
               <p id="bot-stage-label" class="console-stage-label">TRAINING // BOT COUNT</p>
               <div class="console-group console-group-tight">
                 <div id="bot-count" class="console-choices" role="group" aria-label="Number of bots"></div>
-                <p class="console-note">ENDLESS PRACTICE // BOTS RESPAWN. NO ROUNDS.</p>
-                <p class="console-note console-note-action">SELECT A COUNT TO CONTINUE.</p>
               </div>
             </div>
 
@@ -85,20 +136,48 @@
               </button>
               <p id="tier-stage-label" class="console-stage-label">TRAINING // DIFFICULTY</p>
               <div class="console-group console-group-tight">
-                <div id="bot-tier" class="console-choices" role="group" aria-label="Bot difficulty"></div>
-                <p id="bot-roster" class="console-note">STYLES // VEX DUELIST / GLITCH TRICKSTER / RIFT SIEGE</p>
-                <p class="console-note console-note-action">SELECT A TIER TO START.</p>
+                <div id="bot-tier" class="console-choices console-choices-stack" role="group" aria-label="Bot difficulty"></div>
               </div>
+            </div>
+
+            <div id="menu-local" class="menu-stage console-menu" hidden>
+              <button id="btn-local-back" class="console-option console-back" data-nav>
+                <span class="option-key">ESC</span><span class="option-label">BACK</span>
+              </button>
+              <p class="console-stage-label">MULTIPLAYER // LOCAL</p>
+
+              <button id="btn-local-arena" class="console-option" data-nav>
+                <span class="option-key">01</span><span class="option-label">ARENA</span><span class="option-value">VERSUS</span>
+              </button>
+              <button id="btn-local-gauntlet" class="console-option" data-nav>
+                <span class="option-key">02</span><span class="option-label">GAUNTLET</span><span class="option-value">SURVIVE</span>
+              </button>
+
+              <p id="local-status" class="console-status-line" role="status"></p>
             </div>
 
             <div id="menu-multi" class="menu-stage console-menu" hidden>
               <button id="btn-multi-back" class="console-option console-back" data-nav>
                 <span class="option-key">ESC</span><span class="option-label">BACK</span>
               </button>
-              <p class="console-stage-label">MULTIPLAYER // ROOM</p>
+              <p class="console-stage-label">MULTIPLAYER // MODE</p>
+
+              <button id="btn-multi-online" class="console-option" data-nav>
+                <span class="option-key">01</span><span class="option-label">ONLINE</span><span class="option-value">ROOMS</span>
+              </button>
+              <button id="btn-local" class="console-option" data-nav>
+                <span class="option-key">02</span><span class="option-label">LOCAL</span><span class="option-value">SAME SCREEN</span>
+              </button>
+            </div>
+
+            <div id="menu-online" class="menu-stage console-menu" hidden>
+              <button id="btn-online-back" class="console-option console-back" data-nav>
+                <span class="option-key">ESC</span><span class="option-label">BACK</span>
+              </button>
+              <p class="console-stage-label">MULTIPLAYER // ONLINE</p>
 
               <button id="btn-create" class="console-option" data-nav>
-                <span class="option-key">01</span><span class="option-label">CREATE ROOM</span><span class="option-value">HOST</span>
+                <span class="option-key">01</span><span class="option-label">HOST GAME</span><span class="option-value">ROOM</span>
               </button>
               <div class="console-form">
                 <label class="option-key" for="room-code">02</label>
@@ -114,18 +193,89 @@
                   aria-label="Room code"
                 />
                 <button id="btn-join" class="console-option console-join" data-nav>
-                  <span class="option-label">CONNECT</span>
+                  <span class="option-label">JOIN GAME</span>
                 </button>
               </div>
 
               <p id="title-status" class="console-status-line" role="status"></p>
-
-              <button class="console-option" type="button" disabled>
-                <span class="option-key">03</span><span class="option-label">SECTORS // PVPvE</span><span class="option-value">IN DEVELOPMENT</span>
-              </button>
-              <p class="console-note console-sectors">Gated bridges, escalating sectors, mini-bosses, destructible data, and transmitters you can deflect into enemies.</p>
             </div>
 
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-howto" class="screen screen-settings screen-howto">
+        <div class="screen-inner settings-inner">
+          <header class="settings-header">
+            <button id="btn-howto-back" class="btn btn-ghost" data-nav>BACK</button>
+            <p class="eyebrow">DEFLECT // HOW TO PLAY</p>
+          </header>
+
+          <div class="howto-grid">
+            <section class="panel howto-panel">
+              <div class="controls-head">
+                <h2 id="howto-device-title">GAMEPAD</h2>
+                <span id="howto-device-name"></span>
+              </div>
+              <div id="howto-controls-pad" class="controls-grid">
+                <div class="ctrl"><span>MOVE + FACE</span><b>LEFT STICK</b></div>
+                <div class="ctrl"><span>RANGED ATTACK</span><b>X</b></div>
+                <div class="ctrl"><span>MELEE ATTACK</span><b>B</b></div>
+                <div class="ctrl"><span>GUARD</span><b>HOLD B</b></div>
+                <div class="ctrl"><span>POWER ATTACK</span><b>HOLD Y</b></div>
+                <div class="ctrl"><span>SKILL</span><b>TAP Y</b></div>
+                <div class="ctrl"><span>DASH</span><b>A</b></div>
+                <div class="ctrl"><span>LOCK TARGET</span><b>LT</b></div>
+                <div class="ctrl"><span>CYCLE LOCK</span><b>RB / RIGHT STICK</b></div>
+                <div class="ctrl"><span>MENU</span><b>START</b></div>
+              </div>
+              <div id="howto-controls-keys" class="controls-grid" hidden>
+                <div class="ctrl"><span>MOVE + FACE</span><b>WASD / ARROWS</b></div>
+                <div class="ctrl"><span>RANGED ATTACK</span><b>RIGHT MOUSE / K</b></div>
+                <div class="ctrl"><span>MELEE ATTACK</span><b>LEFT MOUSE / J</b></div>
+                <div class="ctrl"><span>GUARD</span><b>HOLD LMB / J</b></div>
+                <div class="ctrl"><span>POWER ATTACK</span><b>HOLD E / L / MMB</b></div>
+                <div class="ctrl"><span>SKILL</span><b>TAP E / L / MMB</b></div>
+                <div class="ctrl"><span>DASH</span><b>SHIFT / SPACE</b></div>
+                <div class="ctrl"><span>LOCK TARGET</span><b>Q</b></div>
+                <div class="ctrl"><span>MENU</span><b>ESC</b></div>
+              </div>
+            </section>
+
+            <section class="panel howto-panel">
+              <div class="controls-head">
+                <h2>THE LOOP</h2>
+              </div>
+              <ul class="howto-points">
+                <li><b>MOVE TO AIM</b><span>Facing is your movement direction. There is no aim stick, so every shot commits you to a line.</span></li>
+                <li><b>DEFLECT</b><span>Melee a shot to send it back harder. Hold guard to return a whole volley.</span></li>
+                <li><b>DASH</b><span>Two charges. Tap to phase through shots and cover, or hold to carry damage through what you cross.</span></li>
+                <li><b>LAST ONE UP</b><span>Your segmented outline is your health. Three hits and the round, or the run, is over.</span></li>
+              </ul>
+            </section>
+
+            <section class="panel howto-panel howto-span">
+              <div class="controls-head">
+                <h2>PROGRAMS</h2>
+                <span>PICK ONE BEFORE EACH MODE</span>
+              </div>
+              <div id="howto-programs" class="howto-programs"></div>
+            </section>
+
+            <section class="panel howto-panel howto-span">
+              <div class="controls-head">
+                <h2>CLIPS</h2>
+                <span>RECORDED CLIPS LAND HERE</span>
+              </div>
+              <div id="howto-clips" class="howto-clips">
+                <div class="howto-clip"><span class="howto-clip-play" aria-hidden="true">&#9654;</span><b>RANGED ATTACK</b><span class="howto-clip-state">CLIP SOON</span></div>
+                <div class="howto-clip"><span class="howto-clip-play" aria-hidden="true">&#9654;</span><b>MELEE ATTACK</b><span class="howto-clip-state">CLIP SOON</span></div>
+                <div class="howto-clip"><span class="howto-clip-play" aria-hidden="true">&#9654;</span><b>GUARD</b><span class="howto-clip-state">CLIP SOON</span></div>
+                <div class="howto-clip"><span class="howto-clip-play" aria-hidden="true">&#9654;</span><b>POWER ATTACK</b><span class="howto-clip-state">CLIP SOON</span></div>
+                <div class="howto-clip"><span class="howto-clip-play" aria-hidden="true">&#9654;</span><b>SKILL</b><span class="howto-clip-state">CLIP SOON</span></div>
+                <div class="howto-clip"><span class="howto-clip-play" aria-hidden="true">&#9654;</span><b>DASH</b><span class="howto-clip-state">CLIP SOON</span></div>
+              </div>
+            </section>
           </div>
         </div>
       </section>
@@ -138,47 +288,13 @@
           </header>
 
           <nav id="settings-tabs" class="settings-tabs" role="tablist" aria-label="Settings sections">
-            <button class="settings-tab active" data-settings-tab="controls" data-nav role="tab" aria-selected="true">CONTROLS</button>
-            <button class="settings-tab" data-settings-tab="feedback" data-nav role="tab" aria-selected="false">FEEDBACK</button>
+            <button class="settings-tab active" data-settings-tab="feedback" data-nav role="tab" aria-selected="true">FEEDBACK</button>
             <button class="settings-tab" data-settings-tab="audio" data-nav role="tab" aria-selected="false">AUDIO</button>
             <button class="settings-tab" data-settings-tab="system" data-nav role="tab" aria-selected="false">SYSTEM</button>
           </nav>
 
           <div class="settings-body">
-            <section class="settings-page active" data-settings-page="controls">
-              <div class="settings-grid">
-                <div class="panel settings-panel">
-                  <div class="controls-head">
-                    <h2>CONTROLS</h2>
-                  </div>
-                  <div class="controls-grid">
-                    <div class="ctrl"><span>MOVE + FACE</span><b>L-STICK / WASD</b></div>
-                    <div class="ctrl"><span>WEAK ATTACK</span><b>X / RMB / K</b></div>
-                    <div class="ctrl"><span>STRONG / BUG</span><b>Y / E / L</b></div>
-                    <div class="ctrl"><span>DEFLECT</span><b>B / LMB / J</b></div>
-                    <div class="ctrl"><span>LOCK TARGET</span><b>LT / Q</b></div>
-                    <div class="ctrl"><span>DASH</span><b>A / SHIFT / SPACE</b></div>
-                    <div class="ctrl"><span>MENU</span><b>START / ESC</b></div>
-                  </div>
-                </div>
-
-                <div class="panel settings-panel">
-                  <div class="controls-head">
-                    <h2>THE KIT</h2>
-                    <span>ONE STICK // ALL ACTIONS</span>
-                  </div>
-                  <ul class="kit-list">
-                    <li><b>DEFLECT</b><span>Tap in rhythm: left, right, forward wave. The 180-degree arc reflects.</span></li>
-                    <li><b>HOLD DEFLECT</b><span>Raise a 180-degree shield for up to one second. Every caught shot burns shield time; lock on to return it at the target.</span></li>
-                    <li><b>DASH</b><span>Two charges. Tap phases through threats and cover. Hold for a charged triangle dash that damages.</span></li>
-                    <li><b>STRONG / BUG</b><span>Your bug is random each match: mine, trap, wall shield, or ghost. Hold to charge the heavy beam.</span></li>
-                    <li><b>PICKUPS</b><span>RESTORE repairs the ring. Timed drops add a machine gun, scatter blasts, overcharge, a barbed whip, or pathfinding bolts.</span></li>
-                  </ul>
-                </div>
-              </div>
-            </section>
-
-            <section class="settings-page" data-settings-page="feedback">
+            <section class="settings-page active" data-settings-page="feedback">
               <div class="settings-grid settings-grid-wide">
                 <div class="panel settings-panel">
                   <div class="controls-head">
@@ -203,14 +319,12 @@
                     <span>MINIMAP</span>
                     <button id="btn-minimap" class="btn btn-ghost" data-nav aria-pressed="true">MINIMAP: ON</button>
                   </div>
-                  <p class="controls-note">Hit rotation tilts the whole view when your avatar loses a segment. Set it to 0 if the tilt reads as motion sickness. Impact flash scales the white splash on hits. Scanlines belong to the console menus. The minimap sits in the lower-left arena corner.</p>
                 </div>
                 <div class="panel settings-panel preview-panel">
                   <div class="controls-head">
                     <h2>PREVIEW</h2>
                     <span>TEST WITHOUT DYING</span>
                   </div>
-                  <p class="controls-note">The arena tilt and flash fire here so you can tune them before a match.</p>
                   <button id="btn-test-feedback" class="btn" data-nav>TEST HIT FEEDBACK</button>
                 </div>
               </div>
@@ -247,7 +361,6 @@
                     <span>MASTER SOUND</span>
                     <button id="btn-settings-mute" class="btn btn-ghost" data-nav aria-pressed="false">SOUND: ON</button>
                   </div>
-                  <p class="controls-note">All audio is synthesized in the browser. Each channel saves locally. <b>M</b> mutes from anywhere.</p>
                 </div>
               </div>
             </section>
@@ -282,13 +395,12 @@
                   </div>
                   <div class="setting-row">
                     <span>BUILD</span>
-                    <b>0.1.10 // CONSOLE</b>
+                    <b>0.1.24 // CONSOLE</b>
                   </div>
                   <div class="setting-row">
                     <span>RESET OPTIONS</span>
                     <button id="btn-settings-reset" class="btn btn-ghost" data-nav>RESET DEFAULTS</button>
                   </div>
-                  <p class="controls-note">Player status is drawn on the avatar: rotating health segments, core damage, energy arc, and floating bug/dash readiness icons. No name plates or bars.</p>
                 </div>
               </div>
             </section>
