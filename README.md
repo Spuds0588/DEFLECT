@@ -62,6 +62,15 @@ on-screen input-mode badge.
 For unattended testing, add `?autoplay=2` to the local URL. Bots drive every slot, including the local
 one, and the match auto-rematches so it keeps running without input. This is a QA hook, not a menu mode.
 
+Three more QA hooks exist for camera work: `?split=N` lays out up to four local panes, `?gauntlet=1&arena=5&bot=1`
+boots a gauntlet with a bot driving the local player, and `?debug=1` exposes a read-only inspection handle.
+None of them appear in a menu or a snapshot.
+
+The camera frames the local group. With several local players it stays on one screen and pulls back until
+the group no longer fits, then splits into the fewest panes: one far player adds one pane, not three. Each
+pane has a colored frame, the shared minimap moves to the top centre, and the sim briefly slows on a
+split or merge so nobody is shot while their screen is moving.
+
 | Action | Gamepad | Keyboard/mouse |
 | --- | --- | --- |
 | Move + face | Left stick | `WASD` / arrows |
@@ -89,7 +98,7 @@ Callsign editing is under `SETTINGS > SYSTEM`, alongside hit feedback, audio, sc
 
 Your avatar has three health segments built into its rotating program outline. A hit drops that segment
 to a dim ghost, so the silhouette always stays whole while the damage still reads at a glance. There is
-no separate health bar or name plate: the outline, the inner energy arc, and the top-left readiness dock
+no separate health bar or name plate: the outline, the inner energy arc, and the readiness dock
 are the local readout. Bots and remote players show no health or readiness telemetry yet.
 
 | Option | Input | Role |
@@ -98,7 +107,7 @@ are the local readout. Bots and remote players show no health or readiness telem
 | **MELEE ATTACK** | `B` / left mouse / `J` | **Tap** for a fast spiked lash across the 180° arc in front of you. It shoves what it hits sideways and reflects shots it catches. |
 | **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. Lock on to flatten caught shots toward the target. |
 | **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room. It commits you: you cannot move freely while it runs, and it has a long cooldown. |
-| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane. Its mark in the top-left readiness dock shows when it is ready. |
+| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane. Its mark in the readiness dock shows when it is ready. |
 | **DASH** | `A` / `Shift` / `Space` | Two charges. Tap to phase through enemies and cover in your last movement direction. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. |
 
 Ranged fire is the pressure tool. Melee is the answer to incoming fire: tap to lash, hold to guard. The
@@ -230,11 +239,11 @@ drop its lure, then step out of the way instead of standing on it.
 - Lock on with `LT` and hold the shield. Reflected shots should flatten toward the target instead of
   flying off at the incoming angle. The reticle should acquire pulse squares, triplexes, homing pods,
   flocks and cascading-error blocks as readily as worms.
-- Spend both dodge charges, then watch the two chevrons in the top-left readiness dock refill one at a time.
+- Spend both dodge charges, then watch the two chevrons in the readiness dock refill one at a time.
 - Hold `Y` through the full charge. The two orbit dots should meet at your front and the beam should fire
   on its own, root you, sweep slowly, and pierce every target in the line while pillars cut it off.
 - Tap `Y` for the program's skill: Probe's proximity mine, Wedge's bracket wall, Fisher's lure beacon,
-  or Sweep's split brooms. The mark in the top-left readiness dock should match the program and show
+  or Sweep's split brooms. The mark in the readiness dock should match the program and show
   readiness. Wedge's wall should stop bodies and reflect shots; a lure should pull local bots off you;
   the split brooms should shove a body out of the lane in front of Sweep.
 - Reflect a `HARD` bolt back at it. Higher tiers try to dodge their own armed ricochets.

@@ -1,4 +1,4 @@
-import { CAMPAIGN, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
+import { CAMERA, CAMPAIGN, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
 import { CAMPAIGN_LEVELS, FIRST_CAMPAIGN_LEVEL } from './game/campaign';
 import { ARENAS, drawArenaPreview, getArena } from './game/arenas';
 import { BOT_NAMES, BOT_TIERS, BOT_TIER_LABELS, BotBrain, type BotTier } from './game/bot';
@@ -144,6 +144,8 @@ let mode: Mode = 'none';
 /** QA self-play: bots drive every slot in a bot match, including slot 0. */
 let autoplay = false;
 let autoplayRestartAt = 0;
+/** Remaining seconds of the local layout-change slow motion. */
+let slowMoT = 0;
 let world: World | null = null;
 let hostNet: HostNet | null = null;
 let guestNet: GuestNet | null = null;
@@ -254,14 +256,32 @@ function boot(): void {
     for (let i = 0; i < Math.min(4, splitParam); i++) slots.push(i);
     renderer.setLocalSlots(slots);
   }
+  const arenaParam = Number(params.get('arena') ?? '-1');
+  if (arenaParam >= 0 && arenaParam < ARENAS.length) arenaIndex = arenaParam;
+  // QA-only gauntlet hook: `?gauntlet=1&arena=5&bot=1` boots straight into a run and
+  // lets a BotBrain drive the local player so the camera can be watched hands-off.
+  const gauntletParam = Number(params.get('gauntlet') ?? '0');
+  const gauntletBot = Number(params.get('bot') ?? '0') >= 1;
+  // QA-only inspection handle. Nothing in normal play reads it; it keeps split and
+  // grouping tests scriptable without a separate debug build.
+  if (params.get('debug') === '1') {
+    (window as unknown as { __defl?: unknown }).__defl = {
+      renderer,
+      world: () => world,
+      brains: () => botBrains,
+      inputs: () => botInputs,
+    };
+  }
   if (stressParam >= 2 && stressParam <= MAX_PLAYERS) {
     window.setTimeout(() => startStress(stressParam), 250);
+  } else if (gauntletParam >= 1) {
+    window.setTimeout(() => startGauntlet(gauntletBot), 250);
   } else if (autoplayParam >= 1) {
     window.setTimeout(() => startAutoplay(autoplayParam), 250);
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.36 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.37 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -1303,6 +1323,15 @@ function loop(now: number): void {
       syncPhaseUi(state);
       fx.update(dt);
       renderer.render(state, Math.min(1, acc / SIM_DT), fx);
+      // A split/merge moves every local player's screen position at once. Give the
+      // local sim a short dip while the cameras settle, but never slow a networked
+      // match or the unattended stress run.
+      const localMode = mode === 'training' || mode === 'bots' || mode === 'gauntlet' || mode === 'campaign';
+      if (localMode && !stress) {
+        if (renderer.consumeLayoutChange()) slowMoT = CAMERA.layoutSlowTime;
+      } else {
+        renderer.consumeLayoutChange();
+      }
     }
   }
 
@@ -1363,7 +1392,12 @@ function stepSession(now: number, dt: number): void {
     } else {
       // Campaign time is live play only; the pause and the result overlay never count.
       if (mode === 'campaign' && overlayKind === 'none') campaignPlaySeconds += dt;
-      trainingInputs[0] = localFrame;
+      if (autoplay && botBrains[0]) {
+        botBrains[0].think(world, botInputs[0], SIM_DT);
+        trainingInputs[0] = botInputs[0];
+      } else {
+        trainingInputs[0] = localFrame;
+      }
       // Training and campaign bots are practice partners, not round opponents. They
       // write the same InputFrame a human does. The drill squad stops thinking once
       // the breach de-rezzes it.
@@ -1374,7 +1408,7 @@ function stepSession(now: number, dt: number): void {
         if (brain && frame && drillLive) brain.think(world, frame, SIM_DT);
       }
     }
-    acc += dt;
+    acc += dt * (stress ? 1 : layoutSlowScale(dt));
     let steps = 0;
     while (acc >= SIM_DT && steps < 4) {
       world.step(SIM_DT, stress ? stressInputs : trainingInputs);
@@ -1390,7 +1424,7 @@ function stepSession(now: number, dt: number): void {
   } else if (mode === 'bots' && world && !pausedLocal) {
     if (autoplay) botBrains[0]?.think(world, botInputs[0], SIM_DT);
     else botInputs[0] = localFrame;
-    acc += dt;
+    acc += dt * layoutSlowScale(dt);
     let steps = 0;
     while (acc >= SIM_DT && steps < 4) {
       for (let i = 1; i < botBrains.length; i++) {
@@ -1610,23 +1644,30 @@ function startTrainingBots(): void {
   console.log('[DEFLECT-STATE] Training bots', botCount, botTier, arena.name);
 }
 
-function startGauntlet(): void {
+function startGauntlet(aiLocal = false): void {
   if (busy) return;
   teardownSession();
   hideOverlayInternal();
   mode = 'gauntlet';
   localSlot = 0;
   stress = false;
+  autoplay = aiLocal;
   const arena = getArena(arenaIndex);
   world = new World('gauntlet', [getCallsign()], 0, arena, false, selectedProgram);
   trainingInputs = [localFrame];
+  botInputs = new Array(MAX_PLAYERS);
+  for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
+  botBrains = new Array(MAX_PLAYERS).fill(null);
+  if (aiLocal) {
+    botBrains[0] = new BotBrain(0, botTierPrefs.training, 0, 0x51f15e + arena.id * 983 + 29);
+  }
   resetCounters();
   fx.reset();
   setScreen('game');
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
-  console.log('[DEFLECT-STATE] Gauntlet start', arena.name, 'one life');
+  console.log('[DEFLECT-STATE] Gauntlet start', arena.name, 'one life', aiLocal ? 'AUTOPILOT' : '');
 }
 
 function startAutoplay(count: number): void {
@@ -2004,8 +2045,19 @@ function teardownSession(): void {
   input.sample();
 }
 
+/** Local layout-transition time scale: hold at 0.35, then ease back to normal. */
+function layoutSlowScale(dt: number): number {
+  if (slowMoT <= 0) return 1;
+  slowMoT = Math.max(0, slowMoT - dt);
+  const ease = Math.max(0.01, CAMERA.layoutSlowTime - CAMERA.layoutSlowHold);
+  if (slowMoT >= ease) return CAMERA.layoutSlowScale;
+  const p = slowMoT / ease;
+  return CAMERA.layoutSlowScale + (1 - CAMERA.layoutSlowScale) * (1 - p);
+}
+
 function resetCounters(): void {
   acc = 0;
+  slowMoT = 0;
   snapTimer = 0;
   fxCursor = 0;
   netCursor = 0;

@@ -2027,3 +2027,53 @@ moved to assault. `npx tsc --noEmit`, `npm run build` and `npm run bench` clean.
 **Next:** local input slots and the same-screen menu flow are still missing, so split screen is proven
 plumbing rather than playable local multiplayer. Tune `zoomMin`/`zoomMax` from the production build; move
 the heavy/sentry numbers only if the screen coverage at the new range reads wrong in play.
+
+## 2026-10-30 — Fit-first split camera, shared HUD, rig director, layout slow motion
+
+**Goal:** make local co-op framing follow the fight instead of a fixed pane count. Everyone should share one
+screen while the camera can still hold them; only the players who no longer fit should peel off into their
+own pane. The split also needed boundaries you can see, one shared map, corner player indicators, a camera
+override framework for boss/narrative beats, and a moment of slow motion so a split or merge cannot get a
+player shot while their screen moves.
+
+**Changes:**
+- Camera grouping replaced the per-local-slot split. `layoutViews` now measures the living local group's
+  bounding box and keeps one full-screen view while it fits at `CAMERA.sharedZoomMin` (new, 0.68x the base)
+  with `CAMERA.groupPad` (new, 60 world units) of air. Past that it clusters by farthest pair and splits
+  only as far as the fit requires: a trio plus one far player is two panes, two pairs are two panes, four
+  separated players are the 2x2 grid. `CAMERA.shareSlack` (new, 70) is the merge hysteresis; a dead local is
+  a spectator and no longer counts toward the fit.
+- The camera anchor for a pane is the group's bounding-box centre, not one avatar. The fit zoom cap includes
+  the group pad, so a grouped player is never placed on the pane edge. The old combat range
+  (`zoomMin` 0.88 / `zoomMax` 1.03) is unchanged for a solo view; a group on one screen may pull farther
+  back to `sharedZoomMin` before the view splits.
+- Split panes now carry a 1.6px outline in the primary local player's color over a 5px dark underlay, plus a
+  faint inner line. Readiness docks moved to screen corners, one per local player (top-left for a solo view,
+  then top-right, bottom-left, bottom-right). One shared minimap serves the whole screen: lower-left for a
+  solo view, top-centre whenever the view is split or more than one local is active.
+- `src/game/camera.ts` adds a pooled `CameraDirector` (`CameraRig`: fixed point or `followSlot`, zoom, hold,
+  in/out, weight, priority). `Renderer.playCameraRig` is the boss/narrative API. Shipped cues: a gauntlet
+  wave glances at the nearest sentry pack outside `CAMERA.waveLookAhead` (new, 380), and the campaign breach
+  pushes in 8% on the local player.
+- Layout slow motion: the renderer raises a one-shot flag when the pane count or group mask changes. Local
+  sims dip to `CAMERA.layoutSlowScale` (new, 0.35) for `CAMERA.layoutSlowTime` (new, 1.0 s), hold that scale
+  for `CAMERA.layoutSlowHold` (new, 0.6 s), then ease back. Network sessions and the stress bench never slow.
+- QA hooks: `?gauntlet=1&arena=N&bot=1` boots a gauntlet with a `BotBrain` driving the local player;
+  `BotBrain.engageHostiles` walks to the nearest live threat and uses ranged/melee when no player target
+  exists. `?debug=1` exposes a read-only renderer/world handle for scripted split tests. Neither is in a
+  menu or a snapshot.
+- Bumped to v0.1.37 and refreshed the service worker cache.
+
+**Verification:** browser at 1280x800 on TRANSIT — four clustered locals stayed on one view at zoom 1.143
+(view 1120 world units); three close plus one far split into masks 7/8 (two panes); two pairs split into
+masks 3/12; four separated players filled the 2x2 grid. The pane frames, four corner docks and top-centre
+map were checked in each layout. With a 2→1 merge, the round timer advanced 0.68 s over 1.20 s wall, then
+1.00 s over 1.01 s after the one-second dip expired. A priority-5 rig at (2200,1000) with zoom 0.7 reached
+full blend and pinned the view to the arena's right/bottom bounds, then cleared back to default. The
+gauntlet autopilot booted on TRANSIT, advanced to wave 4, and exercised the camera against the live threat
+pool. `npx tsc --noEmit` and `npm run build` clean. `npm run bench`: gauntlet max 0.165 ms avg / 0.627 ms p99,
+eight-bot swarm 0.071 / 0.217, all under the 4 ms budget.
+
+**Next:** local input slots and the same-screen menu flow are still missing, so this is camera plumbing, not
+playable four-player co-op. Tune the fit threshold (`sharedZoomMin`, `groupPad`, `shareSlack`) and the
+slow-motion pair from production play; per-pane campaign/wave banners and a real team field remain open.

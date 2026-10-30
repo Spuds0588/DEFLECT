@@ -6,6 +6,7 @@ import { P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './parti
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
 import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type Lure, type Net, type Phase, type Pickup, type Player, type Projectile, type Sentry, type Virus, type Worm } from './types';
+import { CameraDirector, type CameraRig } from './camera';
 
 export interface RenderState {
   mode: GameMode;
@@ -92,7 +93,10 @@ function broomTeethRow(cols: number): string {
 
 /** One local camera. Split screen gives each local slot its own framing and zoom. */
 interface CameraView {
+  /** First local slot in this view's group; the pane's primary for spectate and lifts. */
   slot: number;
+  /** Bitmask of local players in this group. One for a solo pane, several on a shared view. */
+  localMask: number;
   x: number;
   y: number;
   w: number;
@@ -110,6 +114,7 @@ const MAX_VIEWS = 4;
 function createCameraView(): CameraView {
   return {
     slot: 0,
+    localMask: 0,
     x: 0,
     y: 0,
     w: VIEW_W,
@@ -200,7 +205,24 @@ export class Renderer {
   private trailLastY = new Float32Array(MAX_PLAYERS);
   private views: CameraView[] = [];
   private viewSlots = new Int32Array(MAX_VIEWS);
+  /** Active local slots, in slot order, and their bitmask. */
+  private localList = new Int32Array(MAX_VIEWS);
+  private localCount = 0;
+  private localMask = 0;
   private viewCount = 0;
+  private lastViewCount = 0;
+  /** One-shot flag for the sim: the local view count or grouping just changed. */
+  private layoutChanged = false;
+  private lastMasks = new Int32Array(MAX_VIEWS);
+  /** Group id per local player, and the compaction map between group and view index. */
+  private groupOf = new Int32Array(MAX_VIEWS);
+  private groupRemap = new Int32Array(MAX_VIEWS);
+  private groupMasks = new Int32Array(MAX_VIEWS);
+  private groupW = 0;
+  private groupH = 0;
+  private director = new CameraDirector();
+  private lastWave = -1;
+  private lastCampaignKind = -1;
   /** Local slots to render as split panes. `null` is the normal single view. */
   private splitSlots: readonly number[] | null = null;
   /** Per-frame camera pull scratch: total weight and weighted offset from the anchor. */
@@ -278,10 +300,33 @@ export class Renderer {
   beginIntro(): void {
     this.introT = 0;
     this.introActive = true;
+    this.director.clear();
+    this.lastWave = -1;
+    this.lastCampaignKind = -1;
+    this.lastViewCount = 0;
+    this.layoutChanged = false;
+    this.lastMasks.fill(0);
     for (let i = 0; i < this.views.length; i++) {
       this.views[i].ready = false;
       this.views[i].wasAlive = false;
     }
+  }
+
+  /**
+   * Plays a camera override: a boss entrance, a narrative beat, a pack dropping in
+   * from off-screen. Rigs blend over the normal framing and hand control back when
+   * they expire. See `CameraRig` for the fields.
+   */
+  playCameraRig(rig: CameraRig): void {
+    this.director.play(rig);
+  }
+
+  /** True once after the split layout or pane grouping changes. The sim reads it to
+   * dip into slow motion while the players' screen positions move. */
+  consumeLayoutChange(): boolean {
+    const changed = this.layoutChanged;
+    this.layoutChanged = false;
+    return changed;
   }
 
   render(state: RenderState, alpha: number, fx: Fx): void {
@@ -297,6 +342,8 @@ export class Renderer {
     const intro = this.introActive ? this.introT : INTRO_LEN;
     const introDone = intro >= INTRO_LEN;
     this.layoutViews(state);
+    this.updateCameraCues(state);
+    this.director.update(dt);
 
     // Effects that advance per-frame state run once, never once per pane. Drawing them
     // per pane would double the dust and trail samples in a split match.
@@ -358,10 +405,13 @@ export class Renderer {
         this.drawLasers(state, alpha, t);
         if (state.drone) this.drawDrone(state.drone, alpha, t);
       }
-      this.drawPlayers(state, alpha, t, intro, view.slot);
+      this.drawPlayers(state, alpha, t, intro, view.localMask);
       if (introDone) {
-        this.drawTravelProgress(state, view.slot);
-        this.drawLockReticle(state, view.slot, t);
+        for (let s = 0; s < state.players.length; s++) {
+          if ((view.localMask & (1 << s)) === 0) continue;
+          this.drawTravelProgress(state, s);
+          this.drawLockReticle(state, s, t);
+        }
         fx.particles.draw(ctx);
       }
       ctx.restore();
@@ -374,8 +424,16 @@ export class Renderer {
       ctx.rect(view.x, view.y, view.w, view.h);
       ctx.clip();
       ctx.translate(view.x, view.y);
-      const local = state.players[view.slot];
-      if (introDone && local && local.alive && local.hp <= 1 && this.lowHpGradient) {
+      let lowHp = false;
+      for (let s = 0; s < state.players.length; s++) {
+        if ((view.localMask & (1 << s)) === 0) continue;
+        const p = state.players[s];
+        if (p && p.alive && p.hp <= 1) {
+          lowHp = true;
+          break;
+        }
+      }
+      if (introDone && lowHp && this.lowHpGradient) {
         ctx.save();
         ctx.scale(view.w / VIEW_W, view.h / VIEW_H);
         ctx.globalAlpha = 0.35 + Math.sin(t * 4) * 0.08;
@@ -383,17 +441,16 @@ export class Renderer {
         ctx.fillRect(0, 0, VIEW_W, VIEW_H);
         ctx.restore();
       }
-      if (introDone) {
-        this.drawReadiness(state, t, view.slot);
-        if (this.showMinimap) this.drawMinimap(state, t, view.slot, view.h);
-      }
       this.drawTravelOverlay(state, view);
       ctx.restore();
     }
 
     // Screen-space overlays shared by the whole frame.
     ctx.setTransform(base, 0, 0, base, this.dpr * this.offX, this.dpr * this.offY);
-    if (this.viewCount > 1) this.drawViewDivider(state);
+    if (this.viewCount > 1) {
+      this.drawViewDivider(state);
+      this.drawViewFrames(state);
+    }
 
     if (fx.flash > 0.002) {
       ctx.save();
@@ -405,32 +462,174 @@ export class Renderer {
     }
 
     if (introDone) this.drawHud(state, t);
+    // One readiness dock per local player at a screen corner, and one shared minimap.
+    // The minimap sits top-center when there is more than one local, so it belongs to
+    // the whole screen rather than to one pane.
+    if (introDone) {
+      this.drawReadinessDocks(state, t);
+      if (this.showMinimap) this.drawMinimap(state, t, this.localMask, this.localCount > 1);
+    }
   }
 
   /**
-   * Builds the local panes. One slot is a full-screen view; two are side by side; three
-   * or four use a 2x2 grid. Slots that are not active fall back to the primary so a
-   * solo match never renders an empty pane.
+   * Feeds the camera director from game state. Waves glance at a pack dropping in from
+   * off-screen; the campaign breach pushes in on the local player. Boss code can call
+   * `playCameraRig` directly for a bespoke entrance.
    */
-  private layoutViews(state: RenderState): void {
-    let count = 1;
-    this.viewSlots[0] = state.localSlot;
-    const wanted = this.splitSlots;
-    if (wanted && wanted.length > 1) {
-      count = 0;
-      for (let i = 0; i < wanted.length && count < MAX_VIEWS; i++) {
-        const slot = wanted[i];
-        if (slot >= 0 && slot < state.players.length && state.players[slot].active) {
-          this.viewSlots[count++] = slot;
+  private updateCameraCues(state: RenderState): void {
+    if (state.campaign) {
+      const kind = (state.campaignBannerT ?? 0) > 0 ? (state.campaignBannerKind ?? -1) : -1;
+      if (kind !== this.lastCampaignKind) {
+        this.lastCampaignKind = kind;
+        if (kind === 1) {
+          this.director.play({
+            x: 0,
+            y: 0,
+            followSlot: state.localSlot,
+            zoom: 1.08,
+            hold: 0.9,
+            blendIn: 0.45,
+            blendOut: 0.8,
+            weight: 0.8,
+            priority: 3,
+          });
         }
       }
-      if (count === 0) {
-        this.viewSlots[0] = state.localSlot;
-        count = 1;
+    }
+    if (state.mode === 'gauntlet' && !state.campaign && state.sentries && (state.waveBannerT ?? 0) > 0) {
+      const wave = state.wave ?? 0;
+      if (wave !== this.lastWave) {
+        this.lastWave = wave;
+        const target = this.findWaveFocus(state);
+        if (target >= 0) {
+          const s = state.sentries[target];
+          this.director.play({
+            x: s.x,
+            y: s.y,
+            followSlot: -1,
+            zoom: 0.94,
+            hold: 0.55,
+            blendIn: 0.3,
+            blendOut: 0.6,
+            weight: 0.5,
+            priority: 1,
+          });
+        }
+      }
+    }
+  }
+
+  /** Nearest live sentry that is still outside the local view, else the nearest one. */
+  private findWaveFocus(state: RenderState): number {
+    const sentries = state.sentries;
+    if (!sentries) return -1;
+    const local = state.players[state.localSlot];
+    if (!local) return -1;
+    let best = -1;
+    let bestD = Infinity;
+    let bestEdge = -1;
+    let bestEdgeD = Infinity;
+    for (let i = 0; i < sentries.length; i++) {
+      const s = sentries[i];
+      if (!s.active) continue;
+      const dx = s.x - local.x;
+      const dy = s.y - local.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+      if (d > CAMERA.waveLookAhead * CAMERA.waveLookAhead && d < bestEdgeD) {
+        bestEdgeD = d;
+        bestEdge = i;
+      }
+    }
+    return bestEdge >= 0 ? bestEdge : best;
+  }
+
+  /**
+   * Builds the local panes. Everyone stays on one screen while the group fits at
+   * `CAMERA.zoomMin`; only then do players split, and only into as many panes as the
+   * groups need. A lone player across the arena adds one pane, not three. One pane is
+   * full screen, two are side by side, three or four use a 2x2 grid.
+   */
+  private layoutViews(state: RenderState): void {
+    // Active local slots in slot order. `splitSlots` is the QA hook today; a local
+    // input-slot list will feed the same array.
+    let localCount = 0;
+    const wanted = this.splitSlots;
+    if (wanted && wanted.length > 1) {
+      for (let i = 0; i < wanted.length && localCount < MAX_VIEWS; i++) {
+        const slot = wanted[i];
+        if (slot >= 0 && slot < state.players.length && state.players[slot].active) {
+          this.localList[localCount++] = slot;
+        }
+      }
+    }
+    if (localCount === 0) {
+      this.localList[0] = state.localSlot;
+      localCount = 1;
+    }
+    this.localCount = localCount;
+    let mask = 0;
+    for (let i = 0; i < localCount; i++) mask |= 1 << this.localList[i];
+    this.localMask = mask;
+
+    // Start with everyone in one group. Only split what does not fit one view at the
+    // closest allowed zoom. Merging back uses a slightly stricter fit than staying
+    // merged, so a group sitting on the threshold does not flicker between layouts.
+    for (let i = 0; i < localCount; i++) this.groupOf[i] = 0;
+    this.measureGroup(state, 0, localCount);
+    // The single view may pull farther back than combat zoom before it gives up and
+    // splits: `sharedZoomMin` is that extra floor. The group pad is part of the fit,
+    // so the camera never puts an avatar on the pane edge to make the box fit.
+    const pad = CAMERA.groupPad * 2;
+    const minZoom = CAMERA_ZOOM * CAMERA.zoomMin;
+    const sharedZoom = CAMERA_ZOOM * CAMERA.sharedZoomMin;
+    const slack = this.lastViewCount > 1 ? -CAMERA.shareSlack : 0;
+    const fullW = VIEW_W / sharedZoom - pad + slack;
+    const fullH = VIEW_H / sharedZoom - pad + slack;
+    let groupCount = 1;
+    if (this.groupW > fullW || this.groupH > fullH) {
+      const gap = CAMERA.splitGap;
+      const paneZoom = minZoom * CAMERA.splitZoom;
+      const paneW = (VIEW_W - gap) * 0.5 / paneZoom - pad;
+      const paneH = VIEW_H / paneZoom - pad;
+      groupCount = this.clusterLocalGroups(state, localCount, paneW, paneH);
+      if (groupCount > 2) {
+        // Three or four panes use the 2x2 grid, which is shorter than a side-by-side
+        // pane. Re-cluster against the smaller box so no group is left clipped.
+        const gridW = (VIEW_W - gap) * 0.5 / paneZoom - pad;
+        const gridH = (VIEW_H - gap) * 0.5 / paneZoom - pad;
+        groupCount = this.clusterLocalGroups(state, localCount, gridW, gridH);
       }
     }
 
+    // Compact group ids so view i owns group i, and build each view's local mask.
+    for (let i = 0; i < MAX_VIEWS; i++) this.groupRemap[i] = -1;
+    let next = 0;
+    for (let i = 0; i < localCount; i++) {
+      const g = this.groupOf[i];
+      if (this.groupRemap[g] < 0) this.groupRemap[g] = next++;
+    }
+    for (let i = 0; i < localCount; i++) this.groupOf[i] = this.groupRemap[this.groupOf[i]];
+    groupCount = next;
+    for (let g = 0; g < groupCount; g++) {
+      let primary = -1;
+      let groupMask = 0;
+      for (let i = 0; i < localCount; i++) {
+        if (this.groupOf[i] !== g) continue;
+        const slot = this.localList[i];
+        if (primary < 0) primary = slot;
+        groupMask |= 1 << slot;
+      }
+      this.viewSlots[g] = primary;
+      this.groupMasks[g] = groupMask;
+    }
+
+    const count = groupCount;
     const gap = CAMERA.splitGap;
+    const prevCount = this.lastViewCount;
     for (let i = 0; i < count; i++) {
       const view = this.views[i];
       const slot = this.viewSlots[i];
@@ -439,6 +638,7 @@ export class Renderer {
         view.ready = false;
         view.wasAlive = false;
       }
+      view.localMask = this.groupMasks[i];
       if (count === 1) {
         view.x = 0;
         view.y = 0;
@@ -459,7 +659,154 @@ export class Renderer {
         view.h = h;
       }
     }
+
+    // Growing from a shared screen (or from fewer panes) starts the new panes on the
+    // camera everyone was already looking at, then lets them pan apart. Without this a
+    // fresh pane snaps across the arena the first time players separate.
+    if (count > prevCount) {
+      const from = this.views[0];
+      for (let i = prevCount > 0 ? prevCount : 1; i < count; i++) {
+        const view = this.views[i];
+        view.camX = from.camX;
+        view.camY = from.camY;
+        view.zoom = from.zoom;
+        view.arena = from.arena;
+        view.ready = from.ready;
+        view.wasAlive = from.wasAlive;
+      }
+    }
+    let changed = prevCount > 0 && count !== prevCount;
+    if (!changed && prevCount === count) {
+      for (let i = 0; i < count; i++) {
+        if (this.groupMasks[i] !== this.lastMasks[i]) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    for (let i = 0; i < count; i++) this.lastMasks[i] = this.groupMasks[i];
+    if (changed) this.layoutChanged = true;
+
     this.viewCount = count;
+    this.lastViewCount = count;
+  }
+
+  /** Bounding box of one group, in world units. Used only for the fit tests. */
+  private measureGroup(state: RenderState, group: number, count: number): void {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (let i = 0; i < count; i++) {
+      if (this.groupOf[i] !== group) continue;
+      const p = state.players[this.localList[i]];
+      // A dead body is a spectator, not a subject for the framing fit. Counting a
+      // corpse in a far corner would split the survivors' screen for nothing.
+      if (!p || !p.active || !p.alive) continue;
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    this.groupW = maxX >= minX ? maxX - minX : 0;
+    this.groupH = maxY >= minY ? maxY - minY : 0;
+  }
+
+  /**
+   * Splits the local players into the smallest number of groups whose boxes each fit a
+   * plane of `fitW x fitH`. Recursively peels the farthest pair apart: a lone player
+   * far from a tight trio becomes its own group and nothing else moves.
+   */
+  private clusterLocalGroups(state: RenderState, count: number, fitW: number, fitH: number): number {
+    for (let i = 0; i < count; i++) this.groupOf[i] = 0;
+    let groups = 1;
+    let g = 0;
+    while (g < groups && g < MAX_VIEWS) {
+      this.measureGroup(state, g, count);
+      if (this.groupW <= fitW && this.groupH <= fitH) {
+        g++;
+        continue;
+      }
+      let members = 0;
+      for (let i = 0; i < count; i++) {
+        if (this.groupOf[i] !== g) continue;
+        const p = state.players[this.localList[i]];
+        if (p && p.active && p.alive) members++;
+      }
+      if (members <= 1 || groups >= MAX_VIEWS) {
+        g++;
+        continue;
+      }
+      let ai = -1;
+      let bi = -1;
+      let bestD2 = -1;
+      for (let i = 0; i < count; i++) {
+        if (this.groupOf[i] !== g) continue;
+        const a = state.players[this.localList[i]];
+        if (!a || !a.active || !a.alive) continue;
+        for (let j = i + 1; j < count; j++) {
+          if (this.groupOf[j] !== g) continue;
+          const b = state.players[this.localList[j]];
+          if (!b || !b.active || !b.alive) continue;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > bestD2) {
+            bestD2 = d2;
+            ai = i;
+            bi = j;
+          }
+        }
+      }
+      if (ai < 0 || bi < 0) {
+        g++;
+        continue;
+      }
+      const ng = groups++;
+      const a = state.players[this.localList[ai]];
+      const b = state.players[this.localList[bi]];
+      for (let i = 0; i < count; i++) {
+        if (i === ai || this.groupOf[i] !== g) continue;
+        const p = state.players[this.localList[i]];
+        if (!p || !p.active || !p.alive) continue;
+        const daX = p.x - a.x;
+        const daY = p.y - a.y;
+        const dbX = p.x - b.x;
+        const dbY = p.y - b.y;
+        if (dbX * dbX + dbY * dbY < daX * daX + daY * daY) this.groupOf[i] = ng;
+      }
+      // A co-located pair has no nearer seed; force the far seed into the new group.
+      if (this.groupOf[bi] === g) this.groupOf[bi] = ng;
+      // Loop on g again: the group just shrank and may still be too wide.
+    }
+    return groups;
+  }
+
+  /**
+   * A colored outline per pane, in the primary local player's color. A split view over
+   * a uniform floor can otherwise read as one camera with a seam; the outline makes
+   * each window's bounds explicit even when both panes show similar geometry.
+   */
+  private drawViewFrames(state: RenderState): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < this.viewCount; i++) {
+      const view = this.views[i];
+      const p = state.players[view.slot];
+      const color = p ? playerColor(state, p) : state.arena.accent;
+      ctx.save();
+      // Dark underlay first so the color survives a bright bridge or a lit frame.
+      ctx.strokeStyle = 'rgba(2, 6, 10, 0.92)';
+      ctx.lineWidth = 5;
+      ctx.strokeRect(view.x + 2.5, view.y + 2.5, view.w - 5, view.h - 5);
+      ctx.globalAlpha = 0.82;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(view.x + 2.5, view.y + 2.5, view.w - 5, view.h - 5);
+      ctx.globalAlpha = 0.18;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(view.x + 7.5, view.y + 7.5, view.w - 15, view.h - 15);
+      ctx.restore();
+    }
   }
 
   /** Thin line through the split gap, so two cameras read as two panes. */
@@ -622,32 +969,66 @@ export class Renderer {
     const arena = state.arena;
     const b = arena.bounds;
     const local = state.players[view.slot];
-    const alive = !!(local && local.active && local.alive);
     // A pad swap is a cut, not a pan. Snap on the half where the body changes plates.
-    const padSwap = !!(
-      local &&
-      local.travelT > 0 &&
-      local.travelKind === TRAVEL.pad &&
-      local.travelSwap
-    );
+    // A shared screen cuts when any of its players swaps, since they all share the frame.
+    let padSwap = false;
+    for (let s = 0; s < state.players.length; s++) {
+      if ((view.localMask & (1 << s)) === 0) continue;
+      const p = state.players[s];
+      if (p && p.travelT > 0 && p.travelKind === TRAVEL.pad && p.travelSwap) {
+        padSwap = true;
+        break;
+      }
+    }
     let focusX = (b.left + b.right) * 0.5;
     let focusY = (b.top + b.bottom) * 0.5;
     let anchorX = focusX;
     let anchorY = focusY;
     let spectating = false;
+    let leadAlive = false;
+    let groupMinX = Infinity;
+    let groupMinY = Infinity;
+    let groupMaxX = -Infinity;
+    let groupMaxY = -Infinity;
     this.camSpread = 0;
-    if (local && local.active) {
-      if (alive) {
-        anchorX = lerp(local.prevX, local.x, alpha);
-        anchorY = lerp(local.prevY, local.y, alpha);
-      } else if (this.findSpectateTarget(state, local)) {
-        anchorX = this.spectateX;
-        anchorY = this.spectateY;
-        spectating = true;
-      } else {
-        anchorX = local.x;
-        anchorY = local.y;
+
+    // One camera per group. The anchor is the group's bounding-box centre, not the
+    // mean: a tight pair plus one outlier then keeps both ends equally in frame.
+    for (let s = 0; s < state.players.length; s++) {
+      if ((view.localMask & (1 << s)) === 0) continue;
+      const p = state.players[s];
+      if (!p || !p.active || !p.alive) continue;
+      const px = lerp(p.prevX, p.x, alpha);
+      const py = lerp(p.prevY, p.y, alpha);
+      if (px < groupMinX) groupMinX = px;
+      if (py < groupMinY) groupMinY = py;
+      if (px > groupMaxX) groupMaxX = px;
+      if (py > groupMaxY) groupMaxY = py;
+      leadAlive = true;
+    }
+    if (leadAlive) {
+      anchorX = (groupMinX + groupMaxX) * 0.5;
+      anchorY = (groupMinY + groupMaxY) * 0.5;
+      focusX = anchorX;
+      focusY = anchorY;
+      for (let s = 0; s < state.players.length; s++) {
+        if ((view.localMask & (1 << s)) === 0) continue;
+        const p = state.players[s];
+        if (!p || !p.active || !p.alive) continue;
+        const dx = lerp(p.prevX, p.x, alpha) - anchorX;
+        const dy = lerp(p.prevY, p.y, alpha) - anchorY;
+        const d = Math.hypot(dx, dy);
+        if (d > this.camSpread) this.camSpread = d;
       }
+    } else if (local && local.active && this.findSpectateTarget(state, local)) {
+      anchorX = this.spectateX;
+      anchorY = this.spectateY;
+      focusX = anchorX;
+      focusY = anchorY;
+      spectating = true;
+    } else if (local) {
+      anchorX = local.x;
+      anchorY = local.y;
       focusX = anchorX;
       focusY = anchorY;
     }
@@ -655,13 +1036,12 @@ export class Renderer {
     // Nearby bodies lead the frame. The mean offset is damped so one threat behind the
     // player opens the view, while a brawl around them leaves the frame on the player.
     // A dead slot pulls around its spectate target instead of the corpse.
-    if (local && local.active && (alive || spectating)) {
+    if (local && local.active && (leadAlive || spectating)) {
       this.camPullW = 0;
       this.camPullX = 0;
       this.camPullY = 0;
-      this.camSpread = 0;
       for (let i = 0; i < state.players.length; i++) {
-        if (i === view.slot) continue;
+        if ((view.localMask & (1 << i)) !== 0) continue;
         if (spectating && this.spectateKind === SRC.PLAYER && i === this.spectateId) continue;
         const p = state.players[i];
         if (!p.active || !p.alive) continue;
@@ -714,11 +1094,48 @@ export class Renderer {
       }
     }
 
+    // A rig overrides framing for a boss entrance, a narrative beat or a wave look-ahead.
+    // It eases in, holds, and hands control back; a full blend may leave the avatar off
+    // frame on purpose, which is why it stays opt-in and short.
+    const rig = this.director.active ? this.director : null;
+    let rigZoom = 1;
+    if (rig) {
+      let rx = rig.x;
+      let ry = rig.y;
+      if (rig.followSlot >= 0) {
+        const fp = state.players[rig.followSlot];
+        if (fp && fp.active) {
+          rx = lerp(fp.prevX, fp.x, alpha);
+          ry = lerp(fp.prevY, fp.y, alpha);
+        }
+      }
+      const look = rig.blend;
+      focusX = lerp(focusX, rx, look);
+      focusY = lerp(focusY, ry, look);
+      const anchorBlend = Math.max(0, (look - 0.4) / 0.6);
+      anchorX = lerp(anchorX, rx, anchorBlend);
+      anchorY = lerp(anchorY, ry, anchorBlend);
+      rigZoom = 1 + (rig.zoom - 1) * look;
+    }
+
     // Zoom out when the focus group is spread, so both ends of the fight stay on screen.
     // The range is a multiplier of the base zoom: full view or split pane.
     const zoomBase = CAMERA_ZOOM * (this.viewCount > 1 ? CAMERA.splitZoom : 1);
     const spreadFrac = Math.min(1, this.camSpread / CAMERA.focusRange);
-    const zoomTarget = zoomBase * (CAMERA.zoomMax + (CAMERA.zoomMin - CAMERA.zoomMax) * spreadFrac);
+    let zoomTarget = zoomBase * (CAMERA.zoomMax + (CAMERA.zoomMin - CAMERA.zoomMax) * spreadFrac) * rigZoom;
+
+    // Never clip a group that fits. `layoutViews` already checked the fit at minimum
+    // zoom; this is the exact cap for the box the camera is actually framing.
+    if (leadAlive) {
+      const pad = CAMERA.groupPad * 2;
+      const boxW = Math.max(1, groupMaxX - groupMinX) + pad;
+      const boxH = Math.max(1, groupMaxY - groupMinY) + pad;
+      const fitZoom = Math.min(view.w / boxW, view.h / boxH);
+      // A single shared view may pull back past combat zoom to keep the group together;
+      // a split pane only needs the normal floor because the layout already sized it.
+      const floor = zoomBase * (this.viewCount > 1 ? CAMERA.zoomMin : CAMERA.sharedZoomMin);
+      if (fitZoom < zoomTarget) zoomTarget = Math.max(floor, fitZoom);
+    }
 
     let targetX: number;
     let targetY: number;
@@ -752,7 +1169,7 @@ export class Renderer {
 
     // Respawn is a cut too: the body reappears at a spawn, not where the spectate pane
     // was looking, so panning back would sweep the whole arena.
-    const respawned = alive && !view.wasAlive;
+    const respawned = leadAlive && !view.wasAlive;
     if (padSwap || respawned || !view.ready || view.arena !== arena.id) {
       view.camX = targetX;
       view.camY = targetY;
@@ -766,7 +1183,7 @@ export class Renderer {
       const kz = 1 - Math.exp(-CAMERA.zoomFollow * dt);
       view.zoom += (zoomTarget - view.zoom) * kz;
     }
-    view.wasAlive = alive;
+    view.wasAlive = leadAlive;
   }
 
   /**
@@ -2777,7 +3194,7 @@ export class Renderer {
     alpha: number,
     t: number,
     intro = INTRO_LEN,
-    localSlot = state.localSlot,
+    localMask = 1 << state.localSlot,
   ): void {
     const ctx = this.ctx;
     if (intro < 1.85) {
@@ -2815,7 +3232,7 @@ export class Renderer {
       const y = lerp(p.prevY, p.y, alpha);
       const facing = lerpAngle(p.prevFacing, p.facing, alpha);
       const color = playerColor(state, p);
-      const isLocal = p.slot === localSlot;
+      const isLocal = (localMask & (1 << p.slot)) !== 0;
 
       // A dead body leaves no marker on the field. The death burst and the respawn
       // timer carry the state; a dashed ring with an X read as another interactable.
@@ -2823,7 +3240,7 @@ export class Renderer {
       // Lift riders are hidden under the car transition. A pad rider is drawn in its
       // layer-by-layer unload/reload at the two plates instead.
       if (p.travelT > 0) {
-        if (p.travelKind === TRAVEL.pad) this.drawPadTransit(state, p, t, localSlot);
+        if (p.travelKind === TRAVEL.pad) this.drawPadTransit(state, p, t, localMask);
         continue;
       }
 
@@ -3509,17 +3926,44 @@ export class Renderer {
   }
 
   /**
-   * Local readiness dock, pinned to the top-left corner of the viewport. Health and
-   * energy stay on the avatar; ammo, dash, skill, heavy and the active pickup live
-   * here so they never sit between the avatar and an incoming shot.
+   * One readiness dock per local player, placed in a screen corner: top-left for a solo
+   * view, then top-right, bottom-left and bottom-right as more local players join. The
+   * corners keep four docks clear of each other and of the shared minimap.
    */
-  private drawReadiness(state: RenderState, t: number, slot: number): void {
+  private drawReadinessDocks(state: RenderState, t: number): void {
+    const count = this.localCount;
+    const margin = 12;
+    const w = 182;
+    const h = 44;
+    for (let i = 0; i < count; i++) {
+      const slot = this.localList[i];
+      const p = state.players[slot];
+      if (!p || !p.active || !p.alive) continue;
+      let x = margin;
+      let y = margin;
+      if (count === 2) {
+        x = i === 0 ? margin : VIEW_W - w - margin;
+      } else if (count === 3) {
+        if (i === 1) x = VIEW_W - w - margin;
+        else if (i === 2) y = VIEW_H - h - margin;
+      } else if (count >= 4) {
+        x = (i % 2) === 0 ? margin : VIEW_W - w - margin;
+        y = i < 2 ? margin : VIEW_H - h - margin;
+      }
+      this.drawReadiness(state, t, slot, x, y);
+    }
+  }
+
+  /**
+   * Local readiness dock. Health and energy stay on the avatar; ammo, dash, skill,
+   * heavy and the active pickup live here so they never sit between the avatar and an
+   * incoming shot.
+   */
+  private drawReadiness(state: RenderState, t: number, slot: number, boxX = 12, boxY = 12): void {
     const p = state.players[slot];
     if (!p || !p.active || !p.alive) return;
     const ctx = this.ctx;
     const color = playerColor(state, p);
-    const boxX = 12;
-    const boxY = 12;
     const cell = 34;
     const pad = 6;
     const boxW = cell * 5 + pad * 2;
@@ -3936,7 +4380,7 @@ export class Renderer {
    * rebuild at the mate. The hull goes first on the way out and last on the way in,
    * so the character reads as decompiling and recompiling rather than blinking.
    */
-  private drawPadTransit(state: RenderState, p: Player, t: number, localSlot = state.localSlot): void {
+  private drawPadTransit(state: RenderState, p: Player, t: number, localMask = 1 << state.localSlot): void {
     if (p.travelDur <= 0) return;
     const pct = 1 - Math.max(0, Math.min(1, p.travelT / p.travelDur));
     const unload = pct < 0.5;
@@ -3945,7 +4389,7 @@ export class Renderer {
     const x = p.x;
     const y = p.y;
     const color = playerColor(state, p);
-    const isLocal = p.slot === localSlot;
+    const isLocal = (localMask & (1 << p.slot)) !== 0;
     const hull = Math.max(0, Math.min(1, (reveal - 0.5) / 0.5));
     const core = Math.max(0, Math.min(1, (reveal - 0.2) / 0.6));
     const glyphA = Math.max(0, Math.min(1, reveal / 0.35));
@@ -4045,10 +4489,19 @@ export class Renderer {
    * short white ring flash. Both hide the body swap that already happened in the sim.
    */
   private drawTravelOverlay(state: RenderState, view: CameraView): void {
-    const p = state.players[view.slot];
     // Only the lift is a full-screen transition; pad transit is drawn on the avatar
-    // itself, so the unload and reload stay visible at both plates.
-    if (!p || p.travelT <= 0 || p.travelDur <= 0 || p.travelKind !== TRAVEL.lift) return;
+    // itself, so the unload and reload stay visible at both plates. On a shared screen
+    // the first local player riding a lift owns the transition.
+    let p: Player | null = null;
+    for (let i = 0; i < state.players.length; i++) {
+      if ((view.localMask & (1 << i)) === 0) continue;
+      const q = state.players[i];
+      if (q && q.travelT > 0 && q.travelDur > 0 && q.travelKind === TRAVEL.lift) {
+        p = q;
+        break;
+      }
+    }
+    if (!p) return;
     const pct = 1 - Math.max(0, Math.min(1, p.travelT / p.travelDur));
     const ctx = this.ctx;
     const viewW = view.w;
@@ -4098,15 +4551,17 @@ export class Renderer {
    * Toggleable minimap. It shows cover, the local avatar, other players and local
    * gauntlet threats. No labels; the shapes already carry meaning.
    */
-  private drawMinimap(state: RenderState, t: number, localSlot: number, viewH: number): void {
+  private drawMinimap(state: RenderState, t: number, localMask: number, centered: boolean): void {
     const arena = state.arena;
     const b = arena.bounds;
     const spanX = Math.max(1, b.right - b.left);
     const spanY = Math.max(1, b.bottom - b.top);
     const w = 148;
     const h = Math.max(74, Math.min(116, w * (spanY / spanX)));
-    const x0 = 12;
-    const y0 = viewH - h - 12;
+    // One map for the whole screen: lower-left for a solo view, top-center when local
+    // players share the view or the view is split, so it does not belong to one pane.
+    const x0 = centered ? (VIEW_W - w) * 0.5 : 12;
+    const y0 = centered ? 12 : VIEW_H - h - 12;
     const sx = w / spanX;
     const sy = h / spanY;
     const ctx = this.ctx;
@@ -4218,13 +4673,14 @@ export class Renderer {
     for (let i = 0; i < state.players.length; i++) {
       const p = state.players[i];
       if (!p.active || !p.alive) continue;
+      const local = (localMask & (1 << i)) !== 0;
       const px = x0 + (p.x - b.left) * sx;
       const py = y0 + (p.y - b.top) * sy;
       ctx.fillStyle = playerColor(state, p);
       ctx.beginPath();
-      ctx.arc(px, py, i === localSlot ? 3.4 : 2.4, 0, TWO_PI);
+      ctx.arc(px, py, local ? 3.4 : 2.4, 0, TWO_PI);
       ctx.fill();
-      if (i === localSlot) {
+      if (local) {
         ctx.globalAlpha = 0.65 + 0.25 * Math.sin(t * 5);
         ctx.strokeStyle = playerColor(state, p);
         ctx.lineWidth = 1.2;

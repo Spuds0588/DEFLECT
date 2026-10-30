@@ -221,7 +221,10 @@ export class BotBrain {
     }
 
     const target = this.target >= 0 ? world.players[this.target] : null;
-    if (!target || !target.active || !target.alive) return;
+    if (!target || !target.active || !target.alive) {
+      if (this.engageHostiles(world, me, out)) return;
+      return;
+    }
 
     // Fisher's beacon is a decoy for bots too: inside its radius it becomes the
     // focus, so a bot walks to it and shoots it while the Fisher repositions. A
@@ -500,6 +503,147 @@ export class BotBrain {
       out.mx = this.steerX * speed;
       out.my = this.steerY * speed;
     }
+  }
+
+  /**
+   * QA-only gauntlet pilot. With no human opponent to fight, walk to the nearest
+   * hostile and use the basic kit. This is what lets `?gauntlet=1&bot=1` exercise the
+   * camera against live waves; it is not a PvE ally controller, and it never runs in a
+   * match where a player target exists.
+   */
+  private engageHostiles(world: World, me: Player, out: InputFrame): boolean {
+    if (world.mode !== 'gauntlet') return false;
+    let tx = 0;
+    let ty = 0;
+    let best = Infinity;
+    let found = false;
+    const worms = world.worms;
+    for (let i = 0; i < worms.length; i++) {
+      const w = worms[i];
+      if (!w.active) continue;
+      const dx = w.x - me.x;
+      const dy = w.y - me.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < best) {
+        best = d2;
+        tx = w.x;
+        ty = w.y;
+        found = true;
+      }
+    }
+    const viruses = world.viruses;
+    for (let i = 0; i < viruses.length; i++) {
+      const v = viruses[i];
+      if (!v.active) continue;
+      const dx = v.x - me.x;
+      const dy = v.y - me.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < best) {
+        best = d2;
+        tx = v.x;
+        ty = v.y;
+        found = true;
+      }
+    }
+    const sentries = world.sentries;
+    for (let i = 0; i < sentries.length; i++) {
+      const s = sentries[i];
+      if (!s.active) continue;
+      const dx = s.x - me.x;
+      const dy = s.y - me.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < best) {
+        best = d2;
+        tx = s.x;
+        ty = s.y;
+        found = true;
+      }
+    }
+    const errors = world.errors;
+    for (let i = 0; i < errors.length; i++) {
+      const e = errors[i];
+      if (!e.active) continue;
+      const dx = e.x - me.x;
+      const dy = e.y - me.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < best) {
+        best = d2;
+        tx = e.x;
+        ty = e.y;
+        found = true;
+      }
+    }
+
+    if (!found) {
+      // Drift toward the middle between waves so the pilot does not park on a spawn
+      // edge and wait for the next pack to walk into it.
+      const cx = (world.arena.bounds.left + world.arena.bounds.right) * 0.5;
+      const cy = (world.arena.bounds.top + world.arena.bounds.bottom) * 0.5;
+      const dx = cx - me.x;
+      const dy = cy - me.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d > 30) {
+        out.mx = (dx / d) * 0.55;
+        out.my = (dy / d) * 0.55;
+      }
+      return true;
+    }
+
+    const dx = tx - me.x;
+    const dy = ty - me.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const ux = dx / dist;
+    const uy = dy / dist;
+    const aim = Math.atan2(dy, dx);
+    const blocked = this.lineBlocked(me, tx, ty, world.arena.pillars);
+
+    // Fire while walking at the target, because the shot leaves along the movement
+    // direction. Cover stops the shot, so the pilot has to route around it first.
+    if (
+      !blocked &&
+      this.fireCd <= 0 &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.burstCd <= 0 &&
+      me.burstLeft > 0 &&
+      me.energy >= BOLT.cost &&
+      dist < 380
+    ) {
+      out.mx = Math.cos(aim) * 0.82;
+      out.my = Math.sin(aim) * 0.82;
+      out.pressed |= ACTION.BOLT;
+      this.fireCd = this.rng.range(this.tune.fireMin, this.tune.fireMax);
+      return true;
+    }
+    if (dist < PLAYER.swingReach + 6 && me.swingPhase === 0 && this.swingCd <= 0) {
+      out.mx = ux;
+      out.my = uy;
+      out.pressed |= ACTION.SWING;
+      this.swingCd = 0.42;
+      return true;
+    }
+
+    let moveX = ux;
+    let moveY = uy;
+    if (blocked || this.gapBlocked(me, tx, ty, world.arena)) {
+      if (this.followPath(me, tx, ty, world.arena)) {
+        moveX = this.detourX;
+        moveY = this.detourY;
+      }
+    } else if (dist < 120) {
+      // Too close to a body that damages on touch: give ground while facing it.
+      moveX = -ux;
+      moveY = -uy;
+    }
+    this.applySeparation(world, me, moveX, moveY);
+    this.avoidFurniture(me, moveX, moveY, world.arena);
+    const mag = Math.hypot(this.steerX, this.steerY);
+    if (mag > 0.001) {
+      const speed = mag > 1 ? 1 / mag : 0.85;
+      out.mx = this.steerX * speed;
+      out.my = this.steerY * speed;
+    }
+    return true;
   }
 
   private steerX = 0;

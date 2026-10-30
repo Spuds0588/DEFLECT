@@ -30,12 +30,40 @@ export const CAMERA = {
    */
   zoomMin: 0.88,
   zoomMax: 1.03,
+  /**
+   * Extra pull-back allowed while local players still share one screen. The camera
+   * drops to this before it splits a pane, so a group across a wide arena stays
+   * together until the frame can no longer hold everyone.
+   */
+  sharedZoomMin: 0.68,
   /** Zoom rate, 1/s. Slower than the pan so the frame does not breathe. */
   zoomFollow: 3.4,
   /** Split-screen panes start pulled back so each local player keeps context. */
   splitZoom: 0.8,
   /** Gap between split panes, in virtual pixels. */
   splitGap: 4,
+  /**
+   * Local players stay on one screen while their whole group fits a view at `zoomMin`.
+   * `groupPad` is the world-space margin kept around the group; `shareSlack` is the
+   * hysteresis band, so a group at the fit limit does not flicker between layouts.
+   */
+  groupPad: 60,
+  shareSlack: 70,
+  /**
+   * A wave look-ahead only glances at a sentry pack at least this far from the local
+   * player, so the rig reads as an entrance from off-screen instead of a pan to
+   * something already in frame.
+   */
+  waveLookAhead: 380,
+  /**
+   * Slow-motion when the local view count or grouping changes. The transition moves a
+   * player's screen position; a full second of dip gives the eye time to find the avatar
+   * before a shot lands. The first `layoutSlowHold` seconds sit at the slow scale, then
+   * it eases back to normal. Local modes only.
+   */
+  layoutSlowTime: 1,
+  layoutSlowHold: 0.6,
+  layoutSlowScale: 0.35,
 } as const;
 
 export const ARENA = {

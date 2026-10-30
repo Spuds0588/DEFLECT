@@ -2,7 +2,46 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.36 split cameras + death spectate)
+Last updated: 2026-10-30 (v0.1.37 fit-first split camera, pane frames, layout slow motion)
+
+---
+
+## v0.1.37 — Fit-first split camera, shared HUD, rigs, layout slow motion (2026-10-30)
+
+### Camera
+- [x] Local players stay on one screen while the whole group fits at `CAMERA.sharedZoomMin` (0.68) with
+      `CAMERA.groupPad` (60). The camera anchors the group's bounding-box centre and may pull past combat
+      zoom to fit; with `CAMERA_ZOOM` 1.28 the single-view fit is about 1350x707 world units
+- [x] Minimal panes: farthest-pair clustering peels only the players who do not fit. Four with one far
+      become two panes, a tight trio shares a pane, two pairs become two panes, four far use the 2x2 grid.
+      `CAMERA.shareSlack` (70) is the merge hysteresis; dead locals are spectators and do not force a split
+- [x] Split pane frames: a 1.6px outline in the primary local's color over a dark underlay, plus a faint
+      inner line, so two similar floors read as two windows
+- [x] HUD: one readiness dock per local at screen corners; one shared minimap, lower-left for a solo view
+      and top-centre when the view is split or more than one local is active
+- [x] Layout slow motion: a view-count or group-mask change dips the local sim to 0.35x for 1 s, holds
+      that scale 0.6 s, then eases back over 0.4 s. Network play and the stress bench never slow
+- [x] Camera rig director (`src/game/camera.ts`): four pooled rigs, priority/blend/hold, and
+      `Renderer.playCameraRig`. Cues: gauntlet wave glance at an off-screen sentry pack and a campaign
+      breach push-in
+- [x] QA: `?gauntlet=1&arena=N&bot=1` runs a gauntlet with `BotBrain.engageHostiles` driving the local
+      player; `?debug=1` exposes a read-only inspection handle for scripted split/group tests
+
+### Verification
+- [x] Browser 1280x800 on TRANSIT: four clustered at one view (zoom 1.143, view 1120), three close + one
+      far at two panes (masks 7/8), two pairs at two panes (masks 3/12), four far at 2x2. Pane frames,
+      four corner docks and the top-centre map checked in each layout
+- [x] Slow motion: the round timer dropped 0.68 s over 1.20 s wall during a 2→1 merge, then 1.00 s over
+      1.01 s once the one-second dip expired; normal speed returns
+- [x] Rig: a priority-5 rig at (2200,1000), zoom 0.7 reached blend 1 and pinned the view to the arena's
+      right/bottom bounds; clearing it returned the default framing
+- [x] `npx tsc --noEmit` and `npm run build` clean; `npm run bench` unchanged (gauntlet max 0.165 ms avg
+      / 0.627 ms p99; eight-bot swarm 0.071 / 0.217)
+- [ ] Playtest the fit threshold and shared min zoom in production; tune `sharedZoomMin`, `groupPad`,
+      `shareSlack`, and the `layoutSlowTime`/`layoutSlowScale` pair
+- [ ] Local input slots and the same-screen menu flow for 2–4 humans; split is still camera plumbing
+- [ ] Per-pane campaign/wave banners; the score strip is one shared strip
+- [ ] A team field so surviving bot allies can be followed outside the campaign drill
 
 ---
 

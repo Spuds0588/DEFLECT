@@ -155,6 +155,10 @@ separate difficulty preferences.
 
 `?autoplay=N` is a QA-only boot hook: it starts a VS BOTS match with bots in every slot, including
 slot 0, and auto-rematches when the match ends. It must stay out of menus and snapshots.
+`?gauntlet=1&arena=N&bot=1` is the gauntlet counterpart: it boots a one-life run on an arena and lets a
+`BotBrain` drive the local player. With no player target in the gauntlet, `BotBrain.engageHostiles`
+walks to the nearest live threat and uses ranged and melee. It is a camera-test pilot, not a PvE ally
+controller, and it must not become a menu bot or a networked participant.
 
 Bot movement around cover uses a precomputed 20-unit occupancy grid per arena plus one reusable A*
 workspace (`src/game/nav.ts`). Routes are planned on a timer or when the target moves, then shortcut by
@@ -320,16 +324,18 @@ avatar; no separate powerup bar.
 ### D11 — Avatar-only telemetry and settings sub-menus (decided 2026-10-28)
 The canvas shows no operator name plates or life bars. Health is the rotating segmented outline around
 the **local** avatar; energy is the local inner arc. Ranged ammo, dash charges, the skill and
-power-attack marks, and the current pickup sit in one compact **top-left readiness dock**: a dark panel
-with five icon cells and cooldown rings, no labels. It is local-only; remotes show no health, energy,
-heading arrow or readiness marks. Match state (round, timer, score pips) stays in the bottom strip. The
-optional minimap keeps the lower-left corner.
+power-attack marks, and the current pickup sit in one compact **readiness dock**: a dark panel with five
+icon cells and cooldown rings, no labels. A solo local keeps it top-left; with several local players one
+dock sits in each screen corner (see D18). It is local-only; remotes show no health, energy, heading
+arrow or readiness marks. Match state (round, timer, score pips) stays in the bottom strip. The optional
+minimap is one shared map: lower-left for a solo view, top-centre when the view is split or more than one
+local is active.
 
 The DOM settings screen is tabbed: `FEEDBACK`, `AUDIO`, `SYSTEM`. Persisted options are
 callsign, hit rotation, impact flash, scanlines, minimap, master volume, soundtrack, SFX, menu sounds,
 mute, and arena/bot preferences. New feedback options belong in the Feedback tab, not beside the title
-menu. The minimap is a small edge-anchored lower-left overlay showing cover and every local threat
-family; it is off only by explicit player choice.
+menu. The minimap is a small edge-anchored overlay showing cover, every local player and every local
+threat family; it is off only by explicit player choice.
 
 `HOW TO PLAY` is a top-level title option and the only home for control and kit explanations. It detects
 connected gamepads and draws either a gamepad table or a keyboard/mouse table; the pad name may appear in
@@ -361,10 +367,12 @@ except for short wave banners and the Esc/overlay menus.
 The level intro is assembly, not a loading screen: ground, frame, cover (dropping in), then player
 skeletons and spin-up. Do not add a progress bar back into the intro.
 
-Local readiness marks live in one fixed **top-left readiness dock**, out of the avatar/enemy space:
-ranged ammo, dash charges, skill, power attack, then the active pickup. It is icon-only, local-only, and
-uses cooldown rings rather than text or bars. Give each program's skill and heavy distinct marks; they
-share the dock and must not be mistaken for each other. The dock hides while the local avatar is dead.
+Local readiness marks live in one **readiness dock per local player**, out of the avatar/enemy space:
+ranged ammo, dash charges, skill, power attack, then the active pickup. A solo local keeps the dock
+top-left; with more local players the docks take the screen corners (top-left, top-right, bottom-left,
+bottom-right). It is icon-only, local-only, and uses cooldown rings rather than text or bars. Give each
+program's skill and heavy distinct marks; they share the dock and must not be mistaken for each other.
+The dock hides while that local avatar is dead.
 
 Do not show the current input device in the in-game UI or as an input-mode badge. `Input` follows the
 most recently used device (keyboard/mouse or gamepad) and switches on the next real input. The How to
@@ -539,26 +547,53 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
   sector link live in `campaign.ts`; never put node geometry in a switch on level id.
 - Everything here is local, like the gauntlet. Nothing campaign-shaped enters `Snapshot`.
 
-### D18 — Camera frames the fight, split panes, death spectate (built 2026-10-30)
+### D18 — Camera frames the group, fit-first split, rigs, death spectate (revised 2026-10-30)
 
 The camera is part of the read, not a fixed follow. All numbers live in `CAMERA` in `config.ts`.
+`src/game/camera.ts` owns the rig director; the renderer owns framing, grouping and viewports.
 
-- **Framing**: the local avatar is the anchor. Other live players, the training drone, worms, viruses,
-  sentries and cascading-error blocks inside `CAMERA.focusRange` pull the frame toward the group by a
-  distance-weighted mean offset, capped at `CAMERA.maxBias`. A brawl on every side cancels out. The anchor
-  is then clamped to the middle band (`CAMERA.edgeMargin`); an arena bound can still pin the camera first.
-- **Dynamic zoom**: `CAMERA.zoomMin` and `zoomMax` are multipliers of the base `CAMERA_ZOOM` (and of
-  `CAMERA.splitZoom` in a pane). A tight group sits at the max; a group spread across the focus range pulls
-  to the min. Zoom eases separately (`zoomFollow`). Kit numbers stay in world units (`SWEEP.powerSpan`,
+- **Group framing**: every local pane anchors on the bounding-box centre of the local players in that
+  pane, not on one avatar. Other live players, the training drone, worms, viruses, sentries and
+  cascading-error blocks inside `CAMERA.focusRange` pull the frame by a distance-weighted mean offset,
+  capped at `CAMERA.maxBias`; the pull skips the pane's own locals. The anchor is then clamped to the
+  middle band (`CAMERA.edgeMargin`); an arena bound can still pin the camera first.
+- **Fit first, then split**: local players stay on one screen while their whole group fits at
+  `CAMERA.sharedZoomMin` (0.68x the base) with `CAMERA.groupPad` around the box. Only when that maximum
+  pull-back cannot hold everyone does the view split, and then into the smallest number of panes: the
+  farthest pair peels apart repeatedly until each group fits a pane. Four players with one across the
+  arena become two panes, not four; a tight trio shares a pane. `CAMERA.shareSlack` is the merge
+  hysteresis. One pane is full screen, two side by side, three or four on the 2x2 grid. Do not replace
+  this with a fixed pairwise distance: a wide pair can legitimately share a screen, and a trio plus one
+  outlier must not cost three extra panes. A dead local is a spectator and does not count toward the
+  fit; a corpse across the arena must not split the survivors' screen.
+- **Dynamic zoom**: `CAMERA.zoomMin` and `zoomMax` are the combat multipliers; a pane also uses
+  `CAMERA.splitZoom`. A single shared view may pull past combat zoom to `sharedZoomMin` to fit the
+  group. The exact cap also includes `CAMERA.groupPad`, so an avatar is never left on the pane edge.
+  Zoom eases separately (`zoomFollow`). Kit numbers stay in world units (`SWEEP.powerSpan`,
   `SENTRY.spawnView*`), so their screen coverage is approximate as the camera zooms; do not move camera
-  state into `World` to make an attack screen-sized. Tune the two multipliers, not a hidden knob.
-- **Split screen**: `Renderer.setLocalSlots([...])` gives each local slot its own viewport, camera, zoom,
-  lock reticle, readiness dock, minimap and lift overlay. One slot is full screen, two are side by side,
-  three or four use a 2x2 grid with a `CAMERA.splitGap` divider. Panes clip at their viewport. Slots that
-  are not active fall back to the primary slot. World effect emitters (slide/broom/toxic dust, projectile
-  and dash trails) run once per frame; only their draw calls run per pane.
-- The split path is camera/render plumbing only. Local input slots, same-screen menus and a second human
-  controller are not built; `?split=N` is a QA-only visual hook and stays out of the menus.
+  state into `World` to make an attack screen-sized. Tune the multipliers, not a hidden knob.
+- **Pane frames and HUD**: each split pane has a 1.6px outline in its primary local player's color over
+  a dark underlay, plus a faint inner line. That outline is what makes two similar floors read as two
+  windows. Readiness docks are per local player at screen corners: top-left for a solo view, then
+  top-right, bottom-left and bottom-right as locals join. One shared minimap serves the whole screen:
+  lower-left for a solo view, top-centre whenever the view is split or more than one local is active, so
+  it does not belong to one pane. It shows every local player and all threat families.
+- **Layout slow motion**: when the pane count or grouping changes, the renderer raises a one-shot
+  `layoutChanged` flag; the local sim dips to `layoutSlowScale` (0.35) for `layoutSlowTime` (1 s), holds
+  that scale for `layoutSlowHold` (0.6 s), then eases back. Network play and the stress bench never slow.
+  The camera keeps moving at real speed while the sim dips; the point is to give the eye time to find the
+  avatar before a shot lands.
+- **Rig director**: `CameraDirector` holds four reusable rigs (`CameraRig`: world point or `followSlot`,
+  zoom multiplier, hold/in/out, weight, priority). The highest priority wins, blends over the default
+  framing, and hands control back on expiry. `Renderer.playCameraRig` is the API for a boss entrance or
+  a narrative beat. Shipped cues: a gauntlet wave glances at the nearest sentry pack outside
+  `CAMERA.waveLookAhead`; the campaign breach pushes in 8%. Keep cues short and opt-in; a full blend may
+  leave the avatar off frame on purpose.
+- **Split scope**: `Renderer.setLocalSlots([...])` is camera/render plumbing only. Local input slots,
+  same-screen menus and a second human controller are not built; `?split=N` is a QA-only visual hook and
+  stays out of the menus. Slots that are not active fall back to the primary slot. World effect emitters
+  (slide/broom/toxic dust, projectile and dash trails) run once per frame; only their draw calls run per
+  pane.
 - **Death spectate**: `damagePlayer` records the attacker family and index (`SRC`) on every hit. While a
   local slot is dead its camera follows a surviving campaign drill partner first, then the killing body
   (player, worm, virus, sentry, cascading error or training drone), then the nearest living player. A
@@ -593,7 +628,8 @@ src/game/rng.ts       seeded RNG for deterministic tests/bench
 src/game/input.ts     keyboard, mouse buttons, gamepad; per-player InputFrame
 src/game/audio.ts     Web Audio synthesis (no files) + MIDI-note lofi-house loop
 src/game/world.ts     authoritative simulation (players, projectiles, rounds, drone, gauntlet threats)
-src/game/render.ts    canvas renderer, camera shake, HUD, in-world FX
+src/game/camera.ts    camera rig director: priority, blend, hold; no per-frame allocation
+src/game/render.ts    canvas renderer, camera framing/grouping, HUD, in-world FX
 src/game/particles.ts pooled particle system
 src/net/net.ts        PeerJS host/guest sessions, snapshot interpolation
 src/ui/dom.ts         small DOM helpers / screen manager
@@ -688,9 +724,10 @@ public/               manifest, generated icons, service worker
 - Trails are drawn from a small ring buffer per projectile. Gradients are built on resize only.
 - HUD is canvas-drawn. Health is the avatar's rotating three-segment outer silhouette; energy is the
   inner arc. Ranged ammo, dash charges, the skill mark, the power-attack mark and the active powerup sit
-  in one compact top-left readiness dock: a dark panel, five icon cells, cooldown rings, no text. There
-  are no operator chips, name plates, side bars or per-player corner bars. Health, energy, heading and
-  readiness belong to the local player only. Round/timer/score pips live in the bottom strip. Permanent
+  in one compact readiness dock per local player: a dark panel, five icon cells, cooldown rings, no text.
+  A solo local keeps it top-left; split view puts one in each screen corner. There are no operator chips,
+  name plates, side bars or per-player corner bars. Health, energy, heading and readiness belong to the
+  local players only. Round/timer/score pips live in the bottom strip. Permanent
   in-match text is suppressed; only short wave banners and the DOM pause/round/match overlays carry
   words. Label strings are cached. Blueprint canvases size their backing store from the CSS box at device pixel
 ratio (`fitCanvas` in `src/ui/dom.ts`) and draw in a fixed design space, so map labels stay at the console
@@ -702,7 +739,8 @@ text scale instead of being baked into a small bitmap.
 - Pad transit draws the avatar in its own layer order (glyph, core, hull) instead of hiding it; the hull
   is first to leave and last to return. A scan ring and slice line sell the transfer. The lift uses the
   screen-space shrink-and-fade transition. Both are render-only and must not change hitboxes or timing.
-- The lower-left minimap is optional and reuses the same arena geometry.
+- The minimap is optional, shared by the whole screen, and reuses the same arena geometry. A solo view
+keeps it lower-left; a split view or more than one local player puts it top-centre, between the panes.
 - Dead players leave no field marker. Do not draw a corpse ring, X or ghost body; the death burst and the
   respawn timer carry the state, and a leftover marker reads as another interactable.
 - DOM is only for menus, lobby, toasts, and round/match overlays. The title and settings screens keep
