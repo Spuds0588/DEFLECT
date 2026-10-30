@@ -2,7 +2,24 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.55 projectile dissolve)
+Last updated: 2026-10-30 (v0.1.56 kiosk demo)
+
+---
+
+## v0.1.56 — Kiosk demo boot and centered GAUNTLET title card (2026-10-30)
+
+- [x] `?demo=true` (also `1`) boots the existing attract pilot as a permanent, non-interactive kiosk
+      loop: random program and arena, wave 72, live-cap refills, restart after a wipe
+- [x] Every wake input is ignored in demo mode (keys, pointer, wheel, gamepad edges) and the body hides
+      the cursor; there is no pause, menu or exit path
+- [x] Centered `GAUNTLET` title card over the arena, above the canvas and below the scanline/vignette
+      layers, with `pointer-events: none`; 30 s CSS cycle, 12 s visible then hidden
+- [x] `?demo=true` takes precedence over the other boot hooks; no records, overlays, `Snapshot` or
+      `NetView` fields, and no settings persistence
+- [x] Docs: AGENTS D23, README QA hooks, this entry; build stamped 0.1.56
+- [x] `npm run build` clean. Browser: demo boots to a live wave-72 gauntlet with `showUi` false, title
+      animation 30 s / `GAUNTLET` centered, Escape leaves it running; the normal attract still exits to
+      the hub on Escape
 
 ---
 

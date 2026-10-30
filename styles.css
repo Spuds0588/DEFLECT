@@ -3192,3 +3192,89 @@ body.pointer-live .console-choice:hover {
     font-size: 11px;
   }
 }
+
+/* ------------------------------------------------------------------ kiosk demo */
+
+body.demo {
+  cursor: none;
+}
+
+/* `?demo=true` runs an unattended capture. The title card is the only DOM on
+   screen, sits above the canvas, and never takes pointer input. */
+.demo-title {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(24px, 8vh, 90px) 6vw;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  background: radial-gradient(ellipse 52% 34% at 50% 50%, rgba(2, 9, 13, 0.66), rgba(2, 9, 13, 0) 74%);
+}
+
+.demo-title.live {
+  animation: demo-title-cycle 30s ease-in-out infinite;
+}
+
+.demo-title-kicker {
+  margin: 0 0 clamp(10px, 1.6vh, 18px);
+  color: rgba(155, 248, 255, 0.62);
+  font-family: var(--ui);
+  font-size: clamp(9px, 0.85vw, 16px);
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+}
+
+.demo-title-word {
+  margin: 0;
+  color: #d9fdff;
+  font-family: var(--ui);
+  font-size: clamp(44px, 10.5vw, 152px);
+  font-weight: 600;
+  line-height: 0.92;
+  letter-spacing: 0.14em;
+  text-indent: 0.14em;
+  text-shadow:
+    0 0 42px rgba(46, 230, 255, 0.34),
+    0 0 2px rgba(255, 255, 255, 0.7);
+}
+
+.demo-title-rule {
+  display: block;
+  width: clamp(180px, 26vw, 420px);
+  height: 1px;
+  margin: clamp(16px, 2.2vh, 26px) auto clamp(12px, 1.6vh, 20px);
+  background: linear-gradient(90deg, transparent, rgba(46, 230, 255, 0.72), transparent);
+  box-shadow: 0 0 12px rgba(46, 230, 255, 0.28);
+}
+
+.demo-title-sub {
+  margin: 0;
+  color: rgba(165, 242, 255, 0.74);
+  font-family: var(--ui);
+  font-size: clamp(11px, 1.15vw, 19px);
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+}
+
+@keyframes demo-title-cycle {
+  0% {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  5%,
+  40% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  46%,
+  100% {
+    opacity: 0;
+    transform: translateY(-7px);
+  }
+}

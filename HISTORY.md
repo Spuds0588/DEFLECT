@@ -2677,3 +2677,36 @@ the hit path with no dissolve. The temporary script was removed. Browser console
 
 **Next:** watch a full autoplay match for event volume. A deep gauntlet wave with many bolts expiring at
 once should still fit the event budget comfortably, but that measurement is not taken yet.
+
+## 2026-10-30 — Kiosk demo boot with a fading GAUNTLET title (v0.1.56)
+
+**Goal:** a URL mode that turns the game into a hands-off showfloor loop: a bot-run gauntlet, no player
+UI, and the mode title centered over the action. Nothing a viewer presses should interrupt it.
+
+**Changes:**
+- `?demo=true` (also `1`) boots the existing attract pilot as a permanent kiosk run: a random program
+  and arena, `ATTRACT.wave` 72, live-cap refills, and a fresh run after a wipe. It reuses
+  `startAttract`, `seedAttractRun` and the normal gauntlet simulation; there is no second demo world.
+- Demo mode swallowed every wake input: `onUiKey` (keys), the idle-exit check in `updateAttract`, and
+  the existing gamepad guard. `exitAttract` refuses while demo is set, so there is no pause, menu or
+  exit path. The body hides the cursor and the demo cannot open an overlay or write a run.
+- Added a DOM title card (`#demo-title`) over the canvas: `DEFLECT // SINGLE PLAYER`, a large
+  `GAUNTLET`, a thin rule and `SURVIVE THE SWARM`. It is `pointer-events: none`, `aria-hidden`, centered
+  in the viewport, and fades on a 30 s CSS cycle (`demo-title-cycle`: about 12 s visible, hidden for the
+  rest, fading in again at the loop boundary).
+- Build stamped 0.1.56 in the title, Settings > System, the console log and the service worker cache.
+- Docs: AGENTS D23 now separates the idle attract demo from the kiosk boot; README lists the hook.
+
+**Verification:** `npm run build` clean. In the running dev build at
+`/?demo=true&debug=1`: `attract` and `demo` both true, `World('gauntlet')` at wave 72 with 5 sentries,
+2 worms, 9 viruses and live projectiles, `renderer.showUi` false, body cursor `none`, title card visible
+and centered (962×137 in a 1422×800 viewport), animation name `demo-title-cycle` with a 30,000 ms
+duration. WAAPI scrub: opacity 1 at 2 s, 0 at 20 s and 0 at 29.5 s, 0.23 just after the loop boundary.
+Escape left the demo running with no overlay and the world still live. Marking the world
+`gauntletOver` (and a later natural edge fall) both produced a new program/arena at wave 72 with the
+title card still visible; console had no errors. A control run of `?attract=1` still exited to the hub
+on Escape, and the title card stayed hidden there.
+
+**Next:** capture a full loop for a store page and watch a long session for audio/CPU drift. The demo
+inherits the attract pilot's camera and refill behavior, so any feel issue there belongs to the pilot,
+not this boot.

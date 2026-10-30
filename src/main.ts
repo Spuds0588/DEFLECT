@@ -29,6 +29,7 @@ type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 const canvas = el<HTMLCanvasElement>('arena');
 const titleScreen = el('screen-title');
+const demoTitle = el('demo-title');
 const settingsScreen = el('screen-settings');
 const howtoScreen = el('screen-howto');
 const howtoDeviceTitle = el('howto-device-title');
@@ -158,6 +159,8 @@ let attract = false;
 let attractStartedAt = 0;
 let attractRestartAt = 0;
 let lastUserInputAt = performance.now();
+/** `?demo=true`: the attract pilot runs forever and ignores every wake input. */
+let demo = false;
 /** Saved Settings > Feedback choice for the canvas UI; the demo overrides it. */
 let uiEnabled = true;
 /** Remaining seconds of the local layout-change slow motion. */
@@ -267,6 +270,11 @@ function boot(): void {
   // `?ui=0` hides the canvas UI for a clean capture without changing the saved setting.
   const uiParam = params.get('ui');
   if (uiParam === '0' || uiParam === 'off' || uiParam === 'false') applyUi(false, false);
+  // `?demo=true` is the kiosk/showfloor boot: the attract pilot, permanently,
+  // with every wake input ignored and a centered GAUNTLET title card. It owns
+  // the page and takes precedence over the other boot hooks.
+  const demoParam = params.get('demo');
+  const demoMode = demoParam === '1' || demoParam === 'true';
   const attractParam = params.get('attract') === '1';
   const stressParam = Number(params.get('stress') ?? '0');
   const autoplayParam = Number(params.get('autoplay') ?? '0');
@@ -294,9 +302,12 @@ function boot(): void {
       inputs: () => botInputs,
       slowMo: () => slowMoT,
       attract: () => attract,
+      demo: () => demo,
     };
   }
-  if (attractParam) {
+  if (demoMode) {
+    window.setTimeout(() => startDemo(), 250);
+  } else if (attractParam) {
     window.setTimeout(() => startAttract(), 250);
   } else if (stressParam >= 2 && stressParam <= MAX_PLAYERS) {
     window.setTimeout(() => startStress(stressParam), 250);
@@ -307,7 +318,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.55 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.56 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -1819,9 +1830,34 @@ function noteIdleMovement(): void {
 }
 
 /**
+ * `?demo=true`: a permanent, non-interactive attract loop for a display or a
+ * capture. It reuses the attract pilot, refill and restart path; the only
+ * differences are that no wake input ends it and a GAUNTLET title card fades on
+ * a 30 s cycle. This is a boot mode, not a pause or a menu state.
+ */
+function startDemo(): void {
+  if (busy) return;
+  demo = true;
+  document.body.classList.add('demo');
+  startAttract();
+  if (!attract) {
+    demo = false;
+    document.body.classList.remove('demo');
+    return;
+  }
+  demoTitle.hidden = false;
+  // Restart the CSS cycle from frame zero on a fresh page boot.
+  demoTitle.classList.remove('live');
+  void demoTitle.offsetWidth;
+  demoTitle.classList.add('live');
+  console.log('[DEFLECT-DEMO] Kiosk loop active');
+}
+
+/**
  * Title-screen demo: a bot-run gauntlet several waves deep on a random program and
  * arena, with the canvas UI off. It is not a scored run, never records a result, and
- * any real input ends it. See ATTRACT in config.ts.
+ * any real input ends it. See ATTRACT in config.ts. `?demo=true` runs the same
+ * pilot for good; see startDemo.
  */
 function startAttract(): void {
   if (busy) return;
@@ -1855,7 +1891,7 @@ function startAttract(): void {
 }
 
 function exitAttract(): void {
-  if (!attract) return;
+  if (!attract || demo) return;
   attract = false;
   attractRestartAt = 0;
   teardownSession();
@@ -1875,7 +1911,7 @@ function exitAttract(): void {
  */
 function updateAttract(now: number): void {
   if (attract) {
-    if (lastUserInputAt > attractStartedAt) {
+    if (!demo && lastUserInputAt > attractStartedAt) {
       exitAttract();
       return;
     }
@@ -1889,6 +1925,7 @@ function updateAttract(now: number): void {
     }
     return;
   }
+  if (demo) return;
   if (screen !== 'title' || busy || loading) return;
   if (now - lastUserInputAt >= ATTRACT.idle * 1000) startAttract();
 }
@@ -2877,8 +2914,9 @@ function togglePerf(): void {
 
 function onUiKey(e: KeyboardEvent): void {
   if (attract) {
-    // Any real keypress ends the demo; the title comes back with its hub stage.
-    exitAttract();
+    // The kiosk demo is unattended: keys are swallowed. The title attract demo
+    // returns to the hub on the first real keypress.
+    if (!demo) exitAttract();
     return;
   }
   const target = e.target as HTMLElement | null;

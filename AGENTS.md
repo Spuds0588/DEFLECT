@@ -773,12 +773,13 @@ the beam into a projectile to reuse deflect code; its occluders are geometry, no
 Arena emitters reuse the same guard catch and visual fields, but their return leaves along the guard's
 facing instead of this 37° glance. See D27.
 
-### D23 — Title attract demo (built 2026-10-30)
+### D23 — Title attract demo and kiosk boot (revised 2026-10-30)
 When the hub sits idle for `ATTRACT.idle` (24 s) the title hands the screen to a **bot-run gauntlet**
 attract demo: a random program, a random arena, and a run seeded `ATTRACT.wave` (72) waves in so every
 threat family is live and every live cap is at its pool maximum. The canvas UI is forced off for the
 demo; the title DOM hides and the game canvas takes the screen. Any key, pointer click, wheel or gamepad
-edge ends it and returns to the hub with nothing highlighted. `?attract=1` boots it for QA.
+edge ends it and returns to the hub with nothing highlighted. `?attract=1` boots it for QA; `?demo=true`
+boots the kiosk variant described below.
 
 - The demo is **presentation only**. It is a `World('gauntlet')` with `attractMode = true`, never a scored
   run, never a campaign node, never a room. It writes no record, and `syncPhaseUi` suppresses every
@@ -794,6 +795,13 @@ edge ends it and returns to the hub with nothing highlighted. `?attract=1` boots
   cursor. Hover only resets the idle clock; keys, clicks, wheel and pad edges end the demo.
 - The demo must stay out of menus and must not leave settings or `renderer.showUi` in the demo state when
   it exits; `uiEnabled` restores the saved choice.
+- **Kiosk boot (`?demo=true`, also `1`)** is the same pilot for a display or a capture: it ignores every
+  wake input instead of returning to the hub, restarts the run after a wipe, and shows one centered
+  `GAUNTLET` title card. The card fades on a 30 s CSS cycle (about 12 s visible, then hidden) and is
+  `pointer-events: none`, so the page has no click target. The body hides the cursor in this mode.
+  There is no pause, menu or exit path; leave it by reloading without the parameter. It writes no record,
+  opens no overlay and never persists the demo UI state. Keep the card DOM-only so a capture shows the
+  same title without turning the canvas UI back on, and keep it out of `Snapshot`/`NetView`.
 
 ### D24 — Tuning data lives in JSON (decided 2026-10-30)
 All feel, timing and damage numbers live in `src/game/tuning/*.json`, split by ownership:

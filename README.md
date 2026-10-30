@@ -65,13 +65,15 @@ For unattended testing, add `?autoplay=2` to the local URL. Bots drive every slo
 one, and the match auto-rematches so it keeps running without input. This is a QA hook, not a menu mode.
 
 More QA hooks exist: `?split=N` lays out up to four local panes, `?gauntlet=1&arena=5&bot=1` boots a
-gauntlet with a bot driving the local player, `?attract=1` boots the title demo immediately, `?ui=0`
-hides the canvas UI for one load, and `?debug=1` exposes a read-only inspection handle. None of them
-appear in a menu or a snapshot.
+gauntlet with a bot driving the local player, `?attract=1` boots the title demo immediately, `?demo=true`
+runs that demo as a permanent, non-interactive display loop, `?ui=0` hides the canvas UI for one load,
+and `?debug=1` exposes a read-only inspection handle. None of them appear in a menu or a snapshot.
 
 Leave the title alone for 24 seconds and it starts an attract demo: a random program in a random arena,
 fighting a deep gauntlet wave with the canvas UI off. Any key, click, wheel or pad press brings the title
-back. `GAME UI` in Settings > Feedback hides the whole canvas UI layer for a clean capture.
+back. For a showfloor or a capture, add `?demo=true`: the same run, but input cannot leave it and a
+centered `GAUNTLET` title card fades in and out on a 30-second cycle. `GAME UI` in Settings > Feedback
+hides the whole canvas UI layer for a clean capture.
 
 The camera frames the local group. With several local players it stays on one screen and pulls back until
 the group no longer fits, then splits into the fewest panes: one far player adds one pane, not three. Each
