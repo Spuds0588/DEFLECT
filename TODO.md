@@ -19,8 +19,8 @@ Last updated: 2026-10-30 (v0.1.37 fit-first split camera, pane frames, layout sl
       inner line, so two similar floors read as two windows
 - [x] HUD: one readiness dock per local at screen corners; one shared minimap, lower-left for a solo view
       and top-centre when the view is split or more than one local is active
-- [x] Layout slow motion: a view-count or group-mask change dips the local sim to 0.35x for 1 s, holds
-      that scale 0.6 s, then eases back over 0.4 s. Network play and the stress bench never slow
+- [x] Layout slow motion: a view-count or group-mask change dips the local sim to 0.35x and holds it for
+      a full 1 s, then eases back over 0.3 s. Network play and the stress bench never slow
 - [x] Camera rig director (`src/game/camera.ts`): four pooled rigs, priority/blend/hold, and
       `Renderer.playCameraRig`. Cues: gauntlet wave glance at an off-screen sentry pack and a campaign
       breach push-in
@@ -38,7 +38,7 @@ Last updated: 2026-10-30 (v0.1.37 fit-first split camera, pane frames, layout sl
 - [x] `npx tsc --noEmit` and `npm run build` clean; `npm run bench` unchanged (gauntlet max 0.165 ms avg
       / 0.627 ms p99; eight-bot swarm 0.071 / 0.217)
 - [ ] Playtest the fit threshold and shared min zoom in production; tune `sharedZoomMin`, `groupPad`,
-      `shareSlack`, and the `layoutSlowTime`/`layoutSlowScale` pair
+      `shareSlack`, and the `layoutSlowHold`/`layoutSlowScale` pair
 - [ ] Local input slots and the same-screen menu flow for 2–4 humans; split is still camera plumbing
 - [ ] Per-pane campaign/wave banners; the score strip is one shared strip
 - [ ] A team field so surviving bot allies can be followed outside the campaign drill

@@ -579,8 +579,9 @@ The camera is part of the read, not a fixed follow. All numbers live in `CAMERA`
   lower-left for a solo view, top-centre whenever the view is split or more than one local is active, so
   it does not belong to one pane. It shows every local player and all threat families.
 - **Layout slow motion**: when the pane count or grouping changes, the renderer raises a one-shot
-  `layoutChanged` flag; the local sim dips to `layoutSlowScale` (0.35) for `layoutSlowTime` (1 s), holds
-  that scale for `layoutSlowHold` (0.6 s), then eases back. Network play and the stress bench never slow.
+  `layoutChanged` flag; the local sim dips to `layoutSlowScale` (0.35) and holds that scale for
+  `layoutSlowHold` (1 s), then eases back over the rest of `layoutSlowTime` (1.3 s). Network play and the
+  stress bench never slow.
   The camera keeps moving at real speed while the sim dips; the point is to give the eye time to find the
   avatar before a shot lands.
 - **Rig director**: `CameraDirector` holds four reusable rigs (`CameraRig`: world point or `followSlot`,

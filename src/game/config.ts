@@ -57,12 +57,12 @@ export const CAMERA = {
   waveLookAhead: 380,
   /**
    * Slow-motion when the local view count or grouping changes. The transition moves a
-   * player's screen position; a full second of dip gives the eye time to find the avatar
-   * before a shot lands. The first `layoutSlowHold` seconds sit at the slow scale, then
-   * it eases back to normal. Local modes only.
+   * player's screen position; a full second at the slow scale gives the eye time to find
+   * the avatar before a shot lands. The first `layoutSlowHold` seconds sit at the slow
+   * scale, then it eases back to normal over the rest of `layoutSlowTime`.
    */
-  layoutSlowTime: 1,
-  layoutSlowHold: 0.6,
+  layoutSlowTime: 1.3,
+  layoutSlowHold: 1,
   layoutSlowScale: 0.35,
 } as const;
 

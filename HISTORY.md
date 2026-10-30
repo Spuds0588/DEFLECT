@@ -2056,8 +2056,9 @@ player shot while their screen moves.
   wave glances at the nearest sentry pack outside `CAMERA.waveLookAhead` (new, 380), and the campaign breach
   pushes in 8% on the local player.
 - Layout slow motion: the renderer raises a one-shot flag when the pane count or group mask changes. Local
-  sims dip to `CAMERA.layoutSlowScale` (new, 0.35) for `CAMERA.layoutSlowTime` (new, 1.0 s), hold that scale
-  for `CAMERA.layoutSlowHold` (new, 0.6 s), then ease back. Network sessions and the stress bench never slow.
+  sims dip to `CAMERA.layoutSlowScale` (new, 0.35) and hold it for `CAMERA.layoutSlowHold` (new, 1.0 s), then
+  ease back over the rest of `CAMERA.layoutSlowTime` (new, 1.3 s). Network sessions and the stress bench never
+  slow.
 - QA hooks: `?gauntlet=1&arena=N&bot=1` boots a gauntlet with a `BotBrain` driving the local player;
   `BotBrain.engageHostiles` walks to the nearest live threat and uses ranged/melee when no player target
   exists. `?debug=1` exposes a read-only renderer/world handle for scripted split tests. Neither is in a
@@ -2068,11 +2069,15 @@ player shot while their screen moves.
 (view 1120 world units); three close plus one far split into masks 7/8 (two panes); two pairs split into
 masks 3/12; four separated players filled the 2x2 grid. The pane frames, four corner docks and top-centre
 map were checked in each layout. With a 2→1 merge, the round timer advanced 0.68 s over 1.20 s wall, then
-1.00 s over 1.01 s after the one-second dip expired. A priority-5 rig at (2200,1000) with zoom 0.7 reached
+1.00 s over 1.01 s after the dip expired. With the final 1 s hold, a 3→2→1 merge retriggered once and the
+sampled `slowMoT` sat above 1.0 (full 0.35x) for exactly 1.0 s, then eased to normal over 0.3 s. The same
+dip was measured on GitHub Pages at v0.1.37: bots covered 10.1 units per 100 ms in the second after a view
+change against 17.4 units in quiet windows (0.58x, the hold plus ease averaging out). A priority-5 rig at
+(2200,1000) with zoom 0.7 reached
 full blend and pinned the view to the arena's right/bottom bounds, then cleared back to default. The
 gauntlet autopilot booted on TRANSIT, advanced to wave 4, and exercised the camera against the live threat
-pool. `npx tsc --noEmit` and `npm run build` clean. `npm run bench`: gauntlet max 0.165 ms avg / 0.627 ms p99,
-eight-bot swarm 0.071 / 0.217, all under the 4 ms budget.
+pool. `npx tsc --noEmit` and `npm run build` clean. `npm run bench`: gauntlet 0.251 ms avg / 0.883 ms p99,
+eight-bot swarm 0.119 / 0.355, all under the 4 ms budget.
 
 **Next:** local input slots and the same-screen menu flow are still missing, so this is camera plumbing, not
 playable four-player co-op. Tune the fit threshold (`sharedZoomMin`, `groupPad`, `shareSlack`) and the

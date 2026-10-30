@@ -270,6 +270,7 @@ function boot(): void {
       world: () => world,
       brains: () => botBrains,
       inputs: () => botInputs,
+      slowMo: () => slowMoT,
     };
   }
   if (stressParam >= 2 && stressParam <= MAX_PLAYERS) {
