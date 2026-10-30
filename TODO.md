@@ -2,7 +2,34 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.45 angled beam deflection)
+Last updated: 2026-10-30 (v0.1.46 attract demo, UI toggle, bot footwork)
+
+---
+
+## v0.1.46 — Title attract demo, UI toggle, bot footwork (2026-10-30)
+
+- [x] Title idle attract demo: after 24 s on the hub, a bot-run gauntlet boots with a random program and
+      arena, seeded 72 waves in, canvas UI off; any key/click/wheel/pad edge returns to the hub
+- [x] `?attract=1` QA boot hook; `attract` stays out of menus and snapshots
+- [x] Demo density: `seedAttractRun` fills sentries, worms, viruses and error blocks to the live caps;
+      `fillAttractRoom` re-tops the room every 5 s while `attractMode` is on. Start: 5 sentries, 2 worms,
+      10 viruses, 12-14 blocks on CROSSROADS and TRANSIT
+- [x] Settings > Feedback **GAME UI** toggle (persisted) and `?ui=0` one-load override; hides the match
+      strip, wave banners, readiness docks and minimap but keeps the avatar's own marks
+- [x] Readiness dock: five identical 34 px circular slots, bigger ammo dots, dash chevrons, skill and
+      heavy marks (scale 1.3/1.32, 1.9-2.2 px strokes), and a circular cooldown mask with a lit sweep
+      edge instead of a faint arc. Box stays 182×44
+- [x] Bots hold target lock while fighting and orbit a continuous standoff range, so they strafe while
+      shooting instead of stepping in and backing out; route is held 0.5 s once cover breaks the straight
+      line, and the near-field cover probe is skipped while routing
+- [x] Bots raise the 180° guard on incoming bolts outside melee reach (0.42 s hold, 1.2-2.4 s pacing)
+- [x] Overcharge beam renders while the heavy charge ring is also up; the gauntlet pilot holds the
+      overcharge beam and strafes the line across the target instead of tapping one frame
+- [x] Headless: match reversals 18 → 5 in 12 s, gauntlet 2 in 12 s; bot closes on a distant target and
+      the round ends normally; guard held 104 frames / guard up 228 frames in a 25 s mirror match
+- [x] Browser: `?attract=1` shows 5 sentries, 2 worms, 5+ viruses and 14 error blocks with `showUi` false;
+      a keypress returns to the title and tears the world down; `?ui=0` reports `GAME UI: OFF` without
+      persisting
 
 ---
 

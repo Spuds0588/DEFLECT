@@ -1,4 +1,5 @@
 import {
+  ATTRACT,
   BOLT,
   BUFFER,
   BUG,
@@ -132,6 +133,13 @@ export class World {
   /** Escalation wave in gauntlet mode. Purely local presentation + spawn pacing. */
   wave = 1;
   waveBannerT = 0;
+  /**
+   * Title-screen attract demo. Presentation only: it keeps the room topped up to the
+   * live caps so the demo never thins out. Never set for a scored run, a campaign node
+   * or a hosted match, and it does not touch the run record.
+   */
+  attractMode = false;
+  private attractRefillT = 0;
 
   phase: Phase;
   phaseTimer = 0;
@@ -5339,6 +5347,71 @@ export class World {
     this.emit(EV.POWERUP, p.slot, pickup.x, pickup.y, pickup.kind);
   }
 
+  /**
+   * Attract-mode setup: jump the endless sandbox to a deep wave and land one of each
+   * threat family so the demo opens on a live fight instead of an empty room. This is
+   * presentation only; it is never used by a scored run, a campaign node or a hosted
+   * match, and it does not touch the run record.
+   */
+  seedAttractRun(wave: number): void {
+    if (this.mode !== 'gauntlet' || this.campaign) return;
+    const target = Math.max(GAUNTLET.wormWave, Math.floor(wave));
+    this.gauntletT = (target - 1) * GAUNTLET.waveDuration + 1;
+    this.wave = target;
+    this.waveBannerT = 0;
+    this.attractMode = true;
+    this.attractRefillT = ATTRACT.refill;
+    // Fill the room to the live caps. A single opening pack reads as an empty level on
+    // a wide arena, and the demo exists to show the fight, not the walk to it.
+    this.fillAttractRoom();
+    this.spawnErrorColony();
+    for (let i = 1; i < this.errorLimit(); i++) this.growError();
+    // Leave the next normal drops a beat away, so the demo does not double up on frame one.
+    this.sentrySpawnT = SENTRY.interval * 0.6;
+    this.wormSpawnT = GAUNTLET.wormInterval * 0.7;
+    this.virusSpawnT = GAUNTLET.virusInterval * 0.7;
+    this.errorSpawnT = CASCADING_ERROR.reseedDelay;
+  }
+
+  /**
+   * Demo-only top-up: fills sentries, worms and viruses to the current wave caps around
+   * the local player, in the camera window. Reuses the normal spawn paths so the demo
+   * still shows assembly, sound and the ordinary threat simulation.
+   */
+  private fillAttractRoom(): void {
+    const p = this.players[0];
+    if (!p || !p.active || !p.alive) return;
+
+    let sentries = 0;
+    for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) sentries++;
+    let guard = 0;
+    while (sentries < this.sentryLimit() && guard++ < 20) {
+      const angle = this.rng.range(0, Math.PI * 2);
+      const dist = this.rng.range(260, 460);
+      const kind = (this.rng.next() * 3) | 0;
+      // A failed anchor is usually a chasm or a packed corner; try another angle
+      // instead of giving up on the whole pack.
+      if (this.spawnSentry(kind as 0 | 1 | 2 | 3, p.x + Math.cos(angle) * dist, p.y + Math.sin(angle) * dist * 0.62)) sentries++;
+    }
+
+    let worms = 0;
+    for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) worms++;
+    guard = 0;
+    while (worms < this.wormLimit() && guard++ < 4) {
+      this.spawnWorm();
+      worms++;
+    }
+
+    let viruses = 0;
+    for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) viruses++;
+    guard = 0;
+    while (viruses < this.virusLimit() && guard++ < 16) {
+      const angle = this.rng.range(0, Math.PI * 2);
+      const dist = this.rng.range(230, 470);
+      if (this.spawnVirus(p.x + Math.cos(angle) * dist, p.y + Math.sin(angle) * dist)) viruses++;
+    }
+  }
+
   private updateGauntlet(dt: number): void {
     this.gauntletT += dt;
     // A campaign node runs a short, authored ramp instead of the endless sandbox wave.
@@ -5353,6 +5426,16 @@ export class World {
     }
     if (this.waveBannerT > 0) this.waveBannerT = Math.max(0, this.waveBannerT - dt);
     this.infection = Math.max(0, this.infection - GAUNTLET.infectionDecay * dt);
+
+    // Attract demo only: keep the room at the live caps. A normal run earns its density
+    // from the wave timers; the demo has no player to pace against and would thin out.
+    if (this.attractMode) {
+      this.attractRefillT -= dt;
+      if (this.attractRefillT <= 0) {
+        this.attractRefillT = ATTRACT.refill;
+        this.fillAttractRoom();
+      }
+    }
 
     if (this.wave >= GAUNTLET.wormWave) {
       let wormCount = 0;

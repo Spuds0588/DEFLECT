@@ -2323,3 +2323,46 @@ guard and the target. `npx tsc --noEmit` clean.
 **Next:** judge the 37-degree glance in a real duel. If it feels too wide (hard to aim at a third body),
 drop `laserReflectAngle` toward 0.55 rad (31 deg); if it feels too narrow, 0.78 rad (45 deg) is the
 ceiling the design asked for.
+
+## 2026-10-30 — Title attract demo, game-UI toggle, bot footwork (v0.1.46)
+
+**Goal:** an idle title-screen demo, a way to hide the canvas UI, bigger/standardised readiness marks, and
+fix the bot back-and-forth jitter the demo exposed.
+
+**Changes:**
+- Title attract demo. After `ATTRACT.idle` (24 s) with no real input on the hub, `main.ts` boots a
+  `World('gauntlet')` with a random program and arena, seeds it 72 waves deep and hides the canvas UI.
+  A random HARD `BotBrain` drives slot 0 through the ordinary `InputFrame` path. Any key, click, wheel or
+  gamepad edge returns to the hub; hover only resets the idle clock, because a layout change can fire a
+  synthetic pointermove under a resting cursor. Death restarts on `ATTRACT.restart` (4 s). `?attract=1`
+  is the QA boot hook. Nothing is recorded.
+- Demo density. `World.seedAttractRun` now fills sentries, worms and viruses to the live caps around the
+  player, and `fillAttractRoom` re-tops them every `ATTRACT.refill` (5 s) while `attractMode` is set; error
+  blocks come from the normal colony growth. The room opens on 5 sentries, 2 worms, 10 viruses and 12-14
+  blocks instead of one pack.
+- UI toggle. New persisted Settings > Feedback row **GAME UI**, plus `?ui=0` for one load without saving
+  the preference. It hides the match strip, wave banners, readiness docks and minimap; the avatar's own
+  health segments and lock reticle stay.
+- Readiness dock. Five identical 34 px circular slots, bigger marks (ammo dots 2.7 px, dash chevrons at
+  10 px spacing and 2.4 px, skill/heavy scaled 1.3/1.32) and a circular cooldown mask: recovered wedge lit,
+  dark charging wedge, bright sweep edge. The panel stays 182x44.
+- Bots. They now hold target lock while fighting, so facing stays on the target and shots leave along
+  facing while the body strafes the standoff range. The spacing error is continuous (approach far, orbit
+  at hold range, back off only when crowded) instead of hard thresholds. Once cover breaks the straight
+  line the route is committed for 0.5 s, and the near-field cover probe is skipped while routing, because
+  running both shoved the bot off its own path. They raise the guard on incoming bolts outside melee reach
+  and turn to face the bolt while it arms.
+- Overcharge. `drawLasers` no longer skips the live beam when the heavy charge ring is also drawn; the
+  gauntlet pilot holds the overcharge beam for a short burst and strafes the line across the target.
+
+**Verification:** `npx tsc --noEmit` clean. Headless: match reversals 18 -> 5 in 12 s and gauntlet 2 in
+12 s; the bot closes on a distant target and the round resolves normally; a 25 s mirror match held the
+guard 104 frames and had it up 228 frames; the seeded demo starts at 5/2/10/13 on CROSSROADS and 5/2/10/12
+on TRANSIT and holds near the caps through 32 s. Browser on the dev server: `?attract=1` reports 5
+sentries, 2 worms, 5+ viruses, 14 blocks and `showUi` false, with the pilot moving and the wave advancing;
+a synthetic ArrowDown returns to the title and tears the world down; `?gauntlet=1&ui=0` reports
+`GAME UI: OFF` and does not persist. A screenshot could not be captured because the preview tab was not
+being drawn.
+
+**Next:** judge the demo in motion, then tune `ATTRACT.wave`/`refill` for pacing. The dock now has the
+standard circles; compare it on a pad at 1080p before changing the panel size.

@@ -979,6 +979,25 @@ export const NET = {
   lobbyBroadcastMs: 250,
 } as const;
 
+/**
+ * Title-screen attract demo. After `idle` seconds with no real input on the hub, a
+ * bot-run gauntlet boots `wave` waves in with a random program and the canvas UI off.
+ * Any input returns to the title.
+ */
+export const ATTRACT = {
+  /** Seconds of no keyboard, pointer or pad input on the hub before the demo starts. */
+  idle: 24,
+  /**
+   * Wave the demo drops into. Deep enough that every live cap is at its pool maximum,
+   * so the attract screen opens on a full arena instead of one pack.
+   */
+  wave: 72,
+  /** Seconds between demo-only top-ups so the fight stays busy between normal spawns. */
+  refill: 5,
+  /** Seconds after the demo bot's ring breaks before a fresh run starts. */
+  restart: 4,
+} as const;
+
 export const TRAIL_LEN = 12;
 
 export const COLORS = {

@@ -64,9 +64,14 @@ on-screen input-mode badge.
 For unattended testing, add `?autoplay=2` to the local URL. Bots drive every slot, including the local
 one, and the match auto-rematches so it keeps running without input. This is a QA hook, not a menu mode.
 
-Three more QA hooks exist for camera work: `?split=N` lays out up to four local panes, `?gauntlet=1&arena=5&bot=1`
-boots a gauntlet with a bot driving the local player, and `?debug=1` exposes a read-only inspection handle.
-None of them appear in a menu or a snapshot.
+More QA hooks exist: `?split=N` lays out up to four local panes, `?gauntlet=1&arena=5&bot=1` boots a
+gauntlet with a bot driving the local player, `?attract=1` boots the title demo immediately, `?ui=0`
+hides the canvas UI for one load, and `?debug=1` exposes a read-only inspection handle. None of them
+appear in a menu or a snapshot.
+
+Leave the title alone for 24 seconds and it starts an attract demo: a random program in a random arena,
+fighting a deep gauntlet wave with the canvas UI off. Any key, click, wheel or pad press brings the title
+back. `GAME UI` in Settings > Feedback hides the whole canvas UI layer for a clean capture.
 
 The camera frames the local group. With several local players it stays on one screen and pulls back until
 the group no longer fits, then splits into the fewest panes: one far player adds one pane, not three. Each
@@ -283,8 +288,8 @@ drop its lure, then step out of the way instead of standing on it.
 - Stand in a firewall warning lane, then step behind a pillar. The beam should stop burning you behind
   cover. Take a bolt and a beam tick and check the push and triangle spray direction.
 - Open Settings and step through Feedback, Audio and System. Change hit rotation, impact flash, volume,
-  scanlines and the minimap toggle; test the hit preview; then reset defaults. Cover should read as a
-  bright solid object, not floor texture.
+  scanlines, the minimap toggle and the game-UI toggle; test the hit preview; then reset defaults. Cover
+  should read as a bright solid object, not floor texture.
 - Host a room on a non-default arena, then join from a second tab. The guest must render the host's map.
 - Run a scored gauntlet long enough to trigger the new sentry pacing and pickups. The smaller minimap
   should sit tight in the bottom-left corner and track the local player plus every live threat family:

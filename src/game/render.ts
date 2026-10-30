@@ -264,6 +264,12 @@ export class Renderer {
   private toxicSeed = 1;
   /** Toggled from Settings > Feedback. */
   showMinimap = true;
+  /**
+   * In-game canvas UI: match strip, wave banners, readiness docks and the minimap.
+   * Settings > Feedback and the attract demo both switch this. Gameplay marks on the
+   * avatar (health segments, lock reticle) are not UI and stay.
+   */
+  showUi = true;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -492,11 +498,11 @@ export class Renderer {
       ctx.restore();
     }
 
-    if (introDone) this.drawHud(state, t);
+    if (introDone && this.showUi) this.drawHud(state, t);
     // One readiness dock per local player at a screen corner, and one shared minimap.
     // The minimap sits top-center when there is more than one local, so it belongs to
     // the whole screen rather than to one pane.
-    if (introDone) {
+    if (introDone && this.showUi) {
       this.drawReadinessDocks(state, t);
       if (this.showMinimap) this.drawMinimap(state, t, this.localMask, this.localCount > 1);
     }
@@ -2566,7 +2572,10 @@ export class Renderer {
           ctx.arc(mx, my, 8 + Math.sin(t * 22) * 2, 0, TWO_PI);
           ctx.stroke();
         }
-        continue;
+        // A charge and a live beam can overlap: overcharge fires while the heavy is
+        // winding up. Fall through to the beam instead of skipping it for the whole
+        // charge, which is what hid the overcharge beam in the attract demo.
+        if (p.laserT <= 0) continue;
       }
       if (p.laserT <= 0) continue;
       // Toxic's power is a venom jet, drawn by drawGas, not the heavy beam.
@@ -4548,15 +4557,61 @@ export class Renderer {
     void alpha;
   }
 
-  /** Full cooldown arc inside a corner-box cell. No label, just the job's mark. */
-  private drawReadinessRing(cx: number, cy: number, pct: number, color: string): void {
+  /** One shared circular slot behind every dock mark, so the five jobs read alike. */
+  private drawReadinessCell(cx: number, cy: number, color: string): void {
     const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.13;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 14, 0, TWO_PI);
+    ctx.fill();
+    ctx.globalAlpha = 0.3;
     ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.5;
     ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.arc(cx, cy, 11, -Math.PI / 2, -Math.PI / 2 + TWO_PI * pct);
+    ctx.arc(cx, cy, 14, 0, TWO_PI);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Circular cooldown mask: the recovered part of the cell stays lit, and a dark wedge
+   * covers the part still charging. A bright rim shows the sweep edge, so the state reads
+   * as a dial instead of a faint arc around a small mark.
+   */
+  private drawReadinessMask(cx: number, cy: number, pct: number, color: string): void {
+    if (pct >= 0.999) return;
+    const ctx = this.ctx;
+    const r = 14;
+    const start = -Math.PI / 2;
+    const clamped = Math.max(0, Math.min(1, pct));
+    const ready = start + TWO_PI * clamped;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TWO_PI);
+    ctx.clip();
+    ctx.globalAlpha = 0.74;
+    ctx.fillStyle = 'rgba(3, 10, 16, 1)';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, ready, start + TWO_PI);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, start, ready);
+    ctx.stroke();
+    ctx.globalAlpha = 0.32;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, ready, start + TWO_PI);
+    ctx.stroke();
+    ctx.restore();
   }
 
   /**
@@ -4629,15 +4684,9 @@ export class Renderer {
     ctx.lineTo(boxX + boxW, boxY + boxH);
     ctx.lineTo(boxX + boxW, boxY + boxH - 7);
     ctx.stroke();
-    ctx.globalAlpha = 0.07;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let i = 1; i < 5; i++) {
-      const dx = boxX + pad + cell * i;
-      ctx.moveTo(dx, boxY + 8);
-      ctx.lineTo(dx, boxY + boxH - 8);
-    }
-    ctx.stroke();
+    // Five identical circular slots, one per job, whatever the program. The marks are
+    // drawn inside them at the same size, so the dock reads the same on every character.
+    for (let i = 0; i < 5; i++) this.drawReadinessCell(first + cell * i, cy, color);
 
     // 1. Ranged ammo: one dot per shot left in the program's string.
     const singleShot =
@@ -4651,13 +4700,13 @@ export class Renderer {
       : singleShot
         ? p.autoFireT <= 0 ? 1 : 0
         : p.burstLeft;
-    const dotGap = ammoMax > 3 ? 5 : 5.6;
+    const dotGap = ammoMax > 3 ? 5.6 : 6.2;
     for (let b = 0; b < ammoMax; b++) {
       const off = (b - (ammoMax - 1) * 0.5) * dotGap;
-      ctx.globalAlpha = b < ammo ? 0.94 : 0.18;
+      ctx.globalAlpha = b < ammo ? 1 : 0.16;
       ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.arc(first + off, cy, 2, 0, TWO_PI);
+      ctx.arc(first + off, cy, 2.7, 0, TWO_PI);
       ctx.fill();
     }
 
@@ -4665,17 +4714,19 @@ export class Renderer {
     const dashX = first + cell;
     const dashPct = p.dashCharges >= PLAYER.dashCharges ? 1 : 1 - Math.min(1, p.dashCd / PLAYER.dashCooldown);
     for (let c = 0; c < PLAYER.dashCharges; c++) {
-      const off = (c - (PLAYER.dashCharges - 1) * 0.5) * 8;
-      ctx.globalAlpha = c < p.dashCharges ? 0.85 : 0.18;
+      const off = (c - (PLAYER.dashCharges - 1) * 0.5) * 10;
+      ctx.globalAlpha = c < p.dashCharges ? 1 : 0.16;
       ctx.strokeStyle = '#dff7ff';
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = 2.4;
+      ctx.lineJoin = 'round';
       ctx.beginPath();
-      ctx.moveTo(dashX - 4 + off, cy - 4);
+      ctx.moveTo(dashX - 5 + off, cy - 5);
       ctx.lineTo(dashX + off, cy);
-      ctx.lineTo(dashX - 4 + off, cy + 4);
+      ctx.lineTo(dashX - 5 + off, cy + 5);
       ctx.stroke();
     }
-    if (p.dashCharges < PLAYER.dashCharges) this.drawReadinessRing(dashX, cy, dashPct, '#dff7ff');
+    ctx.lineJoin = 'miter';
+    if (p.dashCharges < PLAYER.dashCharges) this.drawReadinessMask(dashX, cy, dashPct, '#dff7ff');
 
     // 3. Skill (tap Y): a compact program mark with its own cooldown ring.
     const skillX = first + cell * 2;
@@ -4683,10 +4734,11 @@ export class Renderer {
     const bugPct = bugReady ? 1 : 1 - Math.min(1, p.bugCd / (BUG.cooldown[p.bugKind] ?? 6));
     ctx.save();
     ctx.translate(skillX, cy);
-    ctx.globalAlpha = bugReady ? 0.9 : 0.28;
+    ctx.scale(1.3, 1.3);
+    ctx.globalAlpha = bugReady ? 1 : 0.25;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = 1.9;
     ctx.beginPath();
     if (p.bugKind === 0) {
       ctx.moveTo(0, -5.5);
@@ -4759,7 +4811,7 @@ export class Renderer {
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
-    if (!bugReady) this.drawReadinessRing(skillX, cy, bugPct, color);
+    if (!bugReady) this.drawReadinessMask(skillX, cy, bugPct, color);
 
     // 4. Power attack (hold Y): program-shaped heavy, with its cooldown ring.
     const heavyX = first + cell * 3;
@@ -4795,10 +4847,11 @@ export class Renderer {
         p.laserChargeHeld);
     ctx.save();
     ctx.translate(heavyX, cy);
-    ctx.globalAlpha = heavyLive ? 0.98 : heavyReady ? 0.85 : 0.24;
+    ctx.scale(1.32, 1.32);
+    ctx.globalAlpha = heavyLive ? 1 : heavyReady ? 1 : 0.24;
     ctx.strokeStyle = heavyColor;
     ctx.fillStyle = heavyColor;
-    ctx.lineWidth = heavyLive ? 2.6 : 1.5;
+    ctx.lineWidth = heavyLive ? 2.2 : 1.9;
     ctx.beginPath();
     if (p.program === PROGRAM_ID.WEDGE) {
       // Closed plate for the heavy; the skill beside it is an open bracket. The
@@ -4850,7 +4903,7 @@ export class Renderer {
     ctx.restore();
     if (!heavyReady && !heavyLive) {
       const cdPct = 1 - Math.min(1, p.laserCd / heavyMax);
-      this.drawReadinessRing(heavyX, cy, cdPct, heavyColor);
+      this.drawReadinessMask(heavyX, cy, cdPct, heavyColor);
     }
 
     // 5. Active pickup and its remaining time. Empty slot stays as a faint placeholder
@@ -4861,18 +4914,19 @@ export class Renderer {
       ctx.save();
       ctx.translate(powerX, cy);
       ctx.rotate(t * 1.7);
-      ctx.globalAlpha = 0.9;
+      ctx.scale(1.4, 1.4);
+      ctx.globalAlpha = 1;
       ctx.strokeStyle = pu.color;
-      ctx.lineWidth = 1.8;
+      ctx.lineWidth = 1.7;
       ctx.strokeRect(-4.5, -4.5, 9, 9);
       ctx.restore();
       const total = pu.duration > 0 ? pu.duration : 1;
-      this.drawReadinessRing(powerX, cy, Math.min(1, p.powerupT / total), pu.color);
+      this.drawReadinessMask(powerX, cy, Math.min(1, p.powerupT / total), pu.color);
     } else {
-      ctx.globalAlpha = 0.12;
+      ctx.globalAlpha = 0.16;
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(powerX - 3.5, cy - 3.5, 7, 7);
+      ctx.lineWidth = 1.3;
+      ctx.strokeRect(powerX - 4.5, cy - 4.5, 9, 9);
     }
 
     ctx.restore();

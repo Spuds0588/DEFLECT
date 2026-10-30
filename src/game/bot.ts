@@ -1,5 +1,6 @@
 import { BOLT, BUG, FISHER, KABOOM, PLAYER, TOXIC, WEDGE, type Rect } from './config';
 import { PROGRAM_ID } from './programs';
+import { POWERUP_KIND } from './powerups';
 import { arenaSolids, type ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
 import { Rng } from './rng';
@@ -115,6 +116,26 @@ export class BotBrain {
   private reactT = 0;
   private thrust = 0;
   private strafeDir = 1;
+  /** Orbit direction flips on a slow timer so long strafes do not look robotic. */
+  private strafeT = 0;
+  /** Frames of held guard after spotting an incoming bolt. */
+  private guardHoldT = 0;
+  /** Local pacing so the bot does not turtle behind the shield every shot. */
+  private guardCd = 0;
+  /** Remaining seconds of a held overcharge beam. */
+  private beamHoldT = 0;
+  /** Latched cover-avoid direction, so the probe cannot flip it every frame. */
+  private avoidT = 0;
+  private avoidDirX = 0;
+  private avoidDirY = 0;
+  /** Keep the route for a beat once cover blocks the straight line. */
+  private routeHoldT = 0;
+
+  /** Gauntlet pilot's sticking target, held by family + pool index. */
+  private hostileKind = -1;
+  private hostileIdx = -1;
+  private hostileX = 0;
+  private hostileY = 0;
 
   private threatSerial = -1;
   private threatOwn = false;
@@ -160,6 +181,16 @@ export class BotBrain {
     this.scanT = 0;
     this.reactT = 0;
     this.thrust = 0;
+    this.strafeT = this.rng.range(3.5, 6.5);
+    this.guardHoldT = 0;
+    this.guardCd = this.rng.range(0.5, 1.5);
+    this.beamHoldT = 0;
+    this.avoidT = 0;
+    this.avoidDirX = 0;
+    this.avoidDirY = 0;
+    this.routeHoldT = 0;
+    this.hostileKind = -1;
+    this.hostileIdx = -1;
     this.threatSerial = -1;
     this.pathCount = 0;
     this.pathIndex = 0;
@@ -184,6 +215,16 @@ export class BotBrain {
     this.targetTimer -= dt;
     this.reactT = Math.max(0, this.reactT - dt);
     this.pathTimer = Math.max(0, this.pathTimer - dt);
+    this.guardCd = Math.max(0, this.guardCd - dt);
+    this.guardHoldT = Math.max(0, this.guardHoldT - dt);
+    this.beamHoldT = Math.max(0, this.beamHoldT - dt);
+    this.avoidT = Math.max(0, this.avoidT - dt);
+    this.routeHoldT = Math.max(0, this.routeHoldT - dt);
+    this.strafeT -= dt;
+    if (this.strafeT <= 0) {
+      this.strafeT = this.rng.range(3.5, 7);
+      this.strafeDir = -this.strafeDir;
+    }
     this.scanT -= dt;
 
     if (this.scanT <= 0) {
@@ -215,6 +256,20 @@ export class BotBrain {
       return;
     }
 
+    // A guard commitment spans several frames: keep the shield up and turn its face
+    // toward the bolt instead of dropping back to the spacing logic.
+    if (this.guardHoldT > 0) {
+      out.held |= ACTION.SWING;
+      if (this.threatSerial >= 0) {
+        const gx = this.threatX - me.x;
+        const gy = this.threatY - me.y;
+        const gd = Math.hypot(gx, gy) || 1;
+        out.mx = (gx / gd) * 0.45;
+        out.my = (gy / gd) * 0.45;
+      }
+      return;
+    }
+
     // Reflex layer: deflect the closest bolt, or dash out of its line.
     if (this.threatSerial >= 0 && this.reactT <= 0) {
       if (this.handleThreat(me, out, world.arena)) return;
@@ -233,6 +288,7 @@ export class BotBrain {
     let fy = target.y;
     let fvx = target.vx;
     let fvy = target.vy;
+    let lureFocus = false;
     const lureIndex = world.nearestLureIndex(me.x, me.y, this.slot);
     if (lureIndex >= 0) {
       const lure = world.lures[lureIndex];
@@ -242,6 +298,7 @@ export class BotBrain {
         fy = lure.y;
         fvx = 0;
         fvy = 0;
+        lureFocus = true;
       }
     }
 
@@ -407,6 +464,10 @@ export class BotBrain {
     // The shot direction is the movement direction. Stepping into the aim is the
     // single-stick cost every player pays. Bot-owned bolts travel slower than a
     // human's, so range and lead must use the speed this brain actually fires.
+    // Target lock holds facing on the target, so the bot can strafe at range and still
+    // shoot. Without it every shot meant stepping straight at the target and every
+    // spacing correction pulled it back, which read as back-and-forth jitter.
+    if (!blocked && !lureFocus) out.held |= ACTION.LOCK;
     const boltSpeed = BOLT.speed * BOLT.enemySpeedMult;
     const boltRange = boltSpeed * BOLT.ttl;
     // Keep every style inside the distance its slowed bolt can actually reach.
@@ -424,11 +485,16 @@ export class BotBrain {
       me.energy >= BOLT.cost &&
       dist < boltRange
     ) {
-      out.mx = Math.cos(aim) * 0.82;
-      out.my = Math.sin(aim) * 0.82;
       out.pressed |= ACTION.BOLT;
       this.fireCd = this.rng.range(this.tune.fireMin, this.tune.fireMax) / this.rule.fireScale;
-      return;
+      // A locked shot already leaves along facing, so the body can keep strafing.
+      // Unlocked shots still need the step into the aim, because the shot leaves along
+      // the movement vector.
+      if (!me.lockActive) {
+        out.mx = Math.cos(aim) * 0.82;
+        out.my = Math.sin(aim) * 0.82;
+        return;
+      }
     }
 
     // Wedge closes a lane when he reloads or is nearly dead: turn away from the
@@ -478,30 +544,28 @@ export class BotBrain {
     }
 
     // Spacing: duelists close, tricksters orbit, siege units hold the far lane.
+    // The radial error is continuous, so holding a range means orbiting it. The old
+    // hard thresholds made the bot pump straight in and out whenever it straddled
+    // one, which read as twitchy back-and-forth jitter.
     let moveX = 0;
     let moveY = 0;
-    if (blocked || gapBlocked) {
+    // Once cover breaks the straight line, commit to the route for a beat. Cover LOS is
+    // an instant test, so a body straddling the edge of a pillar's shadow flips the
+    // branch every frame and shudders there instead of walking around.
+    if (blocked || gapBlocked) this.routeHoldT = 0.5;
+    if (this.routeHoldT > 0 && this.followPath(me, fx, fy, world.arena)) {
       // Walk around cover with a grid route. Corner-only steering can pinch
       // bots between two blocks; the route handles concave layouts.
-      if (this.followPath(me, fx, fy, world.arena)) {
-        moveX = this.detourX;
-        moveY = this.detourY;
-      } else {
-        moveX = (-dy / dist) * this.strafeDir;
-        moveY = (dx / dist) * this.strafeDir;
-      }
-    } else if (dist > engageRange + 34) {
-      moveX = dx / dist;
-      moveY = dy / dist;
-    } else if (dist < engageRange - 48) {
-      moveX = -dx / dist;
-      moveY = -dy / dist;
-    } else {
+      moveX = this.detourX;
+      moveY = this.detourY;
+    } else if (blocked || gapBlocked) {
       moveX = (-dy / dist) * this.strafeDir;
       moveY = (dx / dist) * this.strafeDir;
-      const correction = (dist - engageRange) * 0.01;
-      moveX += (dx / dist) * correction;
-      moveY += (dy / dist) * correction;
+    } else {
+      const radial = Math.max(-1, Math.min(1, (dist - engageRange) / 72));
+      const orbit = (1 - Math.abs(radial)) * this.strafeDir;
+      moveX = (dx / dist) * radial - (dy / dist) * orbit;
+      moveY = (dy / dist) * radial + (dx / dist) * orbit;
     }
 
     // Occasional committed dash: close a long gap, or reset spacing after a whiff.
@@ -542,6 +606,8 @@ export class BotBrain {
     let ty = 0;
     let best = Infinity;
     let found = false;
+    let kind = -1;
+    let idx = -1;
     const worms = world.worms;
     for (let i = 0; i < worms.length; i++) {
       const w = worms[i];
@@ -553,6 +619,8 @@ export class BotBrain {
         best = d2;
         tx = w.x;
         ty = w.y;
+        kind = 0;
+        idx = i;
         found = true;
       }
     }
@@ -567,6 +635,8 @@ export class BotBrain {
         best = d2;
         tx = v.x;
         ty = v.y;
+        kind = 1;
+        idx = i;
         found = true;
       }
     }
@@ -581,6 +651,8 @@ export class BotBrain {
         best = d2;
         tx = s.x;
         ty = s.y;
+        kind = 2;
+        idx = i;
         found = true;
       }
     }
@@ -595,8 +667,30 @@ export class BotBrain {
         best = d2;
         tx = e.x;
         ty = e.y;
+        kind = 3;
+        idx = i;
         found = true;
       }
+    }
+
+    // Hold the chosen hostile until another is clearly closer. Re-picking the nearest
+    // body every tick flips the walk direction between two equidistant threats, which
+    // is the other half of the pilot's stutter.
+    if (this.hostileActive(world)) {
+      const hx = this.hostileX - me.x;
+      const hy = this.hostileY - me.y;
+      const hd = hx * hx + hy * hy;
+      if (!found || hd <= best * 0.72) {
+        tx = this.hostileX;
+        ty = this.hostileY;
+        found = true;
+      } else {
+        this.hostileKind = kind;
+        this.hostileIdx = idx;
+      }
+    } else if (found) {
+      this.hostileKind = kind;
+      this.hostileIdx = idx;
     }
 
     if (!found) {
@@ -622,8 +716,29 @@ export class BotBrain {
     const aim = Math.atan2(dy, dx);
     const blocked = this.lineBlocked(me, tx, ty, world.arena.pillars);
 
-    // Fire while walking at the target, because the shot leaves along the movement
-    // direction. Cover stops the shot, so the pilot has to route around it first.
+    // Lock holds facing on the hostile, so the pilot can orbit and keep shooting
+    // instead of stepping in to aim and backing out again. Cover still stops the shot.
+    if (!blocked) out.held |= ACTION.LOCK;
+
+    // Overcharge turns ranged fire into a held beam. A one-frame tap barely shows, so
+    // hold the button for a burst and strafe the line across the target.
+    const overcharged = me.powerupKind === POWERUP_KIND.OVERCHARGE && me.powerupT > 0;
+    if (overcharged && me.lockActive && !blocked && dist < 380 && me.swingPhase === 0 && me.dashT <= 0) {
+      if (this.beamHoldT <= 0 && this.fireCd <= 0) {
+        this.beamHoldT = this.rng.range(0.7, 1.2);
+        this.fireCd = this.beamHoldT + 0.5;
+        out.pressed |= ACTION.BOLT;
+      }
+      if (this.beamHoldT > 0) {
+        out.held |= ACTION.BOLT;
+        out.mx = -uy * this.strafeDir;
+        out.my = ux * this.strafeDir;
+        return true;
+      }
+    }
+
+    // Fire while walking at the target when there is no lock; the shot leaves along the
+    // movement direction. Cover stops the shot, so the pilot routes around it first.
     if (
       !blocked &&
       this.fireCd <= 0 &&
@@ -634,11 +749,13 @@ export class BotBrain {
       me.energy >= BOLT.cost &&
       dist < 380
     ) {
-      out.mx = Math.cos(aim) * 0.82;
-      out.my = Math.sin(aim) * 0.82;
       out.pressed |= ACTION.BOLT;
       this.fireCd = this.rng.range(this.tune.fireMin, this.tune.fireMax);
-      return true;
+      if (!me.lockActive) {
+        out.mx = Math.cos(aim) * 0.82;
+        out.my = Math.sin(aim) * 0.82;
+        return true;
+      }
     }
     if (dist < PLAYER.swingReach + 6 && me.swingPhase === 0 && this.swingCd <= 0) {
       out.mx = ux;
@@ -655,10 +772,14 @@ export class BotBrain {
         moveX = this.detourX;
         moveY = this.detourY;
       }
-    } else if (dist < 120) {
-      // Too close to a body that damages on touch: give ground while facing it.
-      moveX = -ux;
-      moveY = -uy;
+    } else {
+      // Continuous standoff: approach far away, orbit at the hold distance, back off
+      // only when genuinely crowded. A hard `too close` switch made the pilot pump in
+      // and out every time it straddled the line.
+      const radial = Math.max(-1, Math.min(1, (dist - 150) / 60));
+      const orbit = (1 - Math.abs(radial)) * this.strafeDir;
+      moveX = ux * radial - uy * orbit;
+      moveY = uy * radial + ux * orbit;
     }
     this.applySeparation(world, me, moveX, moveY);
     this.avoidFurniture(me, moveX, moveY, world.arena);
@@ -668,6 +789,29 @@ export class BotBrain {
       out.mx = this.steerX * speed;
       out.my = this.steerY * speed;
     }
+    return true;
+  }
+
+  /** Reads the pilot's sticky hostile into hostileX/Y. False when it is gone. */
+  private hostileActive(world: World): boolean {
+    const kind = this.hostileKind;
+    const idx = this.hostileIdx;
+    if (kind < 0 || idx < 0) return false;
+    const list =
+      kind === 0
+        ? world.worms
+        : kind === 1
+          ? world.viruses
+          : kind === 2
+            ? world.sentries
+            : kind === 3
+              ? world.errors
+              : null;
+    if (!list || idx >= list.length) return false;
+    const e = list[idx];
+    if (!e.active) return false;
+    this.hostileX = e.x;
+    this.hostileY = e.y;
     return true;
   }
 
@@ -795,6 +939,33 @@ export class BotBrain {
       out.my = -dirY;
       out.pressed |= ACTION.CANDLE;
       this.candleCd = this.rng.range(4.5, 6.5);
+      return true;
+    }
+
+    // Raise the shield against an incoming bolt that is still outside melee reach.
+    // The guard reflects every shot in front for a second, so it beats a swat at
+    // range; the dodge and Wedge's wall stay in the mix. This is the bot's main use
+    // of the guard, which it used to ignore entirely.
+    if (
+      !this.threatOwn &&
+      this.threatType === 0 &&
+      me.guardT <= 0 &&
+      me.guardCd <= 0 &&
+      this.guardCd <= 0 &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      dist > PLAYER.swingReach + 10 &&
+      this.threatTime > 0.12 &&
+      this.threatTime < 0.62 &&
+      this.rng.next() < 0.7
+    ) {
+      // Turn to face the bolt while the shield arms. The guard only catches the
+      // front half-plane, so a shot arriving from behind has to be dodged instead.
+      out.mx = dirX * 0.45;
+      out.my = dirY * 0.45;
+      out.held |= ACTION.SWING;
+      this.guardHoldT = 0.42;
+      this.guardCd = this.rng.range(1.2, 2.4);
       return true;
     }
 
@@ -1032,13 +1203,33 @@ export class BotBrain {
       }
     }
 
+    // The route already avoids cover, so the near-field probe only runs on a straight
+    // walk. Running both at once made the probe shove the bot off its own path and pin
+    // it against cover.
+    if (this.routeHoldT > 0) {
+      this.steerX = sx;
+      this.steerY = sy;
+      return;
+    }
     const aheadX = me.x + sx * 54;
     const aheadY = me.y + sy * 54;
     const solids = arenaSolids(arena);
     for (let i = 0; i < solids.length; i++) {
       if (!circleRect(aheadX, aheadY, 20, solids[i], hitScratch)) continue;
-      sx += hitScratch.nx * 1.4;
-      sy += hitScratch.ny * 1.4;
+      // Latch the slide direction for a beat. The probe normal flips whenever the
+      // steering wobbles across a corner, and re-applying it every frame made a bot
+      // standing its ground shudder in place.
+      if (this.avoidT <= 0) {
+        this.avoidT = 0.45;
+        const nx = hitScratch.nx;
+        const ny = hitScratch.ny;
+        const tx = -ny * this.strafeDir;
+        const ty = nx * this.strafeDir;
+        this.avoidDirX = nx * 0.7 + tx * 0.7;
+        this.avoidDirY = ny * 0.7 + ty * 0.7;
+      }
+      sx += this.avoidDirX * 1.4;
+      sy += this.avoidDirY * 1.4;
       break;
     }
     this.steerX = sx;

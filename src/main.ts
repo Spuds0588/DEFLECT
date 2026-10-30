@@ -1,4 +1,4 @@
-import { CAMERA, CAMPAIGN, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
+import { ATTRACT, CAMERA, CAMPAIGN, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
 import { CAMPAIGN_LEVELS, FIRST_CAMPAIGN_LEVEL } from './game/campaign';
 import { ARENAS, drawArenaPreview, getArena } from './game/arenas';
 import { BOT_NAMES, BOT_TIERS, BOT_TIER_LABELS, BotBrain, type BotTier } from './game/bot';
@@ -95,6 +95,7 @@ const menuVolumeInput = el<HTMLInputElement>('menu-volume');
 const menuVolumeValue = el('menu-volume-value');
 const scanlinesBtn = el<HTMLButtonElement>('btn-scanlines');
 const minimapBtn = el<HTMLButtonElement>('btn-minimap');
+const uiBtn = el<HTMLButtonElement>('btn-ui');
 const resetSettingsBtn = el<HTMLButtonElement>('btn-settings-reset');
 const testFeedbackBtn = el<HTMLButtonElement>('btn-test-feedback');
 const menuHub = el('menu-hub');
@@ -144,6 +145,17 @@ let mode: Mode = 'none';
 /** QA self-play: bots drive every slot in a bot match, including slot 0. */
 let autoplay = false;
 let autoplayRestartAt = 0;
+/**
+ * Title-screen attract demo. `attract` is true while the bot-run gauntlet owns the
+ * screen; `attractStartedAt` lets the next real input end it without the idle timer
+ * immediately re-arming. `lastUserInputAt` is the hub's idle clock.
+ */
+let attract = false;
+let attractStartedAt = 0;
+let attractRestartAt = 0;
+let lastUserInputAt = performance.now();
+/** Saved Settings > Feedback choice for the canvas UI; the demo overrides it. */
+let uiEnabled = true;
 /** Remaining seconds of the local layout-change slow motion. */
 let slowMoT = 0;
 let world: World | null = null;
@@ -246,6 +258,10 @@ function boot(): void {
   registerServiceWorker();
 
   const params = new URLSearchParams(location.search);
+  // `?ui=0` hides the canvas UI for a clean capture without changing the saved setting.
+  const uiParam = params.get('ui');
+  if (uiParam === '0' || uiParam === 'off' || uiParam === 'false') applyUi(false, false);
+  const attractParam = params.get('attract') === '1';
   const stressParam = Number(params.get('stress') ?? '0');
   const autoplayParam = Number(params.get('autoplay') ?? '0');
   // QA-only split-screen hook: `?split=2` (with `?autoplay=N`) renders N local panes.
@@ -271,9 +287,12 @@ function boot(): void {
       brains: () => botBrains,
       inputs: () => botInputs,
       slowMo: () => slowMoT,
+      attract: () => attract,
     };
   }
-  if (stressParam >= 2 && stressParam <= MAX_PLAYERS) {
+  if (attractParam) {
+    window.setTimeout(() => startAttract(), 250);
+  } else if (stressParam >= 2 && stressParam <= MAX_PLAYERS) {
     window.setTimeout(() => startStress(stressParam), 250);
   } else if (gauntletParam >= 1) {
     window.setTimeout(() => startGauntlet(gauntletBot), 250);
@@ -282,10 +301,17 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.45 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.46 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
+  // Any real input feeds the attract idle clock and ends a running demo. Hover is
+  // deliberately not a wake input: a layout change can fire a synthetic pointermove
+  // under a resting cursor, and that must not cut an attract demo short.
+  window.addEventListener('keydown', noteUserActivity);
+  window.addEventListener('pointerdown', noteUserActivity, { passive: true });
+  window.addEventListener('pointermove', noteIdleMovement, { passive: true });
+  window.addEventListener('wheel', noteUserActivity, { passive: true });
   modeSoloBtn.addEventListener('click', () => showMenuStage('solo'));
   modeMultiBtn.addEventListener('click', () => showMenuStage('multi'));
   multiOnlineBtn.addEventListener('click', () => showMenuStage('online'));
@@ -355,6 +381,9 @@ function bindUi(): void {
   });
   minimapBtn.addEventListener('click', () => {
     applyMinimap(minimapBtn.getAttribute('aria-pressed') !== 'true', true);
+  });
+  uiBtn.addEventListener('click', () => {
+    applyUi(uiBtn.getAttribute('aria-pressed') !== 'true', true);
   });
   testFeedbackBtn.addEventListener('click', () => {
     audio.hit();
@@ -569,6 +598,7 @@ function loadSettings(): void {
   let flash = 1;
   let scanlines = true;
   let minimap = true;
+  let ui = true;
   try {
     const rawRotation = localStorage.getItem('deflect.hitRotation');
     const savedRotation = rawRotation === null ? NaN : Number(rawRotation);
@@ -578,6 +608,7 @@ function loadSettings(): void {
     if (Number.isFinite(savedFlash) && savedFlash >= 0 && savedFlash <= 1) flash = savedFlash;
     scanlines = localStorage.getItem('deflect.scanlines') !== '0';
     minimap = localStorage.getItem('deflect.minimap') !== '0';
+    ui = localStorage.getItem('deflect.ui') !== '0';
   } catch {
     /* storage disabled: defaults */
   }
@@ -585,6 +616,7 @@ function loadSettings(): void {
   applyFlash(flash, false);
   applyScanlines(scanlines, false);
   applyMinimap(minimap, false);
+  applyUi(ui, false);
   applyVolume(audio.volume, false);
   applyMusicVolume(audio.musicVolume, false);
   applySfxVolume(audio.sfxVolume, false);
@@ -673,6 +705,20 @@ function applyMinimap(on: boolean, persist: boolean): void {
   }
 }
 
+function applyUi(on: boolean, persist: boolean): void {
+  uiEnabled = on;
+  // The attract demo forces this off on its own; do not stomp it while it runs.
+  if (!attract) renderer.showUi = on;
+  uiBtn.textContent = `GAME UI: ${on ? 'ON' : 'OFF'}`;
+  uiBtn.setAttribute('aria-pressed', String(on));
+  if (!persist) return;
+  try {
+    localStorage.setItem('deflect.ui', on ? '1' : '0');
+  } catch {
+    /* storage disabled */
+  }
+}
+
 function resetSettings(): void {
   applyHitRotation(1, true);
   applyFlash(1, true);
@@ -682,6 +728,7 @@ function resetSettings(): void {
   applyMenuVolume(0.8, true);
   applyScanlines(true, true);
   applyMinimap(true, true);
+  applyUi(true, true);
   toast('SETTINGS RESTORED TO DEFAULTS');
 }
 
@@ -1310,13 +1357,28 @@ function loop(now: number): void {
 
   const wasGame = screen === 'game';
   input.poll();
-  handleGamepad(input.readMenuEdges());
+  const menuEdges = input.readMenuEdges();
+  if (
+    menuEdges.up ||
+    menuEdges.down ||
+    menuEdges.left ||
+    menuEdges.right ||
+    menuEdges.confirm ||
+    menuEdges.back ||
+    menuEdges.menu
+  ) {
+    noteUserActivity();
+  }
+  handleGamepad(menuEdges);
   if (screen === 'howto' && now >= howtoDevicePollAt) {
     howtoDevicePollAt = now + 500;
     syncHowToDevice();
   }
 
   const sampled = input.sample();
+  if (sampled.pressed !== 0 || sampled.held !== 0 || sampled.mx !== 0 || sampled.my !== 0) {
+    noteUserActivity();
+  }
   localFrame.mx = sampled.mx;
   localFrame.my = sampled.my;
   localFrame.held = sampled.held;
@@ -1353,6 +1415,9 @@ function loop(now: number): void {
       }
     }
   }
+
+  // Title-screen attract demo: idle on the hub, then a bot-run gauntlet with no UI.
+  updateAttract(now);
 
   // Unattended QA: keep a bot match cycling so rounds cannot park on the result overlay.
   if (autoplay && mode === 'bots' && world && world.phase === 'matchend') {
@@ -1694,6 +1759,91 @@ function startGauntlet(aiLocal = false): void {
   audio.unlock();
   audio.startMusic();
   console.log('[DEFLECT-STATE] Gauntlet start', arena.name, 'one life', aiLocal ? 'AUTOPILOT' : '');
+}
+
+/** Timestamp for the title idle clock. Any device counts. */
+function noteUserActivity(): void {
+  lastUserInputAt = performance.now();
+}
+
+/** Hover only restarts the idle clock; it never wakes a running demo. */
+function noteIdleMovement(): void {
+  if (!attract) lastUserInputAt = performance.now();
+}
+
+/**
+ * Title-screen demo: a bot-run gauntlet several waves deep on a random program and
+ * arena, with the canvas UI off. It is not a scored run, never records a result, and
+ * any real input ends it. See ATTRACT in config.ts.
+ */
+function startAttract(): void {
+  if (busy) return;
+  attract = true;
+  attractStartedAt = performance.now();
+  attractRestartAt = 0;
+  teardownSession();
+  hideOverlayInternal();
+  mode = 'gauntlet';
+  localSlot = 0;
+  stress = false;
+  // The demo is unattended: the gauntlet step path reads `autoplay` to let slot 0 be
+  // driven by its BotBrain. The bots-mode rematch hook only fires in `mode === 'bots'`.
+  autoplay = true;
+  const program = PROGRAMS[Math.floor(Math.random() * PROGRAMS.length)].id;
+  const arena = ARENAS[Math.floor(Math.random() * ARENAS.length)];
+  world = new World('gauntlet', ['DEMO'], 0, arena, false, program);
+  world.seedAttractRun(ATTRACT.wave);
+  trainingInputs = [localFrame];
+  botInputs = new Array(MAX_PLAYERS);
+  for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
+  botBrains = new Array(MAX_PLAYERS).fill(null);
+  botBrains[0] = new BotBrain(0, 'digital', 0, 0x51f15e + arena.id * 967 + 11);
+  resetCounters();
+  fx.reset();
+  renderer.showUi = false;
+  setScreen('game');
+  audio.unlock();
+  audio.startMusic();
+  console.log('[DEFLECT-ATTRACT]', programDef(program).name, arena.name, 'wave', ATTRACT.wave);
+}
+
+function exitAttract(): void {
+  if (!attract) return;
+  attract = false;
+  attractRestartAt = 0;
+  teardownSession();
+  renderer.showUi = uiEnabled;
+  showMenuStage('hub');
+  setScreen('title');
+  busy = false;
+  refreshTitleButtons();
+  setTitleStatus('');
+  lastUserInputAt = performance.now();
+  console.log('[DEFLECT-ATTRACT] exit');
+}
+
+/**
+ * Runs every frame. On the hub it arms the idle clock; during the demo it ends on the
+ * first new input and restarts a fresh run when the bot's ring breaks.
+ */
+function updateAttract(now: number): void {
+  if (attract) {
+    if (lastUserInputAt > attractStartedAt) {
+      exitAttract();
+      return;
+    }
+    if (world && world.gauntletOver) {
+      if (attractRestartAt === 0) attractRestartAt = now + ATTRACT.restart * 1000;
+      else if (now >= attractRestartAt) {
+        // startAttract guards on its own state; clear it so the restart is allowed.
+        attract = false;
+        startAttract();
+      }
+    }
+    return;
+  }
+  if (screen !== 'title' || busy || loading) return;
+  if (now - lastUserInputAt >= ATTRACT.idle * 1000) startAttract();
 }
 
 function startAutoplay(count: number): void {
@@ -2195,6 +2345,11 @@ const DEATH_HOLD_MS = 1100;
 let deathHoldUntil = 0;
 
 function syncPhaseUi(state: RenderState): void {
+  // The attract demo owns the screen: no result overlays and no run records.
+  if (attract) {
+    if (overlayKind !== 'none') hideOverlayInternal();
+    return;
+  }
   if (stress) {
     if (overlayKind !== 'leave') hideOverlayInternal();
     return;
@@ -2674,6 +2829,11 @@ function togglePerf(): void {
 // Input routing -----------------------------------------------------------------------------
 
 function onUiKey(e: KeyboardEvent): void {
+  if (attract) {
+    // Any real keypress ends the demo; the title comes back with its hub stage.
+    exitAttract();
+    return;
+  }
   const target = e.target as HTMLElement | null;
   const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
   if (typing) {
@@ -2723,6 +2883,9 @@ function onUiKey(e: KeyboardEvent): void {
 }
 
 function handleGamepad(edges: MenuEdges): void {
+  // The attract demo answers to any input, but never opens a menu: the frame after the
+  // input ends the demo and the title stage takes over.
+  if (attract) return;
   const menuOpen = screen !== 'game' || overlayKind !== 'none';
   if (menuOpen) {
     if (edges.up) moveNavDir(0, -1);

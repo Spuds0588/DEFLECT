@@ -165,6 +165,14 @@ workspace (`src/game/nav.ts`). Routes are planned on a timer or when the target 
 line of sight. All path buffers are preallocated per brain; do not allocate or run a full-grid search
 every tick. Do not move pathfinding into `World.step`.
 
+Bots hold **target lock** while they fight and strafe around a standoff range. The lock keeps facing on
+the target, so a shot leaves along facing without the body stepping into it; the spacing error is
+continuous (approach far, orbit at the hold range, back off only when crowded). Do not restore hard
+"too close" thresholds: they made bots pump straight in and out in place, which read as jitter. The
+route is committed for a beat once cover breaks the straight line, and the near-field cover probe is
+skipped while a route is active, because running both shoved bots off their own path. Bots also raise
+the 180° **guard** on incoming bolts outside melee reach instead of only swatting or dodging.
+
 ### D7 — Networking transport (decided 2026-10-28)
 `peerjs` with PeerJS's public cloud broker for v1 and BinaryPack serialization of nested numeric arrays.
 No JSON. Room code = 4 base-32 characters → peer id `defl-arena-v1-<CODE>`. Self-hosting the broker and
@@ -333,10 +341,12 @@ minimap is one shared map: lower-left for a solo view, top-centre when the view 
 local is active.
 
 The DOM settings screen is tabbed: `FEEDBACK`, `AUDIO`, `SYSTEM`. Persisted options are
-callsign, hit rotation, impact flash, scanlines, minimap, master volume, soundtrack, SFX, menu sounds,
-mute, and arena/bot preferences. New feedback options belong in the Feedback tab, not beside the title
-menu. The minimap is a small edge-anchored overlay showing cover, every local player and every local
-threat family; it is off only by explicit player choice.
+callsign, hit rotation, impact flash, scanlines, minimap, **game UI**, master volume, soundtrack, SFX,
+menu sounds, mute, and arena/bot preferences. New feedback options belong in the Feedback tab, not
+beside the title menu. The minimap is a small edge-anchored overlay showing cover, every local player
+and every local threat family; it is off only by explicit player choice. `GAME UI` hides the whole
+canvas UI layer (match strip, wave banners, readiness docks, minimap) for a clean capture without
+changing the avatar's own health or lock marks; `?ui=0` does the same for one load and does not persist.
 
 `HOW TO PLAY` is a top-level title option and the only home for control and kit explanations. It detects
 connected gamepads and draws either a gamepad table or a keyboard/mouse table; the pad name may appear in
@@ -374,6 +384,11 @@ top-left; with more local players the docks take the screen corners (top-left, t
 bottom-right). It is icon-only, local-only, and uses cooldown rings rather than text or bars. Give each
 program's skill and heavy distinct marks; they share the dock and must not be mistaken for each other.
 The dock hides while that local avatar is dead.
+
+Every dock job sits in the same 34px **circular slot** at the same weight, so the five jobs read alike
+on every program and at couch distance. Cooldowns are a circular mask: the recovered wedge stays lit and
+a dark wedge covers the part still charging, with a bright sweep edge. Do not shrink the marks back to
+tiny glyphs inside a big empty box; the box stays 182×44 and the elements inside got bigger.
 
 Do not show the current input device in the in-game UI or as an input-mode badge. `Input` follows the
 most recently used device (keyboard/mouse or gamepad) and switches on the next real input. The How to
@@ -719,6 +734,28 @@ The guard draws the deflected shaft for `PLAYER.laserReflectFlash` (`beamReflect
 `beamReflectDist`). Those fields are local only, like every other program kit effect: the snapshot carries
 the `EV.DEFLECT` event, so an online guest gets the flare and sound but not the drawn shaft. Do not turn
 the beam into a projectile to reuse deflect code; its occluders are geometry, not bodies.
+
+### D23 — Title attract demo (built 2026-10-30)
+When the hub sits idle for `ATTRACT.idle` (24 s) the title hands the screen to a **bot-run gauntlet**
+attract demo: a random program, a random arena, and a run seeded `ATTRACT.wave` (72) waves in so every
+threat family is live and every live cap is at its pool maximum. The canvas UI is forced off for the
+demo; the title DOM hides and the game canvas takes the screen. Any key, pointer click, wheel or gamepad
+edge ends it and returns to the hub with nothing highlighted. `?attract=1` boots it for QA.
+
+- The demo is **presentation only**. It is a `World('gauntlet')` with `attractMode = true`, never a scored
+  run, never a campaign node, never a room. It writes no record, and `syncPhaseUi` suppresses every
+  overlay while it runs. Do not route its result through the gauntlet record or the save slots.
+- `World.seedAttractRun` jumps `gauntletT` to the target wave, then `fillAttractRoom` fills sentries,
+  worms and viruses to the current caps around the player; error blocks come from the normal colony
+  growth. While `attractMode` is set, a 5 s refill keeps the room at those caps (`ATTRACT.refill`) so the
+  demo never thins out between the normal wave timers. It reuses the normal spawn paths, so assembly,
+  sound and the threat simulation are unchanged.
+- The pilot is an ordinary `BotBrain` at the HARD tier in slot 0, driven through the same `InputFrame` as
+  a human. Do not give the demo a second control path or special-case world mutation.
+- Hover does not wake the demo: a layout change can fire a synthetic `pointermove` under a resting
+  cursor. Hover only resets the idle clock; keys, clicks, wheel and pad edges end the demo.
+- The demo must stay out of menus and must not leave settings or `renderer.showUi` in the demo state when
+  it exits; `uiEnabled` restores the saved choice.
 
 ---
 
