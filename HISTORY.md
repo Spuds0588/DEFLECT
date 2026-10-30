@@ -1885,3 +1885,29 @@ program card, hull, vector bomb mark and a shell in flight, with no console erro
 
 **Next:** playtest the 0.07 s stagger and 150-unit row; check the Wingdings path on a host that has the
 font; decide whether bombs should ever be networked.
+
+## 2026-10-30 — Kaboom hull points outward
+
+**Goal:** correct Kaboom's silhouette after the first production pass. The square of inward triangles read
+as four pieces pointing at the bomb; the health segments should point out and sit 120° apart.
+
+**Changes**
+- `pathProgramHealth` for program 5 now draws three isosceles triangles, one per health segment, each apex
+  on the hull radius and each base at `0.46 * r` with a 0.95 rad half-angle. Their points face outward and
+  the set reads as a larger triangle made of three smaller ones. The bases sit behind the core disc
+  (`0.58 * r`), so only the points clear the bomb.
+- `pathProgramFrame` draws nothing for Kaboom. The old fourth triangle was frame only because a square
+  cannot split into three clean pieces; with three triangles there is nothing left over, so no rim and no
+  tab are needed.
+- `programHullSides(5)` is 3, matching the three blades; the custom path still lives in
+  `pathProgramHealth`, so the generic polygon slicer is untouched.
+- Bumped to v0.1.33 and refreshed the service worker cache name so an installed PWA picks up the new
+  shell instead of the cached index.
+
+**Verification:** `npx tsc --noEmit` and `npm run build` clean. Browser at 1920×1080: the select portrait
+shows the triangle of triangles, and the in-arena avatar keeps the bomb clear of every bright edge. A
+strip of the hull at 3, 2, 1 and 0 segments confirmed each triangle ghosts independently. `npm run bench`
+reported the same sim and bot budgets, no regression.
+
+**Next:** playtest the spinning hull at one segment to confirm the damage read, then tune the base radius
+if the points feel too short at avatar size.

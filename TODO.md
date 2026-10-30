@@ -2,7 +2,29 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.32 KABOOM.EXE)
+Last updated: 2026-10-30 (v0.1.33 Kaboom hull)
+
+---
+
+## v0.1.33 — Kaboom hull points outward (2026-10-30)
+
+### Identity
+- [x] Kaboom's hull is three outward-pointing triangles spaced 120° apart instead of four inward ones on a
+      square. Each triangle is one health segment and the three together read as a larger triangle around
+      the bomb
+- [x] The bases sit behind the core disc, so only the points clear the bomb core at avatar size
+- [x] No frame-only piece and no rim: three segments are the whole hull, so `pathProgramFrame` draws
+      nothing for Kaboom
+- [x] Checked in the select portrait at full health, and in-arena at full, two, one and zero segments
+
+### Verification
+- [x] Browser 1920×1080: the Kaboom card reads as a triangle of triangles; the in-arena hull keeps the
+      bomb clear of every bright edge; no console errors
+- [x] `npx tsc --noEmit` and `npm run build` clean
+- [x] `npm run bench` unchanged (sim and bot budgets unaffected by a hull path)
+
+### Next
+- [ ] Playtest whether the three-fin hull still reads as damage at one segment while the hull spins
 
 ---
 
@@ -10,8 +32,9 @@ Last updated: 2026-10-30 (v0.1.32 KABOOM.EXE)
 
 ### Identity
 - [x] `KABOOM.EXE` is in `PROGRAMS` (id 5, role `BOMBER`) with `PROGRAM_COLORS.kaboom` `#ff5a3d`
-- [x] Hull is a square made of four inward triangles: three health segments and one frame-only triangle,
-      with `coreScale 0.98`; checked at full and one-segment health
+- [x] Hull was a square made of four inward triangles: three health segments and one frame-only triangle,
+      with `coreScale 0.98`; checked at full and one-segment health (changed to three outward triangles in
+      v0.1.33)
 - [x] Core and shells use the Wingdings bomb when the family is installed, otherwise `drawBombMark` draws
       a vector shell so the mark never reads as a letter
 - [x] `hasSymbolFont` no longer trusts `document.fonts.check` alone: a missing system family reports true

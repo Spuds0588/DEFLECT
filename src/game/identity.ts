@@ -251,8 +251,8 @@ export function programHullSides(programId: number): number {
   // Toxic's six-point star has twelve equal edges, so three segments of four edges
   // each fall exactly on two points apiece.
   if (programId === 4) return 12;
-  // Kaboom's square is built from four triangles; the custom path lives below.
-  if (programId === 5) return 4;
+  // Kaboom is three separate outward-pointing triangles; the custom path lives below.
+  if (programId === 5) return 3;
   return 0;
 }
 
@@ -275,20 +275,23 @@ export function pathProgramHealth(
   const twoPi = Math.PI * 2;
   const sides = programHullSides(programId);
   ctx.beginPath();
-  // Kaboom's square is four inward-pointing triangles, one per side. Three are health
-  // segments; `pathProgramFrame` keeps the fourth side closed at frame weight.
+  // Kaboom's hull is three outward-pointing triangles, one health segment each, spaced
+  // 120° apart so the set reads as a triangle made of triangles. Each base sits behind
+  // the core disc and only the point clears it, so the segments read as three fins.
   if (programId === 5) {
-    const sideLen = 2 * r * Math.sin(Math.PI / 4);
-    const apex = r * 0.64;
+    const baseR = r * 0.46;
+    const halfAngle = 0.95;
     for (let seg = 0; seg < freshSegments; seg++) {
-      const a = spin + seg * (twoPi / 4);
-      const bx = cx + Math.cos(a) * r;
-      const by = cy + Math.sin(a) * r;
-      const tx = -Math.sin(a) * sideLen * 0.5;
-      const ty = Math.cos(a) * sideLen * 0.5;
-      ctx.moveTo(bx - tx, by - ty);
-      ctx.lineTo(cx + Math.cos(a) * apex, cy + Math.sin(a) * apex);
-      ctx.lineTo(bx + tx, by + ty);
+      const a = spin + seg * (twoPi / 3);
+      ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+      ctx.lineTo(
+        cx + Math.cos(a - halfAngle) * baseR,
+        cy + Math.sin(a - halfAngle) * baseR,
+      );
+      ctx.lineTo(
+        cx + Math.cos(a + halfAngle) * baseR,
+        cy + Math.sin(a + halfAngle) * baseR,
+      );
       ctx.closePath();
     }
     return;
@@ -401,22 +404,9 @@ export function pathProgramFrame(
   r: number,
   spin: number,
 ): void {
-  if (programId === 5) {
-    // Fourth side of the square: frame only, never a segment.
-    const sideLen = 2 * r * Math.sin(Math.PI / 4);
-    const apex = r * 0.64;
-    const a = spin + 3 * (Math.PI / 2);
-    const bx = cx + Math.cos(a) * r;
-    const by = cy + Math.sin(a) * r;
-    const tx = -Math.sin(a) * sideLen * 0.5;
-    const ty = Math.cos(a) * sideLen * 0.5;
-    ctx.beginPath();
-    ctx.moveTo(bx - tx, by - ty);
-    ctx.lineTo(cx + Math.cos(a) * apex, cy + Math.sin(a) * apex);
-    ctx.lineTo(bx + tx, by + ty);
-    ctx.closePath();
-    return;
-  }
+  // Kaboom has one triangle per health segment, so there is no frame-only corner and no
+  // rim to draw: the three blades are the whole hull at every health level.
+  if (programId === 5) return;
   if (programHullSides(programId) !== 4) return;
   const quarter = Math.PI / 2;
   ctx.beginPath();
