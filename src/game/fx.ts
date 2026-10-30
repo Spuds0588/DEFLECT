@@ -255,7 +255,7 @@ export class Fx {
       }
       case EV.TIME_WARP: {
         // An hourglass burst: two counter-rotating rings plus a short white core. Fast
-        // forward and dilation share it, so one effect owns "Buffer spent a cooldown".
+        // forward and dilation share it, so one effect owns "Bad Lag spent a cooldown".
         this.particles.ring(ev.x, ev.y, P_COLOR_BUFFER, 16, 190, 0.5);
         this.particles.ring(ev.x, ev.y, P_COLOR_BUFFER, 8, 120, 0.36);
         this.particles.ring(ev.x, ev.y, P_COLOR_WHITE, 4, 66, 0.24);

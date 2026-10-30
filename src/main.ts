@@ -301,7 +301,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.47 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.52 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -911,8 +911,10 @@ function drawProgramPortrait(canvas: HTMLCanvasElement, programId: number): void
   ctx.stroke();
 
   ctx.globalCompositeOperation = 'lighter';
-  // The program's own health silhouette: ring, diamond or hex, three segments.
+  // The program's own health silhouette. Most are three segments; Atomize's six-arc
+  // atomic hull needs its full pool or the portrait shows only half an atom.
   const ring = 74;
+  const segments = def.healthSegments ?? 3;
   const spin = programId * 0.45 - Math.PI / 2 + (programId === PROGRAM_ID.WEDGE ? Math.PI / 4 : 0);
   ctx.strokeStyle = def.color;
   ctx.lineCap = 'butt';
@@ -923,7 +925,7 @@ function drawProgramPortrait(canvas: HTMLCanvasElement, programId: number): void
   pathProgramFrame(ctx, programId, cx, cy, ring, spin);
   ctx.stroke();
   ctx.globalAlpha = 0.1;
-  pathProgramHealth(ctx, programId, cx, cy, ring, spin, 3, 3);
+  pathProgramHealth(ctx, programId, cx, cy, ring, spin, segments, segments);
   ctx.globalAlpha = 0.1;
   ctx.lineWidth = 18;
   ctx.stroke();
@@ -953,7 +955,18 @@ function drawProgramPortrait(canvas: HTMLCanvasElement, programId: number): void
   ctx.globalAlpha = 0.95;
   ctx.fillStyle = def.color;
   // Wide multi-line marks use a larger poster footprint so their rows stay legible.
-  drawProgramMark(ctx, programId, def.glyph, def.symbolFont, 0, 0, 10 * ((def.glyphRadius ?? 0.51) / 0.51));
+  // `coreScale` applies here too: the poster mark must keep the same clearance from
+  // the health hull that the arena mark has, especially on the vector centers.
+  drawProgramMark(
+    ctx,
+    programId,
+    def.glyph,
+    def.symbolFont,
+    0,
+    0,
+    10 * ((def.glyphRadius ?? 0.51) / 0.51),
+    def.coreScale,
+  );
   ctx.restore();
 
   // Signature accent ticks below the mark so each card has a kit silhouette hint.

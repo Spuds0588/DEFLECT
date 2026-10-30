@@ -1,4 +1,4 @@
-import { BOLT, BUG, FISHER, KABOOM, PLAYER, TOXIC, WEDGE, type Rect } from './config';
+import { ATOMIZE, BOLT, BUG, FISHER, GHOST, KABOOM, PLAYER, TOXIC, WEDGE, type Rect } from './config';
 import { PROGRAM_ID } from './programs';
 import { POWERUP_KIND } from './powerups';
 import { arenaSolids, type ArenaDef } from './arenas';
@@ -311,6 +311,67 @@ export class BotBrain {
     // when the bot has a clean firing line straight at the target.
     const gapBlocked = this.gapBlocked(me, fx, fy, world.arena);
 
+    // Jump-scare is armed: get into the burst and press melee. The cloak makes the
+    // approach safe, so the bot does not have to stop and trade at range first.
+    if (me.program === PROGRAM_ID.GHOST && me.scareT > 0) {
+      if (dist < GHOST.scareRadius * 0.55 && me.swingPhase === 0 && me.dashT <= 0) {
+        out.mx = dx / dist;
+        out.my = dy / dist;
+        out.pressed |= ACTION.SWING;
+        return;
+      }
+      out.mx = (dx / dist) * (dist > 120 ? 0.95 : 0.55);
+      out.my = (dy / dist) * (dist > 120 ? 0.95 : 0.55);
+      return;
+    }
+
+    // Ghost spends the cloak when a shot is already in the air or after taking a real
+    // hit. A tap, so it is the invisibility skill and never the jump-scare heavy.
+    if (
+      me.program === PROGRAM_ID.GHOST &&
+      this.candleCd <= 0 &&
+      me.bugCd <= 0 &&
+      me.cloakT <= 0 &&
+      me.scareT <= 0 &&
+      me.energy >= BUG.cost &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.laserT <= 0 &&
+      !me.laserChargeHeld &&
+      (me.hp <= 1 || this.threatSerial >= 0 || dist < 170)
+    ) {
+      out.mx = Math.cos(aim) * 0.65;
+      out.my = Math.sin(aim) * 0.65;
+      out.pressed |= ACTION.CANDLE;
+      this.candleCd = this.rng.range(6, 8);
+      return;
+    }
+
+    // Ghost's jump-scare is a close burst, so arm it inside the band where the chase can
+    // reach the target before the window closes. The armed branch above takes over melee.
+    if (
+      me.program === PROGRAM_ID.GHOST &&
+      this.heavyCd <= 0 &&
+      me.laserCd <= 0 &&
+      me.scareT <= 0 &&
+      me.energy >= GHOST.scareCost &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      !me.laserChargeHeld &&
+      !blocked &&
+      dist > 50 &&
+      dist < 300
+    ) {
+      out.mx = Math.cos(aim) * 0.5;
+      out.my = Math.sin(aim) * 0.5;
+      out.pressed |= ACTION.CANDLE;
+      out.held |= ACTION.CANDLE;
+      this.heavyCount++;
+      this.heavyHold = GHOST.scareChargeTime + 0.25;
+      this.heavyCd = this.rng.range(10, 15);
+      return;
+    }
+
     // Heavy attack: commit to a held power button now and then. The program owns what
     // that does (beam, plow or web), so the bot only has to hold, aim and release.
     if (this.heavyHold > 0) {
@@ -437,7 +498,31 @@ export class BotBrain {
       return;
     }
 
-    // Buffer's fast-forward is a window, not a projectile: spend it when a target is
+    // Atomize's shield balls are best spent on a closing target. Tap when the orbit
+    // is empty; a second tap while any ball survives would be refused.
+    if (
+      me.program === PROGRAM_ID.ATOMIZE &&
+      this.candleCd <= 0 &&
+      me.bugCd <= 0 &&
+      me.atomBalls === 0 &&
+      me.energy >= BUG.cost &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.laserT <= 0 &&
+      !me.laserChargeHeld &&
+      me.orbitT <= 0 &&
+      !blocked &&
+      dist > 20 &&
+      dist < ATOMIZE.ballOrbit + 100
+    ) {
+      out.mx = Math.cos(aim) * 0.8;
+      out.my = Math.sin(aim) * 0.8;
+      out.pressed |= ACTION.CANDLE;
+      this.candleCd = this.rng.range(5, 7);
+      return;
+    }
+
+    // Bad Lag's fast-forward is a window, not a projectile: spend it when a target is
     // in reach so the burn goes into closing distance and chaining shots. A tap, so
     // this is always the skill and never the dilation heavy.
     if (
@@ -829,7 +914,9 @@ export class BotBrain {
   private targetAlive(world: World): boolean {
     if (this.target < 0 || this.target >= world.players.length) return false;
     const p = world.players[this.target];
-    return p.active && p.alive;
+    // A cloaked body is not a visible target. The bot re-picks instead of chasing a
+    // ghost it cannot see, which is what makes the cloak read as invisibility.
+    return p.active && p.alive && p.cloakT <= 0;
   }
 
   private pickTarget(world: World, me: Player): void {
@@ -838,7 +925,7 @@ export class BotBrain {
     for (let i = 0; i < world.players.length; i++) {
       if (i === this.slot) continue;
       const p = world.players[i];
-      if (!p.active || !p.alive) continue;
+      if (!p.active || !p.alive || p.cloakT > 0) continue;
       const dx = p.x - me.x;
       const dy = p.y - me.y;
       let score = dx * dx + dy * dy;

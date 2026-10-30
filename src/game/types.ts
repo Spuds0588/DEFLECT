@@ -118,7 +118,7 @@ export const EV = {
   PROP_BREAK: 37,
   /** A deployed Wedge wall ran out of health and broke. */
   WALL_BREAK: 38,
-  /** Buffer's hourglass burst: `power` 1 fast-forward, 0 time dilation. */
+  /** Bad Lag's hourglass burst: `power` 1 fast-forward, 0 time dilation. */
   TIME_WARP: 39,
 } as const;
 
@@ -154,7 +154,7 @@ export interface Player {
   connected: boolean;
   slot: number;
   name: string;
-  /** Program roster id. Probe 0, Wedge 1, Fisher 2. */
+  /** Program roster id. See `PROGRAMS`; Probe 0 through Ghost 8. */
   program: number;
 
   x: number;
@@ -179,6 +179,8 @@ export interface Player {
   /** Last attacker family (see `SRC`) and its slot or pool index, for the death camera. */
   killerKind: number;
   killerId: number;
+  /** Ghost bite daze: seconds left of the slowed, wobbling state. */
+  dazeT: number;
   /** Toxic venom: seconds left, time to the next tick, and the slot that applied it. */
   poisonT: number;
   poisonTickT: number;
@@ -284,6 +286,18 @@ export interface Player {
   bugCd: number;
   /** Remaining seconds of ghost phasing. Attacks cancel it. */
   ghostT: number;
+  /**
+   * GHOST's cloak: seconds of invisibility left. Unlike the legacy `ghostT` skill,
+   * attacking does not drop it. While it runs, hit tests and enemy senses skip the
+   * body. Local-only like every other program kit.
+   */
+  cloakT: number;
+  /** GHOST's jump-scare window: seconds left to press melee and detonate the AOE. */
+  scareT: number;
+  /** Jump-scare face visual: seconds left and the point where the burst fired. */
+  scareFaceT: number;
+  scareFaceX: number;
+  scareFaceY: number;
   /** Remaining seconds of the frontal wall shield. */
   wallT: number;
   /** Direction the wall was deployed. */
@@ -312,7 +326,7 @@ export interface Player {
    */
   netPinT: number;
   /**
-   * Buffer's fast-forward. Seconds of 2.5x movement, attack rate and cooldown burn.
+   * Bad Lag's fast-forward. Seconds of 2.5x movement, attack rate and cooldown burn.
    * Local-only like every program kit, so it never enters a snapshot.
    */
   fastT: number;
@@ -342,6 +356,11 @@ export interface Player {
   broDirY: number;
   /** Current signed forward offset of the broom line from the cast point. */
   broS: number;
+  /** Seconds left in the directional materialize beat before the stroke starts. */
+  broRevealT: number;
+  broRevealDur: number;
+  /** -1 materializes right to left, 1 left to right. Latched when the heavy fires. */
+  broRevealDir: number;
   broHitPlayers: number;
   broHitWorms: number;
   broHitViruses: number;
@@ -362,6 +381,18 @@ export interface Player {
   fanHitSentries: number;
   fanHitDrone: boolean;
 
+  /** Atomize's ranged fire alternates hands. 1 spawns right, -1 left. */
+  atomSide: number;
+  /** Orbital shield charges left and the shared rotation angle of the three balls. */
+  atomBalls: number;
+  atomBallA: number;
+  /** Brief blue pop after a ball eats a hit. */
+  atomFlashT: number;
+  /** Atomize's orbit field: remaining time, total time and spin direction. */
+  orbitT: number;
+  orbitDur: number;
+  orbitDir: number;
+
   /** 0 none, 1 player, 2 worm, 3 virus, 4 drone, 5 sentry, 6 cascading error. */
   lockKind: number;
   lockId: number;
@@ -378,12 +409,14 @@ export interface Projectile {
   serial: number;
   /**
    * 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile, 5 Fisher spear,
-   * 6 Sweep broom, 7 Toxic needle, 8 Kaboom bomb, 9 Kaboom lobbed bomb, 10 Buffer
-   * hourglass. Types 8/9 explode on contact and are never deflected, so every
-   * `type >= 3` deflect branch must exclude them explicitly. Type 10 is a player
-   * shot that passes through up to `BUFFER.shotHits` bodies instead of stopping.
+   * 6 Sweep broom, 7 Toxic needle, 8 Kaboom bomb, 9 Kaboom lobbed bomb, 10 Bad Lag
+   * hourglass, 11 Atomize electron, 12 Ghost bite. Types 8/9 explode on contact and
+   * are never deflected, so every `type >= 3` deflect branch must exclude them
+   * explicitly. Type 10 is a player shot that passes through up to `BUFFER.shotHits`
+   * bodies; type 11 is a light seeking ball that leaves from alternating hands;
+   * type 12 is a wide, slow mouth that stops on the body and dazes it.
    */
-  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;
@@ -414,6 +447,16 @@ export interface Projectile {
   hits: number;
   spin: number;
   spinDir: number;
+  /** Atomize electron colour: 0 yellow, 1 green, 2 blue. */
+  variant: number;
+  /**
+   * Orbit field capture. `orbOwner` is the Atomize slot holding this shot, or -1.
+   * While captured the projectile ignores normal flight and is placed on the orbit.
+   */
+  orbOwner: number;
+  orbA: number;
+  orbR: number;
+  orbDir: number;
   /** Piercing spear hit masks, so one throw damages each hostile once. */
   hitPlayers: number;
   hitWorms: number;
@@ -532,6 +575,12 @@ export interface Virus {
   spawnT: number;
   /** Fisher net snare: movement is held while this is above zero. */
   pinT: number;
+  /** Atomize orbit capture: owner slot (-1 none), angle, radius, direction and hit cooldown. */
+  orbitOwner: number;
+  orbitA: number;
+  orbitR: number;
+  orbitDir: number;
+  orbitHitCd: number;
 }
 
 export interface Sentry {
@@ -560,6 +609,12 @@ export interface Sentry {
   spawnT: number;
   /** Fisher net snare: movement is held while this is above zero. */
   pinT: number;
+  /** Atomize orbit capture: owner slot (-1 none), angle, radius, direction and hit cooldown. */
+  orbitOwner: number;
+  orbitA: number;
+  orbitR: number;
+  orbitDir: number;
+  orbitHitCd: number;
 }
 
 export interface Firewall {

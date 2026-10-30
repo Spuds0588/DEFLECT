@@ -2,7 +2,98 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.47 tuning data in JSON)
+Last updated: 2026-10-30 (v0.1.52 GHOST.EXE)
+
+---
+
+## v0.1.52 — GHOST.EXE: cloak, chomping mouth, jump-scare (2026-10-30)
+
+- [x] Roster entry 8 (stealth): steel-grey `PROGRAM_COLORS.ghost`, three outward arcs (one health segment
+      each), a vector closed eye with five lashes, and `bugKind` 11
+- [x] Ranged: type 12 chomping mouth at 540 u/s, 2 damage, wide radius, no tail, dies on cover, and dazes
+      a body for 0.7 s at 55% movement
+- [x] Skill: 3.5 s cloak. `phased()` blocks damage, AI target picks and threat acquisition skip the body;
+      the local avatar keeps a dashed cloak readout so the owner can still navigate
+- [x] Power: hold `Y` for 0.45 s to arm a 3.2 s jump-scare. Any action press fires the 210-radius,
+      2-damage, 1200-knockback burst and stamps the ASCII face; the window can also expire without firing
+- [x] Bots: tap cloak under fire, arm the scare at close range, chase and melee once armed; they cannot see
+      or target a cloaked player
+- [x] Dock and renderer: closed eye for the skill, open maw for the heavy, armed warning ring and burst
+      radius for the owner
+- [x] Eye orientation corrected after the first pass: the lid is the bottom-half arc with lashes below
+- [x] Center marks on the four newest programs scaled down for hull clearance: Kaboom `0.76`, Bad Lag
+      `0.72`, Atomize `0.72`, Ghost `0.82`; the select portrait now applies `coreScale` instead of drawing
+      every poster mark at full size, and the vector bomb fallback scales with it
+- [x] Probe's core and roster mark changed from the target `◎` to a **compass**: a vector housing ring
+      and four-point rose (`✥` in text), so the scan-ring program reads as navigation rather than a bullseye
+- [x] Toxic needle range extended: `needleTtl` 0.62 → **0.85 s** at the same 880 u/s, so the dart reaches
+      about 748 units instead of 546 before it expires
+- [x] Docs: AGENTS D4/D10/D26, README controls and QA checks, this entry; build stamped 0.1.52
+- [x] `npx tsc --noEmit` and `npm run build` clean; focused headless kit check passes; live select
+      screen checked for hull clearance
+
+---
+
+## v0.1.51 — BUFFER_OVERFLOW.EXE renamed BAD_LAG.EXE (2026-10-30)
+
+- [x] Display name changed to `BAD_LAG.EXE`; the kit, palette, hourglass core, clock hull, ranged
+      throw, fast-forward and dilation are unchanged
+- [x] Internal ids stay put: `PROGRAM_ID.BUFFER`, `BUFFER` tuning, `PROGRAM_COLORS.buffer` and the
+      save/select data all keep their existing keys, so old slots still resolve
+- [x] Living docs and user-facing prose use Bad Lag; the v0.1.41 TODO/HISTORY entries keep the old
+      name as history
+- [x] Build stamped 0.1.51; `npm run build` clean
+
+---
+
+## v0.1.50 — Readiness dock keeps dash, skill and heavy only (2026-10-30)
+
+- [x] Drop ranged shot tracking and the pickup cell from the dock. Ammo lives in the firing cadence
+      and the pickup reads from its effect, so neither needs a permanent cell
+- [x] Three 60 px cells with 50 px circular slots; dock is 196×64 and sits in the same screen corners
+- [x] Marks scaled to 2.6× (skill/heavy) and 4.2 px strokes (dash chevrons), each over a dim wide
+      pass so they stay bright and bold at couch distance; cooldown dials unchanged
+- [x] Docs: AGENTS D11, README; build stamped 0.1.50
+- [x] `npm run build` clean
+
+---
+
+## v0.1.49 — Atomize.exe: six-segment orbit kit (2026-10-30)
+
+- [x] Roster entry 7, white accent, `healthSegments: 6`; `Player.maxHp` now comes from the program def
+      on every spawn and respawn, so one hit still removes one segment
+- [x] Hull: three overlapping vector ellipse orbits at 60°, each split into two bright half-arcs. The
+      inner edge is `0.55r`, so the bright hull stays outside the low-health core mark; the atom core is
+      drawn in vector so `⚛` can never resolve to a colour emoji
+- [x] Ranged: type 11 electron, alternating hands and inward launch angles, arc-in then slight seek
+      (`shotTurn`, `shotSeekRange`, `shotSeekDot`), yellow/green/blue balls with a long white trail
+- [x] Skill: three blue orbital shield balls, no timer, 1 damage on contact, one ball blocks one full hit
+      before health/campaign damage; a second cast while any survive is refused and refunded
+- [x] Power: 2.8 s moving orbit field. Captures projectiles and gauntlet sentries/viruses, holds them out
+      of their own AI, spins them faster or slower by weight, lets them damage each other and players,
+      and throws everything outward on release. Caster can walk while it runs
+- [x] Dock: distinct orbital-shield skill mark, orbit-ring heavy mark, live charge state, cooldown ring,
+      and the portrait draws all six segments
+- [x] Menu typeface: `--ui` system console stack (Bahnschrift/DIN Alternate/Avenir Next, then platform UI);
+      body and menu controls leave `--mono`, while the ASCII logo, boot log and schematic tables stay mono
+- [x] Docs: AGENTS D4/D10/D11/D25, README controls, this entry; build stamped 0.1.49
+- [x] `npx tsc --noEmit` clean
+
+---
+
+## v0.1.48 — Sweep's power reveals directionally (2026-10-30)
+
+- [x] The giant broom now materializes from the facing side (`cos(facing) < -0.15` reveals right to
+      left, otherwise left to right); the direction is latched on the fire frame
+- [x] New `SWEEP.powerRevealTime` (0.3 s) beat between the charge and the stroke. It is a physical
+      reveal: only the visible part of the lane shoves, with `SWEEP.powerRevealPush` (820), and deals
+      **no damage**. The stroke's damage starts only once the whole head is on the lane
+- [x] Renderer: the charge shows a faint full-width ghost of the lane, the live reveal draws a bright
+      clipped head with a bright front edge, and the sweep is unchanged
+- [x] Verified headless: a body 10 units off the lane centre is untouched by the early reveal and takes
+      no damage until the stroke starts; a body on the reveal side is pushed immediately; face-left
+      pushes the other way. Gauntlet sentry takes 0 damage during the reveal, then dies to the stroke
+- [x] `npx tsc --noEmit` clean
 
 ---
 

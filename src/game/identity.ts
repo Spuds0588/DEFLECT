@@ -42,8 +42,17 @@ export const PROGRAM_COLORS = {
   kaboom: '#ff5a3d',
   /** Time: a hot pink, held clear of the virus magenta and Kaboom's orange. */
   buffer: '#ff6ec7',
+  /** Atomize: white, the one neutral outline in the roster. */
+  atomize: '#ffffff',
+  /** Ghost: cool steel grey, distinct from Atomize's pure white and the floor tones. */
+  ghost: '#b9c4d0',
   lure: '#7dffd4',
 } as const;
+
+/** Atomize's three electron colours, cycled one per ranged shot. */
+export const ATOM_BOLT_COLORS = ['#ffe14d', '#66ff9e', '#59c8ff'] as const;
+/** The orbital shield balls are blue in every state, so a spent charge reads at a glance. */
+export const ATOM_BALL_COLOR = '#59c8ff';
 
 /** Hostile palette. Kept here so threat colors never drift from the player palette. */
 /** Pickup and active-powerup palette. Kept beside the identity colors so contrast is controlled. */
@@ -227,7 +236,7 @@ function roundedTriangle(
 }
 
 /**
- * Buffer's hourglass: two rounded triangles pointing at each other with their tips
+ * Bad Lag's hourglass: two rounded triangles pointing at each other with their tips
  * overlapping, which is what gives the shape its pinched waist. Drawn as vector
  * geometry rather than a typed dingbat: U+29D7 falls back to a colour emoji on some
  * systems, which paints its own opaque tile over the core. This mark uses only the
@@ -251,6 +260,111 @@ export function drawHourglassMark(
   ctx.fill();
 }
 
+/**
+ * Atomize's core: a filled nucleus inside three elliptical orbits. Drawn as vectors,
+ * not the U+269B codepoint, so a host whose symbol font resolves the atom to a colour
+ * emoji cannot paint an opaque tile into the core. Uses the caller's fill colour for
+ * both the nucleus and the orbit strokes.
+ */
+export function drawAtomMark(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  const orbitX = r * 0.98;
+  const orbitY = r * 0.34;
+  ctx.save();
+  ctx.lineWidth = Math.max(1, r * 0.1);
+  ctx.strokeStyle = ctx.fillStyle as string;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, orbitX, orbitY, (i * Math.PI) / 3, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * Probe's core: a compass rose. A thin housing ring surrounds a four-point star, so
+ * it reads as navigation hardware rather than as the old concentric target. The four
+ * points are symmetric, which keeps it from reading as a facing arrow at the core.
+ * Vector on every host, using only the caller's fill colour.
+ */
+export function drawCompassMark(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  const ring = r * 0.94;
+  const outer = r * 0.67;
+  const waist = r * 0.18;
+  ctx.save();
+  ctx.strokeStyle = ctx.fillStyle as string;
+  ctx.lineWidth = Math.max(1.05, r * 0.11);
+  ctx.beginPath();
+  ctx.arc(cx, cy, ring, 0, Math.PI * 2);
+  ctx.stroke();
+  // Four-point rose with concave sides. The waist is deliberately narrow so the tips
+  // stay longer than a plus sign at the 11px core mark.
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - outer);
+  ctx.lineTo(cx + waist, cy - waist);
+  ctx.lineTo(cx + outer, cy);
+  ctx.lineTo(cx + waist, cy + waist);
+  ctx.lineTo(cx, cy + outer);
+  ctx.lineTo(cx - waist, cy + waist);
+  ctx.lineTo(cx - outer, cy);
+  ctx.lineTo(cx - waist, cy - waist);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * Ghost's core: a closed eye, drawn as a downward lid arc with five short straight
+ * lashes. It is vector so the mark stays monochrome and crisp at core size; the
+ * glyph `◡` is only for text metadata. Uses the caller's fill colour as the stroke.
+ */
+export function drawGhostEye(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  const lidR = r * 0.64;
+  // The lid curves down like a closed eye, not up like a smile. The arc is the
+  // bottom half of its circle and the lashes hang outward below it.
+  const lidY = cy - r * 0.2;
+  const start = Math.PI * 0.14;
+  const end = Math.PI * 0.86;
+  ctx.save();
+  ctx.strokeStyle = ctx.fillStyle as string;
+  ctx.lineWidth = Math.max(1.2, r * 0.13);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, lidY, lidR, start, end);
+  ctx.stroke();
+  // Lashes sit on the lid and point out along its normal, so the eye reads as closed
+  // rather than as a plain smile. Five is enough at the 11px core mark; more turns to fuzz.
+  ctx.lineWidth = Math.max(1, r * 0.1);
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = start + ((end - start) * (i + 0.5)) / 5;
+    const lx = cx + Math.cos(a) * lidR;
+    const ly = lidY + Math.sin(a) * lidR;
+    const lash = r * (0.19 + (i === 2 ? 0.05 : 0));
+    ctx.moveTo(lx, ly);
+    ctx.lineTo(lx + Math.cos(a) * lash, ly + Math.sin(a) * lash);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
 /** Draws a program's core mark, including Kaboom's missing-font fallback. */
 export function drawProgramMark(
   ctx: CanvasRenderingContext2D,
@@ -262,14 +376,32 @@ export function drawProgramMark(
   r: number,
   fontScale = 1,
 ): void {
-  // Buffer's term is vector on every host: the typed hourglass is an emoji on some
+  // Probe's compass is drawn rather than typed so the housing ring and rose keep the
+  // exact same proportions at the core and on the select portrait.
+  if (programId === 0) {
+    drawCompassMark(ctx, cx, cy, r * fontScale);
+    return;
+  }
+  // Bad Lag's term is vector on every host: the typed hourglass is an emoji on some
   // systems and would bring an opaque tile into the core.
   if (programId === 6) {
     drawHourglassMark(ctx, cx, cy, r * fontScale);
     return;
   }
+  // Atomize's mark is the same atom on every host. It is drawn rather than typed so
+  // the orbit strokes always use the program colour and the core stays transparent.
+  if (programId === 7) {
+    drawAtomMark(ctx, cx, cy, r * fontScale);
+    return;
+  }
+  // Ghost's closed eye is a vector mark on every host, so the lid and lashes never
+  // depend on a symbol font or a colour emoji.
+  if (programId === 8) {
+    drawGhostEye(ctx, cx, cy, r * fontScale);
+    return;
+  }
   if (programId === 5 && !hasSymbolFont(symbolFamily ?? '')) {
-    drawBombMark(ctx, cx, cy, r);
+    drawBombMark(ctx, cx, cy, r * fontScale);
     return;
   }
   drawSymbol(ctx, glyph, cx, cy, r, fontScale, symbolFamily);
@@ -310,9 +442,13 @@ export function programHullSides(programId: number): number {
   if (programId === 4) return 12;
   // Kaboom is three separate outward-pointing triangles; the custom path lives below.
   if (programId === 5) return 3;
-  // Buffer's hull is six round pips on a clock dial, not a polygon. The custom path
+  // Bad Lag's hull is six round pips on a clock dial, not a polygon. The custom path
   // below owns the shape, so there are no sides for the frame pass to draw.
   if (programId === 6) return 0;
+  // Atomize's hull is three overlapping ellipse orbits, split into six half-arcs.
+  if (programId === 7) return 0;
+  // Ghost's hull is three separate outward arcs, one per health segment.
+  if (programId === 8) return 0;
   return 0;
 }
 
@@ -335,7 +471,7 @@ export function pathProgramHealth(
   const twoPi = Math.PI * 2;
   const sides = programHullSides(programId);
   ctx.beginPath();
-  // Buffer's hull is a ring of clock faces, two per health segment, turning around
+  // Bad Lag's hull is a ring of clock faces, two per health segment, turning around
   // the body. Each clock is a small circle with a minute and an hour hand, so the
   // silhouette reads as time rather than as another polygon. The faces orbit at 0.78r
   // with a 0.17r radius, so their inner edge is 0.61r: just outside the core disc every
@@ -363,6 +499,56 @@ export function pathProgramHealth(
         ctx.moveTo(px, py);
         ctx.lineTo(px + Math.cos(hour) * face * 0.42, py + Math.sin(hour) * face * 0.42);
       }
+    }
+    return;
+  }
+  // Atomize's hull is three identical ellipses turned 60 degrees apart, the classic
+  // atom. Each ellipse is split into two half-arcs, so three ovals make six health
+  // segments. The inner edge sits at 0.55r, so the hull never reaches the core mark at
+  // any health level; at full health the opaque disc hides the inner edge, and once the
+  // disc shrinks the rings still clear the smaller mark. Do not flatten ry back toward
+  // 0.4r: the ovals would then pass under the center mark at low health.
+  if (programId === 7) {
+    const rx = r * 0.98;
+    const ry = r * 0.55;
+    const perOrbit = 2;
+    const gap = 0.07;
+    for (let seg = 0; seg < freshSegments; seg++) {
+      const orbit = Math.floor(seg / perOrbit);
+      const half = seg % perOrbit;
+      const rot = spin + orbit * (Math.PI / 3);
+      const a0 = half * Math.PI + gap;
+      const a1 = (half + 1) * Math.PI - gap;
+      // Start each half on its own subpath, otherwise the ellipse joins the previous
+      // arc with a chord across the body.
+      const cosRot = Math.cos(rot);
+      const sinRot = Math.sin(rot);
+      const sa = Math.cos(a0);
+      const sb = Math.sin(a0);
+      ctx.moveTo(cx + cosRot * sa * rx - sinRot * sb * ry, cy + sinRot * sa * rx + cosRot * sb * ry);
+      ctx.ellipse(cx, cy, rx, ry, rot, a0, a1);
+    }
+    return;
+  }
+  // Ghost's hull is three open arcs that curve outward, one health segment each. The
+  // arc endpoints sit at 0.69r and the curve bulges to the hull radius, so the segments
+  // read as the ghost's own shape and keep 0.18r of clear air inside the core mark.
+  // Three 120-degree arcs leave a real gap between segments instead of a broken ring.
+  if (programId === 8) {
+    const inner = r * 0.69;
+    const bulge = r * 1.34;
+    const spread = 0.5;
+    for (let seg = 0; seg < freshSegments; seg++) {
+      const a = spin + seg * (twoPi / 3);
+      const a0 = a - spread;
+      const a1 = a + spread;
+      ctx.moveTo(cx + Math.cos(a0) * inner, cy + Math.sin(a0) * inner);
+      ctx.quadraticCurveTo(
+        cx + Math.cos(a) * bulge,
+        cy + Math.sin(a) * bulge,
+        cx + Math.cos(a1) * inner,
+        cy + Math.sin(a1) * inner,
+      );
     }
     return;
   }

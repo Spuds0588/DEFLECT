@@ -1,7 +1,7 @@
-import { BOLT, BUFFER, BUG, CAMERA, CAMERA_ZOOM, CAMPAIGN, FILE_PROP, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { ATOMIZE, BOLT, BUFFER, BUG, CAMERA, CAMERA_ZOOM, CAMPAIGN, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
-import { drawGlyph, drawHourglassMark, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
+import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourglassMark, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
 import { P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
@@ -55,7 +55,7 @@ export interface RenderState {
   pusherFlashT?: number;
   pusherY?: number;
   pusherActive?: boolean;
-  /** Buffer's time dilation, in seconds of real time left, and who cast it. */
+  /** Bad Lag's time dilation, in seconds of real time left, and who cast it. */
   timeSlowT?: number;
   timeSlowOwner?: number;
 }
@@ -140,6 +140,12 @@ function createCameraView(): CameraView {
 }
 
 const TWO_PI = Math.PI * 2;
+/** Readiness dock: three jobs, one circular slot each. Larger cells are the point. */
+const DOCK_CELL = 60;
+const DOCK_PAD = 8;
+const DOCK_SLOT = 25;
+const DOCK_W = DOCK_CELL * 3 + DOCK_PAD * 2;
+const DOCK_H = 64;
 const FIRST_TO = `FIRST TO ${ROUND.winsNeeded}`;
 const LABEL_TRAINING = 'TRAINING';
 const LABEL_DRONE = 'SPARRING DRONE';
@@ -147,6 +153,19 @@ const SPIN_TRAIL_LEN = 20;
 const SPIN_TRAIL_LIFE = 0.42;
 const SPIN_TRAIL_INTERVAL = 0.02;
 const INTRO_LEN = 3.1;
+/**
+ * Jump-scare face. Wide O eyes and a mouth of sharp V teeth, drawn in monospace so
+ * the columns hold at any size. Kept as text because the face is meant to read as
+ * ASCII art, not as another program hull.
+ */
+const SCARE_FACE = [
+  '  .-\"\"\"\"\"-.  ',
+  ' /  O   O  \\ ',
+  '|   .---.   |',
+  '|   |\\/\\/|   |',
+  ' \\  \'---\'  / ',
+  '  \'-.....\'-  ',
+];
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -412,6 +431,7 @@ export class Renderer {
         if (state.props) this.drawProps(state.props);
         if (state.arena.pushers) this.drawPusher(state);
         if (state.firewalls) this.drawFirewalls(state.firewalls, state.arena, alpha, t);
+        this.drawOrbitFields(state, t);
         this.drawPlayerTrails(state, t);
         this.drawTrails(state, alpha);
         this.drawProjectiles(state, alpha, t);
@@ -429,6 +449,7 @@ export class Renderer {
       }
       this.drawPlayers(state, alpha, t, intro, view.localMask);
       if (introDone) {
+        this.drawJumpScares(state, t);
         for (let s = 0; s < state.players.length; s++) {
           if ((view.localMask & (1 << s)) === 0) continue;
           this.drawTravelProgress(state, s);
@@ -503,7 +524,7 @@ export class Renderer {
     // The minimap sits top-center when there is more than one local, so it belongs to
     // the whole screen rather than to one pane.
     if (introDone && this.showUi) {
-      this.drawReadinessDocks(state, t);
+      this.drawReadinessDocks(state);
       if (this.showMinimap) this.drawMinimap(state, t, this.localMask, this.localCount > 1);
     }
   }
@@ -2520,6 +2541,71 @@ export class Renderer {
       const p = state.players[i];
       if (!p.active || !p.alive) continue;
       if (p.laserChargeHeld) {
+        // Atomize's heavy is a field, not a beam. Its wind-up is the atom opening up,
+        // so the player sees the field coming instead of a beam muzzle.
+        if (p.program === PROGRAM_ID.ATOMIZE && p.laserT <= 0) {
+          const x = lerp(p.prevX, p.x, alpha);
+          const y = lerp(p.prevY, p.y, alpha);
+          const charge = Math.min(1, p.laserChargeT / PLAYER.laserChargeTime);
+          const color = playerColor(state, p);
+          const rx = 26 + charge * 14;
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = 0.24 + charge * 0.4;
+          ctx.lineWidth = 1.3 + charge * 0.8;
+          for (let o = 0; o < 3; o++) {
+            const rot = t * (1.4 + charge * 2) + (o * Math.PI) / 3;
+            ctx.beginPath();
+            ctx.ellipse(x, y, rx, rx * 0.34, rot, 0, TWO_PI);
+            ctx.stroke();
+          }
+          ctx.globalAlpha = 0.3 + charge * 0.5;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(x, y, PLAYER.radius + 9, -Math.PI / 2, -Math.PI / 2 + TWO_PI * charge);
+          ctx.stroke();
+          if (charge >= 1) {
+            ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 30);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(x, y, PLAYER.radius + 14 + Math.sin(t * 22) * 2, 0, TWO_PI);
+            ctx.stroke();
+          }
+          continue;
+        }
+        // Ghost's heavy is an opening maw, not a beam. The scare arms at full charge;
+        // the mouth and the contracting ring hold the beat before it does.
+        if (p.program === PROGRAM_ID.GHOST) {
+          const x = lerp(p.prevX, p.x, alpha);
+          const y = lerp(p.prevY, p.y, alpha);
+          const charge = Math.min(1, p.laserChargeT / GHOST.scareChargeTime);
+          const color = playerColor(state, p);
+          const open = 5 + charge * 11;
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = 0.24 + charge * 0.5;
+          ctx.lineWidth = 1.6 + charge * 1.2;
+          ctx.beginPath();
+          ctx.arc(x, y, PLAYER.radius + 13 - charge * 4, 0, TWO_PI);
+          ctx.stroke();
+          ctx.globalAlpha = 0.45 + charge * 0.45;
+          ctx.beginPath();
+          ctx.arc(x, y, PLAYER.radius + 8, Math.PI * 1.08, Math.PI * 1.92);
+          ctx.moveTo(x - open, y + 9);
+          ctx.quadraticCurveTo(x, y + 9 + open, x + open, y + 9);
+          ctx.stroke();
+          ctx.globalAlpha = 0.25 + charge * 0.4;
+          ctx.lineWidth = 1.4;
+          for (let fang = -1; fang <= 1; fang++) {
+            const fx = x + fang * 10;
+            ctx.beginPath();
+            ctx.moveTo(fx - 3, y + 9);
+            ctx.lineTo(fx + 3, y + 9);
+            ctx.lineTo(fx, y + 9 + 5 + charge * 5);
+            ctx.closePath();
+            ctx.stroke();
+          }
+          continue;
+        }
         // Wedge and Fisher have their own wind-up silhouettes; only Probe draws the
         // orbiting-dot beam charge. A live overcharge beam still renders.
         if (p.program !== PROGRAM_ID.PROBE && p.laserT <= 0) continue;
@@ -2853,9 +2939,10 @@ export class Renderer {
     for (let i = 0; i < state.projectiles.length; i++) {
       const p = state.projectiles[i];
       if (!p.active) continue;
-      // The thrown broom head, venom needle, bombs and the hourglass are solid objects,
-      // not bolts: no motion tail. Their bodies are drawn with the rest of the shapes.
-      if (p.type === 6 || p.type === 7 || p.type === 8 || p.type === 9 || p.type === 10) continue;
+      // The thrown broom head, venom needle, bombs, the hourglass and Ghost's mouth
+      // are solid objects, not bolts: no motion tail. Their bodies are drawn with the
+      // rest of the shapes.
+      if (p.type === 6 || p.type === 7 || p.type === 8 || p.type === 9 || p.type === 10 || p.type === 12) continue;
       this.pushTrail(p, lerp(p.prevX, p.x, alpha), lerp(p.prevY, p.y, alpha));
     }
   }
@@ -2875,11 +2962,14 @@ export class Renderer {
         : ownerPlayer
           ? playerColor(state, ownerPlayer)
           : particleColor(P_COLOR_ICE);
-      // Solid throws carry no motion tail; the hourglass is one of them.
-      if (p.type !== 6 && p.type !== 7 && p.type !== 8 && p.type !== 9 && p.type !== 10) {
+      // Solid throws carry no motion tail; the hourglass and the chomping mouth are
+      // two of them.
+      if (p.type !== 6 && p.type !== 7 && p.type !== 8 && p.type !== 9 && p.type !== 10 && p.type !== 12) {
         if (p.trailCount >= 2) {
       // Hostile shots get a short tail so the screen does not fill with long lines.
-      const count = p.type >= 3 ? Math.min(p.trailCount, 5) : p.trailCount;
+      // Atomize's electron is the exception: its whole read is the white arc, so it keeps
+      // a long trail even though the ball itself is a player shot.
+      const count = p.type === 11 ? Math.min(p.trailCount, 14) : p.type >= 3 ? Math.min(p.trailCount, 5) : p.trailCount;
       const start = (p.trailHead - count + TRAIL_LEN) % TRAIL_LEN;
       ctx.beginPath();
       for (let k = 0; k < count; k++) {
@@ -2888,11 +2978,11 @@ export class Renderer {
         else ctx.lineTo(p.trailX[idx], p.trailY[idx]);
       }
       ctx.strokeStyle = color;
-      ctx.globalAlpha = hostile ? 0.2 : p.type === 1 ? 0.14 : 0.16 + Math.min(0.16, p.deflects * 0.04);
-      ctx.lineWidth = hostile ? 4 : p.type === 1 ? 5 : 7;
+      ctx.globalAlpha = hostile ? 0.2 : p.type === 1 ? 0.14 : p.type === 11 ? 0.22 : 0.16 + Math.min(0.16, p.deflects * 0.04);
+      ctx.lineWidth = hostile ? 4 : p.type === 1 ? 5 : p.type === 11 ? 5 : 7;
       ctx.stroke();
-      ctx.globalAlpha = hostile ? 0.55 : p.type === 1 ? 0.3 : 0.45 + Math.min(0.25, p.deflects * 0.05);
-      ctx.lineWidth = hostile ? 1.6 : p.type === 1 ? 2 : 2.6;
+      ctx.globalAlpha = hostile ? 0.55 : p.type === 1 ? 0.3 : p.type === 11 ? 0.62 : 0.45 + Math.min(0.25, p.deflects * 0.05);
+      ctx.lineWidth = hostile ? 1.6 : p.type === 1 ? 2 : p.type === 11 ? 2.2 : 2.6;
       ctx.stroke();
         }
       }
@@ -3253,6 +3343,52 @@ export class Renderer {
         // The head is a touch wider than the collision radius so the extra reach reads;
         // the larger `half` also buys another binder and bristle column in the ASCII row.
         this.drawBroomText(x, y - 16, 20, 34, Math.PI / 2, 0.95, color);
+      } else if (p.type === 12) {
+        // Ghost's mouth: a wide maw with sharp triangles on both jaws. The jaw height
+        // oscillates, so the throw visibly chomps as it travels. No motion tail.
+        const angle = Math.atan2(p.vy, p.vx);
+        const jaw = p.radius * (0.48 + 0.44 * Math.abs(Math.sin(t * 13 + p.serial * 1.7)));
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        // Halo first, then the dark interior, so the teeth stay crisp instead of
+        // washing into the additive bolt glow around it.
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.radius * 1.7, jaw * 1.8, 0, 0, TWO_PI);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(3, 9, 14, 0.92)';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.radius * 1.18, jaw, 0, 0, TWO_PI);
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.radius * 1.2, jaw, 0, 0, TWO_PI);
+        ctx.stroke();
+        // Five teeth on each jaw. They point into the dark opening and scale with the
+        // chomp, which is what separates the shape from a plain spiked ring.
+        ctx.fillStyle = '#e9eef4';
+        ctx.beginPath();
+        for (let tooth = -2; tooth <= 2; tooth++) {
+          const tx = tooth * p.radius * 0.42;
+          const tw = p.radius * 0.15;
+          const upper = -jaw * 0.72;
+          const lower = jaw * 0.72;
+          ctx.moveTo(tx - tw, upper);
+          ctx.lineTo(tx + tw, upper);
+          ctx.lineTo(tx, upper + jaw * 0.55);
+          ctx.closePath();
+          ctx.moveTo(tx - tw, lower);
+          ctx.lineTo(tx + tw, lower);
+          ctx.lineTo(tx, lower - jaw * 0.55);
+          ctx.closePath();
+        }
+        ctx.fill();
+        ctx.restore();
       } else if (p.type === 10) {
         // Heavy hourglass: the program's own mark, spinning on its axis inside a soft
         // weight halo. No tail, no handle: it is one solid object in flight.
@@ -3306,6 +3442,27 @@ export class Renderer {
         const spark = 0.5 + 0.5 * Math.sin(t * 22 + p.serial);
         ctx.fillStyle = '#fff6e0';
         ctx.fillRect(coreR * 0.55, -coreR * 1.3, 2 + spark * 2, 2 + spark * 2);
+        ctx.restore();
+      } else if (p.type === 11) {
+        // Atomize's electron: a coloured ball with a white hot core. The motion trail
+        // is drawn by drawTrails in the owner's white, so the arc is the white line.
+        const ball = ATOM_BOLT_COLORS[((p.variant % 3) + 3) % 3];
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.fillStyle = ball;
+        ctx.globalAlpha = 0.16;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius * 2.6, 0, TWO_PI);
+        ctx.fill();
+        ctx.globalAlpha = 0.95;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius * 0.9, 0, TWO_PI);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(-1.2, -1.2, p.radius * 0.34, 0, TWO_PI);
+        ctx.fill();
         ctx.restore();
       } else if (p.type >= 3) {
         const angle = Math.atan2(p.vy, p.vx);
@@ -3809,6 +3966,146 @@ export class Renderer {
     }
   }
 
+  /**
+   * Atomize's power field: one atom-shaped set of orbit lines around the caster. It is
+   * drawn under the bodies so the captured shots and enemies remain the subject.
+   */
+  private drawOrbitFields(state: RenderState, t: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      if (!p.active || !p.alive || p.orbitT <= 0) continue;
+      const x = p.x;
+      const y = p.y;
+      const fade = Math.min(1, p.orbitT / 0.18);
+      const pulse = 0.5 + 0.5 * Math.sin(t * 6 + p.slot);
+      ctx.strokeStyle = PROGRAM_COLORS.atomize;
+      ctx.globalAlpha = (0.06 + 0.05 * pulse) * fade;
+      ctx.fillStyle = PROGRAM_COLORS.atomize;
+      ctx.beginPath();
+      ctx.arc(x, y, ATOMIZE.powerOrbit, 0, TWO_PI);
+      ctx.fill();
+      ctx.globalAlpha = (0.2 + 0.14 * pulse) * fade;
+      ctx.lineWidth = 1.3;
+      for (let o = 0; o < 3; o++) {
+        const rot = t * 0.7 * p.orbitDir + (o * Math.PI) / 3;
+        ctx.beginPath();
+        ctx.ellipse(x, y, ATOMIZE.powerOrbit, ATOMIZE.powerOrbit * 0.34, rot, 0, TWO_PI);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 0.42 * fade;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(x, y, ATOMIZE.powerOrbit, -Math.PI / 2 + t * p.orbitDir, -Math.PI / 2 + t * p.orbitDir + 1.1);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * The jump-scare face. It pops at the burst point, shakes for a beat and fades. Drawn
+   * in world space so it scales with the arena camera; the dark outline keeps it legible
+   * over bright floors and explosion particles.
+   */
+  private drawJumpScares(state: RenderState, t: number): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      if (p.scareFaceT <= 0) continue;
+      const age = 1 - p.scareFaceT / GHOST.faceTime;
+      const fade = Math.min(1, age * 9, p.scareFaceT * 4);
+      if (fade <= 0) continue;
+      const pop = 0.42 + 0.78 * Math.min(1, age * 4.5);
+      const shakeX = Math.sin(t * 57 + p.slot) * 2.4 * (1 - age);
+      const shakeY = Math.cos(t * 49 + p.slot) * 1.8 * (1 - age);
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.translate(p.scareFaceX + shakeX, p.scareFaceY - 8 + shakeY);
+      ctx.scale(pop, pop);
+      ctx.globalAlpha = fade * 0.3;
+      ctx.fillStyle = PROGRAM_COLORS.ghost;
+      ctx.beginPath();
+      ctx.ellipse(0, 6, 118, 102, 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.globalAlpha = fade;
+      ctx.font = symbolFont(27);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(2, 7, 12, 0.92)';
+      ctx.fillStyle = '#eef4fa';
+      const lineH = 27;
+      const top = -((SCARE_FACE.length - 1) * lineH) * 0.5;
+      for (let line = 0; line < SCARE_FACE.length; line++) {
+        ctx.strokeText(SCARE_FACE[line], 0, top + line * lineH);
+        ctx.fillText(SCARE_FACE[line], 0, top + line * lineH);
+      }
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Local-only cloak readout. A faint dark disc, a dashed outline and the closed-eye
+   * core keep the avatar navigable without putting a bright body back on the field.
+   * The armed jump-scare adds a pulsing warning ring and a very faint burst radius.
+   */
+  private drawCloakedPlayer(p: Player, x: number, y: number, facing: number, color: string, t: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = 'rgba(2, 7, 12, 0.86)';
+    ctx.beginPath();
+    ctx.arc(x, y, PLAYER.radius, 0, TWO_PI);
+    ctx.fill();
+    ctx.globalAlpha = 0.42 + 0.14 * Math.sin(t * 8 + p.slot);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 6]);
+    ctx.lineDashOffset = -t * 18;
+    ctx.beginPath();
+    ctx.arc(x, y, PLAYER.radius + 4, 0, TWO_PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (p.scareT > 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 18);
+      ctx.globalAlpha = 0.55 + 0.3 * pulse;
+      ctx.strokeStyle = '#eef4fa';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, PLAYER.radius + 13 + pulse * 3, 0, TWO_PI);
+      ctx.stroke();
+      // The armed radius is shown only to the owner. It is the one time the cloak is
+      // allowed to reveal its footprint, because the player has to choose the moment.
+      ctx.globalAlpha = 0.11;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([3, 10]);
+      ctx.beginPath();
+      ctx.arc(x, y, GHOST.scareRadius, 0, TWO_PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.translate(x, y);
+    ctx.globalAlpha = 0.62;
+    ctx.fillStyle = color;
+    drawGhostEye(ctx, 0, 0, PLAYER.radius * 0.5);
+    const nx = Math.cos(facing);
+    const ny = Math.sin(facing);
+    const tip = PLAYER.radius + 8;
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(nx * tip, ny * tip);
+    ctx.lineTo(nx * (tip - 7) - ny * 4, ny * (tip - 7) + nx * 4);
+    ctx.lineTo(nx * (tip - 7) + ny * 4, ny * (tip - 7) - nx * 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
   private drawPlayers(
     state: RenderState,
     alpha: number,
@@ -3857,6 +4154,12 @@ export class Renderer {
       // A dead body leaves no marker on the field. The death burst and the respawn
       // timer carry the state; a dashed ring with an X read as another interactable.
       if (!p.alive) continue;
+      // Ghost's cloak: the local player keeps a faint shimmer so they can steer; every
+      // other body is simply not on the field. An enemy cannot see what is not drawn.
+      if (p.cloakT > 0) {
+        if (isLocal) this.drawCloakedPlayer(p, x, y, facing, color, t);
+        continue;
+      }
       // Lift riders are hidden under the car transition. A pad rider is drawn in its
       // layer-by-layer unload/reload at the two plates instead.
       if (p.travelT > 0) {
@@ -4112,8 +4415,10 @@ export class Renderer {
       // Local bots are player characters and carry the same hull and three segments.
       // Networked guests keep slot identity, and thralls are not player characters, so
       // neither draws a program hull yet.
-      const freshSegments = Math.max(0, Math.min(PLAYER.hp, Math.ceil(p.hp)));
-      const hpFrac = Math.max(0, Math.min(1, p.hp / PLAYER.hp));
+      // Atomize carries six segments; every other program keeps the three defaults.
+      const maxSegments = p.maxHp > 0 ? p.maxHp : PLAYER.hp;
+      const freshSegments = Math.max(0, Math.min(maxSegments, Math.ceil(p.hp)));
+      const hpFrac = Math.max(0, Math.min(1, p.hp / maxSegments));
       // Bots are player characters: same program hull, health segments and glow.
       // Networked guests keep slot identity, and thralls are not player characters.
       const showHull = isLocal || (!state.online && !p.thrall);
@@ -4132,15 +4437,15 @@ export class Renderer {
         ctx.globalAlpha = 1;
         // Lost segments remain as ghosts at a readable alpha, so the program silhouette
         // never breaks apart. Too faint and the hull reads as a gap instead of damage.
-        if (freshSegments < PLAYER.hp) {
+        if (freshSegments < maxSegments) {
           ctx.globalAlpha = 0.42;
           ctx.strokeStyle = color;
           ctx.lineWidth = 2.6;
-          pathProgramHealth(ctx, p.program, x, y, PLAYER.radius, hullSpin, PLAYER.hp, PLAYER.hp);
+          pathProgramHealth(ctx, p.program, x, y, PLAYER.radius, hullSpin, maxSegments, maxSegments);
           ctx.stroke();
           ctx.strokeStyle = p.hitFlash > 0 ? '#ffffff' : color;
         }
-        pathProgramHealth(ctx, p.program, x, y, PLAYER.radius, hullSpin, freshSegments, PLAYER.hp);
+        pathProgramHealth(ctx, p.program, x, y, PLAYER.radius, hullSpin, freshSegments, maxSegments);
         ctx.globalAlpha = 0.1;
         ctx.lineWidth = 12;
         ctx.stroke();
@@ -4174,7 +4479,7 @@ export class Renderer {
       // stable core until the snapshot carries programs and health.
       const coreHp = showHull ? hpFrac : 1;
       const coreR = PLAYER.radius * (0.3 + 0.28 * coreHp) * (1 + 0.035 * Math.sin(t * 4 + p.slot));
-      // Buffer has no dark core disc. His mark is a solid filled hourglass, so a disc
+      // Bad Lag has no dark core disc. His mark is a solid filled hourglass, so a disc
       // behind it reads as a black tile rather than as a nucleus: every other program
       // draws a stroked mark, where the disc is the negative space it sits in.
       if (p.program !== PROGRAM_ID.BUFFER) {
@@ -4238,6 +4543,53 @@ export class Renderer {
       }
       ctx.restore();
 
+      // Atomize's shield charges: three blue balls sharing one orbit. They persist
+      // until spent, so the count is the readout; no timer or bar belongs here.
+      if (p.atomBalls > 0) {
+        const count = p.atomBalls;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = ATOM_BALL_COLOR;
+        ctx.globalAlpha = 0.1;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(x, y, ATOMIZE.ballOrbit, 0, TWO_PI);
+        ctx.stroke();
+        for (let b = 0; b < count; b++) {
+          const a = p.atomBallA + (b / count) * TWO_PI;
+          const bx = x + Math.cos(a) * ATOMIZE.ballOrbit;
+          const by = y + Math.sin(a) * ATOMIZE.ballOrbit;
+          ctx.globalAlpha = 0.18;
+          ctx.fillStyle = ATOM_BALL_COLOR;
+          ctx.beginPath();
+          ctx.arc(bx, by, ATOMIZE.ballRadius * 1.9, 0, TWO_PI);
+          ctx.fill();
+          ctx.globalAlpha = 0.95;
+          ctx.beginPath();
+          ctx.arc(bx, by, ATOMIZE.ballRadius * 0.72, 0, TWO_PI);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(bx - 1.2, by - 1.2, ATOMIZE.ballRadius * 0.27, 0, TWO_PI);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      if (p.atomFlashT > 0) {
+        const f = Math.max(0, Math.min(1, p.atomFlashT / ATOMIZE.ballBlockFlash));
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = f * 0.75;
+        ctx.strokeStyle = ATOM_BALL_COLOR;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(x, y, PLAYER.radius + 9 + (1 - f) * 16, 0, TWO_PI);
+        ctx.stroke();
+        ctx.restore();
+      }
+
       if (p.poisonT > 0) {
         // Venom: one flashing skull above the body and a green rim. A status marker,
         // not a health pip, so it is allowed on bots and remotes too.
@@ -4290,6 +4642,31 @@ export class Renderer {
         ctx.arc(x, y, PLAYER.radius + 3, 0, TWO_PI);
         ctx.stroke();
         ctx.setLineDash([]);
+      }
+
+      if (p.dazeT > 0) {
+        // Bite daze: a short, dizzy orbit of dots and a broken ring. The body keeps
+        // its normal shape so the status is not mistaken for a shield or a cloak.
+        const pulse = 0.5 + 0.5 * Math.sin(t * 12 + p.slot);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.4 + 0.25 * pulse;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([3, 6]);
+        ctx.lineDashOffset = t * 26;
+        ctx.beginPath();
+        ctx.arc(x, y, PLAYER.radius + 6, 0, TWO_PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#eef4fa';
+        for (let d = 0; d < 3; d++) {
+          const a = t * 5.5 + (d / 3) * TWO_PI;
+          ctx.beginPath();
+          ctx.arc(x + Math.cos(a) * 15, y - PLAYER.radius - 4 + Math.sin(a) * 5, 2.1, 0, TWO_PI);
+          ctx.fill();
+        }
+        ctx.restore();
       }
 
       if (p.wallT > 0) {
@@ -4557,20 +4934,20 @@ export class Renderer {
     void alpha;
   }
 
-  /** One shared circular slot behind every dock mark, so the five jobs read alike. */
+  /** One shared circular slot behind every dock mark, so the three jobs read alike. */
   private drawReadinessCell(cx: number, cy: number, color: string): void {
     const ctx = this.ctx;
     ctx.save();
-    ctx.globalAlpha = 0.13;
+    ctx.globalAlpha = 0.22;
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(cx, cy, 14, 0, TWO_PI);
+    ctx.arc(cx, cy, DOCK_SLOT, 0, TWO_PI);
     ctx.fill();
-    ctx.globalAlpha = 0.3;
+    ctx.globalAlpha = 0.72;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.arc(cx, cy, 14, 0, TWO_PI);
+    ctx.arc(cx, cy, DOCK_SLOT, 0, TWO_PI);
     ctx.stroke();
     ctx.restore();
   }
@@ -4580,10 +4957,9 @@ export class Renderer {
    * covers the part still charging. A bright rim shows the sweep edge, so the state reads
    * as a dial instead of a faint arc around a small mark.
    */
-  private drawReadinessMask(cx: number, cy: number, pct: number, color: string): void {
+  private drawReadinessMask(cx: number, cy: number, pct: number, color: string, r = DOCK_SLOT): void {
     if (pct >= 0.999) return;
     const ctx = this.ctx;
-    const r = 14;
     const start = -Math.PI / 2;
     const clamped = Math.max(0, Math.min(1, pct));
     const ready = start + TWO_PI * clamped;
@@ -4601,13 +4977,13 @@ export class Renderer {
     ctx.restore();
     ctx.save();
     ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.85;
-    ctx.lineWidth = 2.4;
+    ctx.globalAlpha = 0.95;
+    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(cx, cy, r, start, ready);
     ctx.stroke();
-    ctx.globalAlpha = 0.32;
-    ctx.lineWidth = 1.2;
+    ctx.globalAlpha = 0.38;
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
     ctx.arc(cx, cy, r, ready, start + TWO_PI);
     ctx.stroke();
@@ -4619,11 +4995,11 @@ export class Renderer {
    * view, then top-right, bottom-left and bottom-right as more local players join. The
    * corners keep four docks clear of each other and of the shared minimap.
    */
-  private drawReadinessDocks(state: RenderState, t: number): void {
+  private drawReadinessDocks(state: RenderState): void {
     const count = this.localCount;
     const margin = 12;
-    const w = 182;
-    const h = 44;
+    const w = DOCK_W;
+    const h = DOCK_H;
     for (let i = 0; i < count; i++) {
       const slot = this.localList[i];
       const p = state.players[slot];
@@ -4639,24 +5015,24 @@ export class Renderer {
         x = (i % 2) === 0 ? margin : VIEW_W - w - margin;
         y = i < 2 ? margin : VIEW_H - h - margin;
       }
-      this.drawReadiness(state, t, slot, x, y);
+      this.drawReadiness(state, slot, x, y);
     }
   }
 
   /**
-   * Local readiness dock. Health and energy stay on the avatar; ammo, dash, skill,
-   * heavy and the active pickup live here so they never sit between the avatar and an
-   * incoming shot.
+   * Local readiness dock. Health and energy stay on the avatar; dash, skill and the
+   * power attack live here so they never sit between the avatar and an incoming shot.
+   * The three slots are deliberately large: this is the couch-distance readout.
    */
-  private drawReadiness(state: RenderState, t: number, slot: number, boxX = 12, boxY = 12): void {
+  private drawReadiness(state: RenderState, slot: number, boxX = 12, boxY = 12): void {
     const p = state.players[slot];
     if (!p || !p.active || !p.alive) return;
     const ctx = this.ctx;
     const color = playerColor(state, p);
-    const cell = 34;
-    const pad = 6;
-    const boxW = cell * 5 + pad * 2;
-    const boxH = 44;
+    const cell = DOCK_CELL;
+    const pad = DOCK_PAD;
+    const boxW = DOCK_W;
+    const boxH = DOCK_H;
     const cy = boxY + boxH * 0.5;
     const first = boxX + pad + cell * 0.5;
 
@@ -4665,11 +5041,11 @@ export class Renderer {
     ctx.globalAlpha = 1;
     ctx.fillStyle = 'rgba(3, 10, 16, 0.94)';
     ctx.fillRect(boxX, boxY, boxW, boxH);
-    ctx.globalAlpha = 0.55;
+    ctx.globalAlpha = 0.8;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 1.6;
     ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = 1;
     ctx.beginPath();
     ctx.moveTo(boxX, boxY + 7);
     ctx.lineTo(boxX, boxY);
@@ -4684,61 +5060,46 @@ export class Renderer {
     ctx.lineTo(boxX + boxW, boxY + boxH);
     ctx.lineTo(boxX + boxW, boxY + boxH - 7);
     ctx.stroke();
-    // Five identical circular slots, one per job, whatever the program. The marks are
+    // Three identical circular slots, one per job, whatever the program. The marks are
     // drawn inside them at the same size, so the dock reads the same on every character.
-    for (let i = 0; i < 5; i++) this.drawReadinessCell(first + cell * i, cy, color);
+    for (let i = 0; i < 3; i++) this.drawReadinessCell(first + cell * i, cy, color);
 
-    // 1. Ranged ammo: one dot per shot left in the program's string.
-    const singleShot =
-      p.program === PROGRAM_ID.FISHER ||
-      p.program === PROGRAM_ID.SWEEP ||
-      p.program === PROGRAM_ID.KABOOM ||
-      p.program === PROGRAM_ID.BUFFER;
-    const ammoMax = p.program === PROGRAM_ID.WEDGE ? 3 : singleShot ? 1 : BOLT.burstCount;
-    const ammo = p.program === PROGRAM_ID.WEDGE
-      ? p.stringLeft > 0 ? p.stringLeft : p.burstCd <= 0 ? 3 : 0
-      : singleShot
-        ? p.autoFireT <= 0 ? 1 : 0
-        : p.burstLeft;
-    const dotGap = ammoMax > 3 ? 5.6 : 6.2;
-    for (let b = 0; b < ammoMax; b++) {
-      const off = (b - (ammoMax - 1) * 0.5) * dotGap;
-      ctx.globalAlpha = b < ammo ? 1 : 0.16;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(first + off, cy, 2.7, 0, TWO_PI);
-      ctx.fill();
-    }
-
-    // 2. Dash charges.
-    const dashX = first + cell;
+    // 1. Dash charges.
+    const dashX = first;
     const dashPct = p.dashCharges >= PLAYER.dashCharges ? 1 : 1 - Math.min(1, p.dashCd / PLAYER.dashCooldown);
     for (let c = 0; c < PLAYER.dashCharges; c++) {
-      const off = (c - (PLAYER.dashCharges - 1) * 0.5) * 10;
-      ctx.globalAlpha = c < p.dashCharges ? 1 : 0.16;
+      const off = (c - (PLAYER.dashCharges - 1) * 0.5) * 12;
+      const filled = c < p.dashCharges;
       ctx.strokeStyle = '#dff7ff';
-      ctx.lineWidth = 2.4;
       ctx.lineJoin = 'round';
       ctx.beginPath();
-      ctx.moveTo(dashX - 5 + off, cy - 5);
+      ctx.moveTo(dashX - 10 + off, cy - 10);
       ctx.lineTo(dashX + off, cy);
-      ctx.lineTo(dashX - 5 + off, cy + 5);
+      ctx.lineTo(dashX - 10 + off, cy + 10);
+      if (filled) {
+        // Wide dim pass under a narrow bright one: bolder without shadowBlur.
+        ctx.globalAlpha = 0.22;
+        ctx.lineWidth = 9;
+        ctx.stroke();
+      }
+      ctx.globalAlpha = filled ? 1 : 0.22;
+      ctx.lineWidth = filled ? 4.2 : 2.8;
       ctx.stroke();
     }
     ctx.lineJoin = 'miter';
     if (p.dashCharges < PLAYER.dashCharges) this.drawReadinessMask(dashX, cy, dashPct, '#dff7ff');
 
-    // 3. Skill (tap Y): a compact program mark with its own cooldown ring.
-    const skillX = first + cell * 2;
+    // 2. Skill (tap Y): a compact program mark with its own cooldown ring.
+    const skillX = first + cell;
     const bugReady = p.bugCd <= 0;
     const bugPct = bugReady ? 1 : 1 - Math.min(1, p.bugCd / (BUG.cooldown[p.bugKind] ?? 6));
     ctx.save();
     ctx.translate(skillX, cy);
-    ctx.scale(1.3, 1.3);
-    ctx.globalAlpha = bugReady ? 1 : 0.25;
+    ctx.scale(2.6, 2.6);
+    ctx.globalAlpha = bugReady ? 1 : 0.34;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 1.9;
+    ctx.lineWidth = 2.4;
     ctx.beginPath();
     if (p.bugKind === 0) {
       ctx.moveTo(0, -5.5);
@@ -4798,9 +5159,30 @@ export class Renderer {
       ctx.moveTo(0.5, -5.5);
       ctx.lineTo(4.5, 0);
       ctx.lineTo(0.5, 5.5);
+    } else if (p.bugKind === 10) {
+      // Orbital shield: a nucleus with three balls around it. The heavy beside it is
+      // an orbit ring, so the two atom ideas stay distinguishable at dock size.
+      ctx.moveTo(2.2, 0);
+      ctx.arc(0, 0, 2.2, 0, TWO_PI);
+      for (let b = 0; b < 3; b++) {
+        const a = (b / 3) * TWO_PI - Math.PI / 2;
+        ctx.moveTo(Math.cos(a) * 4.7 + 1.5, Math.sin(a) * 4.7);
+        ctx.arc(Math.cos(a) * 4.7, Math.sin(a) * 4.7, 1.5, 0, TWO_PI);
+      }
+    } else if (p.bugKind === 11) {
+      // Cloak: the program's closed eye, with lashes, so the skill reads as the
+      // invisibility and never as the bite or the jump-scare.
+      ctx.arc(0, 0.2, 4.4, Math.PI * 0.16, Math.PI * 0.84);
+      for (let lash = 0; lash < 3; lash++) {
+        const a = Math.PI * (0.27 + lash * 0.23);
+        const lx = Math.cos(a) * 4.4;
+        const ly = 0.2 + Math.sin(a) * 4.4;
+        ctx.moveTo(lx, ly);
+        ctx.lineTo(lx + Math.cos(a) * 2, ly + Math.sin(a) * 2);
+      }
     } else {
-      // Lure beacon: a center pulse with two open arcs, not a closed ring. The
-      // closed ring plus dot is Probe's core mark (`◎`) and would collide with it.
+      // Lure beacon: a center pulse with two open arcs, no star. Probe's compass uses
+      // a closed housing and a four-point rose, so the two marks stay distinct.
       ctx.moveTo(1.7, 0);
       ctx.arc(0, 0, 1.7, 0, TWO_PI);
       ctx.moveTo(Math.cos(-0.8) * 5, Math.sin(-0.8) * 5);
@@ -4808,14 +5190,23 @@ export class Renderer {
       ctx.moveTo(Math.cos(Math.PI - 0.8) * 5, Math.sin(Math.PI - 0.8) * 5);
       ctx.arc(0, 0, 5, Math.PI - 0.8, Math.PI + 0.8);
     }
-    ctx.stroke();
+    if (bugReady) {
+      ctx.globalAlpha = 0.2;
+      ctx.lineWidth = 6;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+    } else {
+      ctx.stroke();
+    }
     ctx.setLineDash([]);
     ctx.restore();
     if (!bugReady) this.drawReadinessMask(skillX, cy, bugPct, color);
 
-    // 4. Power attack (hold Y): program-shaped heavy, with its cooldown ring.
-    const heavyX = first + cell * 3;
-    const heavyReady = p.laserCd <= 0 && p.laserT <= 0 && p.wedgeT <= 0 && p.broT <= 0;
+    // 3. Power attack (hold Y): program-shaped heavy, with its cooldown ring.
+    const heavyX = first + cell * 2;
+    const heavyReady = p.laserCd <= 0 && p.laserT <= 0 && p.wedgeT <= 0 && p.broT <= 0 && p.orbitT <= 0;
     const heavyMax = p.program === PROGRAM_ID.WEDGE
       ? WEDGE.chargeCooldown
       : p.program === PROGRAM_ID.FISHER
@@ -4826,7 +5217,11 @@ export class Renderer {
             ? KABOOM.clusterCooldown
             : p.program === PROGRAM_ID.BUFFER
               ? BUFFER.slowCooldown
-              : PLAYER.laserCooldown;
+              : p.program === PROGRAM_ID.ATOMIZE
+                ? ATOMIZE.powerCooldown
+                : p.program === PROGRAM_ID.GHOST
+                  ? GHOST.scareCooldown
+                  : PLAYER.laserCooldown;
     const heavyColor = p.program === PROGRAM_ID.WEDGE
       ? PROGRAM_COLORS.wedge
       : p.program === PROGRAM_ID.FISHER
@@ -4835,23 +5230,31 @@ export class Renderer {
           ? PROGRAM_COLORS.sweep
           : p.program === PROGRAM_ID.BUFFER
             ? PROGRAM_COLORS.buffer
-            : color;
+            : p.program === PROGRAM_ID.ATOMIZE
+              ? PROGRAM_COLORS.atomize
+              : p.program === PROGRAM_ID.GHOST
+                ? PROGRAM_COLORS.ghost
+                : color;
     const heavyLive =
       p.laserT > 0 ||
       p.wedgeT > 0 ||
       p.broT > 0 ||
+      p.orbitT > 0 ||
       ((state.timeSlowT ?? 0) > 0 && (state.timeSlowOwner ?? -1) === p.slot) ||
+      p.scareT > 0 ||
       ((p.program === PROGRAM_ID.SWEEP ||
         p.program === PROGRAM_ID.KABOOM ||
-        p.program === PROGRAM_ID.BUFFER) &&
+        p.program === PROGRAM_ID.BUFFER ||
+        p.program === PROGRAM_ID.ATOMIZE ||
+        p.program === PROGRAM_ID.GHOST) &&
         p.laserChargeHeld);
     ctx.save();
     ctx.translate(heavyX, cy);
-    ctx.scale(1.32, 1.32);
-    ctx.globalAlpha = heavyLive ? 1 : heavyReady ? 1 : 0.24;
+    ctx.scale(2.6, 2.6);
+    ctx.globalAlpha = heavyLive ? 1 : heavyReady ? 1 : 0.34;
     ctx.strokeStyle = heavyColor;
     ctx.fillStyle = heavyColor;
-    ctx.lineWidth = heavyLive ? 2.2 : 1.9;
+    ctx.lineWidth = heavyLive ? 2.8 : 2.4;
     ctx.beginPath();
     if (p.program === PROGRAM_ID.WEDGE) {
       // Closed plate for the heavy; the skill beside it is an open bracket. The
@@ -4895,38 +5298,47 @@ export class Renderer {
         ctx.moveTo(b * 4.2 + 1.7, -1.6);
         ctx.arc(b * 4.2, -1.6, 1.7, 0, TWO_PI);
       }
+    } else if (p.program === PROGRAM_ID.ATOMIZE) {
+      // Orbit field: one ring with a nucleus, not the three-ball shield mark.
+      ctx.ellipse(0, 0, 6.4, 2.6, 0.62, 0, TWO_PI);
+      ctx.moveTo(1.7, 0);
+      ctx.arc(0, 0, 1.7, 0, TWO_PI);
+    } else if (p.program === PROGRAM_ID.GHOST) {
+      // Jump-scare: a wide open maw with a zigzag of teeth. The skill beside it is the
+      // closed eye, so cloak and scare never share a mark.
+      ctx.ellipse(0, 0, 6, 3.4, 0, 0, TWO_PI);
+      ctx.moveTo(-4.8, -1.4);
+      ctx.lineTo(-3, -3);
+      ctx.lineTo(-1.2, -1.4);
+      ctx.lineTo(0.6, -3);
+      ctx.lineTo(2.4, -1.4);
+      ctx.lineTo(4.2, -3);
+      ctx.lineTo(4.8, -1.4);
+      ctx.moveTo(-4.8, 1.4);
+      ctx.lineTo(-3, 3);
+      ctx.lineTo(-1.2, 1.4);
+      ctx.lineTo(0.6, 3);
+      ctx.lineTo(2.4, 1.4);
+      ctx.lineTo(4.2, 3);
+      ctx.lineTo(4.8, 1.4);
     } else {
       ctx.moveTo(0, -5.5);
       ctx.lineTo(0, 5.5);
     }
-    ctx.stroke();
+    if (heavyReady || heavyLive) {
+      ctx.globalAlpha = 0.2;
+      ctx.lineWidth = heavyLive ? 6.5 : 6;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = heavyLive ? 2.8 : 2.4;
+      ctx.stroke();
+    } else {
+      ctx.stroke();
+    }
     ctx.restore();
     if (!heavyReady && !heavyLive) {
       const cdPct = 1 - Math.min(1, p.laserCd / heavyMax);
       this.drawReadinessMask(heavyX, cy, cdPct, heavyColor);
-    }
-
-    // 5. Active pickup and its remaining time. Empty slot stays as a faint placeholder
-    // so the dock keeps a stable five-cell rhythm.
-    const powerX = first + cell * 4;
-    if (p.powerupT > 0 && p.powerupKind >= 0 && p.powerupKind < POWERUPS.length) {
-      const pu = POWERUPS[p.powerupKind];
-      ctx.save();
-      ctx.translate(powerX, cy);
-      ctx.rotate(t * 1.7);
-      ctx.scale(1.4, 1.4);
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = pu.color;
-      ctx.lineWidth = 1.7;
-      ctx.strokeRect(-4.5, -4.5, 9, 9);
-      ctx.restore();
-      const total = pu.duration > 0 ? pu.duration : 1;
-      this.drawReadinessMask(powerX, cy, Math.min(1, p.powerupT / total), pu.color);
-    } else {
-      ctx.globalAlpha = 0.16;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.3;
-      ctx.strokeRect(powerX - 4.5, cy - 4.5, 9, 9);
     }
 
     ctx.restore();
@@ -5019,6 +5431,7 @@ export class Renderer {
     alpha: number,
     color: string,
     reveal = 1,
+    revealDir = 1,
   ): void {
     if (half < 2 || depth < 4) return;
     const ctx = this.ctx;
@@ -5036,8 +5449,12 @@ export class Renderer {
     // push direction; Math.PI / 2 is straight down, the avatar's resting hold.
     ctx.rotate(angle - Math.PI / 2);
     if (reveal < 1) {
+      // Reveal from one edge in the facing direction instead of blooming from the
+      // middle: dir +1 is left to right, dir -1 right to left.
+      const w = half * 2 * reveal;
       ctx.beginPath();
-      ctx.rect(-half * reveal, 0, half * 2 * reveal, depth);
+      if (revealDir < 0) ctx.rect(half - w, 0, w, depth);
+      else ctx.rect(-half, 0, w, depth);
       ctx.clip();
     }
     ctx.fillStyle = color;
@@ -5109,9 +5526,14 @@ export class Renderer {
   }
 
   /**
-   * Sweep's heavy. The head assembles at the top of the player's view, widening from the
-   * middle out, then drops about two thirds of the way down the screen. While live it is
-   * a committed world position, so panning the camera does not drag the broom with it.
+   * Sweep's heavy. The head assembles at the top of the player's view, then drops about
+   * two thirds of the way down the screen. While live it is a committed world position,
+   * so panning the camera does not drag the broom with it.
+   *
+   * The charge shows a faint full-width ghost of the lane. On commit the bright head
+   * materializes from the facing side, with a bright front riding the edge, and only
+   * then does the stroke begin. That keeps the assembly readable without the head
+   * popping in at full width on the cast frame.
    */
   private drawGiantBroom(p: Player, color: string, t: number): void {
     const charging = p.laserChargeHeld && p.broT <= 0;
@@ -5121,20 +5543,48 @@ export class Renderer {
     const cy = p.broY + (charging ? 0 : p.broS);
     const half = SWEEP.powerSpan;
     const depth = SWEEP.powerWidth * 2;
+    const reveal =
+      charging || p.broRevealDur <= 0
+        ? 1
+        : Math.max(0, Math.min(1, 1 - p.broRevealT / p.broRevealDur));
     const ctx = this.ctx;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     // Bristles up, like the melee broom: the head is held over the lane and strokes.
-    this.drawBroomText(cx, cy - depth * 0.5, half, depth, Math.PI / 2, 0.34 + 0.62 * build, color, build);
+    if (charging) {
+      this.drawBroomText(cx, cy - depth * 0.5, half, depth, Math.PI / 2, 0.16 + 0.2 * build, color);
+    } else if (p.broRevealT > 0) {
+      // Ghost of the whole head, then the bright part that has already arrived.
+      this.drawBroomText(cx, cy - depth * 0.5, half, depth, Math.PI / 2, 0.16, color);
+      this.drawBroomText(
+        cx,
+        cy - depth * 0.5,
+        half,
+        depth,
+        Math.PI / 2,
+        0.96,
+        color,
+        reveal,
+        p.broRevealDir,
+      );
+      const edgeX = p.broRevealDir > 0 ? -half + half * 2 * reveal : half - half * 2 * reveal;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.5;
+      ctx.fillRect(cx + edgeX - 1.5, cy - depth * 0.5, 3, depth);
+      ctx.globalAlpha = 1;
+    } else {
+      this.drawBroomText(cx, cy - depth * 0.5, half, depth, Math.PI / 2, 0.96, color);
+    }
     ctx.restore();
     // Dust shed from the bristle tips along the stroke.
     ctx.save();
     ctx.fillStyle = '#a7b1bb';
     const tips = cy + depth * 0.5;
+    const dust = charging ? build : 1;
     for (let i = 0; i < 14; i++) {
       const k = (i / 13) * 2 - 1;
       const wobble = Math.sin(t * 9 + i * 1.7) * 7;
-      ctx.globalAlpha = (0.15 + 0.22 * build) * (1 - Math.abs(k) * 0.55);
+      ctx.globalAlpha = (0.15 + 0.22 * dust) * (1 - Math.abs(k) * 0.55);
       ctx.fillRect(cx + k * half + wobble, tips + 4 + (i % 3) * 6, 4, 4);
     }
     ctx.restore();
@@ -5196,7 +5646,8 @@ export class Renderer {
       if (isLocal) {
         ctx.globalAlpha = hull;
         ctx.lineWidth = 2.6;
-        pathProgramHealth(ctx, p.program, x, y, PLAYER.radius, spin, PLAYER.hp, PLAYER.hp);
+        const maxSegments = p.maxHp > 0 ? p.maxHp : PLAYER.hp;
+        pathProgramHealth(ctx, p.program, x, y, PLAYER.radius, spin, maxSegments, maxSegments);
         ctx.stroke();
         ctx.globalAlpha = 0.32 * hull;
         ctx.lineWidth = 5;

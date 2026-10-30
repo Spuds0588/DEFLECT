@@ -78,8 +78,8 @@ and do not occupy room slots. A future host-side bot slot is separate work.
 
 ### D4 — Identity: program silhouette + glyph, slot palette online (revised 2026-10-29)
 Every avatar carries a colored outline with a geometric glyph at its center. The **local** avatar's
-outline is split into three health segments; a hit drops that segment to a faint ghost, so the silhouette
-stays whole and low health still reads at a glance. Do not hide lost segments entirely. Local bots are
+outline is split into its health segments (three for most programs, six for Atomize); a hit drops that
+segment to a faint ghost, so the silhouette stays whole and low health still reads at a glance. Do not hide lost segments entirely. Local bots are
 player characters too: they draw the same program hull, three health segments and glow, with their own
 damage. They keep no heading arrow, energy arc or readiness column, and their action effects still
 render. Networked guests keep the slot hull until `Snapshot` carries programs.
@@ -87,12 +87,17 @@ Enemy damage visuals are undecided, so do not add health pips back for threat fa
 happens.
 
 Offline play identifies by **program**, not by slot. Each program owns a hue (`PROGRAM_COLORS`) and a
-silhouette from `pathProgramHealth` in `src/game/identity.ts`: Probe is a cyan scan ring with `◎`, Wedge
+silhouette from `pathProgramHealth` in `src/game/identity.ts`: Probe is a cyan scan ring with a vector compass rose (`✥` in text), Wedge
 an amber diamond with `▣`, Fisher an indigo hex reel with `≈`, Sweep a lime octagon with `✷`, Toxic a green six-point star
-with `☠`, Kaboom a red-orange triangle built from three outward triangles with a bomb at the center. The select screen and the arena share that
-shape and glyph, so a program reads the same in the roster, intro and fight.A program's `glyph` may be a single character, a multi-character text combo, Unicode dingbats/wingdings, or a multi-line ASCII picture; `drawSymbol` scales it to the core and portrait, strips common indentation, and measures the real advance against the symbol font stack (`ui-monospace` first, then `Segoe UI Symbol`, `Noto Sans Symbols 2`, `Apple Symbols`, Wingdings, Webdings) so a wide mark shrinks instead of spilling through the hull. Prefer direction-neutral marks: a pointing glyph at the core reads as facing. Each program also owns `coreScale` so a tight hull keeps clearance from its
+with `☠`, Kaboom a red-orange triangle built from three outward triangles with a bomb at the center,
+Bad Lag six clock faces on a ring with a pinched hourglass, Atomize three overlapping white
+ellipse orbits with an atom at the center, and Ghost three outward steel-grey arcs with a closed eye at the
+core. Probe's mark is a vector compass rose (`drawCompassMark`): a thin housing ring around a four-point
+star, not the old concentric target. Its four tips are symmetric, so the compass never reads as a facing
+arrow. The select screen and the arena share that shape and glyph, so a
+program reads the same in the roster, intro and fight. A program's `glyph` may be a single character, a multi-character text combo, Unicode dingbats/wingdings, or a multi-line ASCII picture; `drawSymbol` scales it to the core and portrait, strips common indentation, and measures the real advance against the symbol font stack (`ui-monospace` first, then `Segoe UI Symbol`, `Noto Sans Symbols 2`, `Apple Symbols`, Wingdings, Webdings) so a wide mark shrinks instead of spilling through the hull. Prefer direction-neutral marks: a pointing glyph at the core reads as facing. Each program also owns `coreScale` so a tight hull keeps clearance from its
 rotating health segments: Probe `1.12`, Wedge `0.88` (the diamond's sides are the tightest core), Fisher
-`1.10`, Sweep `1.06`, Toxic `1.0`, Kaboom `0.86`. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
+`1.10`, Sweep `1.06`, Toxic `1.0`, Kaboom `0.76`, Bad Lag `0.72`, Atomize `0.72`, Ghost `0.82`. The select portrait applies `coreScale` too, at its own poster radius; do not draw the poster mark at full size or the vector centers overlap their hulls. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
 uses the empty space between the core disc and the hull, with tighter row spacing and a narrower width
 budget; a single glyph keeps the default 0.51. The low-health core keeps a scale floor
 (`0.78 + 0.22 * coreHp`) so the mark stays visible while the hull ghosts carry the damage read. Check a
@@ -107,8 +112,11 @@ bases start outside the core disc, and the three together read as one larger tri
 He draws no frame: the three segments are the whole hull. **Hull clearance is a design rule**: the bright
 health path must not cross the center mark or crowd the core disc (max `0.6r` at full health). Kaboom's
 bases sit at `0.72r`, fully outside it. Toxic's star tucks its inner vertices behind the opaque disc; that
-is the only allowed overlap because the disc covers them and the visible points start at its rim. Do not
-add a hull whose blades run across the disc; that reads as touching the core. Do not revert to equal
+is the only allowed overlap because the disc covers them and the visible points start at its rim. Atomize's
+three orbit ellipses have an inner edge at `0.55r`, so their bright paths stay outside the smaller
+low-health mark at every level; at full health the disc hides only the innermost edge, never the mark.
+Do not flatten those ovals back toward a narrow atom orbit: that would pull the hull through the center
+mark at low health. Do not add a hull whose blades run across the disc; that reads as touching the core. Do not revert to equal
 perimeter slices on the diamond, which cut through
 corners and read as arbitrary chunks. A five-sided hull has the same problem in a milder form: its slices
 cut corners irregularly, so Sweep uses an **eight-sided** hull, where three equal perimeter segments read
@@ -265,7 +273,10 @@ bolt:
   1 damage, then a 0.2 s recharge. Holding keeps the stream coming at `BOLT.autoInterval`; the low shot
   cost makes sustained fire possible without turning it into a machine gun. Wedge fires a three-shot
   string, Fisher a piercing spear and Sweep a dust-trailing broom that stops on the body and shoves it
-  hard. Do not restore the old long TTL without reworking the kit.
+  hard. Toxic fires a needle, Kaboom a slow bomb, Bad Lag a heavy hourglass, Atomize an alternating
+  electron that leaves one hand and seeks a target in front of it (see D25), and Ghost throws a wide
+  chomping mouth that is slower than a bolt but hits for two and dazes (see D26). Do not restore the old
+  long TTL without reworking the kit.
 - **Melee attack (`B` tap)**: the cone is **180°**. Every quick press is a fast spiked lash that sweeps
   the arc left, right, left. It reflects incoming fire and shoves players and hostiles sideways in the
   sweep direction; there is no third-tap shield wave. Facing locks for the lash. The active window is
@@ -290,21 +301,27 @@ bolt:
   projectile delete; dodge still phases through it. A wall that would land in cover is refused and the
   energy is handed back. Legacy kinds `1` trap, `2` wall shield and `3` ghost remain implemented
   prototypes for future programs; do not expose them as a random roll again. The host owns each player's
-  skill; guests read it from the snapshot.
+  skill; guests read it from the snapshot. Atomize's skill raises three blue orbital shield balls: each
+  blocks one full hit or damages the first hostile it touches, and they never expire on their own. Ghost's
+  skill cloaks the body for a few seconds: enemies lose the target, shots pass through, and damage is
+  skipped (see D26).
 - **Power attack (`Y` hold)**: program-specific heavy. Probe charges for 0.63 s, then **auto-fires**
   without waiting for release for 3 s, rooted, sweeping at `PLAYER.laserTurnRate` (0.55 rad/s), piercing
   every enemy in the line. The shaft stops on the first solid surface (see D22), and a raised guard
   glances it away at an angle instead of letting it pass. Wedge plows forward with a bracket; Fisher draws a
-  **freeform web**; Sweep assembles a giant broom at his side and sweeps it across a `SWEEP.powerBand`-
-  half-height band in the facing direction, shoving and damaging every body it crosses. Cooldown starts
-  when the heavy ends. Releasing before the charge completes cancels; a release inside `heavyTapMax` uses
-  the skill instead.
+  **freeform web**; Sweep materializes a giant broom head by sweeping the lane from the side he faces,
+  shoving bodies out of the way before the stroke starts, then damages every body the stroke crosses;
+  Bad Lag dilates time; Atomize opens a moving orbit field instead of a beam; Ghost arms a jump-scare,
+  then fires it on any action press inside the window or lets it expire. Cooldown starts when the heavy
+  ends. Releasing before the charge completes cancels; a release inside `heavyTapMax` uses the skill
+  instead.
 - **Dash**: two stored charges (`PLAYER.dashCharges`), one shared 1.8 s recharge. Tap phases through
   geometry and enemies; hold after the tap for the charged triangle dash that damages what it crosses.
 
-Health is three segments on the local avatar's program outline (`PLAYER.hp`). One ordinary hit removes
-one segment. Do not add a separate health bar beside the avatar; the outline is the local readout.
-Remotes do not show segments until enemy/bot health visuals are designed.
+Health is a fixed segment pool on the local avatar's program outline (`Player.maxHp`: three for most
+programs, six for Atomize). One ordinary hit removes one segment. Do not add a separate health bar beside
+the avatar; the outline is the local readout. Remotes do not show segments until enemy/bot health visuals
+are designed.
 
 ### D12 — Pickups are local content, definitions are data (decided 2026-10-28)
 Healing and timed powerups are a **local training/gauntlet** system for now. They do not enter the network
@@ -327,14 +344,14 @@ are a deliberately rare safety net (`firstSpawn` 24 s, then every 42 s).
 - `PATHFIND` turns ranged bolts into axis-aligned seekers that turn at right angles toward the nearest
   target.
 
-Timed effects last 11–15 s and replace each other rather than stacking. Active icons float behind the
-avatar; no separate powerup bar.
+Timed effects last 11–15 s and replace each other rather than stacking. Their state is read from the
+effect itself (the overcharge core mark is the clearest example); there is no separate powerup bar or
+dock cell.
 
 ### D11 — Avatar-only telemetry and settings sub-menus (decided 2026-10-28)
 The canvas shows no operator name plates or life bars. Health is the rotating segmented outline around
-the **local** avatar; energy is the local inner arc. Ranged ammo, dash charges, the skill and
-power-attack marks, and the current pickup sit in one compact **readiness dock**: a dark panel with five
-icon cells and cooldown rings, no labels. A solo local keeps it top-left; with several local players one
+the **local** avatar; energy is the local inner arc. Dash charges, the skill and power-attack marks sit in
+one compact **readiness dock**: a dark panel with three large icon cells and cooldown rings, no labels. A solo local keeps it top-left; with several local players one
 dock sits in each screen corner (see D18). It is local-only; remotes show no health, energy, heading
 arrow or readiness marks. Match state (round, timer, score pips) stays in the bottom strip. The optional
 minimap is one shared map: lower-left for a solo view, top-centre when the view is split or more than one
@@ -379,16 +396,16 @@ The level intro is assembly, not a loading screen: ground, frame, cover (droppin
 skeletons and spin-up. Do not add a progress bar back into the intro.
 
 Local readiness marks live in one **readiness dock per local player**, out of the avatar/enemy space:
-ranged ammo, dash charges, skill, power attack, then the active pickup. A solo local keeps the dock
-top-left; with more local players the docks take the screen corners (top-left, top-right, bottom-left,
-bottom-right). It is icon-only, local-only, and uses cooldown rings rather than text or bars. Give each
+dash charges, skill, then power attack. A solo local keeps the dock top-left; with more local players the
+docks take the screen corners (top-left, top-right, bottom-left, bottom-right). It is icon-only, local-only, and uses cooldown rings rather than text or bars. Give each
 program's skill and heavy distinct marks; they share the dock and must not be mistaken for each other.
 The dock hides while that local avatar is dead.
 
-Every dock job sits in the same 34px **circular slot** at the same weight, so the five jobs read alike
-on every program and at couch distance. Cooldowns are a circular mask: the recovered wedge stays lit and
+Every dock job sits in the same 60px cell and 50px **circular slot** at the same weight, so the three
+jobs read alike on every program and at couch distance. Cooldowns are a circular mask: the recovered wedge stays lit and
 a dark wedge covers the part still charging, with a bright sweep edge. Do not shrink the marks back to
-tiny glyphs inside a big empty box; the box stays 182×44 and the elements inside got bigger.
+tiny glyphs inside a big empty box; the box stays 196×64 and the elements inside are deliberately bold.
+Ranged ammo pips and the pickup cell are gone: the dock is three jobs, not five.
 
 Do not show the current input device in the in-game UI or as an input-mode badge. `Input` follows the
 most recently used device (keyboard/mouse or gamepad) and switches on the next real input. The How to
@@ -403,7 +420,10 @@ option (not BACK), and a resting mouse only hovers once it actually moves. Do no
 (`max-height: 780px`) is a compact version of the same scale so the title stage still fits a 720p window
 without scrolling back to desktop type. Controller focus must remain visible and is scrolled into view
 on navigation; do not reintroduce fixed 7–10px menu text or a second small-button theme later in the
-stylesheet.
+stylesheet. Menu type is a system UI face, not a terminal font: `--ui` lists console-appropriate system
+faces (`Bahnschrift`, `DIN Alternate`, `Avenir Next`) then the platform UI font, and the body plus every
+menu control uses it. The ASCII logo, terminal boot log and schematic data tables stay on `--mono` so their
+columns align; never move the logo to `--ui`, because a proportional face breaks the ASCII block.
 
 ### D13 — Sector campaign is an authored graph, blueprint first (decided 2026-10-29)
 The five-sector campaign is data, not a branch of `World`. `src/game/sectors.ts` owns the sector records,
@@ -456,12 +476,17 @@ trade shots). It is wide
 ranged shove in the roster), and **dies on geometry** rather than ricocheting. It draws no line trail and no handle: just the same upright comb as the melee, with the
 bristles at the bottom, plus a short puff of grey square dust from `emitBroomDust`. It is type `6`, so every `type >= 3` hostile check must stay an explicit
 `=== 3 || === 4` or equivalent before adding another player projectile type.
-- **Power**: the giant broom is generated **in front of the player** (`SWEEP.powerFront`), rises one
-stroke (`SWEEP.powerRise`) and comes back down the same lane **twice as far** over
-`SWEEP.powerDuration`, so the return clears the ground below the player as well as the rise above. The head is a
-screen-wide character comb (`SWEEP.powerSpan` half-width) that damages each body once and carries it with
-the stroke (`SWEEP.powerCarry`), pushing up on the rise and down on the return so victims are not dragged
-toward the caster. Cover cuts the contact. Cooldown starts when the stroke ends.
+- **Power**: the giant broom is generated **in front of the player** (`SWEEP.powerFront`). The head
+materializes from the facing side first: `SWEEP.powerRevealTime` (0.3 s) is a directional reveal, not a
+hit. Only the part of the lane that is already visible shoves, and bodies under it are pushed toward the
+reveal front with `SWEEP.powerRevealPush` (820) and take **no damage**. The reveal clips left to right
+when `cos(facing) >= -0.15` and right to left otherwise; the direction is latched when the heavy fires so
+steering during the charge cannot flip it. After the reveal the stroke begins: it rises one
+`SWEEP.powerRise` and comes back down the same lane **twice as far** over `SWEEP.powerDuration`, so the
+return clears the ground below the player as well as the rise above. The head is a screen-wide character
+comb (`SWEEP.powerSpan` half-width) that damages each body once and carries it with the stroke
+(`SWEEP.powerCarry`), pushing up on the rise and down on the return so victims are not dragged toward the
+caster. Cover cuts the contact and the reveal shove. Cooldown starts when the stroke ends.
 - **Skill**: two brooms start together in front and split along the tangent to `SWEEP.fanReach` over
 `SWEEP.fanLife` (0.62s, deliberately slow), shoving bodies outward and clearing the lane. Both stay
 upright with the bristles down, draw no dust tail, and hit each body once per cast; cover still cuts the
@@ -529,7 +554,7 @@ reads as a letter. `document.fonts.check` alone reports true for missing system 
 - Bombs are **not deflectable**: every `proj.type >= 3` deflect/guard/net branch must exclude types 8 and
   9 explicitly, or a caught shell would turn into a bolt. A bomb that hits cover dies there and detonates
   on the same frame.
-- **Hull**: three short fins start at `0.72r` with a 0.56 rad half-base and `coreScale` 0.86, so no health
+- **Hull**: three short fins start at `0.72r` with a 0.56 rad half-base and `coreScale` 0.76, so no health
   segment touches the core disc or the bomb mark. The clearance rule is in D4. Do not grow the fins back
   toward the core to make them read bigger; the silhouette, not the size of one blade, carries the identity.
 - Bots lob when a target sits between 90 and `lobRange + 60`; the generic heavy hold builds the carpet.
@@ -681,9 +706,11 @@ should stay that way. Damage reads as **shake + three crack stages**, never a he
   hole's rim), never at a place that cuts the last safe ground in half. A compactor arena ships with no
   solid cover, because the plate would pin bodies against it instead of pushing them.
 
-### D21 — Buffer_Overflow.exe: hourglass throw, fast-forward, dilation (built 2026-10-30)
+### D21 — BAD_LAG.EXE: hourglass throw, fast-forward, dilation (built 2026-10-30; renamed v0.1.51)
 
-`BUFFER_OVERFLOW.EXE` is the roster's **time** program (id 6, `BUFFER`). Identity:
+`BAD_LAG.EXE` is the roster's **time** program (id 6, `BUFFER`). It was renamed from
+`BUFFER_OVERFLOW.EXE` on 2026-10-30; the id, tuning key and color key stay `BUFFER` so saves and
+snapshots do not move. Identity:
 `PROGRAM_COLORS.buffer` (`#ff6ec7`), six clock faces on a ring, and a pinched hourglass at the core.
 
 - **Hull**: six clock faces, two per health segment, orbiting at `0.78r` with a `0.17r` radius. Each
@@ -693,8 +720,8 @@ should stay that way. Damage reads as **shake + three crack stages**, never a he
 - **Core**: the hourglass is vector, never the `⧗` codepoint. U+29D7 resolves to a colour emoji on some
   systems and paints an opaque tile into the core, so `drawHourglassMark` draws two rounded triangles
   pointing at each other with their tips overlapping (`0.18h`) to make the waist. It uses only the
-  caller's fill colour, and its corners are rounded with `arcTo`. `coreScale` is `0.84`, so the mark
-  keeps clear air between itself and the clock ring. **Do not draw the dark core disc behind it**: Buffer
+  caller's fill colour, and its corners are rounded with `arcTo`. `coreScale` is `0.72`, so the mark
+  keeps clear air between itself and the clock ring. **Do not draw the dark core disc behind it**: Bad Lag
   is the one program whose mark is a solid filled shape, and a disc behind it reads as a black tile. The
   renderer skips the disc for `PROGRAM_ID.BUFFER` only.
 - **Ranged**: one heavy hourglass (type 10), `430 u/s`, wide (`13`), no motion tail, dies on geometry.
@@ -709,7 +736,7 @@ should stay that way. Damage reads as **shake + three crack stages**, never a he
 - **Power**: **time dilation** for `5 s`. Every body except the caster, every hostile projectile, and the
   whole gauntlet/drone simulation run at `0.3x` (`World.timeSlowT`/`timeSlowOwner`). The field runs on
   the real clock and never enters `Snapshot`; a guest never sees it because online still runs Probe.
-  The renderer washes the frame edges in Buffer pink while it is live and marks the caster's dock as the
+  The renderer washes the frame edges in Bad Lag pink while it is live and marks the caster's dock as the
   live heavy.
 - **Bots**: tap fast-forward when a target sits 40–320 units away; the generic heavy hold builds the
   dilation. Both ride the same `InputFrame` path as a human.
@@ -775,6 +802,86 @@ records and re-exports the old names, so no system imports JSON directly.
   and the PWA cache unchanged. A JSON edit hot-reloads in `npm run dev`; production needs a rebuild.
 - To add a placeholder value, add it to the relevant JSON object. A brand-new top-level record also needs
   one import and one export line in the facade. Do not reintroduce tuning literals in `config.ts`.
+
+### D25 — Atomize.exe: alternating electrons, orbital shield, orbit field (built 2026-10-30)
+
+`ATOMIZE.EXE` is the roster's **orbit** program (id 7). Identity: `PROGRAM_COLORS.atomize` (`#ffffff`, the
+one neutral outline in the roster), a six-segment hull, and an atom at the core. `healthSegments: 6` on
+the `ProgramDef` is the one source of the larger pool; `World` sets `Player.maxHp` from it and every spawn,
+respawn and damage read follows. Do not hard-code six in the damage path.
+
+- **Hull**: three overlapping ellipse outlines turned 60° apart, each split into two half-arcs, so the
+  three ovals make six health segments. `pathProgramHealth` owns the geometry. The ellipse inner edge is
+  `0.55r`, which keeps the bright path outside the low-health core mark at every level; the opaque core
+  disc hides only the innermost edge at full health. Do not flatten the ovals toward a thin atom orbit:
+  that would pull the hull through the center mark. `coreScale` is `0.72`, and `drawAtomMark` draws the
+  nucleus and three orbit strokes in vector, so the `⚛` codepoint can never land as a colour emoji.
+- **Ranged**: one electron per throw, alternating hands (`Player.atomSide`). The ball spawns from the left
+  or right side of the body with the launch angle tilted **inward** by `ATOMIZE.shotArcAngle`, so the two
+  shots cross the body before the seek bends them forward. It is type `11`, `480 u/s`, 1 damage, no
+  geometry piercing. `findAtomTarget` picks the nearest body in a forward cone (`shotSeekRange`,
+  `shotSeekDot`) with line of sight, and `steerAtomBolt` turns toward it at `shotTurn`. The ball cycles
+  yellow, green and blue; its long white trail is what draws the arc. Cover blocks the seek, so it cannot
+  curve through a wall. Do not route type 11 through `steerPathBolt` (the PATHFIND powerup's axis search);
+  it carries `homing` as a seek flag, and the path steer is type 0 only.
+- **Skill**: three blue balls take an orbit at `ATOMIZE.ballOrbit` and spin at `ballSpin`. They have no
+  timer. Each ball is spent on the first hostile body it touches (1 damage, `ballKnockback`) or blocks one
+  full hit on the avatar before health or campaign damage is recorded (`damagePlayer` checks
+  `atomBalls`). Venom chip and the void are not full hits and are never shielded. A second tap while any
+  ball survives is refused and the energy is handed back. The count is the readout: no timer, bar or
+  extra dock cell.
+- **Power**: a moving **orbit field** for `powerDuration` (2.8 s), not a rooted beam. `startOrbitPower`
+  charges the normal heavy button but does not set `laserT`, so the caster keeps walking. Every projectile
+  except mines, traps and bombs inside `powerGrab` is pulled onto a ring (`powerOrbit`, tangent spin
+  `powerProjectileSpin`); its owner is rewritten to the caster so it can hit enemies and other players but
+  never its own caster. In the gauntlet, sentries and viruses are captured too, with per-kind weights
+  (`sentryWeight`, `virusWeight`) scaling their orbit and spin speed. Captured bodies are held out of
+  their own AI, damage each other and any player they touch (`powerContactDamage`, 0.4 s cooldown), and
+  collide with cover. Release is a tangent throw with spread (`powerThrow`/`powerRelease`), so the field
+  ends by flinging everything outward in a semi-random arc rather than fading. Cooldown starts when the
+  field ends (`powerCooldown`). Bots tap the skill when a target is close and let the generic heavy hold
+  build the field. All numbers live in `tuning/programs.json` under `ATOMIZE`.
+
+The kit is local-only like every other program. It does not add fields to `Snapshot`, and online matches
+still run Probe until the protocol carries programs.
+
+### D26 — GHOST.EXE: cloak, chomping mouth, jump-scare (built 2026-10-30)
+
+`GHOST.EXE` is the roster's **stealth** program (id 8, `bugKind` 11). Identity:
+`PROGRAM_COLORS.ghost` (`#b9c4d0`, cool steel grey), three outward arcs for the health hull, and a closed
+eye at the core. The eye is drawn by `drawGhostEye` as a vector lid with five lashes, never the `◡`
+codepoint, so it cannot resolve to a colour emoji or depend on the symbol font; `◡` is only the text
+metadata glyph. Its orientation is the bottom-half arc with the lashes hanging below. The hull arcs start
+at `0.69r`, curve out to `1.34r`, and leave 120° gaps, so each arc is one health segment and the bright
+path never touches the core mark; `coreScale` is `0.82` so the lashes keep clear air from those arcs.
+
+- **Ranged**: one wide chomping mouth (type `12`) thrown at `GHOST.shotSpeed` (540, about 40% slower than a
+  bolt), 2 damage, `shotRadius` 16, 0.9 s life. It stops on the first body and on cover (it is a committed
+  shape in the same geometry-death group as the spear, broom, hourglass and bombs), and it draws the same
+  jaw with sharp triangle teeth the whole program uses. A hit dazes the victim: `shotDaze` 0.7 s at
+  `shotDazeSlow` 0.55 movement. The daze is a heavy-footed slow, not a root, so the victim can still turn
+  and answer late.
+- **Skill**: `cloakT` for `cloakTime` 3.5 s. `phased()` gates `damagePlayer`, so shots, blasts and
+  contact damage skip the body; AI target picks and sentry/worm/virus acquisition skip a cloaked player,
+  while the local renderer keeps a faint dashed readout so the owner can navigate. Attacking does not break
+  the cloak. A fall takes the cloak with it: the floor is not a hit and does not respect iframes. Cloak and
+  the legacy skill-3 ghost timer share the same hit gate; do not add a second invisibility flag.
+- **Power**: hold the heavy for `scareChargeTime` 0.45 s to re-cloak and arm the jump-scare for
+  `scareWindow` 3.2 s. While armed, **any** action press (`BOLT`, `SWING`, `CANDLE` or `DASH`) fires it,
+  after which the press is consumed so the same button cannot also act; if the window expires it fires
+  nothing. The burst is a cover-respecting `explodeBlast` at `scareRadius` 210, 2 damage and
+  `scareKnockback` 1200, drops the cloak, and stamps `SCARE_FACE` at the burst point for `faceTime`
+  0.85 s. The charge costs `scareCost` and starts `scareCooldown` when it arms. A release inside
+  `heavyTapMax` is the cloak skill instead.
+- **Bots**: tap the cloak when a shot is in the air or after a hit, hold the heavy when closing to scare
+  range, then chase and press melee once armed. Bots cannot see a cloaked target and re-pick.
+- **Renderer**: the mouth has no motion tail and chomps with a per-projectile jaw phase; the cloak is a
+  dark disc, dashed rim and faint eye with a heading tick; the armed state adds a pulsing ring and a very
+  faint burst radius for the owner; the scare face is ASCII art with O eyes and V teeth over a grey bust.
+  The dock uses the closed eye for the skill and an open maw for the heavy.
+
+All numbers live in `tuning/programs.json` under `GHOST`. The kit is local-only like every other program;
+it adds no `Snapshot` fields and online still runs Probe.
 
 ---
 
@@ -902,9 +1009,9 @@ public/               manifest, generated icons, service worker
 - All glow is multi-pass stroke + `globalCompositeOperation = 'lighter'`. **Never** use `shadowBlur`.
 - Trails are drawn from a small ring buffer per projectile. Gradients are built on resize only.
 - HUD is canvas-drawn. Health is the avatar's rotating three-segment outer silhouette; energy is the
-  inner arc. Ranged ammo, dash charges, the skill mark, the power-attack mark and the active powerup sit
-  in one compact readiness dock per local player: a dark panel, five icon cells, cooldown rings, no text.
-  A solo local keeps it top-left; split view puts one in each screen corner. There are no operator chips,
+  inner arc. Dash charges, the skill mark and the power-attack mark sit in one compact readiness dock per
+  local player: a dark panel, three large icon cells, cooldown rings, no text. A solo local keeps it
+  top-left; split view puts one in each screen corner. There are no operator chips,
   name plates, side bars or per-player corner bars. Health, energy, heading and readiness belong to the
   local players only. Round/timer/score pips live in the bottom strip. Permanent
   in-match text is suppressed; only short wave banners and the DOM pause/round/match overlays carry

@@ -1,5 +1,6 @@
 import {
   ATTRACT,
+  ATOMIZE,
   BOLT,
   BUFFER,
   BUG,
@@ -7,6 +8,7 @@ import {
   CAMPAIGN,
   CASCADING_ERROR,
   FISHER,
+  GHOST,
   MINE,
   SWEEP,
   FIREWALL,
@@ -80,6 +82,16 @@ import {
 
 const SWING_COS = Math.cos(PLAYER.swingHalfAngle);
 const EVENT_CAPACITY = MAX_EVENTS * 2;
+/** Any of the four action buttons fires an armed jump-scare instead of its normal job. */
+const SCARE_TRIGGER_ACTIONS = ACTION.BOLT | ACTION.SWING | ACTION.CANDLE | ACTION.DASH;
+
+/**
+ * True while a body cannot be hit or seen. The legacy ghost skill and Ghost's cloak
+ * share the same hit-test gate; Ghost's super adds a separate armed window on top.
+ */
+function phased(p: Player): boolean {
+  return p.ghostT > 0 || p.cloakT > 0;
+}
 
 /**
  * Authoritative simulation. Hosted locally for training and by the room host online.
@@ -182,7 +194,7 @@ export class World {
   private pathBest2 = 0;
   private gauntletT = 0;
   /**
-   * Buffer's time dilation: seconds left and the slot that cast it. Public for the
+   * Bad Lag's time dilation: seconds left and the slot that cast it. Public for the
    * renderer's field tint. Local-only, never part of a snapshot.
    */
   timeSlowT = 0;
@@ -344,7 +356,11 @@ export class World {
       const p = this.players[i];
       const botProgram = botPrograms && botPrograms[i] !== undefined ? botPrograms[i] : null;
       p.program = i === 0 ? this.selectedProgram : botProgram !== null ? clampProgram(botProgram) : PROGRAM_ID.PROBE;
-      p.bugKind = programDef(p.program).bugKind;
+      const def = programDef(p.program);
+      p.bugKind = def.bugKind;
+      // Atomize is the one program with a six-segment hull. Spawn and respawn both
+      // read maxHp, so setting it with the program is enough to carry the larger pool.
+      p.maxHp = def.healthSegments ?? PLAYER.hp;
     }
 
     if (mode === 'training') {
@@ -773,7 +789,7 @@ export class World {
       this.phase = 'practice';
     }
 
-    // Buffer's dilation runs on the real clock: five seconds is five seconds even
+    // Bad Lag's dilation runs on the real clock: five seconds is five seconds even
     // while the field is slowing everything inside it.
     if (this.timeSlowT > 0) {
       this.timeSlowT = Math.max(0, this.timeSlowT - dt);
@@ -811,7 +827,7 @@ export class World {
       p.prevFacing = p.facing;
 
       // Time effects. Fast-forward burns every per-player timer and attack at 2.5x;
-      // a slowed body (Buffer's dilation, everyone but the caster) runs at 0.3x.
+      // a slowed body (Bad Lag's dilation, everyone but the caster) runs at 0.3x.
       // Both effects run on the real clock, so their own timers tick on raw `dt`.
       const fast = p.fastT > 0;
       const chilled = this.timeSlowT > 0 && p.slot !== this.timeSlowOwner;
@@ -918,6 +934,10 @@ export class World {
         }
       }
       if (p.ghostT > 0) p.ghostT = Math.max(0, p.ghostT - dt);
+      if (p.cloakT > 0) p.cloakT = Math.max(0, p.cloakT - dt);
+      if (p.dazeT > 0) p.dazeT = Math.max(0, p.dazeT - dt);
+      if (p.scareT > 0) p.scareT = Math.max(0, p.scareT - dt);
+      if (p.scareFaceT > 0) p.scareFaceT = Math.max(0, p.scareFaceT - dt);
       if (p.wallT > 0) p.wallT = Math.max(0, p.wallT - dt);
       if (p.slowT > 0) p.slowT = Math.max(0, p.slowT - dt);
       if (p.netPinT > 0) p.netPinT = Math.max(0, p.netPinT - dt);
@@ -933,6 +953,13 @@ export class World {
       if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
         p.moveDirX = input.mx;
         p.moveDirY = input.my;
+      }
+      // An armed jump-scare answers any action press, not just melee. Consume the
+      // press so the same button cannot also fire, swing, dash or start a skill.
+      if (p.scareT > 0 && canAct && input && (input.pressed & SCARE_TRIGGER_ACTIONS) !== 0) {
+        this.fireJumpScare(p);
+        input.pressed &= ~SCARE_TRIGGER_ACTIONS;
+        input.held &= ~SCARE_TRIGGER_ACTIONS;
       }
       const overcharged = p.powerupKind === POWERUP_KIND.OVERCHARGE && p.powerupT > 0;
       // Fisher is not rooted by the net wind-up: he has to move to draw the web out.
@@ -1036,6 +1063,22 @@ export class World {
             if (p.laserChargeT >= KABOOM.clusterChargeTime) this.throwBombCluster(p);
           } else if (p.laserChargeT >= KABOOM.clusterChargeTime) {
             this.throwBombCluster(p);
+          } else {
+            if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            p.laserChargeHeld = false;
+            p.laserChargeT = 0;
+            p.chargeT = 0;
+            p.chargeHeld = false;
+          }
+        } else if (p.program === PROGRAM_ID.GHOST) {
+          // The scare arms itself at full charge, then waits for a melee press. The body
+          // stays free to move and attack while it is armed; only the cloak timer runs.
+          if (canAct && heavyHeld) {
+            p.laserChargeT += pdt;
+            p.laserFacing = p.facing;
+            if (p.laserChargeT >= GHOST.scareChargeTime) this.startJumpScare(p);
+          } else if (p.laserChargeT >= GHOST.scareChargeTime) {
+            this.startJumpScare(p);
           } else {
             if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
             p.laserChargeHeld = false;
@@ -1181,6 +1224,7 @@ export class World {
         if (input.pressed & ACTION.CANDLE) {
           if (
             p.laserCd <= 0 &&
+            p.orbitT <= 0 &&
             p.energy >= this.heavyCost(p) &&
             p.swingPhase === 0 &&
             p.dashT <= 0 &&
@@ -1268,9 +1312,14 @@ export class World {
       if (p.broT > 0) this.tickBroomSweep(p, dt);
       if (p.fanT > 0) this.tickFan(p, dt);
       if (p.bashT > 0) this.resolveBracket(p);
+      // Atomize's shield balls keep orbiting while the body moves, attacks or rides.
+      if (p.atomBalls > 0) this.tickAtomBalls(p, pdt);
       this.checkTravel(p, canAct, dt);
     }
 
+    // The orbit field moves bodies and captured shots before projectile and threat AI
+    // run, so a captured body never gets a second move (or a shot) on the same tick.
+    this.tickOrbit(dt);
     this.updateProps(dt);
 
     if (this.mode === 'training' || this.mode === 'gauntlet') this.updatePickups(dt);
@@ -1555,6 +1604,8 @@ export class World {
   }
 
   private handleDeflectPress(p: Player): void {
+    // An armed jump-scare turns the next melee press into the AOE burst instead of a lash.
+    if (p.scareT > 0 && this.fireJumpScare(p)) return;
     p.ghostT = 0;
     if (p.program === PROGRAM_ID.SWEEP) {
       // Three-hit broom combo: a diagonal push from each side, then the big forward
@@ -1735,6 +1786,11 @@ export class World {
   /** Commits the charged beam. The player is rooted for the full firing window. */
   private fireLaser(p: Player): void {
     p.ghostT = 0;
+    // Atomize's heavy is a field, not a beam. It pays its own cost and never roots.
+    if (p.program === PROGRAM_ID.ATOMIZE) {
+      this.startOrbitPower(p);
+      return;
+    }
     p.energy = Math.max(0, p.energy - PLAYER.laserCost);
     p.laserChargeHeld = false;
     p.laserChargeT = 0;
@@ -1865,7 +1921,7 @@ export class World {
     for (let i = 0; i < this.players.length; i++) {
       if (i === skipA || i === skipB) continue;
       const target = this.players[i];
-      if (!target.active || !target.alive || target.iframes > 0 || target.ghostT > 0) continue;
+      if (!target.active || !target.alive || target.iframes > 0 || phased(target)) continue;
       if (!this.beamLineHits(ox, oy, dx, dy, reach, target.x, target.y, PLAYER.radius)) continue;
       this.damagePlayer(target, PLAYER.laserDamage, ownerSlot, dx, dy, PLAYER.laserKnockback);
     }
@@ -2295,6 +2351,36 @@ export class World {
       return;
     }
 
+    if (p.program === PROGRAM_ID.ATOMIZE) {
+      // Alternating hands, one light electron per throw. It leaves inward across the
+      // body, then the seek turns it back toward a target: the white trail draws the arc.
+      if (p.autoFireT > 0 || p.energy < ATOMIZE.shotCost) return;
+      const side = p.atomSide;
+      p.atomSide = -side;
+      if (!this.spawnProjectile(
+        p,
+        -side * ATOMIZE.shotArcAngle,
+        ATOMIZE.shotTtl,
+        ATOMIZE.shotSpeed,
+        true,
+        ATOMIZE.shotRadius,
+        ATOMIZE.shotDamage,
+        11,
+        0,
+        0,
+        0,
+        0,
+        side * ATOMIZE.shotHand,
+      )) {
+        p.atomSide = side;
+        return;
+      }
+      p.energy -= ATOMIZE.shotCost;
+      p.autoFireT = ATOMIZE.attackCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
     if (p.program === PROGRAM_ID.TOXIC) {
       // A cheap needle stream. The direct hit is small; the venom is the payload.
       if (p.autoFireT > 0 || p.energy < TOXIC.needleCost) return;
@@ -2310,6 +2396,26 @@ export class World {
       )) return;
       p.energy -= TOXIC.needleCost;
       p.autoFireT = TOXIC.attackCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
+    if (p.program === PROGRAM_ID.GHOST) {
+      // One wide chomping mouth per throw. Slower than a bolt and easy to read, but
+      // it hits for two and leaves the victim dazed and heavy on their feet.
+      if (p.autoFireT > 0 || p.energy < GHOST.shotCost) return;
+      if (!this.spawnProjectile(
+        p,
+        0,
+        GHOST.shotTtl,
+        GHOST.shotSpeed,
+        false,
+        GHOST.shotRadius,
+        GHOST.shotDamage,
+        12,
+      )) return;
+      p.energy -= GHOST.shotCost;
+      p.autoFireT = GHOST.attackCooldown;
       this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
       return;
     }
@@ -2349,6 +2455,8 @@ export class World {
     if (p.program === PROGRAM_ID.TOXIC) return TOXIC.streamCost;
     if (p.program === PROGRAM_ID.KABOOM) return KABOOM.clusterCost;
     if (p.program === PROGRAM_ID.BUFFER) return BUFFER.slowCost;
+    if (p.program === PROGRAM_ID.ATOMIZE) return ATOMIZE.powerCost;
+    if (p.program === PROGRAM_ID.GHOST) return GHOST.scareCost;
     return PLAYER.laserCost;
   }
 
@@ -2855,6 +2963,12 @@ export class World {
     p.broDirX = 0;
     p.broDirY = 1;
     p.broS = 0;
+    // The head materializes from the side the avatar is facing before the stroke. It
+    // is latched here so holding the heavy and then steering cannot flip the reveal
+    // halfway through the cast.
+    p.broRevealT = SWEEP.powerRevealTime;
+    p.broRevealDur = SWEEP.powerRevealTime;
+    p.broRevealDir = Math.cos(p.facing) < -0.15 ? -1 : 1;
     p.broHitPlayers = 0;
     p.broHitWorms = 0;
     p.broHitViruses = 0;
@@ -2882,6 +2996,16 @@ export class World {
   }
 
   private tickBroomSweep(p: Player, dt: number): void {
+    // The materialize beat owns the first slice of the commitment. It shoves bodies
+    // aside but deals no damage; the stroke and its damage start once the whole head
+    // is on the lane, so a body caught in the reveal has one read before the hit.
+    if (p.broRevealT > 0) {
+      p.broRevealT = Math.max(0, p.broRevealT - dt);
+      p.broS = 0;
+      const reveal = p.broRevealDur > 0 ? 1 - p.broRevealT / p.broRevealDur : 1;
+      this.resolveBroomReveal(p, reveal);
+      return;
+    }
     p.broT = Math.max(0, p.broT - dt);
     const pct = p.broDur > 0 ? 1 - p.broT / p.broDur : 1;
     // One big stroke: up for the first half, then down through the same lane twice as
@@ -2899,6 +3023,62 @@ export class World {
     p.broHitErrors = 0;
     p.broHitSentries = 0;
     p.broHitDrone = false;
+  }
+
+  /**
+   * The head appearing is physical: every body under the part of the lane that is
+   * already visible is shoved out toward the reveal front. It deals no damage. The
+   * stroke's own resolve begins only after this beat, which is what makes the reveal
+   * readable as an assembly instead of an instant wide hit.
+   */
+  private resolveBroomReveal(p: Player, reveal: number): void {
+    const half = SWEEP.powerSpan;
+    const width = SWEEP.powerWidth;
+    const r = Math.max(0, Math.min(1, reveal));
+    const dir = p.broRevealDir;
+    // dir +1 grows from the left edge to the right, dir -1 the other way. `edge` is
+    // the world-x offset of the bright front from the lane centre.
+    const edge = dir > 0 ? -half + half * 2 * r : half - half * 2 * r;
+    const visible = (x: number, y: number, radius: number): boolean => {
+      if (!this.broomReaches(p, x, y, radius, 0, 1, half, width)) return false;
+      const dx = x - p.broX;
+      return dir > 0 ? dx <= edge : dx >= edge;
+    };
+    const kx = dir * SWEEP.powerRevealPush;
+
+    for (let i = 0; i < this.players.length; i++) {
+      const target = this.players[i];
+      if (target === p || !target.active || !target.alive || target.travelT > 0) continue;
+      if (!visible(target.x, target.y, PLAYER.radius)) continue;
+      // A shove, not a hit: no damage, no hit flash, and iframes do not matter.
+      target.kx = kx;
+      target.ky = 0;
+    }
+
+    if (this.mode !== 'gauntlet') return;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active || !visible(s.x, s.y, s.radius)) continue;
+      s.kx = kx;
+      s.ky = 0;
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active || !visible(v.x, v.y, v.radius)) continue;
+      v.kx = kx;
+      v.ky = 0;
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      let touching = visible(w.x, w.y, WORM.headRadius);
+      for (let s = 0; s < w.segCount && !touching; s++) {
+        if (visible(w.segX[s], w.segY[s], WORM.segmentRadius)) touching = true;
+      }
+      if (!touching) continue;
+      w.kx = kx;
+      w.ky = 0;
+    }
   }
 
   /**
@@ -3657,6 +3837,17 @@ export class World {
       this.throwSkillBomb(p);
     } else if (p.bugKind === 9) {
       this.startFastForward(p);
+    } else if (p.bugKind === 10) {
+      // Three balls are a commitment, not a refresh: a second tap while any survive
+      // is refused and the energy handed back.
+      if (p.atomBalls > 0) {
+        p.bugCd = 0;
+        p.energy = Math.min(PLAYER.energyMax, p.energy + BUG.cost);
+        return;
+      }
+      this.startAtomBalls(p);
+    } else if (p.bugKind === 11) {
+      this.startGhostCloak(p);
     } else if (p.bugKind === 4) {
       // Wedge's signature bug: a static bracket wall behind him. Refuse a wall that
       // would land inside cover and hand the energy back rather than eat the button.
@@ -3672,7 +3863,532 @@ export class World {
   }
 
   /**
-   * Buffer's skill: burn a couple of seconds in fast-forward. This body, and only this
+   * Ghost's skill: drop out of the room for a few seconds. Attacks do not break the
+   * cloak, so the player can reposition and shoot from cover; the body is skipped by
+   * damage, projectile and enemy-sense tests for the full window.
+   */
+  private startGhostCloak(p: Player): void {
+    p.cloakT = Math.max(p.cloakT, GHOST.cloakTime);
+    p.swingPhase = 0;
+    p.swingT = 0;
+    p.swingPct = 0;
+    p.guardT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+  }
+
+  /**
+   * Ghost's heavy: re-cloak and arm the jump-scare. The melee button fires the burst;
+   * releasing the heavy early is the cloak skill instead. The armed body can still
+   * move, shoot and pick up items.
+   */
+  private startJumpScare(p: Player): void {
+    if (p.laserCd > 0) return;
+    if (p.energy < GHOST.scareCost) {
+      p.laserChargeHeld = false;
+      p.laserChargeT = 0;
+      p.chargeT = 0;
+      p.chargeHeld = false;
+      return;
+    }
+    p.energy -= GHOST.scareCost;
+    p.laserCd = GHOST.scareCooldown;
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    p.swingPhase = 0;
+    p.swingT = 0;
+    p.swingPct = 0;
+    p.guardT = 0;
+    p.cloakT = Math.max(p.cloakT, GHOST.scareWindow);
+    p.scareT = GHOST.scareWindow;
+    p.lockActive = false;
+    p.lockKind = 0;
+    p.lockId = -1;
+    this.emit(EV.BUG, p.slot, p.x, p.y, p.bugKind, Math.cos(p.facing), Math.sin(p.facing));
+  }
+
+  /**
+   * Jump-scare burst: the cloak drops, a radial blast shoves and damages everything
+   * around the body, and the ASCII face is stamped at the burst point for the renderer.
+   * ExplodeBlast already respects cover and skips the caster, so the scare cannot hit
+   * its own owner.
+   */
+  private fireJumpScare(p: Player): boolean {
+    if (p.scareT <= 0) return false;
+    p.scareT = 0;
+    p.cloakT = 0;
+    p.scareFaceT = GHOST.faceTime;
+    p.scareFaceX = p.x;
+    p.scareFaceY = p.y;
+    p.swingPhase = 0;
+    p.swingT = 0;
+    p.swingPct = 0;
+    this.explodeBlast(
+      p.x,
+      p.y,
+      GHOST.scareRadius,
+      GHOST.scareDamage,
+      p.slot,
+      GHOST.scareKnockback,
+    );
+    return true;
+  }
+
+  /**
+   * Atomize's skill: three blue balls take up an orbit around the body. They have no
+   * timer; each one is spent either on the first hostile it touches or on the first
+   * full hit the avatar takes. The mark is the same in the arena and the readiness dock.
+   */
+  private startAtomBalls(p: Player): void {
+    p.atomBalls = ATOMIZE.ballCount;
+    p.atomBallA = p.facing;
+    p.atomFlashT = 0;
+  }
+
+  /**
+   * Rotates the shield balls and resolves their one-shot contact damage. A ball is
+   * consumed by the first body it touches; if it hits nothing it waits forever. This
+   * runs before the orbit field so a ball can still be spent while the heavy is live.
+   */
+  private tickAtomBalls(p: Player, dt: number): void {
+    p.atomFlashT = Math.max(0, p.atomFlashT - dt);
+    if (p.atomBalls <= 0) return;
+    const fast = p.fastT > 0 ? BUFFER.fastScale : 1;
+    p.atomBallA += ATOMIZE.ballSpin * fast * dt;
+    const count = p.atomBalls;
+    for (let i = 0; i < count; i++) {
+      const a = p.atomBallA + (i / count) * Math.PI * 2;
+      const bx = p.x + Math.cos(a) * ATOMIZE.ballOrbit;
+      const by = p.y + Math.sin(a) * ATOMIZE.ballOrbit;
+
+      for (let j = 0; j < this.players.length; j++) {
+        const target = this.players[j];
+        if (target === p || !target.active || !target.alive || target.travelT > 0) continue;
+        if (target.iframes > 0 || phased(target)) continue;
+        const dx = target.x - bx;
+        const dy = target.y - by;
+        const rr = ATOMIZE.ballRadius + PLAYER.radius;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        const d = Math.hypot(dx, dy) || 1;
+        this.damagePlayer(target, ATOMIZE.ballDamage, p.slot, dx / d, dy / d, ATOMIZE.ballKnockback);
+        this.consumeAtomBall(p);
+        return;
+      }
+
+      if (this.mode === 'training' && this.drone.active) {
+        const dx = this.drone.x - bx;
+        const dy = this.drone.y - by;
+        const rr = ATOMIZE.ballRadius + this.drone.radius;
+        if (dx * dx + dy * dy <= rr * rr) {
+          const d = Math.hypot(dx, dy) || 1;
+          this.damageDrone(ATOMIZE.ballDamage, p.slot);
+          this.emit(EV.SENTRY_HIT, p.slot, bx, by, ATOMIZE.ballDamage, dx / d, dy / d);
+          this.consumeAtomBall(p);
+          return;
+        }
+      }
+
+      if (this.mode !== 'gauntlet') continue;
+      for (let j = 0; j < this.sentries.length; j++) {
+        const s = this.sentries[j];
+        if (!s.active || s.spawnT > 0) continue;
+        const dx = s.x - bx;
+        const dy = s.y - by;
+        const rr = ATOMIZE.ballRadius + s.radius;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        const d = Math.hypot(dx, dy) || 1;
+        this.damageSentry(s, ATOMIZE.ballDamage, p.slot, dx / d, dy / d, ATOMIZE.ballKnockback);
+        this.consumeAtomBall(p);
+        return;
+      }
+      for (let j = 0; j < this.viruses.length; j++) {
+        const v = this.viruses[j];
+        if (!v.active || v.spawnT > 0) continue;
+        const dx = v.x - bx;
+        const dy = v.y - by;
+        const rr = ATOMIZE.ballRadius + v.radius;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        const d = Math.hypot(dx, dy) || 1;
+        this.damageVirus(v, ATOMIZE.ballDamage, p.slot, dx / d, dy / d, ATOMIZE.ballKnockback);
+        this.consumeAtomBall(p);
+        return;
+      }
+      for (let j = 0; j < this.errors.length; j++) {
+        const e = this.errors[j];
+        if (!e.active) continue;
+        const dx = e.x - bx;
+        const dy = e.y - by;
+        const rr = ATOMIZE.ballRadius + CASCADING_ERROR.blockSize * 0.5;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        const d = Math.hypot(dx, dy) || 1;
+        this.damageError(e, ATOMIZE.ballDamage, p.slot, dx / d, dy / d);
+        this.consumeAtomBall(p);
+        return;
+      }
+      for (let j = 0; j < this.worms.length; j++) {
+        const w = this.worms[j];
+        if (!w.active) continue;
+        let hit = false;
+        let hx = w.x;
+        let hy = w.y;
+        let hr = WORM.headRadius;
+        if ((w.x - bx) ** 2 + (w.y - by) ** 2 <= (ATOMIZE.ballRadius + hr) ** 2) {
+          hit = true;
+        } else {
+          for (let s = 0; s < w.segCount; s++) {
+            const rr = ATOMIZE.ballRadius + WORM.segmentRadius;
+            if ((w.segX[s] - bx) ** 2 + (w.segY[s] - by) ** 2 > rr * rr) continue;
+            hit = true;
+            hx = w.segX[s];
+            hy = w.segY[s];
+            hr = WORM.segmentRadius;
+            break;
+          }
+        }
+        if (!hit) continue;
+        const dx = hx - bx;
+        const dy = hy - by;
+        const d = Math.hypot(dx, dy) || 1;
+        this.damageWorm(w, ATOMIZE.ballDamage, p.slot, dx / d, dy / d, ATOMIZE.ballKnockback);
+        this.consumeAtomBall(p);
+        return;
+      }
+    }
+  }
+
+  private consumeAtomBall(p: Player): void {
+    p.atomBalls = Math.max(0, p.atomBalls - 1);
+    p.atomFlashT = ATOMIZE.ballBlockFlash;
+    this.emit(EV.DEFLECT, p.slot, p.x, p.y, 2);
+  }
+
+  /** Atomize's heavy: a moving orbit field, not a beam. The caster keeps their feet. */
+  private startOrbitPower(p: Player): void {
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    if (!p.alive) return;
+    p.energy = Math.max(0, p.energy - ATOMIZE.powerCost);
+    p.orbitT = ATOMIZE.powerDuration;
+    p.orbitDur = ATOMIZE.powerDuration;
+    p.orbitDir = Math.cos(p.facing) < 0 ? -1 : 1;
+    p.laserCd = 0;
+    p.lockActive = false;
+    p.lockKind = 0;
+    p.lockId = -1;
+    this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
+  }
+
+  /**
+   * The orbit field: light shots and the small gauntlet bodies (sentries, viruses)
+   * inside `ATOMIZE.powerGrab` are pulled onto a ring around the caster, spun, and
+   * used as weapons. The caster moves freely; captured bodies follow the moving field.
+   * Projectiles keep their old owner slot rewritten to the caster, so contact damage
+   * is attributed to Atomize and the caster cannot be hit by their own orbit.
+   */
+  private tickOrbit(dt: number): void {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (p.orbitT <= 0) continue;
+      if (!p.active || !p.alive) {
+        p.orbitT = 0;
+        p.orbitDur = 0;
+        this.releaseOrbit(p.slot);
+        continue;
+      }
+      p.orbitT = Math.max(0, p.orbitT - dt);
+      if (p.orbitT <= 0) {
+        p.orbitDur = 0;
+        this.releaseOrbit(p.slot);
+        p.laserCd = ATOMIZE.powerCooldown;
+        continue;
+      }
+      this.captureOrbit(p);
+      this.updateOrbit(p, dt);
+    }
+    this.releaseOrphanedOrbits();
+  }
+
+  private captureOrbit(p: Player): void {
+    const grab2 = ATOMIZE.powerGrab * ATOMIZE.powerGrab;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const proj = this.projectiles[i];
+      if (!proj.active || proj.orbOwner >= 0 || proj.owner === p.slot) continue;
+      // Mines and traps are planted objects, and bombs detonate rather than orbit.
+      if (proj.type === 1 || proj.type === 2 || proj.type === 8 || proj.type === 9) continue;
+      const dx = proj.x - p.x;
+      const dy = proj.y - p.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > grab2) continue;
+      if (this.lineBlocked(p.x, p.y, proj.x, proj.y)) continue;
+      proj.orbOwner = p.slot;
+      proj.owner = p.slot;
+      // Hostile fire becomes a plain bolt on capture. A thrown homing missile would
+      // otherwise retarget the caster the moment it leaves the field.
+      if (proj.type === 3 || proj.type === 4) proj.type = 0;
+      proj.orbA = Math.atan2(dy, dx);
+      proj.orbR = Math.max(ATOMIZE.powerOrbit * 0.42, Math.min(ATOMIZE.powerOrbit * 1.25, Math.sqrt(d2)));
+      proj.orbDir = p.orbitDir;
+      proj.homing = false;
+      proj.vx = 0;
+      proj.vy = 0;
+      proj.hitPlayers = 0;
+      proj.hitWorms = 0;
+      proj.hitViruses = 0;
+      proj.hitErrors = 0;
+      proj.hitSentries = 0;
+      proj.hitDrone = false;
+      proj.fuse = Math.max(proj.fuse, ATOMIZE.powerReleaseTtl);
+    }
+
+    if (this.mode !== 'gauntlet') return;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active || s.orbitOwner >= 0 || s.spawnT > 0) continue;
+      const dx = s.x - p.x;
+      const dy = s.y - p.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > grab2) continue;
+      if (this.lineBlocked(p.x, p.y, s.x, s.y)) continue;
+      s.orbitOwner = p.slot;
+      s.orbitA = Math.atan2(dy, dx);
+      s.orbitR = Math.max(ATOMIZE.powerOrbit * 0.4, Math.min(ATOMIZE.powerGrab, Math.sqrt(d2)));
+      s.orbitDir = p.orbitDir;
+      s.orbitHitCd = 0;
+      s.vx = 0;
+      s.vy = 0;
+      s.kx = 0;
+      s.ky = 0;
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active || v.orbitOwner >= 0 || v.spawnT > 0) continue;
+      const dx = v.x - p.x;
+      const dy = v.y - p.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > grab2) continue;
+      if (this.lineBlocked(p.x, p.y, v.x, v.y)) continue;
+      v.orbitOwner = p.slot;
+      v.orbitA = Math.atan2(dy, dx);
+      v.orbitR = Math.max(ATOMIZE.powerOrbit * 0.4, Math.min(ATOMIZE.powerGrab, Math.sqrt(d2)));
+      v.orbitDir = p.orbitDir;
+      v.orbitHitCd = 0;
+      v.vx = 0;
+      v.vy = 0;
+      v.kx = 0;
+      v.ky = 0;
+      v.contactCd = Math.max(v.contactCd, ATOMIZE.powerContactCooldown);
+    }
+  }
+
+  private updateOrbit(p: Player, dt: number): void {
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const proj = this.projectiles[i];
+      if (!proj.active || proj.orbOwner !== p.slot) continue;
+      const lane = (proj.serial % 5) / 4;
+      const targetR = ATOMIZE.powerOrbit * (0.48 + 0.36 * lane);
+      proj.orbR += (targetR - proj.orbR) * (1 - Math.exp(-ATOMIZE.powerPull * 2 * dt));
+      proj.orbA += proj.orbDir * ATOMIZE.powerProjectileSpin * dt;
+      proj.prevX = proj.x;
+      proj.prevY = proj.y;
+      proj.x = p.x + Math.cos(proj.orbA) * proj.orbR;
+      proj.y = p.y + Math.sin(proj.orbA) * proj.orbR;
+      const tangent = proj.orbA + proj.orbDir * (Math.PI / 2);
+      proj.vx = Math.cos(tangent) * ATOMIZE.powerRelease;
+      proj.vy = Math.sin(tangent) * ATOMIZE.powerRelease;
+      if (this.orbitHitsCover(proj.x, proj.y, proj.radius)) {
+        proj.active = false;
+        this.emit(EV.BOUNCE, p.slot, proj.x, proj.y, 1);
+        continue;
+      }
+      if (proj.active) this.projectileHits(proj);
+      if (proj.active && this.mode === 'gauntlet') this.projectileHitsGauntlet(proj);
+    }
+
+    if (this.mode !== 'gauntlet') return;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active || s.orbitOwner !== p.slot) continue;
+      const weight = ATOMIZE.sentryWeight[s.kind] ?? 1;
+      s.orbitHitCd = Math.max(0, s.orbitHitCd - dt);
+      s.orbitA += s.orbitDir * (ATOMIZE.powerSpin / weight) * dt;
+      const targetR = ATOMIZE.powerOrbit * Math.max(0.62, Math.min(1.16, 0.82 + 0.28 / weight));
+      s.orbitR += (targetR - s.orbitR) * (1 - Math.exp(-(ATOMIZE.powerPull / weight) * dt));
+      s.prevX = s.x;
+      s.prevY = s.y;
+      s.x = p.x + Math.cos(s.orbitA) * s.orbitR;
+      s.y = p.y + Math.sin(s.orbitA) * s.orbitR;
+      s.vx = 0;
+      s.vy = 0;
+      s.kx = 0;
+      s.ky = 0;
+      if (s.orbitHitCd <= 0 && this.orbitHitsCover(s.x, s.y, s.radius)) {
+        this.damageSentry(s, ATOMIZE.powerContactDamage, p.slot, 0, 0, 0);
+        s.orbitA += Math.PI * 0.7;
+        s.orbitR = Math.max(30, s.orbitR * 0.62);
+        s.orbitDir = -s.orbitDir;
+        s.orbitHitCd = ATOMIZE.powerContactCooldown;
+        continue;
+      }
+      if (s.orbitHitCd <= 0) this.resolveOrbitBodyContacts(p, s, weight);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active || v.orbitOwner !== p.slot) continue;
+      const weight = ATOMIZE.virusWeight;
+      v.orbitHitCd = Math.max(0, v.orbitHitCd - dt);
+      v.orbitA += v.orbitDir * (ATOMIZE.powerSpin / weight) * dt;
+      const targetR = ATOMIZE.powerOrbit * Math.max(0.62, Math.min(1.16, 0.82 + 0.28 / weight));
+      v.orbitR += (targetR - v.orbitR) * (1 - Math.exp(-(ATOMIZE.powerPull / weight) * dt));
+      v.prevX = v.x;
+      v.prevY = v.y;
+      v.x = p.x + Math.cos(v.orbitA) * v.orbitR;
+      v.y = p.y + Math.sin(v.orbitA) * v.orbitR;
+      v.vx = 0;
+      v.vy = 0;
+      v.kx = 0;
+      v.ky = 0;
+      if (v.orbitHitCd <= 0 && this.orbitHitsCover(v.x, v.y, v.radius)) {
+        this.damageVirus(v, ATOMIZE.powerContactDamage, p.slot, 0, 0, 0);
+        v.orbitA += Math.PI * 0.7;
+        v.orbitR = Math.max(30, v.orbitR * 0.62);
+        v.orbitDir = -v.orbitDir;
+        v.orbitHitCd = ATOMIZE.powerContactCooldown;
+        continue;
+      }
+      if (v.orbitHitCd <= 0) this.resolveOrbitBodyContacts(p, v, weight);
+    }
+  }
+
+  /** Every body in an orbit is a projectile in its own right: it hurts what it hits. */
+  private resolveOrbitBodyContacts(p: Player, body: Sentry | Virus, weight: number): void {
+    const isSentry = (body as Sentry).kind !== undefined;
+    const force = ATOMIZE.powerContactKnockback / weight;
+    for (let i = 0; i < this.players.length; i++) {
+      const target = this.players[i];
+      if (target === p || !target.active || !target.alive || target.travelT > 0) continue;
+      if (target.iframes > 0 || phased(target)) continue;
+      const dx = target.x - body.x;
+      const dy = target.y - body.y;
+      const rr = body.radius + PLAYER.radius;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      const d = Math.hypot(dx, dy) || 1;
+      this.damagePlayer(target, ATOMIZE.powerContactDamage, p.slot, dx / d, dy / d, force);
+      body.orbitHitCd = ATOMIZE.powerContactCooldown;
+      if (isSentry) this.damageSentry(body as Sentry, ATOMIZE.powerContactDamage, p.slot, -dx / d, -dy / d, force * 0.3);
+      else this.damageVirus(body as Virus, ATOMIZE.powerContactDamage, p.slot, -dx / d, -dy / d, force * 0.3);
+      return;
+    }
+    // Sentries and viruses thrown into their own family still trade damage.
+    for (let i = 0; i < this.sentries.length; i++) {
+      const other = this.sentries[i];
+      if (other === body || !other.active || other.orbitOwner >= 0) continue;
+      const dx = other.x - body.x;
+      const dy = other.y - body.y;
+      const rr = other.radius + body.radius;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      const d = Math.hypot(dx, dy) || 1;
+      this.damageSentry(other, ATOMIZE.powerContactDamage, p.slot, dx / d, dy / d, force);
+      body.orbitHitCd = ATOMIZE.powerContactCooldown;
+      if (isSentry) this.damageSentry(body as Sentry, ATOMIZE.powerContactDamage, p.slot, -dx / d, -dy / d, force * 0.3);
+      else this.damageVirus(body as Virus, ATOMIZE.powerContactDamage, p.slot, -dx / d, -dy / d, force * 0.3);
+      return;
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const other = this.viruses[i];
+      if (other === body || !other.active || other.orbitOwner >= 0) continue;
+      const dx = other.x - body.x;
+      const dy = other.y - body.y;
+      const rr = other.radius + body.radius;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      const d = Math.hypot(dx, dy) || 1;
+      this.damageVirus(other, ATOMIZE.powerContactDamage, p.slot, dx / d, dy / d, force);
+      body.orbitHitCd = ATOMIZE.powerContactCooldown;
+      if (isSentry) this.damageSentry(body as Sentry, ATOMIZE.powerContactDamage, p.slot, -dx / d, -dy / d, force * 0.3);
+      else this.damageVirus(body as Virus, ATOMIZE.powerContactDamage, p.slot, -dx / d, -dy / d, force * 0.3);
+      return;
+    }
+  }
+
+  private orbitHitsCover(x: number, y: number, radius: number): boolean {
+    for (let i = 0; i < this.arena.pillars.length; i++) {
+      if (circleRect(x, y, radius, this.arena.pillars[i], hitScratch)) return true;
+    }
+    return false;
+  }
+
+  /** The field ending is a throw, not a fade: tangent plus a little randomness. */
+  private releaseOrbit(owner: number): void {
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const proj = this.projectiles[i];
+      if (!proj.active || proj.orbOwner !== owner) continue;
+      proj.orbOwner = -1;
+      const angle = proj.orbA + proj.orbDir * (Math.PI / 2) + this.rng.range(-ATOMIZE.powerReleaseSpread, ATOMIZE.powerReleaseSpread);
+      proj.vx = Math.cos(angle) * ATOMIZE.powerRelease;
+      proj.vy = Math.sin(angle) * ATOMIZE.powerRelease;
+      proj.fuse = ATOMIZE.powerReleaseTtl;
+      proj.grace = 0;
+      proj.prevX = proj.x;
+      proj.prevY = proj.y;
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active || s.orbitOwner !== owner) continue;
+      const weight = ATOMIZE.sentryWeight[s.kind] ?? 1;
+      const angle = s.orbitA + s.orbitDir * (Math.PI / 2) + this.rng.range(-ATOMIZE.powerReleaseSpread, ATOMIZE.powerReleaseSpread);
+      s.orbitOwner = -1;
+      s.orbitHitCd = 0;
+      s.kx = Math.cos(angle) * (ATOMIZE.powerThrow / weight);
+      s.ky = Math.sin(angle) * (ATOMIZE.powerThrow / weight);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active || v.orbitOwner !== owner) continue;
+      const weight = ATOMIZE.virusWeight;
+      const angle = v.orbitA + v.orbitDir * (Math.PI / 2) + this.rng.range(-ATOMIZE.powerReleaseSpread, ATOMIZE.powerReleaseSpread);
+      v.orbitOwner = -1;
+      v.orbitHitCd = 0;
+      v.kx = Math.cos(angle) * (ATOMIZE.powerThrow / weight);
+      v.ky = Math.sin(angle) * (ATOMIZE.powerThrow / weight);
+    }
+  }
+
+  /** Deaths, round resets and pad rides can orphan a capture without the field ending. */
+  private releaseOrphanedOrbits(): void {
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const proj = this.projectiles[i];
+      if (!proj.active || proj.orbOwner < 0) continue;
+      const owner = this.players[proj.orbOwner];
+      if (owner && owner.active && owner.alive && owner.orbitT > 0) continue;
+      this.releaseOrbit(proj.orbOwner);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active || s.orbitOwner < 0) continue;
+      const owner = this.players[s.orbitOwner];
+      if (owner && owner.active && owner.alive && owner.orbitT > 0) continue;
+      s.orbitOwner = -1;
+      s.orbitHitCd = 0;
+      s.kx = 0;
+      s.ky = 0;
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active || v.orbitOwner < 0) continue;
+      const owner = this.players[v.orbitOwner];
+      if (owner && owner.active && owner.alive && owner.orbitT > 0) continue;
+      v.orbitOwner = -1;
+      v.orbitHitCd = 0;
+      v.kx = 0;
+      v.ky = 0;
+    }
+  }
+
+  /**
+   * Bad Lag's skill: burn a couple of seconds in fast-forward. This body, and only this
    * body, runs its movement, attack rate and every cooldown at 2.5x. The effect runs
    * on the real clock, so the skill has a fixed duration however many shots it fits.
    */
@@ -3682,7 +4398,7 @@ export class World {
   }
 
   /**
-   * Buffer's power: an hourglass burst that dilates the room. Every other body and
+   * Bad Lag's power: an hourglass burst that dilates the room. Every other body and
    * every hostile projectile runs at 0.3x for five real seconds; the caster keeps
    * their own clock, so the window is theirs to spend.
    */
@@ -3810,6 +4526,11 @@ export class World {
     proj.hitDrone = false;
     proj.trailHead = 0;
     proj.trailCount = 0;
+    proj.variant = 0;
+    proj.orbOwner = -1;
+    proj.orbA = 0;
+    proj.orbR = 0;
+    proj.orbDir = 1;
     this.emit(EV.PLANT_MINE, p.slot, p.x, p.y, p.facing);
   }
 
@@ -3850,6 +4571,11 @@ export class World {
     proj.hitDrone = false;
     proj.trailHead = 0;
     proj.trailCount = 0;
+    proj.variant = 0;
+    proj.orbOwner = -1;
+    proj.orbA = 0;
+    proj.orbR = 0;
+    proj.orbDir = 1;
   }
 
   private spawnProjectile(
@@ -3865,6 +4591,7 @@ export class World {
     blastKnockback = 0,
     arcDur = 0,
     launchDelay = 0,
+    handOffset = 0,
   ): boolean {
     let proj: Projectile | null = null;
     for (let i = 0; i < this.projectiles.length; i++) {
@@ -3881,8 +4608,10 @@ export class World {
     // Enemy-controlled kits (training/bot-match AI and the gauntlet thrall) shoot slower than a human.
     const aiOwned = p.thrall || (p.slot !== this.localSlot && (this.mode === 'training' || p.slot <= this.botSlots));
     const enemyScale = aiOwned ? BOLT.enemySpeedMult : 1;
-    const x = p.x + c * BOLT.spawnOffset;
-    const y = p.y + s * BOLT.spawnOffset;
+    // A side arm offset puts Atomize's alternating shots on different hands without
+    // changing any other program's muzzle. Positive is the avatar's right.
+    const x = p.x + c * BOLT.spawnOffset - s * handOffset;
+    const y = p.y + s * BOLT.spawnOffset + c * handOffset;
     for (let i = 0; i < this.arena.pillars.length; i++) {
       // A muzzle inside geometry would immediately ricochet back into the shooter.
       // Fail the shot instead of spawning a bolt that cannot escape.
@@ -3920,6 +4649,12 @@ export class World {
     proj.hits = 0;
     proj.spin = this.rng.range(0, Math.PI * 2);
     proj.spinDir = 1;
+    // Atomize's electron cycles yellow, green, blue. Other shots keep variant 0.
+    proj.variant = type === 11 ? (proj.serial - 1) % 3 : 0;
+    proj.orbOwner = -1;
+    proj.orbA = 0;
+    proj.orbR = 0;
+    proj.orbDir = 1;
     proj.trailHead = 0;
     proj.trailCount = 0;
     return true;
@@ -3935,6 +4670,8 @@ export class World {
       if (p.guardT <= 0) break;
       const proj = this.projectiles[i];
       if (!proj.active || proj.type === 1 || proj.type === 2 || proj.owner === p.slot) continue;
+      // A shot held in an Atomize orbit is not in flight; it cannot be guarded.
+      if (proj.orbOwner >= 0) continue;
       // Bombs are shells, not shots: a guard cannot send one back.
       if (proj.type === 8 || proj.type === 9) continue;
       const dx = proj.x - p.x;
@@ -3992,7 +4729,7 @@ export class World {
     const sin = Math.sin(p.swingFacing);
     for (let i = 0; i < this.projectiles.length; i++) {
       const proj = this.projectiles[i];
-      if (!proj.active) continue;
+      if (!proj.active || proj.orbOwner >= 0) continue;
       if (proj.type === 8 || proj.type === 9) continue;
       const dx = proj.x - p.x;
       const dy = proj.y - p.y;
@@ -4047,6 +4784,8 @@ export class World {
     for (let i = 0; i < this.projectiles.length; i++) {
       const proj = this.projectiles[i];
       if (!proj.active) continue;
+      // A captured shot is driven by the orbit field, not by flight or its own fuse.
+      if (proj.orbOwner >= 0) continue;
       proj.prevX = proj.x;
       proj.prevY = proj.y;
 
@@ -4149,12 +4888,18 @@ export class World {
       // flips `spinDir`, so a hit visibly kicks the mark the other way.
       if (proj.type === 10) proj.spin += proj.spinDir * BUFFER.spinRate * pdt;
 
-      if (proj.homing) this.steerPathBolt(proj);
+      // `homing` also flags Atomize's seeking ball, but only a plain bolt takes the
+      // pathfinder powerup's right-angle search.
+      if (proj.homing && proj.type === 0) this.steerPathBolt(proj);
+      // Atomize's electron bends toward a target in front of it. The arc is the kit's
+      // read, so the turn is limited and the original throw angle still matters.
+      if (proj.type === 11 && proj.homing) this.steerAtomBolt(proj, pdt);
 
       // Hostile homing missile: slow, obvious, and turn-limited so a dash or cover beats it.
       if (proj.type === 4) {
         const target = this.players[0];
-        if (target.alive) {
+        // A cloak breaks the missile's lock; it flies on and has to be dodged or shot.
+        if (target.alive && target.cloakT <= 0) {
           const desired = Math.atan2(target.y - proj.y, target.x - proj.x);
           let delta = desired - Math.atan2(proj.vy, proj.vx);
           delta = Math.atan2(Math.sin(delta), Math.cos(delta));
@@ -4186,6 +4931,69 @@ export class World {
     }
   }
 
+  /**
+   * Nearest target in the electron's forward cone, written into the shared scratch
+   * fields. Cover blocks the seek, so an orb cannot curve through a wall.
+   */
+  private findAtomTarget(proj: Projectile): boolean {
+    const aim = Math.atan2(proj.vy, proj.vx);
+    const fx = Math.cos(aim);
+    const fy = Math.sin(aim);
+    const range2 = ATOMIZE.shotSeekRange * ATOMIZE.shotSeekRange;
+    this.pathFound = false;
+    this.pathBest2 = Infinity;
+    const consider = (x: number, y: number): void => {
+      const dx = x - proj.x;
+      const dy = y - proj.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= range2 || d2 >= this.pathBest2) return;
+      const d = Math.sqrt(d2) || 1;
+      if ((dx * fx + dy * fy) / d < ATOMIZE.shotSeekDot) return;
+      if (this.lineBlocked(proj.x, proj.y, x, y)) return;
+      this.pathBest2 = d2;
+      this.pathTargetX = x;
+      this.pathTargetY = y;
+      this.pathFound = true;
+    };
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (p.slot === proj.owner || !p.active || !p.alive || phased(p)) continue;
+      consider(p.x, p.y);
+    }
+    if (this.mode === 'training' && this.drone.active) consider(this.drone.x, this.drone.y);
+    if (this.mode === 'gauntlet') {
+      for (let i = 0; i < this.worms.length; i++) {
+        const w = this.worms[i];
+        if (w.active) consider(w.x, w.y);
+      }
+      for (let i = 0; i < this.viruses.length; i++) {
+        const v = this.viruses[i];
+        if (v.active) consider(v.x, v.y);
+      }
+      for (let i = 0; i < this.sentries.length; i++) {
+        const s = this.sentries[i];
+        if (s.active) consider(s.x, s.y);
+      }
+      for (let i = 0; i < this.errors.length; i++) {
+        const e = this.errors[i];
+        if (e.active) consider(e.x, e.y);
+      }
+    }
+    return this.pathFound;
+  }
+
+  private steerAtomBolt(proj: Projectile, dt: number): void {
+    if (!this.findAtomTarget(proj)) return;
+    const desired = Math.atan2(this.pathTargetY - proj.y, this.pathTargetX - proj.x);
+    const current = Math.atan2(proj.vy, proj.vx);
+    let delta = Math.atan2(Math.sin(desired - current), Math.cos(desired - current));
+    const maxTurn = ATOMIZE.shotTurn * dt;
+    const angle = current + Math.max(-maxTurn, Math.min(maxTurn, delta));
+    const speed = Math.hypot(proj.vx, proj.vy);
+    proj.vx = Math.cos(angle) * speed;
+    proj.vy = Math.sin(angle) * speed;
+  }
+
   /** Writes the nearest valid target into the path scratch fields. */
   private considerPathTarget(proj: Projectile, x: number, y: number): void {
     const dx = x - proj.x;
@@ -4203,7 +5011,7 @@ export class World {
     this.pathBest2 = Infinity;
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      if (i === proj.owner || !p.active || !p.alive || p.ghostT > 0) continue;
+      if (i === proj.owner || !p.active || !p.alive || phased(p)) continue;
       this.considerPathTarget(proj, p.x, p.y);
     }
     if (this.mode === 'training' && this.drone.active) {
@@ -4259,7 +5067,7 @@ export class World {
       // There is no wall to hit, so nothing ricochets: the shot falls into the void. A
       // committed shape keeps its geometry death, which is what makes a bomb detonate
       // at the lip instead of disappearing.
-      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9 || proj.type === 10) {
+      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9 || proj.type === 10 || proj.type === 12) {
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
       }
       proj.active = false;
@@ -4286,9 +5094,10 @@ export class World {
       bounced = true;
     }
     if (!bounced) return;
-    if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9 || proj.type === 10) {
-      // Spear, thrown broom, hourglass and every bomb are committed lines, not
-      // ricochets. They die on geometry; the bomb branch turns that into a detonation.
+    if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9 || proj.type === 10 || proj.type === 12) {
+      // Spear, thrown broom, hourglass, Ghost's mouth and every bomb are committed
+      // lines, not ricochets. They die on geometry; the bomb branch turns that into a
+      // detonation.
       proj.active = false;
       this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
       return;
@@ -4323,7 +5132,7 @@ export class World {
       const rr = WEDGE.wallThickness * 0.5 + proj.radius;
       if (dx * dx + dy * dy > rr * rr) continue;
 
-      const heavy = proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10;
+      const heavy = proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10 || proj.type === 12;
       this.damageBarrier(wall, heavy ? 2 : 1);
 
       const side = (dx * wall.nx + dy * wall.ny) >= 0 ? 1 : -1;
@@ -4357,7 +5166,7 @@ export class World {
   private bouncePillars(proj: Projectile): void {
     for (let i = 0; i < this.arena.pillars.length; i++) {
       if (!circleRect(proj.x, proj.y, proj.radius, this.arena.pillars[i], hitScratch)) continue;
-      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10) {
+      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10 || proj.type === 12) {
         proj.active = false;
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
         return;
@@ -4385,7 +5194,7 @@ export class World {
   private projectileHits(proj: Projectile): boolean {
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      if (!p.active || !p.alive || p.iframes > 0 || p.ghostT > 0) continue;
+      if (!p.active || !p.alive || p.iframes > 0 || phased(p)) continue;
       // Your own fire can never damage you, even after a wall bounce arms it.
       if (proj.owner === p.slot) continue;
       if (proj.type === 1 && proj.owner === p.slot && proj.grace > 0) continue;
@@ -4421,6 +5230,14 @@ export class World {
         // Needle: light damage, then the venom keeps working.
         this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, TOXIC.needleKnockback, hitKind, hitId);
         this.poisonPlayer(p, proj.owner);
+        proj.active = false;
+        return true;
+      }
+      if (proj.type === 12) {
+        // Ghost's bite: a heavy, wide mouth. It stops on the body, hits for two and
+        // leaves a short daze that slows the victim's feet and wobbles their read.
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, GHOST.shotKnockback, hitKind, hitId);
+        p.dazeT = Math.max(p.dazeT, GHOST.shotDaze);
         proj.active = false;
         return true;
       }
@@ -4524,6 +5341,8 @@ export class World {
     // all behave exactly as they do for a normal hit.
     p.iframes = 0;
     p.ghostT = 0;
+    p.cloakT = 0;
+    p.scareT = 0;
     p.hp = 1;
     p.kx = 0;
     p.ky = 0;
@@ -4570,7 +5389,17 @@ export class World {
     sourceKind: number = SRC.PLAYER,
     sourceId = -1,
   ): void {
-    if (!p.alive || p.iframes > 0 || p.ghostT > 0 || p.travelT > 0) return;
+    if (!p.alive || p.iframes > 0 || phased(p) || p.travelT > 0) return;
+    // Atomize spends one shield ball per real hit, before health or campaign damage is
+    // recorded. A chip tick (venom) is not a hit, and the floor is never shielded.
+    if (p.atomBalls > 0 && amount >= 1 && sourceKind !== SRC.VOID) {
+      p.atomBalls--;
+      p.atomFlashT = ATOMIZE.ballBlockFlash;
+      p.kx += dirX * force * 0.25;
+      p.ky += dirY * force * 0.25;
+      this.emit(EV.DEFLECT, p.slot, p.x, p.y, 2);
+      return;
+    }
     if (this.campaign && p.slot === this.localSlot) this.campaignDamage += amount;
     // The death camera reads this: who last touched the body, by family and pool index.
     p.killerKind = sourceKind;
@@ -4597,7 +5426,14 @@ export class World {
       p.wedgeT = 0;
       p.bashT = 0;
       p.broT = 0;
+      p.broRevealT = 0;
       p.fanT = 0;
+      p.orbitT = 0;
+      p.orbitDur = 0;
+      p.atomBalls = 0;
+      p.atomFlashT = 0;
+      p.cloakT = 0;
+      p.scareT = 0;
       p.swingKind = 0;
       p.stringLeft = 0;
       p.stringT = 0;
@@ -4711,7 +5547,7 @@ export class World {
     const reach = MINE.triggerRadius;
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      if (p.slot === proj.owner || !p.active || !p.alive || p.iframes > 0 || p.ghostT > 0) continue;
+      if (p.slot === proj.owner || !p.active || !p.alive || p.iframes > 0 || phased(p)) continue;
       const dx = p.x - proj.x;
       const dy = p.y - proj.y;
       const rr = reach + PLAYER.radius;
@@ -4766,7 +5602,7 @@ export class World {
     const reach = BUG.trapRadius;
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      if (p.slot === proj.owner || !p.active || !p.alive || p.iframes > 0 || p.ghostT > 0) continue;
+      if (p.slot === proj.owner || !p.active || !p.alive || p.iframes > 0 || phased(p)) continue;
       const dx = p.x - proj.x;
       const dy = p.y - proj.y;
       const rr = reach + PLAYER.radius;
@@ -4781,7 +5617,7 @@ export class World {
     const reach = BUG.trapRadius;
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      if (p.slot === proj.owner || !p.active || !p.alive || p.ghostT > 0) continue;
+      if (p.slot === proj.owner || !p.active || !p.alive || phased(p)) continue;
       const dx = p.x - proj.x;
       const dy = p.y - proj.y;
       const rr = reach + PLAYER.radius;
@@ -4970,7 +5806,7 @@ export class World {
   private bombTouchesBody(proj: Projectile): boolean {
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      if (!p.active || !p.alive || p.slot === proj.owner || p.iframes > 0 || p.ghostT > 0) continue;
+      if (!p.active || !p.alive || p.slot === proj.owner || p.iframes > 0 || phased(p)) continue;
       const dx = proj.x - p.x;
       const dy = proj.y - p.y;
       const rr = proj.radius + PLAYER.radius;
@@ -5089,7 +5925,7 @@ export class World {
     d.fireTimer -= dt;
     if (d.fireTimer <= 0) {
       const target = this.players[0];
-      if (target && target.alive) {
+      if (target && target.alive && target.cloakT <= 0) {
         const angle = Math.atan2(target.y - d.y, target.x - d.x) + this.rng.range(-0.05, 0.05);
         this.spawnDroneBolt(d.x + Math.cos(angle) * (d.radius + 12), d.y + Math.sin(angle) * (d.radius + 12), angle);
         this.emit(EV.DRONE_SHOOT, -1, d.x, d.y, angle);
@@ -5183,6 +6019,11 @@ export class World {
     proj.pathAxis = 0;
     proj.trailHead = 0;
     proj.trailCount = 0;
+    proj.variant = 0;
+    proj.orbOwner = -1;
+    proj.orbA = 0;
+    proj.orbR = 0;
+    proj.orbDir = 1;
   }
 
 
@@ -5200,7 +6041,7 @@ export class World {
     f.pressed = 0;
     const t = this.players[1];
     const target = this.players[0];
-    if (!t.active || !t.alive || !t.thrall || !target.alive) return;
+    if (!t.active || !t.alive || !t.thrall || !target.alive || target.cloakT > 0) return;
 
     this.thrallShootT = Math.max(0, this.thrallShootT - dt);
     this.thrallSwingT = Math.max(0, this.thrallSwingT - dt);
@@ -5959,6 +6800,11 @@ export class World {
     s.orbitSign = this.rng.next() < 0.5 ? -1 : 1;
     s.spawnT = SENTRY.spawnTime;
     s.pinT = 0;
+    s.orbitOwner = -1;
+    s.orbitA = 0;
+    s.orbitR = 0;
+    s.orbitDir = 1;
+    s.orbitHitCd = 0;
     return true;
   }
 
@@ -5991,6 +6837,8 @@ export class World {
     s.prevY = s.y;
     s.phase += dt;
     if (s.hitFlash > 0) s.hitFlash = Math.max(0, s.hitFlash - dt);
+    // Held in Atomize's orbit: the field owns position and firing until it releases.
+    if (s.orbitOwner >= 0) return;
     if (s.spawnT > 0) {
       s.spawnT = Math.max(0, s.spawnT - dt);
       s.vx = 0;
@@ -6038,12 +6886,15 @@ export class World {
     }
 
     const p = this.players[0];
+    // A cloaked player is not a visible target. The sentry falls back to its landing
+    // zone unless a lure is still pulling it, so the cloak buys real reposition time.
+    const pVisible = p.alive && p.cloakT <= 0;
     // Fisher's lure overshadows the player while it is live. Sentries aim at the
     // beacon, which buys the Fisher space even if they keep firing.
     const lureIndex = this.nearestLureIndex(s.x, s.y);
     const lure = lureIndex >= 0 ? this.lures[lureIndex] : null;
-    const tx = lure ? lure.x : p.alive ? p.x : s.anchorX;
-    const ty = lure ? lure.y : p.alive ? p.y : s.anchorY;
+    const tx = lure ? lure.x : pVisible ? p.x : s.anchorX;
+    const ty = lure ? lure.y : pVisible ? p.y : s.anchorY;
     const dx = tx - s.x;
     const dy = ty - s.y;
     const dist = Math.hypot(dx, dy) || 1;
@@ -6056,7 +6907,7 @@ export class World {
     const anchorUy = anchorDist > 1 ? anchorDy / anchorDist : 0;
     // Sentries hold their landing zone. They engage only inside the leash + weapon
     // range; outside that they drift back to the anchor instead of following the player.
-    const engaged = (p.alive || lure !== null) && dist < s.leash + range;
+    const engaged = (pVisible || lure !== null) && dist < s.leash + range;
     let desiredX = 0;
     let desiredY = 0;
     if (engaged) {
@@ -6103,7 +6954,7 @@ export class World {
     }
     this.pushOutOfCover(s, s.radius);
 
-    if (!p.alive && !lure) return;
+    if (!pVisible && !lure) return;
     s.fireT -= dt;
     if (s.fireT > 0 || dist > range) return;
     if (this.lineBlocked(s.x, s.y, tx, ty)) {
@@ -6210,6 +7061,11 @@ export class World {
     proj.hitDrone = false;
     proj.trailHead = 0;
     proj.trailCount = 0;
+    proj.variant = 0;
+    proj.orbOwner = -1;
+    proj.orbA = 0;
+    proj.orbR = 0;
+    proj.orbDir = 1;
     this.emit(EV.SENTRY_SHOOT, -1, x, y, angle);
   }
 
@@ -6222,6 +7078,7 @@ export class World {
     this.emit(EV.SENTRY_HIT, sourceSlot, s.x, s.y, amount, dirX, dirY);
     if (s.hp > 0) return;
     s.active = false;
+    s.orbitOwner = -1;
     if (sourceSlot === 0) {
       this.gauntletKills++;
       this.dropPickupFromKill(s.x, s.y, s.kind !== 0);
@@ -6252,7 +7109,7 @@ export class World {
         e.y = e.originY + (e.targetY - e.originY) * t;
       }
 
-      if (!player.active || !player.alive || player.iframes > 0 || e.touchCd > 0 || e.spawnT > 0) continue;
+      if (!player.active || !player.alive || player.cloakT > 0 || player.iframes > 0 || e.touchCd > 0 || e.spawnT > 0) continue;
       const dx = player.x - e.x;
       const dy = player.y - e.y;
       const rr = half + PLAYER.radius;
@@ -6529,7 +7386,7 @@ export class World {
     const aggroSq = WORM.aggroRadius * WORM.aggroRadius;
     if (w.infected || lure) {
       w.aggroT = WORM.aggroTime;
-    } else if (p.alive && pdx * pdx + pdy * pdy < aggroSq) {
+    } else if (p.alive && p.cloakT <= 0 && pdx * pdx + pdy * pdy < aggroSq) {
       w.aggroT = WORM.aggroTime;
     } else {
       w.aggroT = Math.max(0, w.aggroT - dt);
@@ -6544,7 +7401,7 @@ export class World {
     if (lure) {
       tx = lure.x;
       ty = lure.y;
-    } else if (w.aggroT > 0 && p.alive) {
+    } else if (w.aggroT > 0 && p.alive && p.cloakT <= 0) {
       tx = p.x;
       ty = p.y;
     } else if (anchorDist > WORM.territoryRadius) {
@@ -6643,7 +7500,7 @@ export class World {
       }
     }
 
-    if (p.alive && w.touchCd <= 0) {
+    if (p.alive && p.cloakT <= 0 && w.touchCd <= 0) {
       let hit = false;
       let hdx = p.x - w.x;
       let hdy = p.y - w.y;
@@ -6747,6 +7604,11 @@ export class World {
     v.hitFlash = 0;
     v.spawnT = VIRUS.spawnTime;
     v.pinT = 0;
+    v.orbitOwner = -1;
+    v.orbitA = 0;
+    v.orbitR = 0;
+    v.orbitDir = 1;
+    v.orbitHitCd = 0;
     this.nudgeVirusFromCover(v);
     this.pickVirusRoam(v);
     return v;
@@ -6820,6 +7682,8 @@ export class World {
     v.phase += dt;
     if (v.hitFlash > 0) v.hitFlash = Math.max(0, v.hitFlash - dt);
     if (v.contactCd > 0) v.contactCd = Math.max(0, v.contactCd - dt);
+    // Held in Atomize's orbit: the field owns position until it releases.
+    if (v.orbitOwner >= 0) return;
     if (v.spawnT > 0) {
       v.spawnT = Math.max(0, v.spawnT - dt);
       v.vx = 0;
@@ -6839,7 +7703,7 @@ export class World {
     let bestScore = Infinity;
     let tx = v.roamX;
     let ty = v.roamY;
-    if (p.alive) {
+    if (p.alive && p.cloakT <= 0) {
       const dx = p.x - v.x;
       const dy = p.y - v.y;
       const d2 = dx * dx + dy * dy;
@@ -6936,7 +7800,7 @@ export class World {
     }
     this.nudgeVirusFromCover(v);
 
-    if (p.alive && p.iframes <= 0 && v.contactCd <= 0) {
+    if (p.alive && p.cloakT <= 0 && p.iframes <= 0 && v.contactCd <= 0) {
       const pdx = p.x - v.x;
       const pdy = p.y - v.y;
       const rr = v.radius + PLAYER.radius;
@@ -7157,6 +8021,7 @@ export class World {
     this.emit(EV.VIRUS_HIT, sourceSlot, v.x, v.y, amount, dirX, dirY);
     if (v.hp <= 0) {
       v.active = false;
+      v.orbitOwner = -1;
       if (sourceSlot === 0) {
         this.gauntletKills++;
         this.dropPickupFromKill(v.x, v.y, false);

@@ -103,32 +103,34 @@ Callsign editing is under `SETTINGS > SYSTEM`, alongside hit feedback, audio, sc
 
 ## Attacks, skill, and health
 
-Your avatar has three health segments built into its rotating program outline. A hit drops that segment
-to a dim ghost, so the silhouette always stays whole while the damage still reads at a glance. There is
-no separate health bar or name plate: the outline, the inner energy arc, and the readiness dock
-are the local readout. Bots and remote players show no health or readiness telemetry yet.
+Your avatar has its health segments built into its rotating program outline: three for most programs,
+**six** for Atomize. A hit drops that segment to a dim ghost, so the silhouette always stays whole while
+the damage still reads at a glance. There is no separate health bar or name plate: the outline, the inner
+energy arc, and the readiness dock are the local readout. Bots and remote players show no health or
+readiness telemetry yet.
 
 | Option | Input | Role |
 | --- | --- | --- |
-| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact. Holding keeps the fire coming at the program's cadence. |
+| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact, Toxic fires a venom needle, Kaboom lobs a slow bomb, Bad Lag throws a heavy hourglass, Atomize fires an alternating electron that curves toward a target, and Ghost throws a wide chomping mouth that hits for two and dazes. Holding keeps the fire coming at the program's cadence. |
 | **MELEE ATTACK** | `B` / left mouse / `J` | **Tap** for a fast spiked lash across the 180° arc in front of you. It shoves what it hits sideways and reflects shots it catches. |
 | **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. Lock on to flatten caught shots toward the target. |
-| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room. It commits you: you cannot move freely while it runs, and it has a long cooldown. |
-| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane. Its mark in the readiness dock shows when it is ready. |
+| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, and Ghost arms a jump-scare that fires on any action press (or expires) for a shoving burst. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
+| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises three orbiting shield balls, and Ghost cloaks for a few seconds. Its mark in the readiness dock shows when it is ready. |
 | **DASH** | `A` / `Shift` / `Space` | Two charges. Tap to phase through enemies and cover in your last movement direction. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. |
 
 Ranged fire is the pressure tool. Melee is the answer to incoming fire: tap to lash, hold to guard. The
-power/skill button is the commitment button: tap for your program's skill, hold to plant your feet and
-run the heavy. Every option obeys the same facing rules. Energy still gates the heavies; basic fire is
-cheap enough to hold.
+power/skill button is the commitment button: tap for your program's skill, hold to charge and run the
+heavy. Most heavies plant your feet; Atomize's orbit field does not. Every option obeys the same facing
+rules. Energy still gates the heavies; basic fire is cheap enough to hold.
 
 ## Pickups
 
 Most pickups are dropped by enemies you destroy. Small kills roll rarely, heavy silhouettes roll
 generously, and drops share a 5.5 s cooldown. At most two pickups sit on the field at once. A rare
 ambient pickup (first at 24 s, then every 42 s) keeps a dry run from stalling. Training and gauntlet only.
-`RESTORE_STATUS` refills health and clears negative status. Timed drops replace each other,
-last 11–15 s, and show their icon at the right end of the readiness dock:
+`RESTORE_STATUS` refills health and clears negative status. Timed drops replace each other and last
+11–15 s. Their state is read from the effect itself; the readiness dock is reserved for dash, skill and
+power:
 
 - `MACHINE GUN`: held ranged fire becomes a low-damage spray.
 - `SCATTER`: short-range fan of pellets.
@@ -250,8 +252,8 @@ drop its lure, then step out of the way instead of standing on it.
 - Break line of sight behind cover. Bots should walk a route around the block, not scrape against it.
 - Fight inside `THE RING`'s center. Every entrance is a gate; a charged beam down a gate is a trap.
 - Bank bolts around `SWITCHBACK`'s bars. Deflected bolts gain speed and damage.
-- Hold ranged attack and feel the stream. Watch the ammo dots drain, then the short recharge. Losing
-  health segments should be readable from across the arena.
+- Hold ranged attack and feel the program's stream and short recharge. Losing health segments should be
+  readable from across the arena.
 - Hold `B` and walk into a sentry volley. The 180° shield should catch every shot in front, burn down as
   it eats them, and force a quick cooldown when it breaks. Release early and it drops immediately.
 - Lock on with `LT` and hold the shield. Reflected shots should flatten toward the target instead of
@@ -261,9 +263,15 @@ drop its lure, then step out of the way instead of standing on it.
 - Hold `Y` through the full charge. The two orbit dots should meet at your front and the beam should fire
   on its own, root you, sweep slowly, and pierce every target in the line while pillars cut it off.
 - Tap `Y` for the program's skill: Probe's proximity mine, Wedge's bracket wall, Fisher's lure beacon,
-  or Sweep's split brooms. The mark in the readiness dock should match the program and show
-  readiness. Wedge's wall should stop bodies and reflect shots; a lure should pull local bots off you;
-  the split brooms should shove a body out of the lane in front of Sweep.
+  Sweep's split brooms, Kaboom's lobbed shell, Bad Lag's fast-forward, Atomize's three blue shield balls,
+  or Ghost's cloak. The mark in the readiness dock should match the program and show readiness. Wedge's
+  wall should stop bodies and reflect shots; a lure should pull local bots off you; the split brooms should
+  shove a body out of the lane in front of Sweep; an Atomize ball should eat one hit instead of a health
+  segment; a cloaked Ghost should be ignored by bots and passed through by shots.
+- As Ghost, hold `Y` to arm the jump-scare: the body should re-cloak and show a pulsing ring. Press any
+  action to pop the ASCII face, shove and damage nearby bodies, and drop the cloak. Let the window expire
+  and nothing should fire. Throw a mouth into cover: it should stop and die on the geometry; a clean hit
+  should leave the target dazed and visibly slower for about 0.7 s.
 - Reflect a `HARD` bolt back at it. Higher tiers try to dodge their own armed ricochets.
 - Leave endless training and return. The arena choice persists and a fresh session starts cleanly; there
   is no round or match overlay to clear.

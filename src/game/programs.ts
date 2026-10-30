@@ -13,6 +13,8 @@ export const PROGRAM_ID = {
   TOXIC: 4,
   KABOOM: 5,
   BUFFER: 6,
+  ATOMIZE: 7,
+  GHOST: 8,
 } as const;
 
 export interface ProgramDef {
@@ -43,6 +45,8 @@ export interface ProgramDef {
    * the family is missing, `drawProgramMark` falls back to a drawn bomb.
    */
   symbolFont?: string;
+  /** Maximum health segments. Most programs use the default three; Atomize has six. */
+  healthSegments?: number;
   bugKind: number;
 }
 
@@ -53,7 +57,11 @@ export const PROGRAMS: readonly ProgramDef[] = [
     role: 'BALANCED',
     note: 'FIVE-SHOT BURST // CHARGED BEAM // PROXIMITY MINE',
     color: PROGRAM_COLORS.probe,
-    glyph: '◎',
+    /**
+     * Compass. The arena draws the vector rose so it stays crisp at the core; this
+     * glyph is the roster/card stand-in, not the old concentric target.
+     */
+    glyph: '✥',
     coreScale: 1.12,
     bugKind: 0,
   },
@@ -119,13 +127,13 @@ export const PROGRAMS: readonly ProgramDef[] = [
     glyph: 'M',
     symbolFont: 'Wingdings',
     // The hull fins start at 0.72r, so the bomb keeps clear air around it instead of
-    // crowding the health segments.
-    coreScale: 0.86,
+    // crowding the health segments. The portrait applies this scale too.
+    coreScale: 0.76,
     bugKind: 8,
   },
   {
     id: PROGRAM_ID.BUFFER,
-    name: 'BUFFER_OVERFLOW.EXE',
+    name: 'BAD_LAG.EXE',
     role: 'TIME',
     note: 'HOURGLASS THROW // FAST-FORWARD // TIME DILATION',
     color: PROGRAM_COLORS.buffer,
@@ -137,8 +145,39 @@ export const PROGRAMS: readonly ProgramDef[] = [
     glyph: '⧗',
     // The hourglass shrinks away from the clock ring so neither hull nor core crowds
     // the other: the mark is half the height of a full-health hull, with real air.
-    coreScale: 0.84,
+    coreScale: 0.72,
     bugKind: 9,
+  },
+  {
+    id: PROGRAM_ID.ATOMIZE,
+    name: 'ATOMIZE.EXE',
+    role: 'ORBIT',
+    note: 'SEEKING ORBS // ORBITAL SHIELD // ORBIT FIELD',
+    color: PROGRAM_COLORS.atomize,
+    /**
+     * Atom. The arena draws the vector `drawAtomMark` so the nucleus and three
+     * orbits stay monochrome and crisp at core size; the glyph is for text cards.
+     */
+    glyph: '⚛',
+    // The orbit hull's inner edge is the tightest of the four new marks (0.55r).
+    coreScale: 0.72,
+    healthSegments: 6,
+    bugKind: 10,
+  },
+  {
+    id: PROGRAM_ID.GHOST,
+    name: 'GHOST.EXE',
+    role: 'STEALTH',
+    note: 'CHOMP // CLOAK // JUMP-SCARE',
+    color: PROGRAM_COLORS.ghost,
+    /**
+     * Closed eye. The arena draws `drawGhostEye` so the lid and lashes stay vector and
+     * monochrome; this glyph is only for text metadata such as the How to Play roster.
+     */
+    glyph: '◡',
+    // The eye already fills most of its lid; keep clear air before the three arcs.
+    coreScale: 0.82,
+    bugKind: 11,
   },
 ];
 

@@ -12,7 +12,7 @@ there is no runtime fetch, which keeps snapshots, bot determinism and the PWA ca
 | File | Owns |
 | --- | --- |
 | `player.json` | Avatar movement, health, energy, dash, melee, guard, target lock, heavy beam, `BOLT`, `BUG`, `MINE` |
-| `programs.json` | `WEDGE`, `FISHER`, `SWEEP`, `TOXIC`, `KABOOM`, `BUFFER` kits |
+| `programs.json` | `WEDGE`, `FISHER`, `SWEEP`, `TOXIC`, `KABOOM`, `BUFFER`, `ATOMIZE` kits |
 | `threats.json` | `GAUNTLET` wave pacing, `WORM`, `VIRUS`, `SENTRY`, `CASCADING_ERROR`, `THRALL`, `FIREWALL` |
 | `campaign.json` | `CAMPAIGN` node pacing, drill/breach beat and score weights |
 | `world.json` | `CAMERA`, `FALL`, `FILE_PROP`, `ARENA`, `TRAVERSE`, `POWERUP`, `ROUND`, `TRAINING`, `NET`, `ATTRACT` |
@@ -42,5 +42,7 @@ break while tuning:
 - Bomb types 8 and 9 are never deflectable; every deflect/guard branch must exclude them.
 - A guard reflection leaves at `PLAYER.laserReflectAngle` and never returns to the caster.
 - Health-segment hulls must clear the core mark (see D4); do not shrink a `coreScale` to fit a bigger
-  number.
+  number. Atomize's orbit hull keeps its inner edge at `0.55r`; do not narrow the ovals.
+- Atomize's type 11 electron uses `homing` as its own seek flag. Only type 0 runs the PATHFIND powerup's
+  `steerPathBolt` axis search.
 - Bot kits use the human `InputFrame` path; there is no second control path for tuning.

@@ -2392,3 +2392,203 @@ fields were omitted from JSON and recomputed in the facade with the same formula
 
 **Next:** tuning now has one obvious home. When playtesting a kit, edit `tuning/programs.json`; if a value
 needs to scale with the view or a sector, keep that derivation in `config.ts` rather than baking the result.
+
+## 2026-10-30 — Sweep's power reveals from the facing side (v0.1.48)
+
+**Goal:** make Sweep's heavy read as a broom assembling across the lane instead of a screen-wide shape
+appearing at once, and give the materialize beat a physical shove so bodies are moved before the hit.
+
+**Changes:**
+- `SWEEP.powerRevealTime` (0.3 s) and `SWEEP.powerRevealPush` (820) added to `tuning/programs.json`.
+- On fire the broom latches a reveal direction from facing: left to right when `cos(facing) >= -0.15`,
+  right to left otherwise. It is latched at the fire frame, so steering during the charge cannot flip it
+  mid-materialize.
+- `tickBroomSweep` runs the reveal first. `resolveBroomReveal` shoves players, sentries, viruses and worms
+  that sit under the already-visible part of the lane toward the reveal front, and **deals no damage**.
+  The stroke (and its per-body damage/carry) starts only after the reveal completes. Cover cuts the shove
+  through the same `broomReaches` line test as the stroke.
+- The reveal does not change the committed heavy cost or cooldown. During the reveal `broT` is held so the
+  player stays busy; the stroke then runs its full `powerDuration` and sets the cooldown as before.
+- Renderer: `drawBroomText` takes a reveal direction and clips from one edge. The charge shows a faint
+  full-width ghost of the lane, the live reveal overlays the bright head with a bright front edge, and the
+  committed stroke draws the full head as before.
+- AGENTS.md D10/D14 updated: the reveal is a shove without damage; damage begins with the stroke.
+
+**Verification:** `npx tsc --noEmit` clean. Headless (`scripts/.tmp-reveal.ts`): face-right fires at tick 36
+with `broRevealDir=1`; a body on the early part of the lane is untouched, takes no damage through the
+reveal (`hpMidReveal=3`) and is then hit at the first stroke tick; face-left gives `broRevealDir=-1` and a
+negative shove. Gauntlet sentry: hp unchanged during the reveal, pushed from x=430 to 471 at fire+6, then
+killed by the stroke. Temporary scripts removed after the check.
+
+**Next:** watch it at full speed in the gauntlet and judge the 0.3 s reveal and 820 shove; those are the
+two numbers to tune if the assembly feels slow or the push too weak.
+
+## 2026-10-30 — Atomize.exe: alternating electrons, orbital shield and orbit field (v0.1.49)
+
+**Goal:** add the roster's orbit program: a white six-segment atom, ranged shots that leave alternating
+hands and curve toward a target, a persistent three-ball shield, and a power that turns incoming shots and
+small enemies into an orbiting weapon.
+
+**Changes:**
+- `PROGRAMS` entry 7 (`ATOMIZE.EXE`), white `PROGRAM_COLORS.atomize`, `healthSegments: 6`. `World` now
+  derives `Player.maxHp` from the program def, so spawn, respawn, bots and the local hull all read six.
+- Hull: three overlapping vector ellipse orbits at 60°, split into two half-arcs each (six segments). The
+  inner edge is `0.55r`, outside the low-health core mark; the atom center mark is drawn as vector orbits
+  and a nucleus, never the `⚛` codepoint. `coreScale 0.9`.
+- Ranged: type 11 electron, one hand per throw (`atomSide`), launch angle tilted inward by 0.52 rad, 480
+  u/s, 1.5 s life, 1 damage. `findAtomTarget`/`steerAtomBolt` add the slight seek (2.8 rad/s, 460 range,
+  0.1 forward dot, line of sight). Ball colours cycle yellow/green/blue; the white trail is stretched to
+  14 points so the arc reads.
+- Skill: `atomBalls` at `ballOrbit` 44, `ballSpin` 3.2, no timer. A ball deals 1 damage on the first
+  hostile it touches; `damagePlayer` spends one ball per full hit before health is recorded. A second tap
+  with balls surviving is refused and refunded.
+- Power: `orbitT` 2.8 s field, caster keeps walking, 250 grab radius, 135 orbit, 5 rad/s body spin
+  (8.5 rad/s shots), per-kind sentry/virus weights. Captured shots are retagged to the caster so they
+  cannot hit their captor; captured sentries and viruses are held out of their own AI and trade contact
+  damage. Release throws on the tangent with spread; cooldown starts when the field ends.
+- Renderer: six-segment hull, white/orbital visuals, ball trail, orbit field rings, a field-shaped heavy
+  charge instead of the beam muzzle, dock marks and a six-segment portrait.
+- Menu type: `--ui` system console stack (Bahnschrift, DIN Alternate, Avenir Next, then platform UI). The
+  body and all menu controls moved off `--mono`; the ASCII logo, boot log and schematic data tables stay
+  monospace so their columns keep their shape.
+- Docs: AGENTS D4/D10/D11/D25, README controls, TODO v0.1.49; build stamped 0.1.49.
+
+**Verification:** `npx tsc --noEmit` clean. Headless (`scripts/.tmp-atomize.ts`): firing twice produces
+launch `vy` -239 then +239 at 480 speed; after 20 ticks the first shot's `vy` has turned to +86 while its
+speed stays 480. A full hit with three balls leaves hp 6 / balls 2; a ball touching a player drops their hp
+3 → 2 and consumes the ball. In a gauntlet practice world a captured sentry reports `orbitOwner 0` and an
+enemy shot is captured (`orbOwner 0`) at the same time; the player moves from x 500 to 504 while the field
+is live; release hands the sentry a throw impulse and the field ends at 7 s cooldown. The test file is
+temporary and will be removed after the visual pass.
+
+**Next:** playtest the white hull at full and one-segment health in the arena and on the select portrait,
+then tune `shotTurn`/`seekRange` for how much the electron should curve and `powerSpin`/`powerThrow` for
+how violent the orbit feels. The kit remains local-only; no snapshot work.
+
+## 2026-10-30 — Readiness dock drops ammo and pickup, three bigger jobs (v0.1.50)
+
+**Goal:** make the local readiness marks legible from a couch. Ranged shot tracking and the pickup cell
+were using dock space without adding a read: ammo is visible in the firing cadence, and an active pickup
+already shows on the avatar and its effect.
+
+**Changes:**
+- The dock is three jobs: dash charges, skill, power attack. Every program uses the same 60 px cell with a
+  50 px circular slot, so the panel shrinks from five cells to three (196×64) without shrinking the marks.
+- Skill and heavy marks scale from 2.15× to 2.6× with a 2.4 px stroke over a wide dim pass; the heavy live
+  state keeps its slightly brighter 2.8 px stroke. Dash chevrons widened to 4.2 px over a 9 px glow and
+  spaced 12 units apart, so both charges sit centered in the slot instead of running to its left rim.
+- Cooldown dials are unchanged: recovered wedge lit, dark charging wedge, bright sweep edge. The
+  shared slot fill and rim also brighten a step (0.22 fill, 0.72 rim) so the larger marks sit in a
+  visible cell instead of a nearly empty circle.
+- Docs: AGENTS D11 now states the three jobs and the 60 px cell / 50 px slot; README stays accurate.
+
+**Verification:** `npx tsc --noEmit` clean; `npm run build` passes (65 modules, stamped 0.1.50). Icon
+extents measured against the 25 px slot radius: skill/heavy marks and their glow stay inside the circle
+(max ~24.7 px for Sweep's heavy), and the dash pair spans 32 px centered. No browser screenshot pass.
+
+**Next:** check the dock during a real match at 1080p and on a short viewport; if the skill and heavy marks
+still read small, grow the slot rather than the panel, or add a second brightness step for the live heavy.
+
+## 2026-10-30 — BUFFER_OVERFLOW.EXE renamed BAD_LAG.EXE (v0.1.51)
+
+**Goal:** rename the time program without disturbing its kit or saved data. "Bad Lag" says what the
+program does to the room more directly than the old buffer-overflow name.
+
+**Changes:**
+- `PROGRAMS` entry 6 displays `BAD_LAG.EXE`. The role, note, pink palette, six-clock hull, vector
+  hourglass, hourglass throw, fast-forward and time dilation are untouched.
+- All internal keys stay `BUFFER`: `PROGRAM_ID.BUFFER`, the `BUFFER` tuning block,
+  `PROGRAM_COLORS.buffer`, and the id stored in save slots. Renaming the identifier would have moved
+  every existing save and tuning reference for no player-visible gain.
+- AGENTS D4 and D21, README controls and test notes, and the program comments now say Bad Lag. The old
+  TODO v0.1.41 and HISTORY v0.1.41 entries keep `BUFFER_OVERFLOW.EXE` because they are historical.
+- Build stamped 0.1.51.
+
+**Verification:** `npm run build` clean (`tsc --noEmit` plus Vite). The select screen and How to Play
+roster read from `PROGRAMS`, so both pick up the new name without a second list.
+
+**Next:** confirm the longer name fits the select card and the How to Play roster at 1080p; if it wraps
+awkwardly, tighten the card title rather than shortening the program name.
+
+## 2026-10-30 — GHOST.EXE: cloak, chomping mouth, jump-scare (v0.1.52)
+
+**Goal:** add the ninth program, a grey stealth kit that can disappear, throw a slow heavy bite, and trade
+its cloak for a close-range scare burst.
+
+**Changes:**
+- `PROGRAMS` entry 8 (`GHOST.EXE`, `STEALTH`, `bugKind` 11), steel-grey `PROGRAM_COLORS.ghost`
+  (`#b9c4d0`) and a three-arc hull in `pathProgramHealth`: three 120° gaps, one outward arc per health
+  segment, inner edge at `0.69r` and bulge at `1.34r`. `coreScale` is `0.82`, keeping the eye lashes
+  clear of the arcs.
+- Core mark: `drawGhostEye` draws a closed eye as a vector bottom-half lid arc with five straight lashes,
+  so the mark never relies on `◡` or a symbol font. `◡` remains the text metadata glyph for the roster.
+  The eye was rotated once and rotated back after the designer saw it; the current lid curves through the
+  bottom half with the lashes hanging below. The dock and the cloak readout reuse the same shape.
+- Ranged: type 12 mouth, `GHOST.shotSpeed` 540, `shotRadius` 16, 2 damage, 0.9 s life, no motion tail,
+  stops on the first body and on cover. A hit applies `shotDaze` 0.7 s at `shotDazeSlow` 0.55, so the
+  victim keeps steering but moves heavily. The renderer draws a wide dark maw with five sharp teeth on
+  each jaw and a per-projectile chomp phase.
+- Skill: `startGhostCloak` sets `cloakT` for 3.5 s. The shared `phased()` gate covers `damagePlayer`,
+  while AI target picks and sentry/worm/virus acquisition skip a cloaked body. The local avatar keeps a
+  faint dark disc, dashed rim and eye so the owner can navigate; remotes draw nothing extra.
+- Power: holding `Y` for `scareChargeTime` 0.45 s re-cloaks and arms `scareT` for 3.2 s. Any action press
+  inside the window (`BOLT`, `SWING`, `CANDLE`, `DASH`) fires `fireJumpScare`: a cover-respecting
+  `explodeBlast` at 210 radius, 2 damage and 1200 knockback, cloak dropped, and `SCARE_FACE` stamped for
+  0.85 s. The press is consumed so the same button cannot also act. An armed window that expires fires
+  nothing. A release inside `heavyTapMax` casts the cloak instead.
+- Bots: tap cloak when a shot is in the air or after a hit; arm the scare inside scare range, chase the
+  target while armed and press melee. `targetAlive` and `pickTarget` skip a cloaked player.
+- Dock marks: closed eye for the cloak, open maw for the jump-scare; the armed state is the live heavy.
+- Center-mark clearance: the select portrait was drawing every program mark at full poster radius and
+  ignoring `coreScale`, which made the vector centers on the newest four overlap their hulls. The portrait
+  now passes `coreScale`, the missing-font vector bomb scales with it too, and the four values were lowered
+  to Kaboom `0.76`, Bad Lag `0.72`, Atomize `0.72` and Ghost `0.82`.
+- Docs: AGENTS D4/D10/D26, README control table and QA checklist, TODO v0.1.52. Build stamped 0.1.52 in
+  `index.html`, `main.ts` and `sw.js`.
+
+**Verification:** `npx tsc --noEmit` clean; `npm run build` passes (65 modules). Headless kit check in a
+training world: tap `Y` gives `cloakT` 3.50 and `bugCd` 9.0, a direct 1-damage hit is skipped while
+cloaked and lands after the timer; holding the heavy arms at frame 28 with `scareT` 2.68 and energy 55, the
+next `BOLT` press drops the cloak, stamps `faceT` 0.85, takes the nearby target 3 → 1 and gives ~915
+knockback; letting a second armed window expire leaves no face and no damage (`cd` 4.5 remaining). The
+chomping mouth reports type 12, speed 540, 2 damage, radius 16, and a clean hit leaves `dazeT` 0.70. A
+visual pass on the live select screen confirmed the four newest portrait marks now sit clear of their hull
+segments; the debug overlay used for the close-up was removed. The temporary test script was removed.
+
+**Next:** playtest the eye at core and portrait size, then judge the mouth's 540 speed and 0.7 s daze in a
+mirror match; those are the two numbers most likely to need a pass. The kit is local-only, so no snapshot
+work follows.
+
+## 2026-10-30 — Toxic needle carries farther (tuning)
+
+**Goal:** let Toxic pressure a target at longer range without changing the needle's damage or venom.
+
+**Changes:** `TOXIC.needleTtl` in `tuning/programs.json` goes from `0.62` to `0.85` s at the same `880` u/s.
+The dart now clears roughly 748 units before expiry instead of 546; cost, damage, radius, knockback, venom
+and fire cadence are untouched. No code path changed, so the tuning JSON is the only gameplay edit.
+
+**Verification:** `npm run build` clean (65 modules). Headless range check in a match world fired one
+needle down a clear lane: speed 880, travel 719 units from the first sampled frame (about 760 from the
+muzzle with the 41-unit spawn offset), then expiry. The temporary script was removed.
+
+**Next:** judge the longer lane in a Toxic mirror match; if it now outranges everything for free, trim
+`needleTtl` toward 0.75 or raise the fire cost rather than slowing the dart.
+
+## 2026-10-30 — Probe's target becomes a compass (v0.1.52)
+
+**Goal:** replace the concentric target at Probe's core with a mark that reads as navigation/scouting
+rather than a bullseye, while keeping the cyan scan-ring hull.
+
+**Changes:** `PROGRAMS[0]` now carries `✥` for text metadata, and `drawProgramMark` routes program 0 to
+the new `drawCompassMark`. The mark is a thin housing ring around a solid four-point rose, all in the
+caller's fill colour. The rose is symmetric, so it does not become a facing arrow; the four points are
+slightly concave at the waist to keep the tips reading at the 11px core size. The hull ring and accent
+colour are unchanged. AGENTS D4 records the vector compass and the reason for the symmetric tips.
+
+**Verification:** `npx tsc --noEmit` clean. A browser canvas check rendered the mark at portrait scale
+(4.4x) and at a 6x enlargement of the actual arena core: the housing ring stays inside the dark core disc
+and the four tips stay clear of it, and the silhouette is visibly a compass rather than concentric
+targets. The select portrait and How to Play roster both pick up the new mark from `PROGRAMS`.
+
+**Next:** check it in a live Probe mirror at normal camera zoom; if the star reads as a generic sparkle,
+lengthen the cardinal tips or add four short cardinal ticks between the star and the ring.

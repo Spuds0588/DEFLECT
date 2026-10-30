@@ -1,4 +1,4 @@
-import { BUG, PLAYER, WEDGE, type Bounds, type Rect } from './config';
+import { BUG, GHOST, PLAYER, WEDGE, type Bounds, type Rect } from './config';
 import type { ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
 import type { Player } from './types';
@@ -46,8 +46,11 @@ export function stepPlayerMotion(
     const held = p.netPinT > 0 ? 0 : 1;
     // Time effects scale walking only. Dashes and plows are committed shapes with
     // their own distance, so fast-forward does not turn one into a cross-arena leap.
-    const tx = held * mx * PLAYER.speed * slow * trapFactor * p.speedMult;
-    const ty = held * my * PLAYER.speed * slow * trapFactor * p.speedMult;
+    // Ghost's bite daze is a heavy-footed wobble, not a root: the victim can still
+    // turn and answer, just late.
+    const dazeFactor = p.dazeT > 0 ? GHOST.shotDazeSlow : 1;
+    const tx = held * mx * PLAYER.speed * slow * trapFactor * p.speedMult * dazeFactor;
+    const ty = held * my * PLAYER.speed * slow * trapFactor * p.speedMult * dazeFactor;
     const k = 1 - Math.exp(-PLAYER.accel * dt);
     p.vx += (tx - p.vx) * k;
     p.vy += (ty - p.vy) * k;

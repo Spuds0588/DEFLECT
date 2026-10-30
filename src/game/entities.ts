@@ -37,6 +37,7 @@ export function createPlayer(slot: number): Player {
     swingKind: 0,
     hp: PLAYER.hp,
     maxHp: PLAYER.hp,
+    dazeT: 0,
     energy: PLAYER.energyMax,
     killerKind: 0,
     killerId: -1,
@@ -95,6 +96,9 @@ export function createPlayer(slot: number): Player {
     broDirX: 1,
     broDirY: 0,
     broS: 0,
+    broRevealT: 0,
+    broRevealDur: 0,
+    broRevealDir: 1,
     broHitPlayers: 0,
     broHitWorms: 0,
     broHitViruses: 0,
@@ -113,6 +117,13 @@ export function createPlayer(slot: number): Player {
     fanHitErrors: 0,
     fanHitSentries: 0,
     fanHitDrone: false,
+    atomSide: 1,
+    atomBalls: 0,
+    atomBallA: 0,
+    atomFlashT: 0,
+    orbitT: 0,
+    orbitDur: 0,
+    orbitDir: 1,
     iframes: 0,
     swingPhase: 0,
     swingT: 0,
@@ -143,6 +154,11 @@ export function createPlayer(slot: number): Player {
     powerupT: 0,
     autoFireT: 0,
     ghostT: 0,
+    cloakT: 0,
+    scareT: 0,
+    scareFaceT: 0,
+    scareFaceX: 0,
+    scareFaceY: 0,
     wallT: 0,
     wallFacing: 0,
     slowT: 0,
@@ -195,6 +211,11 @@ export function createProjectile(): Projectile {
     hits: 0,
     spin: 0,
     spinDir: 1,
+    variant: 0,
+    orbOwner: -1,
+    orbA: 0,
+    orbR: 0,
+    orbDir: 1,
     homing: false,
     pathAxis: 0,
     hitPlayers: 0,
@@ -360,6 +381,11 @@ export function createVirus(): Virus {
     ky: 0,
     spawnT: 0,
     pinT: 0,
+    orbitOwner: -1,
+    orbitA: 0,
+    orbitR: 0,
+    orbitDir: 1,
+    orbitHitCd: 0,
   };
 }
 
@@ -408,6 +434,11 @@ export function createSentry(): Sentry {
     leash: 0,
     spawnT: 0,
     pinT: 0,
+    orbitOwner: -1,
+    orbitA: 0,
+    orbitR: 0,
+    orbitDir: 1,
+    orbitHitCd: 0,
   };
 }
 
@@ -439,6 +470,13 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.swingFacing = facing;
   p.swingDir = -1;
   p.swingKind = 0;
+  // Atomize's orbits do not survive a body swap or a round reset.
+  p.atomBalls = 0;
+  p.atomBallA = 0;
+  p.atomFlashT = 0;
+  p.atomSide = 1;
+  p.orbitT = 0;
+  p.orbitDur = 0;
   p.hp = p.maxHp;
   p.energy = PLAYER.energyMax;
   p.poisonT = 0;
@@ -532,6 +570,12 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.guardT = 0;
   p.guardCd = 0;
   p.ghostT = 0;
+  p.dazeT = 0;
+  p.cloakT = 0;
+  p.scareT = 0;
+  p.scareFaceT = 0;
+  p.scareFaceX = 0;
+  p.scareFaceY = 0;
   p.wallT = 0;
   p.slowT = 0;
   p.travelKind = 0;
@@ -579,7 +623,7 @@ export function playerFlags(p: Player): number {
   if (p.lockActive) flags |= PF.LOCKED;
   if (p.laserChargeHeld) flags |= PF.LASER_CHARGING;
   if (p.laserT > 0) flags |= PF.LASER_FIRING;
-  if (p.ghostT > 0) flags |= PF.GHOST;
+  if (p.ghostT > 0 || p.cloakT > 0) flags |= PF.GHOST;
   if (p.wallT > 0) flags |= PF.WALL;
   if (p.slowT > 0) flags |= PF.SLOW;
   return flags;
