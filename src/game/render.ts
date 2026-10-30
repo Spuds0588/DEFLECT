@@ -1,11 +1,11 @@
-import { BOLT, BUG, CAMERA_ZOOM, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { BOLT, BUG, CAMERA_ZOOM, CAMPAIGN, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
 import { drawGlyph, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
 import { P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
-import type { Barrier, CascadingError, Drone, Firewall, GameMode, Lure, Net, Phase, Pickup, Player, Projectile, Sentry, Virus, Worm } from './types';
+import type { Barrier, CampaignPhase, CascadingError, Drone, Firewall, GameMode, Lure, Net, Phase, Pickup, Player, Projectile, Sentry, Virus, Worm } from './types';
 
 export interface RenderState {
   mode: GameMode;
@@ -39,6 +39,13 @@ export interface RenderState {
   waveBannerT?: number;
   gauntletOver?: boolean;
   gauntletTime?: number;
+  /** Campaign script running on the gauntlet simulation. */
+  campaign?: boolean;
+  campaignPhase?: CampaignPhase;
+  campaignBannerT?: number;
+  campaignBannerDur?: number;
+  /** 0 drill, 1 breach/inbound, 2 cleared, 3 failed. */
+  campaignBannerKind?: number;
 }
 
 const FONT_TINY = '700 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -3811,9 +3818,54 @@ export class Renderer {
     const ctx = this.ctx;
     const players = state.players;
 
-    // The arena itself carries the identity. Text only appears for a wave change,
-    // which is transient information between waves.
-    if (state.mode === 'gauntlet' && (state.waveBannerT ?? 0) > 0) {
+    // The arena itself carries the identity. Text only appears for a script beat or
+    // a wave change, which is transient information between fights.
+    const campaignBanner = state.campaign === true && (state.campaignBannerT ?? 0) > 0;
+    if (campaignBanner) {
+      const bannerT = state.campaignBannerT ?? 0;
+      const duration = Math.max(0.01, state.campaignBannerDur ?? 3);
+      const fadeIn = Math.min(1, (duration - bannerT) / 0.3);
+      const fadeOut = Math.min(1, bannerT / 0.6);
+      const kind = state.campaignBannerKind ?? 0;
+      const localColor = playerColor(state, state.players[state.localSlot]);
+      const alpha = Math.max(0, Math.min(fadeIn, fadeOut));
+      ctx.save();
+      // A soft plate keeps the beat legible when it lands over bright cover.
+      ctx.globalAlpha = alpha * 0.62;
+      ctx.fillStyle = 'rgba(3, 7, 12, 1)';
+      ctx.fillRect(VIEW_W * 0.5 - 150, VIEW_H * 0.34 - 13, 300, 42);
+      ctx.globalAlpha = alpha;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = FONT_MID;
+      if (kind === 1) {
+        ctx.fillStyle = THREAT_COLORS.firewall;
+        ctx.fillText('SYSTEM BREACH', VIEW_W * 0.5, VIEW_H * 0.34);
+        ctx.font = FONT_TINY;
+        ctx.fillStyle = 'rgba(255, 160, 110, 0.8)';
+        ctx.fillText('HOSTILES INBOUND', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
+      } else if (kind === 2) {
+        ctx.fillStyle = localColor;
+        ctx.fillText('NODE CLEARED', VIEW_W * 0.5, VIEW_H * 0.34);
+        ctx.font = FONT_TINY;
+        ctx.fillStyle = 'rgba(190, 255, 200, 0.75)';
+        ctx.fillText('ROUTE SECURED', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
+      } else if (kind === 3) {
+        ctx.fillStyle = THREAT_COLORS.worm;
+        ctx.fillText('SIGNAL LOST', VIEW_W * 0.5, VIEW_H * 0.34);
+        ctx.font = FONT_TINY;
+        ctx.fillStyle = 'rgba(255, 130, 140, 0.8)';
+        ctx.fillText('RING BROKEN', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
+      } else {
+        ctx.fillStyle = localColor;
+        ctx.fillText('SPARRING DRILL', VIEW_W * 0.5, VIEW_H * 0.34);
+        ctx.font = FONT_TINY;
+        ctx.fillStyle = 'rgba(220, 250, 255, 0.7)';
+        ctx.fillText('DRILL SQUAD // LIVE FIRE', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
+      }
+      ctx.restore();
+    }
+    if (state.mode === 'gauntlet' && (state.waveBannerT ?? 0) > 0 && !campaignBanner) {
       const bannerT = state.waveBannerT ?? 0;
       const fadeIn = Math.min(1, (3 - bannerT) / 0.35);
       const fadeOut = Math.min(1, bannerT / 0.8);
@@ -3823,11 +3875,34 @@ export class Renderer {
       ctx.textBaseline = 'middle';
       ctx.font = FONT_MID;
       ctx.fillStyle = THREAT_COLORS.firewall;
-      ctx.fillText(`WAVE ${state.wave ?? 1}`, VIEW_W * 0.5, VIEW_H * 0.34);
+      ctx.fillText(
+        `${state.campaign ? 'BREACH WAVE' : 'WAVE'} ${state.wave ?? 1}`,
+        VIEW_W * 0.5,
+        VIEW_H * 0.34,
+      );
       ctx.font = FONT_TINY;
       ctx.fillStyle = 'rgba(255, 190, 120, 0.72)';
-      ctx.fillText('SYSTEM PRESSURE RISING', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
+      ctx.fillText(
+        state.campaign ? 'THREAT DENSITY RISING' : 'SYSTEM PRESSURE RISING',
+        VIEW_W * 0.5,
+        VIEW_H * 0.34 + 16,
+      );
       ctx.restore();
+    }
+
+    // Campaign objective: one pip per threat delete, no label.
+    if (state.campaign && state.campaignPhase === 'assault') {
+      const target = CAMPAIGN.killsToClear;
+      const kills = Math.max(0, Math.min(target, state.gauntletKills ?? 0));
+      const pw = 5;
+      const gap = 4;
+      const total = target * pw + (target - 1) * gap;
+      const startX = (VIEW_W - total) * 0.5;
+      const y = VIEW_H - 16;
+      for (let i = 0; i < target; i++) {
+        ctx.fillStyle = i < kills ? THREAT_COLORS.firewall : 'rgba(120, 170, 190, 0.16)';
+        ctx.fillRect(startX + i * (pw + gap), y, pw, 2);
+      }
     }
 
     // Scores stay as silhouettes, with no labels, timer or corner readouts.

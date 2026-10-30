@@ -1911,3 +1911,41 @@ reported the same sim and bot budgets, no regression.
 
 **Next:** playtest the spinning hull at one segment to confirm the damage read, then tune the base radius
 if the points feel too short at avatar size.
+
+## 2026-10-30 — First campaign node: BUILD ROOT
+
+**Goal:** make the campaign's slot flow lead somewhere. The first level should open with a training-bot
+drill, warn that the system has been breached, then populate the arena with real threats.
+
+**Changes**
+- Added `src/game/campaign.ts`: the first authored node (BUILD ROOT, LOCALHOST, CROSSROADS) with its
+  sector/node ids and arena blockout. Level identity is data; the script is in `World`.
+- Campaign runs on the gauntlet simulation (`World('gauntlet', ..., campaign = true)`) so threats, pickups,
+  infection and the thrall stay one system. The mode string deliberately stays `gauntlet`; the new
+  `CampaignPhase` (`drill`, `breach`, `assault`, `cleared`, `failed`) is the only fork.
+- Drill: 18 s against the run's 0–3 bots, driven by the same `BotBrain` as training. Death on either side
+  respawns on the training timer, so the warm-up cannot end early. A NO BOTS run still fields one
+  instructor so the drill has a partner.
+- Breach: at 18 s the drill squad de-rezzes, live projectiles clear, and the local player is healed and
+  given a short shield. A 3.2 s `SYSTEM BREACH` banner carries the story beat; no threats exist yet.
+- Assault: the opening sentry pack lands on the breach beat. Worms arrive six seconds later, then a new
+  pack every 14 s. Campaign waves start at 3 and step every 14 s, so viruses arrive around 40 s. Ten
+  threat deletes clear the node; one death in the assault fails it.
+- Renderer: campaign banners (SPARRING DRILL / SYSTEM BREACH / NODE CLEARED / SIGNAL LOST) with a soft
+  backing plate so the beat reads over bright cover, `BREACH WAVE N` instead of the sandbox wave label,
+  and a bottom strip with one pip per threat delete.
+- Main: campaign session lifecycle, save on clear, fail/retry, CONTINUE back to the slot stage, resume from
+  a filled slot, leave overlay text. A cleared slot is saved with the run program, players, bots and
+  seconds; nothing writes mid-level.
+- Bumped to v0.1.34 and refreshed the service worker cache.
+
+**Verification:** headless probe covered the full script: three active bodies and zero threats in the
+drill, the breach leaving only slot 0 alive and healed, the assault queuing two sentries at wave 3 and
+reaching 2 sentries + 1 worm by 20 s, a forced 10-kill clear freezing the node, and an idle player failing
+in the assault. Browser at 1920×1080 walked the real menu: slot 1 → 2 bots → KABOOM.EXE, drill with two
+sparring bots, SYSTEM BREACH with the squad gone, sentries and a worm in the assault, a 4/10 fail overlay,
+a forced clear that saved the slot, the saved `LOCALHOST // LV 1` readout, and resume restoring Kaboom plus
+two drill bots. `npx tsc --noEmit`, `npm run build` and `npm run bench` clean.
+
+**Next:** add the next node and the between-level route beat; add team rules before bot companions can
+fight beside the player instead of serving as the drill squad; playtest drill length and the 10-kill target.

@@ -1,4 +1,5 @@
-import { MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
+import { CAMPAIGN, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
+import { CAMPAIGN_LEVELS, FIRST_CAMPAIGN_LEVEL } from './game/campaign';
 import { ARENAS, drawArenaPreview, getArena } from './game/arenas';
 import { BOT_NAMES, BOT_TIERS, BOT_TIER_LABELS, BotBrain, type BotTier } from './game/bot';
 import { AudioEngine } from './game/audio';
@@ -13,7 +14,7 @@ import {
 import { Input, type MenuEdges } from './game/input';
 import { Renderer, type RenderState } from './game/render';
 import { PROGRAM_ID, PROGRAMS, clampProgram, programDef } from './game/programs';
-import { STORY_SLOT_COUNT, loadStorySlots } from './game/saves';
+import { STORY_SLOT_COUNT, loadStorySlots, saveStoryProgress, type StorySave } from './game/saves';
 import { SECTORS } from './game/sectors';
 import { ACTION, EV, type GameEvent, type InputFrame, type LobbyPlayer, type LobbyState, type Phase } from './game/types';
 import { World } from './game/world';
@@ -23,7 +24,7 @@ import { drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, rando
 
 type Screen = 'title' | 'lobby' | 'game' | 'settings' | 'howto';
 type SettingsTab = 'feedback' | 'audio' | 'system';
-type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'gauntlet';
+type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'gauntlet' | 'campaign';
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 const canvas = el<HTMLCanvasElement>('arena');
@@ -171,10 +172,16 @@ let selectedProgram: number = PROGRAM_ID.PROBE;
 let settingsTab: SettingsTab = 'feedback';
 let gauntletRecords: GauntletRun[] = [];
 let gauntletRecorded = false;
-/** Solo campaign companions. Saved for the first playable sector; not simulated yet. */
+/** Campaign drill squad size (0-3). A NO BOTS run still drills against one instructor. */
 let campaignBots = 0;
-/** Save-slot index for a new campaign run; -1 when no slot is being set up. */
+/** Save-slot index being set up on the campaign stage; -1 when none is selected. */
 let storySlot = -1;
+/** Save slot of the live campaign run, and the run state a clear needs to persist. */
+let campaignSlot = -1;
+let campaignPlayers = 1;
+let campaignSaved = false;
+let campaignPlaySeconds = 0;
+let lastCampaignPhase = '';
 
 const localFrame: InputFrame = { mx: 0, my: 0, held: 0, pressed: 0 };
 let trainingInputs: (InputFrame | null)[] = [localFrame];
@@ -246,7 +253,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.33 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.34 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -760,9 +767,7 @@ function renderProgramPicker(): void {
           showMenuStage('story');
           return;
         }
-        const bots = campaignBots === 0 ? 'NO BOTS' : `${campaignBots} BOT${campaignBots === 1 ? '' : 'S'}`;
-        storyStatusLine.textContent = `SLOT ${storySlot + 1} // NEW GAME // ${def.name} + ${bots} // NOT WIRED YET.`;
-        showMenuStage('story');
+        startNewCampaign();
         return;
       }
       showMenuStage('soloArena');
@@ -933,6 +938,83 @@ function chooseCampaignBots(count: number): void {
   showMenuStage('soloProgram');
 }
 
+/**
+ * Campaign run lifecycle. Slots own the persistence; this module owns the live session.
+ * The first node is the only authored level today, so a cleared save replays it until
+ * the next node ships. A save is written only when a level completes.
+ */
+function startNewCampaign(): void {
+  campaignSlot = storySlot;
+  campaignPlayers = 1;
+  campaignSaved = false;
+  campaignPlaySeconds = 0;
+  startCampaignLevel();
+}
+
+function resumeCampaign(index: number, save: StorySave): void {
+  campaignSlot = index;
+  campaignPlayers = save.players;
+  campaignBots = save.bots;
+  selectedProgram = clampProgram(save.program);
+  campaignSaved = false;
+  campaignPlaySeconds = 0;
+  startCampaignLevel();
+  if (save.level >= CAMPAIGN_LEVELS.length) {
+    toast('NEXT NODE NOT BUILT // REPLAYING BUILD ROOT', 'warn');
+  }
+}
+
+function startCampaignLevel(): void {
+  if (busy) return;
+  teardownSession();
+  hideOverlayInternal();
+  mode = 'campaign';
+  localSlot = 0;
+  stress = false;
+  const level = FIRST_CAMPAIGN_LEVEL;
+  const arena = getArena(level.arenaId);
+  const drill = Math.max(
+    CAMPAIGN.minDrillBots,
+    Math.min(CAMPAIGN.maxDrillBots, campaignBots > 0 ? campaignBots : CAMPAIGN.minDrillBots),
+  );
+  const names = new Array(MAX_PLAYERS).fill('');
+  names[0] = getCallsign();
+  for (let i = 1; i <= drill; i++) names[i] = BOT_NAMES[(i - 1) % BOT_NAMES.length];
+  const botPrograms = botProgramList(drill);
+  world = new World('gauntlet', names, 0, arena, false, selectedProgram, drill, botPrograms, true);
+  botInputs = new Array(MAX_PLAYERS);
+  for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
+  botBrains = new Array(MAX_PLAYERS).fill(null);
+  for (let i = 1; i <= drill; i++) {
+    botBrains[i] = new BotBrain(i, botTierPrefs.training, i - 1, 0x51f15e + arena.id * 997 + i * 131);
+  }
+  botInputs[0] = localFrame;
+  trainingInputs = botInputs;
+  campaignSaved = false;
+  campaignPlaySeconds = 0;
+  resetCounters();
+  lastCampaignPhase = 'drill';
+  fx.reset();
+  setScreen('game');
+  beginLoadSequence(`${level.name} // ${level.code}`);
+  audio.unlock();
+  audio.startMusic();
+  console.log('[DEFLECT-STATE] Campaign node', level.name, 'drill bots', drill);
+}
+
+/** Back to the save-slot stage, abandoning the live node. */
+function returnToStory(): void {
+  teardownSession();
+  campaignSlot = -1;
+  storySlot = -1;
+  soloProgram = 'campaign';
+  showMenuStage('story');
+  setScreen('title');
+  busy = false;
+  refreshTitleButtons();
+  setTitleStatus('');
+}
+
 function programStageBack(): void {
   showMenuStage(soloProgram === 'campaign' ? 'storyBots' : 'solo');
 }
@@ -969,7 +1051,7 @@ function renderStorySlots(): void {
     button.append(key, label, value);
     button.addEventListener('click', () => {
       if (save) {
-        storyStatusLine.textContent = `SLOT ${i + 1} // ${label.textContent} // ${value.textContent} // RESUME IS NOT WIRED YET.`;
+        resumeCampaign(i, save);
         return;
       }
       storySlot = i;
@@ -1238,7 +1320,9 @@ function trackLocalHit(state: RenderState): void {
 function stepSession(now: number, dt: number): void {
   const t0 = performance.now();
   const pausedLocal =
-    (mode === 'training' || mode === 'bots' || mode === 'gauntlet') && !stress && overlayKind === 'leave';
+    (mode === 'training' || mode === 'bots' || mode === 'gauntlet' || mode === 'campaign') &&
+    !stress &&
+    overlayKind === 'leave';
 
   if (mode === 'host' && world && hostNet) {
     hostNet.inputs[0] = localFrame;
@@ -1265,17 +1349,21 @@ function stepSession(now: number, dt: number): void {
         netCursor = 0;
       }
     }
-  } else if ((mode === 'training' || mode === 'gauntlet') && world && !pausedLocal) {
+  } else if ((mode === 'training' || mode === 'gauntlet' || mode === 'campaign') && world && !pausedLocal) {
     if (stress) {
       buildStressInputs();
     } else {
+      // Campaign time is live play only; the pause and the result overlay never count.
+      if (mode === 'campaign' && overlayKind === 'none') campaignPlaySeconds += dt;
       trainingInputs[0] = localFrame;
-      // Training bots are practice partners, not round opponents. They write the
-      // same InputFrame a human does and respawn with the player, forever.
+      // Training and campaign bots are practice partners, not round opponents. They
+      // write the same InputFrame a human does. The drill squad stops thinking once
+      // the breach de-rezzes it.
+      const drillLive = !world.campaign || world.campaignPhase === 'drill';
       for (let i = 1; i < botBrains.length; i++) {
         const brain = botBrains[i];
         const frame = trainingInputs[i];
-        if (brain && frame) brain.think(world, frame, SIM_DT);
+        if (brain && frame && drillLive) brain.think(world, frame, SIM_DT);
       }
     }
     acc += dt;
@@ -1921,6 +2009,7 @@ function resetCounters(): void {
   lastCountdownText = '';
   lastLocalHp = -1;
   gauntletRecorded = false;
+  lastCampaignPhase = '';
 }
 
 // Screens & overlays ------------------------------------------------------------------------
@@ -2020,6 +2109,19 @@ function syncPhaseUi(state: RenderState): void {
     if (overlayKind !== 'leave') hideOverlayInternal();
     return;
   }
+  if (mode === 'campaign' && world) {
+    if (world.campaignPhase !== lastCampaignPhase) {
+      const phase = world.campaignPhase;
+      if (phase === 'breach') audio.roundStart(1);
+      else if (phase === 'assault') audio.roundStart(2);
+      else if (phase === 'cleared') audio.victory();
+      else if (phase === 'failed') audio.roundEnd();
+      lastCampaignPhase = phase;
+    }
+    if (world.campaignPhase === 'cleared' && overlayKind === 'none') showCampaignClearOverlay(world);
+    else if (world.campaignPhase === 'failed' && overlayKind === 'none') showCampaignFailOverlay(world);
+    return;
+  }
   if (state.mode === 'gauntlet' && state.gauntletOver && overlayKind === 'none') {
     showGauntletOverOverlay(state);
     return;
@@ -2114,6 +2216,48 @@ function returnToGauntletSetup(): void {
   setTitleStatus('');
 }
 
+function showCampaignClearOverlay(w: World): void {
+  if (overlayKind === 'leave' || overlayKind === 'runover') return;
+  if (!campaignSaved && campaignSlot >= 0) {
+    const level = FIRST_CAMPAIGN_LEVEL;
+    saveStoryProgress(campaignSlot, {
+      program: selectedProgram,
+      sector: level.sector,
+      nodeId: level.nodeId,
+      level: 1,
+      players: campaignPlayers,
+      bots: campaignBots,
+      playSeconds: Math.floor(campaignPlaySeconds),
+    });
+    campaignSaved = true;
+  }
+  const saveLine = campaignSlot >= 0 ? 'SLOT SAVED' : 'NO SAVE SLOT';
+  setOverlay(
+    'runover',
+    'CAMPAIGN // NODE CLEARED',
+    'BUILD ROOT SECURED',
+    `${w.gauntletKills} THREATS DELETED // ${formatGauntletTime(campaignPlaySeconds)} // ${saveLine}`,
+    [
+      { label: 'CONTINUE', primary: true, onClick: returnToStory },
+      { label: 'REPLAY', onClick: startCampaignLevel },
+    ],
+  );
+}
+
+function showCampaignFailOverlay(w: World): void {
+  if (overlayKind === 'leave' || overlayKind === 'runover') return;
+  setOverlay(
+    'runover',
+    'CAMPAIGN // SIGNAL LOST',
+    'RING BROKEN',
+    `${w.gauntletKills} / ${CAMPAIGN.killsToClear} THREATS DELETED // ${FIRST_CAMPAIGN_LEVEL.name}`,
+    [
+      { label: 'RETRY', primary: true, onClick: startCampaignLevel },
+      { label: 'SLOTS', onClick: returnToStory },
+    ],
+  );
+}
+
 function showMatchOverlay(state: RenderState): void {
   if (overlayKind === 'leave') return;
   const winner = state.matchWinner;
@@ -2177,11 +2321,12 @@ function closeLeave(): void {
 
 function openLeave(): void {
   if (mode === 'none' || overlayKind === 'leave' || overlayKind === 'runover') return;
-  const local = mode === 'training' || mode === 'bots' || mode === 'gauntlet';
+  const campaignRun = mode === 'campaign';
+  const local = mode === 'training' || mode === 'bots' || mode === 'gauntlet' || campaignRun;
   const training = mode === 'training' && !stress;
   const botMatch = mode === 'bots';
   const gauntlet = mode === 'gauntlet';
-  const paused = training || botMatch || gauntlet;
+  const paused = training || botMatch || gauntlet || campaignRun;
   setOverlay(
     'leave',
     paused ? 'SYSTEM // PAUSED' : 'SYSTEM // LIVE',
@@ -2189,17 +2334,21 @@ function openLeave(): void {
       ? 'LEAVE TRAINING?'
       : botMatch
         ? 'LEAVE BOT MATCH?'
-        : gauntlet
-          ? 'EXIT GAUNTLET?'
-          : local
-            ? 'LEAVE STRESS RUN?'
-            : 'LEAVE MATCH?',
-    local
-      ? 'The simulation will be destroyed. Nothing is saved.'
-      : 'The match continues while this panel is open. Your operator will stand still.',
+        : campaignRun
+          ? 'EXIT NODE?'
+          : gauntlet
+            ? 'EXIT GAUNTLET?'
+            : local
+              ? 'LEAVE STRESS RUN?'
+              : 'LEAVE MATCH?',
+    campaignRun
+      ? 'The run is only saved when a node is cleared.'
+      : local
+        ? 'The simulation will be destroyed. Nothing is saved.'
+        : 'The match continues while this panel is open. Your operator will stand still.',
     [
       { label: 'STAY', onClick: closeLeave },
-      { label: 'LEAVE', primary: true, onClick: () => leaveToTitle() },
+      { label: 'LEAVE', primary: true, onClick: campaignRun ? returnToStory : leaveToTitle },
     ],
   );
 }
@@ -2644,6 +2793,8 @@ if (import.meta.env.DEV) {
     startTraining,
     startTrainingBots,
     startGauntlet,
+    startCampaignLevel,
+    getCampaign: () => ({ slot: campaignSlot, players: campaignPlayers, bots: campaignBots, saved: campaignSaved }),
     startBotMatch,
     startAutoplay,
     startStress,

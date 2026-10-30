@@ -2,7 +2,43 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.33 Kaboom hull)
+Last updated: 2026-10-30 (v0.1.34 campaign node)
+
+---
+
+## v0.1.34 — First campaign node: BUILD ROOT (2026-10-30)
+
+### Node
+- [x] `src/game/campaign.ts` owns the first playable node: BUILD ROOT, sector 0 (LOCALHOST), CROSSROADS
+- [x] Campaign script in `World` on the gauntlet simulation: 18 s sparring drill, 3.4 s `SYSTEM BREACH`,
+      then the threat assault. `World` mode stays `gauntlet` with `campaign = true`
+- [x] Drill squad uses the run's 0–3 bots through the normal `BotBrain`; `NO BOTS` still fields one
+      instructor. Both sides respawn on the training timer during the drill
+- [x] Breach de-rezzes the squad, clears live projectiles, heals the local player and starts a quiet
+      warning window. No threats exist before it
+- [x] Assault opens with a sentry pack, adds worms, then a fresh pack every 14 s. Waves start at 3 and
+      step every 14 s, so viruses arrive late. Delete 10 threats to clear; one death fails the node
+- [x] Short banners for SPARRING DRILL, SYSTEM BREACH and NODE CLEARED / SIGNAL LOST, plus a bottom strip
+      with one pip per threat delete. Wave banners read BREACH WAVE in campaign
+- [x] Clear writes the save slot (program, players, bots, seconds), shows the node-cleared overlay, and
+      CONTINUE returns to the save-slot stage. Failed runs offer RETRY and SLOTS; nothing saves mid-level
+- [x] Filled slots now resume instead of reporting "not wired"; the player select begins a new run
+
+### Verification
+- [x] Headless probe: drill keeps three bodies active and zero threats; the breach leaves only slot 0
+      alive and healed; the assault queues two sentries at wave 3 and reaches 2 sentries + 1 worm by 20 s;
+      forcing 10 kills clears and freezes the node; an idle player fails in the assault
+- [x] Browser 1920×1080: new-run flow slot → bots → player select, drill with two bots, SYSTEM BREACH
+      banner with the squad gone, assault with sentries and a worm, 4/10 fail overlay, forced-clear
+      overlay, saved slot readout, and resume restoring Kaboom plus two drill bots
+- [x] `npx tsc --noEmit` and `npm run build` clean; `npm run bench` unchanged
+
+### Next
+- [ ] Add the next node to `campaign.ts` and a between-level route beat; a cleared slot replays node 1 today
+- [ ] Team rules so campaign bots can fight beside the player after the breach instead of being drill-only
+- [ ] Playtest `CAMPAIGN.drillTime`, `killsToClear` and `sentryInterval` together; the first clear currently
+      takes about a minute of assault
+- [ ] Decide whether `NO BOTS` should keep the mandated instructor or receive a solo drill target
 
 ---
 

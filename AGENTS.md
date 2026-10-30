@@ -398,10 +398,12 @@ link is a `bridge`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   bot count and player select; a filled slot is a resume and skips those steps. The slot record stores
   level, human `players`, `bots` and the run program, and the readout shows the level plus player count,
   not the program. Bots take the programs the human players do not pick. The run saves after every
-  completed level. Slots are local only, never enter `Snapshot`, and nothing writes one until the first
-  playable sector exists. Do not turn this stage into a sector-select screen. The blueprint archive is
-  parked and unlinked while this flow is built; do not reattach it to the campaign stage without a
-  decision.
+  completed level. Slots are local only and never enter `Snapshot`. Do not turn this stage into a
+  sector-select screen. The blueprint archive is parked and unlinked while this flow is built; do not
+  reattach it to the campaign stage without a decision.
+- The first playable node is **BUILD ROOT** (`src/game/campaign.ts`) on `CROSSROADS`; see D17. It is a
+  scripted gauntlet-mode world, saves the slot on clear, and returns to the slot stage. Only one node is
+  authored, so a cleared slot replays it until the next node lands.
 - The campaign route plate (`road.ts`) belongs to the between-level transition, not to the archive. Do not
   mount it in a menu.
 
@@ -501,6 +503,31 @@ reads as a letter. `document.fonts.check` alone reports true for missing system 
 
 All numbers live in the `KABOOM` block in `config.ts`.
 
+### D17 — First campaign node: BUILD ROOT (built 2026-10-30)
+
+The campaign's first playable level is `BUILD ROOT` (`src/game/campaign.ts`) on `CROSSROADS`. It runs in a
+`World('gauntlet')` with `campaign = true`, so it reuses the threat simulation and stays local-only; the
+mode string stays `gauntlet` so no threat branch forks. The script lives in `World`, not in `main.ts`.
+
+- **Drill**: 18 s of sparring against the run's bot squad, using the same `BotBrain` inputs as training and
+  VS BOTS. A `NO BOTS` run still gets one instructor so the drill has a partner. Death on either side
+  respawns on the training timer. No threats exist yet.
+- **Breach**: a 3.4 s `SYSTEM BREACH` warning. The squad de-rezzes, live projectiles clear, and the local
+  player is healed to full for the assault. The squad is gone for the rest of the node.
+- **Assault**: the opening sentry pack lands on the breach beat, then worms arrive, then a new pack every
+  14 s. Campaign waves start at 3 and step every 14 s, so viruses arrive after about 40 s. Clearing 10
+  threats clears the node; one death fails it. The objective strip at the bottom is one pip per delete.
+- **Completion**: a clear writes the save slot (level 1, `program`, `players`, `bots`, seconds) and shows
+  the node-cleared overlay; CONTINUE returns to the save-slot stage. Nothing is saved mid-level. A failed
+  node offers RETRY and SLOTS. Only one node is authored, so resuming a cleared slot replays BUILD ROOT;
+  add the next node to `campaign.ts` before promising a route.
+- **Bots are the drill squad, not allies.** `World` has no team model for bot companions yet, so do not
+  fake allies by disabling friendly fire. Team ownership is the prerequisite for bots that fight beside
+  the player after the breach.
+- Campaign numbers live in the `CAMPAIGN` block in `config.ts`. The node identity, arena blockout and
+  sector link live in `campaign.ts`; never put node geometry in a switch on level id.
+- Everything here is local, like the gauntlet. Nothing campaign-shaped enters `Snapshot`.
+
 
 ---
 
@@ -513,6 +540,7 @@ src/main.ts           app state machine: title → lobby → game; UI wiring; ga
 .github/workflows/pages.yml  build dist and deploy the main-branch alpha to GitHub Pages
 src/game/config.ts    ALL tuning numbers. Change feel here, not in systems.
 src/game/programs.ts  roster: program ids, names, hues, core glyphs, signature skills
+src/game/campaign.ts  first playable campaign node: level identity, arena blockout, sector link
 src/game/road.ts      campaign route plate for the between-level transition (parked, not mounted)
 src/game/arenas.ts    five arena layouts (MAINFRAME is multi-district), spawn rings, previews
 src/game/nav.ts       per-arena 20u navigation grid + reusable A* workspace for bots

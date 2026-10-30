@@ -2,6 +2,7 @@ import {
   BOLT,
   BUG,
   CAMERA_ZOOM,
+  CAMPAIGN,
   CASCADING_ERROR,
   FISHER,
   MINE,
@@ -52,6 +53,7 @@ import {
   ACTION,
   EV,
   type Barrier,
+  type CampaignPhase,
   type CascadingError,
   type Drone,
   type Firewall,
@@ -106,6 +108,19 @@ export class World {
   gauntletOver = false;
   /** Internal bench/headless path: endless respawns and max threat caps. Not exposed in the UI. */
   readonly gauntletPractice: boolean;
+  /**
+   * Campaign script running on the gauntlet simulation: sparring drill, breach warning,
+   * then the threat assault. Local-only like the rest of the sandbox.
+   */
+  readonly campaign: boolean;
+  campaignPhase: CampaignPhase = 'none';
+  /** Seconds inside the current campaign phase. */
+  campaignT = 0;
+  campaignBannerT = 0;
+  /** Starting length of the current campaign banner, for the renderer fade. */
+  campaignBannerDur = 0;
+  /** 0 drill, 1 breach/inbound, 2 cleared, 3 failed. Fixed labels live in the renderer. */
+  campaignBannerKind = 0;
   /** Escalation wave in gauntlet mode. Purely local presentation + spawn pacing. */
   wave = 1;
   waveBannerT = 0;
@@ -188,8 +203,10 @@ export class World {
     program: number = PROGRAM_ID.PROBE,
     botSlots = 0,
     botPrograms: readonly number[] | null = null,
+    campaign = false,
   ) {
     this.mode = mode;
+    this.campaign = campaign;
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
     this.solids = arenaSolids(arena);
@@ -262,7 +279,8 @@ export class World {
       if (active <= 1) this.spawnDrone(true);
     } else if (mode === 'gauntlet') {
       this.phase = 'practice';
-      this.setupGauntlet();
+      if (campaign) this.setupCampaign();
+      else this.setupGauntlet();
     } else {
       this.phase = 'countdown';
       this.beginRound();
@@ -309,6 +327,110 @@ export class World {
       this.players[i].active = false;
       this.players[i].alive = false;
     }
+  }
+
+  /**
+   * First campaign node. The same threat sandbox as the gauntlet, but it waits behind a
+   * sparring drill and a breach warning. Bots stay active for the drill; the breach
+   * de-rezzes them so the room belongs to the incoming hostiles.
+   */
+  private setupCampaign(): void {
+    this.setupGauntlet();
+    this.campaignPhase = 'drill';
+    this.campaignT = 0;
+    this.campaignBannerKind = 0;
+    this.campaignBannerT = CAMPAIGN.drillBannerTime;
+    this.campaignBannerDur = CAMPAIGN.drillBannerTime;
+    this.wave = CAMPAIGN.waveStart;
+    this.waveBannerT = 0;
+    let count = 0;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      // setupGauntlet parks every slot but the local player. The drill squad logs back
+      // in here and takes the arena ring with the player.
+      if (i > 0 && i <= this.botSlots && p.name) {
+        p.active = true;
+        p.connected = true;
+        p.thrall = false;
+      }
+      if (p.active) count++;
+    }
+    computeSpawns(Math.max(1, count), this.arena, this.spawnX, this.spawnY);
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active) continue;
+      const sx = this.spawnX[i];
+      const sy = this.spawnY[i];
+      clearPlayerForSpawn(p, sx, sy, Math.atan2(this.centerY - sy, this.centerX - sx));
+    }
+  }
+
+  /** Advances the campaign script. The threat simulation waits for the assault phase. */
+  private updateCampaign(dt: number): void {
+    if (this.campaignBannerT > 0) this.campaignBannerT = Math.max(0, this.campaignBannerT - dt);
+    if (this.campaignPhase === 'drill') {
+      this.campaignT += dt;
+      if (this.campaignT >= CAMPAIGN.drillTime) this.beginBreach();
+      return;
+    }
+    if (this.campaignPhase === 'breach') {
+      this.campaignT += dt;
+      if (this.campaignT >= CAMPAIGN.breachTime) this.beginAssault();
+      return;
+    }
+    if (this.campaignPhase === 'assault') {
+      this.campaignT += dt;
+      if (this.gauntletKills >= CAMPAIGN.killsToClear) this.clearCampaign();
+    }
+  }
+
+  private beginBreach(): void {
+    this.campaignPhase = 'breach';
+    this.campaignT = 0;
+    this.campaignBannerKind = 1;
+    this.campaignBannerT = CAMPAIGN.breachBannerTime;
+    this.campaignBannerDur = CAMPAIGN.breachBannerTime;
+    // The drill squad logs off on the breach beat so the incoming hostiles own the room.
+    for (let i = 1; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active) continue;
+      this.emit(EV.ELIMINATED, 0, p.x, p.y, p.slot);
+      p.active = false;
+      p.alive = false;
+    }
+    for (let i = 0; i < this.projectiles.length; i++) this.projectiles[i].active = false;
+    const p = this.players[0];
+    // A knockdown on the last drill frame must not leave the player dead for the breach.
+    p.alive = true;
+    p.respawnT = 0;
+    p.hp = p.maxHp;
+    p.energy = PLAYER.energyMax;
+    p.iframes = 1;
+    this.infection = 0;
+  }
+
+  private beginAssault(): void {
+    this.campaignPhase = 'assault';
+    this.campaignT = 0;
+    this.campaignBannerT = 0;
+    this.gauntletT = 0;
+    this.gauntletKills = 0;
+    this.wave = CAMPAIGN.waveStart;
+    this.waveBannerT = 2.4;
+    this.wormSpawnT = CAMPAIGN.openingWormDelay;
+    // Land the opening pack on the breach beat instead of waiting out the timer.
+    this.spawnSentryPack();
+    this.sentrySpawnT = CAMPAIGN.sentryInterval;
+  }
+
+  private clearCampaign(): void {
+    if (this.campaignPhase === 'cleared' || this.campaignPhase === 'failed') return;
+    this.campaignPhase = 'cleared';
+    this.campaignBannerKind = 2;
+    this.campaignBannerT = CAMPAIGN.clearBannerTime;
+    this.campaignBannerDur = CAMPAIGN.clearBannerTime;
+    this.gauntletOver = true; // freeze the arena under the DOM result overlay
+    this.emit(EV.MATCH_END, 0, this.players[0].x, this.players[0].y, 1);
   }
 
   /** Seconds survived in the current gauntlet run; frozen once the run ends. */
@@ -445,6 +567,7 @@ export class World {
       this.clearPressed(inputs);
       return;
     }
+    if (this.campaign) this.updateCampaign(dt);
     if (this.mode === 'match') {
       if (this.phase === 'matchend') {
         this.clearPressed(inputs);
@@ -486,6 +609,12 @@ export class World {
       const p = this.players[i];
       if (!p.active) continue;
       if (!p.alive) {
+        // The campaign drill is practice: both the player and the squad come back.
+        if (this.campaign && this.campaignPhase === 'drill') {
+          p.respawnT -= dt;
+          if (p.respawnT <= 0) this.respawnTrainingPlayer(p);
+          continue;
+        }
         if (this.mode === 'gauntlet' && p.slot > 0) {
           p.active = false;
           p.thrall = false;
@@ -894,7 +1023,10 @@ export class World {
     this.updateLures(dt);
     this.updateBarriers(dt);
     this.updateProjectiles(dt);
-    if (this.mode === 'gauntlet') this.updateGauntlet(dt);
+    // Campaign threats stay parked until the breach warning hands the room over.
+    if (this.mode === 'gauntlet' && (!this.campaign || this.campaignPhase === 'assault')) {
+      this.updateGauntlet(dt);
+    }
 
     if (this.mode === 'match' && this.phase === 'live') {
       const active = this.activeCount();
@@ -3881,6 +4013,27 @@ export class World {
       p.lockActive = false;
       p.lockKind = 0;
       p.lockId = -1;
+      if (this.campaign) {
+        // Drill bots are sparring partners, not threat kills; they log back in.
+        if (p.slot > 0) {
+          p.respawnT = TRAINING.playerRespawn;
+          this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
+          return;
+        }
+        if (this.campaignPhase === 'assault') {
+          this.campaignPhase = 'failed';
+          this.campaignBannerKind = 3;
+          this.campaignBannerT = CAMPAIGN.failBannerTime;
+          this.campaignBannerDur = CAMPAIGN.failBannerTime;
+          this.gauntletOver = true;
+          this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
+          return;
+        }
+        // Drill knockdown: the body waits out the training timer and comes back.
+        p.respawnT = TRAINING.playerRespawn;
+        this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
+        return;
+      }
       if (this.mode === 'gauntlet' && p.slot > 0) {
         p.active = false;
         p.thrall = false;
@@ -4563,7 +4716,10 @@ export class World {
 
   private updateGauntlet(dt: number): void {
     this.gauntletT += dt;
-    const nextWave = 1 + Math.floor(this.gauntletT / GAUNTLET.waveDuration);
+    // A campaign node runs a short, authored ramp instead of the endless sandbox wave.
+    const nextWave = this.campaign
+      ? CAMPAIGN.waveStart + Math.floor(this.campaignT / CAMPAIGN.waveSeconds)
+      : 1 + Math.floor(this.gauntletT / GAUNTLET.waveDuration);
     if (nextWave !== this.wave) {
       this.wave = nextWave;
       this.waveBannerT = 2.4;
@@ -4580,7 +4736,9 @@ export class World {
         this.wormSpawnT -= dt;
         if (this.wormSpawnT <= 0) {
           this.spawnWorm();
-          this.wormSpawnT = this.gauntletInterval(GAUNTLET.wormInterval, GAUNTLET.wormMinInterval);
+          this.wormSpawnT = this.campaign
+            ? CAMPAIGN.wormInterval
+            : this.gauntletInterval(GAUNTLET.wormInterval, GAUNTLET.wormMinInterval);
         }
       }
     }
@@ -4620,7 +4778,9 @@ export class World {
           !this.gauntletPractice && this.wave <= SENTRY.openingWaves
             ? SENTRY.openingInterval
             : SENTRY.interval;
-        this.sentrySpawnT = this.gauntletInterval(nextInterval, SENTRY.minInterval);
+        this.sentrySpawnT = this.campaign
+          ? CAMPAIGN.sentryInterval
+          : this.gauntletInterval(nextInterval, SENTRY.minInterval);
       }
     }
 

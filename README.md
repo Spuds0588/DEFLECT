@@ -10,15 +10,19 @@ numbers, with a vinyl-crackle bed.
 
 **Playable now:** solo training against a sparring drone or endless 1v1–1v3 bot practice, **VS BOTS**
 round matches against one to three local opponents, a scored local **GAUNTLET** against worms, viruses,
-cascading errors, shooters and infected thralls, or host/join a room for up to 8 players. Six arenas are selectable from the title screen, including the multi-district
+cascading errors, shooters and infected thralls, the first **CAMPAIGN** node, or host/join a room for up
+to 8 players. Six arenas are selectable from the title screen, including the multi-district
 `MAINFRAME` and the multi-deck `TRANSIT`. Match modes are first to 3 rounds; training is continuous practice, while gauntlet is a
 one-life score chase with a local top-runs table.
 
 **Campaign (story mode):** `SINGLE PLAYER > CAMPAIGN` opens three local save slots first. An empty slot
 starts a new run: pick the bot count (none to three), then your program. A filled slot shows the level
 and player count and resumes the run, skipping both steps. Bots take the programs you leave unused. The
-run is meant to save after every completed level. Nothing is playable yet and no slot is written until
-the first sector exists. The layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
+first node, `BUILD ROOT`, opens with a sparring drill against that squad (a `NO BOTS` run still drills
+against one instructor), then a `SYSTEM BREACH` warning, then a live threat assault: delete 10 threats to
+clear it. Clearing writes the slot and returns
+to the save list; a run is never saved mid-level. Only one node is authored, so a cleared slot replays
+it for now. The layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
 
 **Multiplayer menu:** `MULTIPLAYER` offers `ONLINE` (host a room or join by code) and `LOCAL` (same-screen
 play, not built yet). Local lists its two modes, `ARENA` and `GAUNTLET`, as placeholders until the setup

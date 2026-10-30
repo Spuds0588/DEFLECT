@@ -500,6 +500,36 @@ export const TRAINING = {
   playerRespawn: 1.6,
 } as const;
 
+/**
+ * CAMPAIGN: the first authored node (`campaign.ts`). The level opens with a sparring
+ * drill against the run's bot squad, then a breach warning clears the room and wakes
+ * the threat sandbox. Threat pacing reuses the gauntlet spawners; these numbers only
+ * set the opening beat and the win condition.
+ */
+export const CAMPAIGN = {
+  /** Drill length before the breach warning. */
+  drillTime: 18,
+  drillBannerTime: 3.4,
+  /** Warning window with no live threats; the squad de-rezzes on the first frame. */
+  breachTime: 3.4,
+  breachBannerTime: 3.2,
+  clearBannerTime: 3.0,
+  failBannerTime: 2.2,
+  /** A NO BOTS run still drills against one instructor. */
+  minDrillBots: 1,
+  maxDrillBots: 3,
+  /** Worms are already unlocked when the assault starts, then a new wave every interval. */
+  waveStart: 3,
+  waveSeconds: 14,
+  /** Threat kills needed to clear the node. */
+  killsToClear: 10,
+  /** First worm arrives this long after the breach. */
+  openingWormDelay: 6,
+  /** A campaign node keeps a tighter cadence than the endless sandbox. */
+  sentryInterval: 14,
+  wormInterval: 14,
+} as const;
+
 export const GAUNTLET = {
   /** Only used by the headless practice/bench path; a scored run ends on death. */
   playerRespawn: 1.3,

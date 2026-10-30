@@ -2,6 +2,11 @@ import type { Rect } from './config';
 
 export type Phase = 'countdown' | 'live' | 'roundover' | 'matchend' | 'practice';
 export type GameMode = 'match' | 'training' | 'gauntlet';
+/**
+ * Campaign script inside a gauntlet-mode world. `cleared` and `failed` set
+ * `gauntletOver`, which freezes the arena under the DOM result overlay.
+ */
+export type CampaignPhase = 'none' | 'drill' | 'breach' | 'assault' | 'cleared' | 'failed';
 
 export interface InputFrame {
   /** Movement / facing vector, magnitude <= 1. */
