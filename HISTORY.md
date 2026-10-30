@@ -1689,5 +1689,8 @@ teleporter pads — link them into one playable arena, and verify every route th
   pathing and firing, and no console errors or vaulting into the trench. The headless probe still has
   the digital brain walking itself across the bridge.
 
-**Next:** confirm the pad read in motion, then party rules for local multiplayer, threat traversal and
-the campaign node loader. See TODO.md § Arena traversal.
+**Deployed:** pushed `main` to `f8450c4`; the Pages workflow completed successfully and production serves
+v0.1.26 with the new service-worker cache. The built bundle loaded with `[DEFLECT-INIT] Build 0.1.26 ready`.
+
+**Next:** party rules for local multiplayer, threat traversal (the pad is also the escape and contagion
+route) and the campaign node loader. See TODO.md § Arena traversal.
