@@ -274,7 +274,8 @@ export const SWEEP = {
   shotSpeed: 500,
   shotTtl: 0.9,
   shotRadius: 15,
-  shotKnockback: 860,
+  /** A broom head is heavy: this is the biggest shove of any ranged attack. */
+  shotKnockback: 1200,
   attackCooldown: 0.5,
   /** Melee combo: two diagonal pushes, then a bigger forward broom. */
   comboWindow: 0.56,

@@ -414,8 +414,8 @@ along the full `SWEEP.bigReach` shaft, not just `PLAYER.swingReach`. The broom i
 of the avatar (binder on top, bristles under it) and strokes **straight up and down** across the lane; it
 does not swing on a curved arc, and the head never turns over. Hit one strokes down, hit two back up.
 - **Ranged**: a thrown broom head at `SWEEP.shotSpeed` (500, deliberately slow). It is wide
-(`shotRadius` 15), does 2 damage, stops on the body and shoves hard, and **dies on geometry** rather than
-ricocheting. It draws no line trail and no handle: just the same upright comb as the melee, with the
+(`shotRadius` 15), does 2 damage, stops on the body and shoves hard (`shotKnockback` 1200, the biggest
+ranged shove in the roster), and **dies on geometry** rather than ricocheting. It draws no line trail and no handle: just the same upright comb as the melee, with the
 bristles at the bottom, plus a short puff of grey square dust from `emitBroomDust`. It is type `6`, so every `type >= 3` hostile check must stay an explicit
 `=== 3 || === 4` or equivalent before adding another player projectile type.
 - **Power**: the giant broom is generated **in front of the player** (`SWEEP.powerFront`), rises one

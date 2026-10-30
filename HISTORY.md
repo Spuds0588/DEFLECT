@@ -1805,3 +1805,17 @@ takes the return stroke. Visual pass in the dev arena: three thrown heads with n
 
 **Next:** playtest the slower throw range and the deeper return; decide whether the thrown broom needs a
 slightly longer TTL to compensate for the lower speed.
+
+## 2026-10-29 — Thrown broom pushback
+
+**Goal:** the thrown broom should move a body it hits.
+
+**Changes**
+- `SWEEP.shotKnockback` 860 → 1200. Measured slide on a standing target went from 130 to 181.5 units
+  (about eight body radii), which reads as a real shove without throwing the target across the arena.
+
+**Verification:** headless measurement, `npx tsc --noEmit` clean, build and bench unchanged in profile
+(8P max proj 0.082/0.234, gauntlet 0.246/0.915).
+
+**Next:** confirm on a real pad that the push reads at gameplay zoom, and decide whether the melee combo
+needs the same treatment.
