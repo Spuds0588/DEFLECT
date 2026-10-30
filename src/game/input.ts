@@ -27,7 +27,8 @@ const PAD = {
   RB: 5,
   LT: 6,
   RT: 7,
-  BACK: 8,
+  /** Back/View/Select: menu back in menus, canvas UI toggle in play. */
+  SELECT: 8,
   START: 9,
   L3: 10,
   UP: 12,
@@ -46,8 +47,10 @@ export interface MenuEdges {
   confirm: boolean;
   /** Face button B — cancel/back in menus, but deflect in game. */
   back: boolean;
-  /** Start/View — the only gamepad button that opens the in-game menu. */
+  /** Start — opens the in-game menu. */
   menu: boolean;
+  /** Back/View/Select — backs out of a menu, toggles the canvas UI in play. */
+  ui: boolean;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -83,7 +86,7 @@ export class Input {
   private padLastSeen = 0;
   private padRescan = true;
 
-  private menu = { up: false, down: false, left: false, right: false, confirm: false, back: false, menu: false };
+  private menu = { up: false, down: false, left: false, right: false, confirm: false, back: false, menu: false, ui: false };
   /** Held menu direction, edge-triggered with a repeat delay so a D-pad tap is one move. */
   private menuDir = 0;
   private menuRepeatAt = 0;
@@ -372,8 +375,14 @@ export class Input {
       this.menu.back = true;
       this.lastDevice = 'gamepad';
     }
-    if ((btn(PAD.START) && !this.padPrev[PAD.START]) || (btn(PAD.BACK) && !this.padPrev[PAD.BACK])) {
+    if (btn(PAD.START) && !this.padPrev[PAD.START]) {
       this.menu.menu = true;
+      this.lastDevice = 'gamepad';
+    }
+    // Select/View is a second back button on menus, but it owns the canvas UI
+    // toggle in play. Keeping it off `menu` means Select never opens the leave overlay.
+    if (btn(PAD.SELECT) && !this.padPrev[PAD.SELECT]) {
+      this.menu.ui = true;
       this.lastDevice = 'gamepad';
     }
 
@@ -395,7 +404,7 @@ export class Input {
   readMenuEdges(): MenuEdges {
     const out: MenuEdges = { ...this.menu };
     this.menu.up = this.menu.down = this.menu.left = this.menu.right = false;
-    this.menu.confirm = this.menu.back = this.menu.menu = false;
+    this.menu.confirm = this.menu.back = this.menu.menu = this.menu.ui = false;
     return out;
   }
 

@@ -75,7 +75,8 @@ Leave the title alone for 24 seconds and it starts an attract demo: a random pro
 fighting a deep gauntlet wave with the canvas UI off. Any key, click, wheel or pad press brings the title
 back. For a showfloor or a capture, add `?demo=true`: the same run, but input cannot leave it and a
 centered `GAUNTLET` title card fades in and out on a 30-second cycle. `GAME UI` in Settings > Feedback
-hides the whole canvas UI layer for a clean capture.
+hides the whole canvas UI layer for a clean capture. On a gamepad, `View` / `Select` toggles that layer
+for the current session without rewriting the saved choice; `Start` remains the in-game menu button.
 
 The camera frames the local group. With several local players it stays on one screen and pulls back until
 the group no longer fits, then splits into the fewest panes: one far player adds one pane, not three. Each
@@ -92,7 +93,8 @@ split or merge so nobody is shot while their screen is moving.
 | Cycle lock target (hold `LT`) | `RB` / right stick left-right | — |
 | Dash / charged dash | `A` or `L3` | `Shift` / `Space` |
 | Confirm / menu | `A` / `Start`, D-pad | `Enter`, arrows, focused button + `Space` |
-| In-game menu | `Start` / `View` | `Escape` |
+| In-game menu | `Start` | `Escape` |
+| Hide/show UI | `View` / `Select` | — |
 | Mute | — | `M` |
 | Perf HUD | — | `F3` |
 

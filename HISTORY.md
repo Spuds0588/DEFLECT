@@ -2794,3 +2794,30 @@ one segment, not two. No test of a real player dodging the tells yet.
 
 **Next:** run wave 3+ in the browser and watch the bite/charge/ram tells at the minimum camera zoom. The
 next content question is whether flocks should burst darts on a ram impact; they currently only shove.
+
+## 2026-10-30 — Gamepad Select toggles the canvas UI (v0.1.59)
+
+**Goal:** give a controller player a quick way to hide the canvas readout without walking into Settings,
+matching the `?ui=0` capture path.
+
+**Changes:**
+- `Input` now latches a dedicated `MenuEdges.ui` edge from button 8, named `PAD.SELECT` (Back/View/Select).
+  It used to share `MenuEdges.menu` with Start, so pressing Select in play opened the leave overlay.
+  `START` is now the only in-game menu button, matching the existing control comments.
+- `handleGamepad` gives Select two jobs. In a menu or overlay it backs out exactly as before. In live play
+  it calls `applyUi(!uiEnabled, false)`, so it hides or restores the whole canvas layer for the session and
+  does not rewrite `deflect.ui`. The existing `GAME UI` setting keeps its persisted behavior.
+- Select feeds the activity clock, so it wakes the idle attract demo like the other pad edges. It does not
+  run during the attract or kiosk demo, whose UI is already forced off.
+- HOW TO PLAY gains a `TOGGLE UI / VIEW / SELECT` row. README and AGENTS D11/§4 now list Select as menu
+  back plus the in-play UI toggle, and Start alone as the in-game menu. Build stamped 0.1.59 in the title,
+  Settings > System, the console log and the service-worker cache.
+
+**Verification:** `npx tsc --noEmit` clean. A virtual standard gamepad was injected into the dev build at
+`?gauntlet=1&arena=0&bot=1&debug=1`: the first Select press changed `GAME UI` to OFF with the pause overlay
+still closed, the second changed it back to ON, Start still opened `SYSTEM // PAUSED`, and Select closed
+that overlay without changing the UI. After toggling OFF, a reload came back ON, which confirms the
+shortcut did not write the saved setting. A physical pad has not been tested.
+
+**Next:** check button 8 on a real Xbox and PlayStation pad and decide whether the table should say
+`VIEW`, `SELECT` or the platform's own label. Keyboard capture still has no equivalent shortcut.

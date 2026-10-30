@@ -341,7 +341,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.58 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.59 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -1559,7 +1559,8 @@ function loop(now: number): void {
     menuEdges.right ||
     menuEdges.confirm ||
     menuEdges.back ||
-    menuEdges.menu
+    menuEdges.menu ||
+    menuEdges.ui
   ) {
     noteUserActivity();
   }
@@ -3137,7 +3138,9 @@ function handleGamepad(edges: MenuEdges): void {
     else if (edges.left) moveNavDir(-1, 0);
     else if (edges.right) moveNavDir(1, 0);
     if (edges.confirm) activateNav();
-    if (edges.back || edges.menu) {
+    // Select/View keeps its old back behavior in menus; in play it owns the
+    // canvas UI instead, so it never opens the leave overlay by accident.
+    if (edges.back || edges.menu || edges.ui) {
       if (overlayKind === 'runover') return;
       if (overlayKind === 'leave') closeLeave();
       else if (screen === 'title') menuBack();
@@ -3145,8 +3148,11 @@ function handleGamepad(edges: MenuEdges): void {
       else if (screen === 'game') openLeave();
       else if (screen === 'lobby') leaveLobby();
     }
+  } else if (edges.ui) {
+    // Session-only, like `?ui=0`: this does not rewrite the saved GAME UI choice.
+    applyUi(!uiEnabled, false);
   } else if (edges.menu) {
-    // B is the deflect button in-game, so only Start/View opens the menu here.
+    // B is the deflect button in-game, so Start is the only menu button here.
     openLeave();
   }
 }

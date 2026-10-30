@@ -2,7 +2,26 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.58 threat melee)
+Last updated: 2026-10-30 (v0.1.59 gamepad UI toggle)
+
+---
+
+## v0.1.59 — Gamepad Select UI toggle (2026-10-30)
+
+### Built
+- [x] `MenuEdges.ui` is a separate Back/View/Select edge. `START` remains the only in-game menu button;
+      Select no longer opens the leave overlay by accident
+- [x] In play, Select toggles the whole canvas UI for the session, exactly like `?ui=0`. It does not
+      rewrite the saved `GAME UI` / `deflect.ui` choice
+- [x] In menus and overlays, Select keeps its old back behavior; `B` still backs out too
+- [x] HOW TO PLAY gamepad table, README controls and AGENTS D11/§4 record the mapping; build stamped 0.1.59
+- [x] `npx tsc --noEmit` clean. Virtual-pad browser run: two Select presses flipped `GAME UI: ON` to OFF and
+      back, Start still opened `SYSTEM // PAUSED`, Select closed it without changing the UI, and a reload
+      restored the saved ON choice
+
+### Next
+- [ ] Physical Xbox/PlayStation pad pass: confirm the View/Select/Share button is index 8 on the user's
+      hardware and that the table's `VIEW / SELECT` label matches the pad
 
 ---
 

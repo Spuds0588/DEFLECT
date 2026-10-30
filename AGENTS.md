@@ -384,6 +384,8 @@ beside the title menu. The minimap is a small edge-anchored overlay showing cove
 and every local threat family; it is off only by explicit player choice. `GAME UI` hides the whole
 canvas UI layer (match strip, wave banners, readiness docks, minimap) for a clean capture without
 changing the avatar's own health or lock marks; `?ui=0` does the same for one load and does not persist.
+On a gamepad, `VIEW`/`SELECT` toggles the same layer for the session without rewriting the saved choice;
+`START` is the only in-game menu button.
 
 `HOW TO PLAY` is a top-level title option and the only home for control and kit explanations. It detects
 connected gamepads and draws a gamepad, touch or keyboard/mouse table; the pad name may appear in that
@@ -1162,13 +1164,15 @@ keeps it lower-left; a split view or more than one local player puts it top-cent
 | Dash / charged dash | `A` / `L3` | `Shift` / `Space` |
 | Menu confirm | `A` / `Start` | `Enter` / focused button + `Space` |
 | Menu move | D-pad / left stick | Arrows |
-| Menu back | `B` | `Escape` |
-| Open in-game menu | `Start` / `View` | `Escape` |
+| Menu back | `B` / `View` | `Escape` |
+| Open in-game menu | `Start` | `Escape` |
+| Toggle canvas UI | `View` / `Select` | — |
 | Mute | — | `M` |
 | Perf HUD | — | `F3` |
 
-`B` is the deflect button in-game, so only `Start`/`View` opens the in-game menu while playing. `B`
-closes an open overlay (menu back). Settings are a top-level title option; the gamepad navigates the
+`B` is the deflect button in-game, so only `Start` opens the in-game menu while playing. `View`/`Select`
+backs out of menus and toggles the canvas UI during play for the session; it does not rewrite `GAME UI`.
+`B` closes an open overlay (menu back). Settings are a top-level title option; the gamepad navigates the
 four tabs with the d-pad/stick and confirms with `A`. Gameplay actions are edge-triggered and buffered: guest inputs
 include a `pressed` mask accumulated since the previous send so taps are never lost between 60 Hz packets.
 Lock cycling is an edge action (`LOCK_NEXT` / `LOCK_PREV`); holding `LT` keeps the lock, and each
