@@ -284,17 +284,24 @@ export const SWEEP = {
   bigReach: 96,
   bigDamage: 2,
   bigKnockback: 1150,
-  /** Power: build a giant broom, then sweep it through the facing half of the room. */
+  /**
+   * Power: a giant broom head assembles in front of the player, sweeps up, then comes
+   * back down through the same lane. One up-and-down pass, no net pull toward the caster.
+   */
   powerCost: 55,
   powerChargeTime: 0.85,
   powerCooldown: 6,
   powerDuration: 0.9,
-  /** Half-height of the swept band. Two thirds of the 720 view is 480, so 230 each way. */
-  powerBand: 230,
-  /** Distance the broom travels from behind the player to ahead of him. */
-  powerReach: 520,
-  /** Half-thickness of the live broom line. */
-  powerWidth: 30,
+  /** How far above its start line the head rises before the return stroke. */
+  powerRise: (VIEW_H / CAMERA_ZOOM) * 0.5,
+  /** How far in front of the player the head is generated. */
+  powerFront: 110,
+  /** Half the visible width. Four fifths of the camera window: leaves an escape lane. */
+  powerSpan: (VIEW_W / CAMERA_ZOOM) * 0.4,
+  /** Half-thickness of the live bristle row, measured below the head plate. */
+  powerWidth: 46,
+  /** Slide held on bodies under the live broom so they ride the stroke with it. */
+  powerCarry: 620,
   powerDamage: 2,
   powerKnockback: 1450,
   /** Skill: two brooms start together in front and split outward to clear a lane. */

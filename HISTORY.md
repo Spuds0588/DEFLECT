@@ -1752,3 +1752,32 @@ worker cache and package version are all 0.1.27.
 
 **Next:** playtest the third hit and the power band, decide whether kits should travel online (snapshot
 change), and consider a vector broom for the core if the sparkle is too abstract.
+
+## 2026-10-29 — Sweep.exe pass 2: character brooms, vertical strokes
+
+**Goal:** take Sweep's brooms from vector shapes to the ASCII mark the designer asked for, fix the heavy
+so it commits and does not drag enemies toward the player, and make the melee read as a broom instead of
+a lash.
+
+**Changes**
+- Brooms are now drawn with real characters: a binder row (`/=====\`) over three dense bristle rows,
+  cached per size and stretched to span the head. The melee, thrown broom, split brooms and heavy all
+  share the shape; the old shaft-plus-fan polygon is gone.
+- Core mark stays `✷`. The two-row ASCII broom was tried in the core and turned to mush at 11px, so the
+  star stays; the kit carries the broom.
+- Melee: upright head in front of the avatar, bristles at the bottom, stroking straight up and down
+  instead of riding the 180-degree arc. Hit one strokes down, hit two back up, the big hit spans the lane.
+- Heavy: generated in front of the player (`powerFront` 110) and strokes up (`powerRise` 281) then back
+  down the same lane in `powerDuration` 0.9s, carrying bodies with the stroke. It used to drop from the
+  top of the view, which pushed enemies toward the player. Width is 80% of the view (`powerSpan` 400)
+  and contact is a moving band with cover still cutting line of sight.
+- Heavy now always commits: `fireBroomSweep` no longer refuses on an energy check after the charge (the
+  start already pays for it), and a release on the completion tick fires instead of cancelling.
+- Core star restored, `glyphRadius` removed from Sweep.
+
+**Verification:** `npx tsc --noEmit` clean; headless script confirmed the heavy fires, hits for 2, carries
+the target up then down, and leaves a body outside the lane untouched; the skill still damages. Visual
+pass in the dev arena for the melee pose, the heavy mid-stroke and the star core.
+
+**Next:** playtest the stroke speeds and the carry feel; decide whether the thrown broom should also use
+the character head at projectile scale.

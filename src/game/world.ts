@@ -626,10 +626,14 @@ export class World {
               p.facing = Math.atan2(input.my, input.mx);
             }
             p.laserFacing = p.facing;
+            this.placeBroom(p);
             if (p.laserChargeT >= SWEEP.powerChargeTime) this.fireBroomSweep(p);
+          } else if (p.laserChargeT >= SWEEP.powerChargeTime) {
+            // Released on the same tick the charge completed: commit it instead of
+            // treating the release as a cancel.
+            this.fireBroomSweep(p);
           } else {
-            if (canAct && p.laserChargeT >= SWEEP.powerChargeTime) this.fireBroomSweep(p);
-            else if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
             p.laserChargeHeld = false;
             p.laserChargeT = 0;
             p.chargeT = 0;
@@ -2176,16 +2180,20 @@ export class World {
   }
 
   /**
-   * Sweep's heavy: builds the giant broom behind his facing, then commits it. The line
-   * crosses the cast point and travels to `SWEEP.powerReach`, shoving every body it
-   * crosses once in the facing direction.
+   * Sweep's heavy: the giant broom head assembles at the top of the player's view, then
+   * drops two thirds of the way down it, carrying and damaging every body it passes.
+   * The cast point is the camera window the renderer shows, so the head really does
+   * enter from the screen edge instead of from behind the avatar.
    */
   private fireBroomSweep(p: Player): void {
-    if (!p.alive || p.energy < SWEEP.powerCost) {
+    if (!p.alive) {
       p.laserChargeHeld = false;
       p.laserChargeT = 0;
       return;
     }
+    // The charge start already checked the cost. Refusing again here meant a heavy
+    // that finished charging could silently vanish on release, so pay what is there
+    // and always commit the sweep.
     p.energy = Math.max(0, p.energy - SWEEP.powerCost);
     p.laserChargeHeld = false;
     p.laserChargeT = 0;
@@ -2193,11 +2201,10 @@ export class World {
     p.chargeHeld = false;
     p.broT = SWEEP.powerDuration;
     p.broDur = SWEEP.powerDuration;
-    p.broX = p.x;
-    p.broY = p.y;
-    p.broDirX = Math.cos(p.facing);
-    p.broDirY = Math.sin(p.facing);
-    p.broS = -SWEEP.powerReach;
+    this.placeBroom(p);
+    p.broDirX = 0;
+    p.broDirY = 1;
+    p.broS = 0;
     p.broHitPlayers = 0;
     p.broHitWorms = 0;
     p.broHitViruses = 0;
@@ -2214,10 +2221,22 @@ export class World {
     this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
   }
 
+  /**
+   * The giant broom is generated just in front of the player and keeps that lane for the
+   * whole stroke. Recomputed while charging so the assembly preview and the committed
+   * sweep start in the same place.
+   */
+  private placeBroom(p: Player): void {
+    p.broX = p.x + Math.cos(p.facing) * SWEEP.powerFront;
+    p.broY = p.y + Math.sin(p.facing) * SWEEP.powerFront;
+  }
+
   private tickBroomSweep(p: Player, dt: number): void {
     p.broT = Math.max(0, p.broT - dt);
     const pct = p.broDur > 0 ? 1 - p.broT / p.broDur : 1;
-    p.broS = -SWEEP.powerReach + SWEEP.powerReach * 2 * pct;
+    // One big stroke: up for the first half, back down through the same lane for the
+    // second. Bodies caught on the way up are carried back down, not into the caster.
+    p.broS = pct < 0.5 ? -SWEEP.powerRise * (pct / 0.5) : -SWEEP.powerRise + SWEEP.powerRise * ((pct - 0.5) / 0.5);
     this.resolveBroomSweep(p);
     if (p.broT > 0) return;
     p.laserCd = SWEEP.powerCooldown;
@@ -2229,21 +2248,34 @@ export class World {
     p.broHitDrone = false;
   }
 
-  /** The live broom is one wide line across the facing axis, travelling forward. */
+  /**
+   * The live broom is one wide bristle row travelling down the view. Damage lands once
+   * per body per cast; every body still under the row keeps a downward slide so it
+   * rides the broom to the bottom instead of being flicked out of it on the first hit.
+   */
   private resolveBroomSweep(p: Player): void {
     const fx = p.broDirX;
     const fy = p.broDirY;
-    const half = SWEEP.powerBand;
+    const half = SWEEP.powerSpan;
     const width = SWEEP.powerWidth;
+    // The stroke direction, not the band axis: the rise pushes up, the return pushes
+    // down, so a body caught on the way up is carried back with the head.
+    const pct = p.broDur > 0 ? 1 - p.broT / p.broDur : 1;
+    const sy = pct < 0.5 ? -1 : 1;
 
     for (let i = 0; i < this.players.length; i++) {
       const target = this.players[i];
-      if (target === p || !target.active || !target.alive || target.iframes > 0 || target.travelT > 0) continue;
-      const bit = 1 << target.slot;
-      if ((p.broHitPlayers & bit) !== 0) continue;
+      if (target === p || !target.active || !target.alive || target.travelT > 0) continue;
       if (!this.broomReaches(p, target.x, target.y, PLAYER.radius, fx, fy, half, width)) continue;
+      const bit = 1 << target.slot;
+      if ((p.broHitPlayers & bit) !== 0) {
+        target.kx = 0;
+        target.ky = sy * SWEEP.powerCarry;
+        continue;
+      }
+      if (target.iframes > 0) continue;
       p.broHitPlayers |= bit;
-      this.damagePlayer(target, SWEEP.powerDamage, p.slot, fx, fy, SWEEP.powerKnockback);
+      this.damagePlayer(target, SWEEP.powerDamage, p.slot, 0, sy, SWEEP.powerKnockback);
     }
 
     if (this.mode === 'training' && this.drone.active && !p.broHitDrone) {
@@ -2257,26 +2289,32 @@ export class World {
     for (let i = 0; i < this.sentries.length; i++) {
       const s = this.sentries[i];
       if (!s.active) continue;
-      const bit = 1 << i;
-      if ((p.broHitSentries & bit) !== 0) continue;
       if (!this.broomReaches(p, s.x, s.y, s.radius, fx, fy, half, width)) continue;
+      const bit = 1 << i;
+      if ((p.broHitSentries & bit) !== 0) {
+        s.kx = 0;
+        s.ky = sy * SWEEP.powerCarry;
+        continue;
+      }
       p.broHitSentries |= bit;
-      this.damageSentry(s, SWEEP.powerDamage, p.slot, fx, fy, SWEEP.powerKnockback);
+      this.damageSentry(s, SWEEP.powerDamage, p.slot, 0, sy, SWEEP.powerKnockback);
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
       if (!v.active) continue;
-      const bit = 1 << i;
-      if ((p.broHitViruses & bit) !== 0) continue;
       if (!this.broomReaches(p, v.x, v.y, v.radius, fx, fy, half, width)) continue;
+      const bit = 1 << i;
+      if ((p.broHitViruses & bit) !== 0) {
+        v.kx = 0;
+        v.ky = sy * SWEEP.powerCarry;
+        continue;
+      }
       p.broHitViruses |= bit;
-      this.damageVirus(v, SWEEP.powerDamage, p.slot, fx, fy, SWEEP.powerKnockback);
+      this.damageVirus(v, SWEEP.powerDamage, p.slot, 0, sy, SWEEP.powerKnockback);
     }
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      const bit = 1 << i;
-      if ((p.broHitWorms & bit) !== 0) continue;
       let touchX = 0;
       let touchY = 0;
       let touching = this.broomReaches(p, w.x, w.y, WORM.headRadius, fx, fy, half, width);
@@ -2291,11 +2329,14 @@ export class World {
         touchY = w.segY[s];
       }
       if (!touching) continue;
+      const bit = 1 << i;
+      if ((p.broHitWorms & bit) !== 0) {
+        w.kx = 0;
+        w.ky = sy * SWEEP.powerCarry;
+        continue;
+      }
       p.broHitWorms |= bit;
-      const ndx = touchX - p.x;
-      const ndy = touchY - p.y;
-      const nd = Math.hypot(ndx, ndy) || 1;
-      this.damageWorm(w, SWEEP.powerDamage, p.slot, ndx / nd, ndy / nd, SWEEP.powerKnockback);
+      this.damageWorm(w, SWEEP.powerDamage, p.slot, 0, sy, SWEEP.powerKnockback);
     }
     for (let i = 0; i < this.errors.length; i++) {
       const e = this.errors[i];
@@ -2305,7 +2346,7 @@ export class World {
       const radius = CASCADING_ERROR.blockSize * 0.5;
       if (!this.broomReaches(p, e.x, e.y, radius, fx, fy, half, width)) continue;
       p.broHitErrors |= bit;
-      this.damageError(e, SWEEP.powerDamage, p.slot, fx, fy);
+      this.damageError(e, SWEEP.powerDamage, p.slot, 0, sy);
     }
   }
 

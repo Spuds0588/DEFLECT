@@ -86,7 +86,7 @@ Enemy and bot damage visuals are undecided, so do not add health pips back until
 
 Offline play identifies by **program**, not by slot. Each program owns a hue (`PROGRAM_COLORS`) and a
 silhouette from `pathProgramHealth` in `src/game/identity.ts`: Probe is a cyan scan ring with `◎`, Wedge
-an amber diamond with `▣`, Fisher an indigo hex reel with `≈`. The select screen and the arena share that
+an amber diamond with `▣`, Fisher an indigo hex reel with `≈`, Sweep a lime octagon with `✷`. The select screen and the arena share that
 shape and glyph, so a program reads the same in the roster, intro and fight.A program's `glyph` may be a single character, a multi-character text combo, Unicode dingbats/wingdings, or a multi-line ASCII picture; `drawSymbol` scales it to the core and portrait, strips common indentation, and measures the real advance against the symbol font stack (`ui-monospace` first, then `Segoe UI Symbol`, `Noto Sans Symbols 2`, `Apple Symbols`, Wingdings, Webdings) so a wide mark shrinks instead of spilling through the hull. Prefer direction-neutral marks: a pointing glyph at the core reads as facing. Each program also owns `coreScale` so a tight hull keeps clearance from its
 rotating health segments: Probe `1.12`, Wedge `0.88` (the diamond's sides are the tightest core), Fisher
 `1.10`, Sweep `1.06`. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
@@ -401,22 +401,34 @@ link is a `bridge`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
 
 ### D14 — Sweep.exe: broom push kit, clean core mark (built 2026-10-29)
 `SWEEP.EXE` is the fourth program and the roster's **shove** specialist. Identity: lime accent, an
-eight-sided hull, and a `✦` clean sparkle at the core. The only literal Unicode broom is the colour emoji
-`🧹`, which ignores `fillStyle` and would put a brown bitmap inside an otherwise single-hue silhouette; do
-not tint emoji into the core mark. The kit carries the broom: the core mark says "clean" instead. Revisit
-only if a monochrome broom glyph is drawn as vector paths.
+eight-sided hull, and a `✷` eight-spoke burst at the core. The mark search is closed for now: the only
+literal broom is the colour emoji `🧹` (ignores `fillStyle`, so a brown bitmap lands inside a one-hue
+silhouette), and Wingdings has no broom at all across its 224 glyphs. Of the monochrome "clean" marks that
+survived, the four-point sparkle `✦` thins to a faint plus at the ~11px the core gets, so the burst is the
+pick. The kit carries the broom: the core mark only has to say "clean". Revisit only if a monochrome broom
+is drawn as vector paths.
 
 - **Melee**: a three-hit broom combo replaces the shared lash. Diagonal pushes on hits one and two, then
 a bigger forward broom. Every hit locks facing and the hold is still the guard. The third hit reflects
-along the full `SWEEP.bigReach` shaft, not just `PLAYER.swingReach`.
+along the full `SWEEP.bigReach` shaft, not just `PLAYER.swingReach`. The broom is drawn upright in front
+of the avatar (binder on top, bristles under it) and strokes **straight up and down** across the lane; it
+does not swing on a curved arc, and the head never turns over. Hit one strokes down, hit two back up.
 - **Ranged**: a broom thrown at `SWEEP.shotSpeed` (near Fisher's spear) with a square dust trail. It does
 2 damage, stops on the body and shoves hard; it is type `6`, so every `type >= 3` hostile check must stay
 an explicit `=== 3 || === 4` or equivalent before adding another player projectile type.
-- **Power**: builds the giant broom line by line behind the committed facing, then sweeps it through the
-cast point to `+SWEEP.powerReach` over `SWEEP.powerDuration`. The live broom is one wide line
-(`SWEEP.powerBand` half-height) that damages and shoves each body once; cooldown starts when it ends.
+- **Power**: the giant broom is generated **in front of the player** (`SWEEP.powerFront`), rises one
+stroke (`SWEEP.powerRise`) and comes back down the same lane over `SWEEP.powerDuration`. The head is a
+screen-wide character comb (`SWEEP.powerSpan` half-width) that damages each body once and carries it with
+the stroke (`SWEEP.powerCarry`), pushing up on the rise and down on the return so victims are not dragged
+toward the caster. Cover cuts the contact. Cooldown starts when the stroke ends.
 - **Skill**: two brooms start together in front and split along the tangent to `SWEEP.fanReach`, shoving
 bodies outward and clearing the lane. Bodies are hit once per cast, and cover still cuts the contact.
+
+All four broom shapes are drawn with **real characters**, not stroked polygons: a binder row
+(`/=====\`) over three dense bristle rows (`|||||||`), cached per size and stretched to span the head,
+so the arena attacks and the core mark share one visual language. Keep the `✷` burst at the core: the
+two-row ASCII picture was tried there and turns to mush at core size, and a text mark inside the octagon
+read worse than the star. The heavy and melee brooms stay upright with the bristles at the bottom.
 
 Displacement reuses the shared `kx`/`ky` slide, `PLAYER.knockDrag` easing and the existing square slide
 dust; do not add a second knockback system. All numbers live in the `SWEEP` block in `config.ts`. Bots own

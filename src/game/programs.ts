@@ -78,11 +78,12 @@ export const PROGRAMS: readonly ProgramDef[] = [
     note: 'BROOM COMBO // GIANT SWEEP // SPLIT BROOMS',
     color: PROGRAM_COLORS.sweep,
     /**
-     * Clean mark: a four-point sparkle. The only literal Unicode broom is a colour
-     * emoji, which would break the one-hue silhouette, so the core says "clean" and
-     * the kit carries the broom itself. Direction neutral and legible at core size.
+     * Clean mark: an eight-spoke burst. The core is too small for the two-row broom
+     * picture to survive; it turns to mush inside the octagon, while this mark keeps
+     * eight distinct spokes. The kit itself now draws literal ASCII brooms, so the
+     * center only has to say "clean".
      */
-    glyph: '✦',
+    glyph: '✷',
     coreScale: 1.06,
     bugKind: 6,
   },

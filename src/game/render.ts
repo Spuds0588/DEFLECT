@@ -1,7 +1,7 @@
 import { BOLT, BUG, CAMERA_ZOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
-import { drawGlyph, drawSymbol, pathProgramFrame, pathProgramHealth, PROGRAM_COLORS, slotColor, slotGlyph, THREAT_COLORS } from './identity';
+import { drawGlyph, drawSymbol, pathProgramFrame, pathProgramHealth, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
 import { P_COLOR_DUST, P_COLOR_ICE, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
@@ -42,6 +42,44 @@ export interface RenderState {
 const FONT_TINY = '700 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const FONT_SMALL = '700 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const FONT_MID = '700 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+
+/** Cached ASCII broom rows. Keyed by column count; built once per size, never per frame. */
+const BROOM_HEAD_ROWS = new Map<number, string>();
+const BROOM_TEETH_ROWS = new Map<number, string>();
+const BROOM_WIDTHS = new Map<string, number>();
+
+function broomHeadRow(cols: number): string {
+  let row = BROOM_HEAD_ROWS.get(cols);
+  if (row === undefined) {
+    row = `/${'='.repeat(Math.max(1, cols - 2))}\\`;
+    BROOM_HEAD_ROWS.set(cols, row);
+  }
+  return row;
+}
+
+/**
+ * Width of a broom row in the current font, measured once per size and row length.
+ * The rows are all `=` or `|`, so length plus font size identifies them.
+ */
+function broomRowWidth(ctx: CanvasRenderingContext2D, row: string, px: number): number {
+  const key = px + '|' + row.length;
+  let w = BROOM_WIDTHS.get(key);
+  if (w === undefined) {
+    ctx.font = symbolFont(px);
+    w = Math.max(1, ctx.measureText(row).width);
+    BROOM_WIDTHS.set(key, w);
+  }
+  return w;
+}
+
+function broomTeethRow(cols: number): string {
+  let row = BROOM_TEETH_ROWS.get(cols);
+  if (row === undefined) {
+    row = '|'.repeat(cols);
+    BROOM_TEETH_ROWS.set(cols, row);
+  }
+  return row;
+}
 
 const TWO_PI = Math.PI * 2;
 const FIRST_TO = `FIRST TO ${ROUND.winsNeeded}`;
@@ -1756,12 +1794,16 @@ export class Renderer {
         ctx.rotate(angle);
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
-        ctx.globalAlpha = 0.95;
-        ctx.lineWidth = 2;
-        ctx.lineCap = 'round';
-        this.pathBroom(ctx, -15, 14, 4, 12);
-        ctx.stroke();
         ctx.restore();
+        this.drawBroomText(
+          x - Math.cos(angle) * 13,
+          y - Math.sin(angle) * 13,
+          10,
+          26,
+          angle,
+          0.95,
+          color,
+        );
         ctx.save();
         ctx.fillStyle = '#9aa7b4';
         for (let k = 0; k < 5; k++) {
@@ -2436,7 +2478,7 @@ export class Renderer {
       // Sweep: the giant broom builds at his side, then crosses the room. The two
       // split brooms from the skill live in the same block.
       if (p.program === PROGRAM_ID.SWEEP) {
-        this.drawGiantBroom(p, x, y, color, t);
+        this.drawGiantBroom(p, color, t);
         this.drawFan(p, color, t);
       }
 
@@ -3016,133 +3058,142 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** A broom in local space: shaft from `inner` to `tip`, bristles fanned at the tip. */
-  private pathBroom(
-    ctx: CanvasRenderingContext2D,
-    inner: number,
-    tip: number,
-    bristles: number,
-    spread: number,
+  /**
+   * Draws the broom head the way the ASCII mark reads: a binder row `/=====\` over
+   * dense rows of bristles `|||||||||`. Real characters, not stroked shapes, so the
+   * kit and the program mark are the same object. Row strings are cached per column
+   * count, so drawing allocates nothing after the first frame at a given size.
+   *
+   * (x, y) is the middle of the binder's back edge, `half` is half the head width and
+   * `depth` is the whole head from binder to bristle tips. Bristles point +y in local
+   * space; `angle` rotates that onto the push direction (PI/2 is straight down).
+   */
+  private drawBroomText(
+    x: number,
+    y: number,
+    half: number,
+    depth: number,
+    angle: number,
+    alpha: number,
+    color: string,
+    reveal = 1,
   ): void {
-    const binder = tip - (tip - inner) * 0.34;
-    ctx.beginPath();
-    ctx.moveTo(inner, 0);
-    ctx.lineTo(binder, 0);
-    ctx.moveTo(binder, -spread * 0.28);
-    ctx.lineTo(binder, spread * 0.28);
-    for (let i = -bristles; i <= bristles; i++) {
-      const k = i / bristles;
-      ctx.moveTo(binder, k * spread * 0.28);
-      ctx.lineTo(tip, k * spread);
+    if (half < 2 || depth < 4) return;
+    const ctx = this.ctx;
+    const headPx = depth * 0.34;
+    const teethPx = depth * 0.22;
+    // Monospace advance is about 0.6em; the bristle rows are set tighter (0.5em) so
+    // the comb reads dense, like the `|||||||||` row in the mark.
+    const headCols = Math.max(3, Math.round((half * 2) / (headPx * 0.6)));
+    const teethCols = Math.max(4, Math.round((half * 2) / (teethPx * 0.5)));
+    const head = broomHeadRow(headCols);
+    const teeth = broomTeethRow(teethCols);
+    ctx.save();
+    ctx.translate(x, y);
+    // Canonical block: binder on top, bristles below. `angle` turns that comb onto the
+    // push direction; Math.PI / 2 is straight down, the avatar's resting hold.
+    ctx.rotate(angle - Math.PI / 2);
+    if (reveal < 1) {
+      ctx.beginPath();
+      ctx.rect(-half * reveal, 0, half * 2 * reveal, depth);
+      ctx.clip();
     }
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    // Stretch each row so it spans the head exactly. Measured once per size, then a
+    // cheap x-scale keeps the binder and the bristle rows flush at both ends.
+    const headSx = (half * 2) / broomRowWidth(ctx, head, headPx);
+    const teethSx = (half * 2) / broomRowWidth(ctx, teeth, teethPx);
+    // Binder row, then two bristle rows. A wide, faint stroke is the glow pass.
+    ctx.font = symbolFont(headPx);
+    ctx.save();
+    ctx.scale(headSx, 1);
+    ctx.globalAlpha = alpha * 0.3;
+    ctx.lineWidth = 3 / headSx;
+    ctx.strokeText(head, 0, headPx * 0.5);
+    ctx.globalAlpha = alpha;
+    ctx.fillText(head, 0, headPx * 0.5);
+    ctx.restore();
+    ctx.font = symbolFont(teethPx);
+    ctx.save();
+    ctx.scale(teethSx, 1);
+    for (let r = 0; r < 3; r++) {
+      const rowY = headPx + teethPx * (0.5 + r);
+      ctx.globalAlpha = alpha * 0.28;
+      ctx.lineWidth = 2.2 / teethSx;
+      ctx.strokeText(teeth, 0, rowY);
+      ctx.globalAlpha = alpha;
+      ctx.fillText(teeth, 0, rowY);
+    }
+    ctx.restore();
+    ctx.restore();
   }
 
   /**
-   * Sweep's melee. The broom head rides the same arc as every other program's lash, but
-   * reads as a physical push: a shaft, a bristle fan and squares shaken loose.
+   * Sweep's melee. The broom head is held out in front of the avatar, bristles up, and
+   * strokes straight up and down across the lane instead of riding a curved arc. The
+   * two diagonal combo hits alternate the direction of the stroke; the big third hit
+   * spans a longer stroke with a wider head.
    */
   private drawBroomSwing(p: Player, x: number, y: number, facing: number, color: string): void {
-    const half = PLAYER.swingHalfAngle;
-    const dir = p.swingDir === 0 ? 1 : p.swingDir < 0 ? -1 : 1;
     const pct = Math.max(0, Math.min(1, p.swingPct));
     const progress = p.swingPhase === 1 ? 0 : p.swingPhase === 2 ? 1 - pct : 1;
     const big = p.swingKind === 3;
     const reach = big ? SWEEP.bigReach : PLAYER.punchReach;
-    const angle = facing - dir * half * 0.96 + dir * half * 1.92 * progress;
+    const depth = big ? 46 : 24;
+    const half = big ? 26 : 14;
+    const span = reach * (big ? 0.95 : 0.6);
     const alpha = p.swingPhase === 2 ? 0.95 : p.swingPhase === 3 ? 0.3 : 0.55;
+    // Hit one comes down, hit two comes back up, the payoff sweeps the full lane.
+    const from = p.swingKind === 2 ? span : -span;
+    const offset = from + (-from - from) * progress;
+    const bx = x + Math.cos(facing) * reach * 0.8;
+    const by = y + Math.sin(facing) * reach * 0.8 + offset;
     const ctx = this.ctx;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    ctx.strokeStyle = color;
-    ctx.lineCap = 'round';
-    ctx.globalAlpha = alpha;
-    ctx.lineWidth = big ? 3 : 2.2;
-    this.pathBroom(ctx, PLAYER.radius * 0.35, reach, big ? 6 : 4, big ? 24 : 16);
-    ctx.stroke();
-    ctx.restore();
-    // Square dust shaken off the bristles, kept in screen space.
+    this.drawBroomText(bx, by - depth * 0.5, half, depth, Math.PI / 2, alpha, color);
+    // Square dust shaken off the bristles along the stroke.
     ctx.save();
     ctx.fillStyle = '#9aa7b4';
-    for (let i = 0; i < 4; i++) {
-      const back = i * 0.2;
-      const a = angle - dir * back;
-      const r = reach * (0.94 - i * 0.16);
+    for (let i = 0; i < 5; i++) {
+      const trail = i * 0.16;
       const wobble = Math.sin(p.swingT * 42 + i * 2.1) * 3;
-      ctx.globalAlpha = alpha * (0.34 - i * 0.06);
-      ctx.fillRect(x + Math.cos(a) * r - 1.6 + wobble, y + Math.sin(a) * r - 1.6, 3.2, 3.2);
+      ctx.globalAlpha = alpha * (0.34 - i * 0.055);
+      ctx.fillRect(bx - half + (i / 4) * half * 2 + wobble, by + depth * 0.5 + trail * span * 0.5, 3.2, 3.2);
     }
     ctx.restore();
   }
 
   /**
-   * Sweep's heavy. It draws line by line while charging: the bristle fan widens from the
-   * middle out, then the spine closes, then the handle arrives. While live it travels the
-   * committed line at full size.
+   * Sweep's heavy. The head assembles at the top of the player's view, widening from the
+   * middle out, then drops about two thirds of the way down the screen. While live it is
+   * a committed world position, so panning the camera does not drag the broom with it.
    */
-  private drawGiantBroom(p: Player, x: number, y: number, color: string, t: number): void {
+  private drawGiantBroom(p: Player, color: string, t: number): void {
     const charging = p.laserChargeHeld && p.broT <= 0;
     if (!charging && p.broT <= 0) return;
     const build = charging ? Math.max(0, Math.min(1, p.laserChargeT / SWEEP.powerChargeTime)) : 1;
-    const dirX = charging ? Math.cos(p.laserFacing) : p.broDirX;
-    const dirY = charging ? Math.sin(p.laserFacing) : p.broDirY;
-    const s = charging ? -SWEEP.powerReach : p.broS;
-    const half = SWEEP.powerBand;
-    const px = -dirY;
-    const py = dirX;
-    const baseX = (charging ? x : p.broX) + dirX * s;
-    const baseY = (charging ? y : p.broY) + dirY * s;
-    const live = !charging;
+    const cx = p.broX;
+    const cy = p.broY + (charging ? 0 : p.broS);
+    const half = SWEEP.powerSpan;
+    const depth = SWEEP.powerWidth * 2;
     const ctx = this.ctx;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineCap = 'square';
-    // Spine: a hard line across the swept band, growing from the middle out.
-    const spine = 0.25 + 0.75 * build;
-    ctx.globalAlpha = 0.28 + 0.4 * build;
-    ctx.lineWidth = live ? 3 : 2;
-    ctx.beginPath();
-    ctx.moveTo(baseX - px * half * spine, baseY - py * half * spine);
-    ctx.lineTo(baseX + px * half * spine, baseY + py * half * spine);
-    ctx.stroke();
-    // Bristles fan forward along the sweep direction, built from the middle out.
-    const strands = 15;
-    const shown = Math.max(1, Math.round(strands * build));
-    ctx.globalAlpha = 0.5 + 0.4 * build;
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    for (let i = 0; i < shown; i++) {
-      const k = strands > 1 ? (i / (strands - 1)) * 2 - 1 : 0;
-      const bx = baseX + px * half * k;
-      const by = baseY + py * half * k;
-      ctx.moveTo(bx, by);
-      ctx.lineTo(bx + dirX * 46, by + dirY * 46);
-    }
-    ctx.stroke();
-    // One handle from the middle of the brush, arriving last, so the build reads as
-    // a single object assembling. Two rails read as stray beams across the arena.
-    if (build > 0.55) {
-      const h = (build - 0.55) / 0.45;
-      const hx = baseX - dirX * 200;
-      const hy = baseY - dirY * 200;
-      ctx.globalAlpha = 0.5 * h;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(baseX, baseY);
-      ctx.lineTo(hx, hy);
-      ctx.moveTo(hx - px * 14, hy - py * 14);
-      ctx.lineTo(hx + px * 14, hy + py * 14);
-      ctx.stroke();
-    }
-    // Dust: squares shed along the bristle line.
+    // Bristles up, like the melee broom: the head is held over the lane and strokes.
+    this.drawBroomText(cx, cy - depth * 0.5, half, depth, Math.PI / 2, 0.34 + 0.62 * build, color, build);
+    ctx.restore();
+    // Dust shed from the bristle tips along the stroke.
+    ctx.save();
     ctx.fillStyle = '#a7b1bb';
-    for (let i = 0; i < 10; i++) {
-      const k = ((i / 9) * 2 - 1) * half;
-      const wobble = Math.sin(t * 9 + i * 1.7) * 6;
-      ctx.globalAlpha = (0.18 + 0.22 * build) * (1 - Math.abs(k) / half);
-      ctx.fillRect(baseX + px * k + dirX * 54 + wobble, baseY + py * k + dirY * 54, 4, 4);
+    const tips = cy + depth * 0.5;
+    for (let i = 0; i < 14; i++) {
+      const k = (i / 13) * 2 - 1;
+      const wobble = Math.sin(t * 9 + i * 1.7) * 7;
+      ctx.globalAlpha = (0.15 + 0.22 * build) * (1 - Math.abs(k) * 0.55);
+      ctx.fillRect(cx + k * half + wobble, tips + 4 + (i % 3) * 6, 4, 4);
     }
     ctx.restore();
   }
@@ -3164,11 +3215,8 @@ export class Renderer {
       ctx.save();
       ctx.translate(bx, by);
       ctx.rotate(angle);
-      ctx.globalAlpha = 0.9;
-      ctx.lineWidth = 2.2;
-      this.pathBroom(ctx, -9, 24, 4, 15);
-      ctx.stroke();
       ctx.restore();
+      this.drawBroomText(bx - Math.cos(angle) * 13, by - Math.sin(angle) * 13, 15, 26, angle, 0.9, color);
     }
     ctx.fillStyle = '#9aa7b4';
     for (let i = 0; i < 12; i++) {

@@ -116,7 +116,7 @@ const SYMBOL_LINES = new Map<string, string[]>();
 /** Font strings are cached by half-pixel size; draw() must not build strings per frame. */
 const SYMBOL_FONT_CACHE = new Map<number, string>();
 
-function symbolFont(px: number): string {
+export function symbolFont(px: number): string {
   const size = Math.round(px * 2) / 2;
   let font = SYMBOL_FONT_CACHE.get(size);
   if (font === undefined) {
