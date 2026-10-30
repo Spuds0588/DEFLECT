@@ -248,8 +248,8 @@ of every threat; existing countdowns keep running. Each arena changes the zones 
 - **WORMS**: trailing chains of red squares. They patrol a territory anchor, eat bolts and viruses, and
 damage on touch. They only commit to you if you enter their patch or hit them, then lose interest after
 5.5 s and return. A player who closes inside 76 units draws a telegraphed **bite**: the head rears, then
-lunges 56 units forward for 1 damage and a hard shove. Back off, dash through it, or break line of sight
-to waste it. Longer chains move slower. Cover blocks them. A virus that catches one turns it into a
+lunges 34 units into a 56-unit reach for 1 damage and a hard shove. Back off, dash through it, or break
+line of sight to waste it. Longer chains move slower. Cover blocks them. A virus that catches one turns it into a
 faster hunter.
 - **VIRUSES**: magenta diamonds that spread toward roam points instead of beelining across the map. They
 pursue a player only inside 310 units, or an uninfected worm inside 560 units. Touching you fills the

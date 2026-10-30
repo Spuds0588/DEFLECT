@@ -2762,7 +2762,7 @@ and the smaller mobile threats a charge or dash they can use as melee.
 
 **Changes:**
 - Worms now bite a player inside `WORM.biteRange` (76). The head rears for 0.32 s, lunges at
-  `biteLunge` (210) for 0.16 s, and deals `biteDamage` (1) plus `biteKnockback` (880) once inside a
+  `biteLunge` (210 u/s) for 0.16 s, and deals `biteDamage` (1) plus `biteKnockback` (880) once inside a
   56-unit reach. `biteRecovery` (0.38) and `biteCooldown` (2.4) follow. Touch damage is suppressed for
   the whole attack, the bite direction is latched at the trigger, and cover breaks the trigger and the
   hit. The teeth draw in the committed direction, opening on the wind-up and snapping shut on the lunge.
