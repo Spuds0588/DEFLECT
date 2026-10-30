@@ -2,7 +2,27 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.61 controller rumble)
+Last updated: 2026-10-30 (v0.1.62 bot guard against sentry fire)
+
+---
+
+## v0.1.62 — Bots actually guard sentry fire (2026-10-30)
+
+### Built
+- [x] The bot threat filter accepts every deflectable projectile type, not only the player bolt type 0.
+      Gauntlet sentry bolts and missiles are types 3 and 4, so the old guard and close-swat branches
+      never fired in the attract demo
+- [x] Guard chance raised from 0.7 to 0.85 and the breather shortened from 1.2–2.4 s to 0.9–1.8 s, so the
+      shield is a visible part of the pilot's kit without making it turtle
+- [x] A close sentry shot is now swatted as well as a close player bolt; mines, bug walls and bombs are
+      still dodged rather than reflected
+- [x] Headless wave-72 gauntlet runs for 45 s each (Probe/Sweep/Atomize × 3 seeds): 14–53 reflected shots
+      per run and 1.8–6.6 s of guard time; six of nine runs survived. README and AGENTS D6 updated; build
+      0.1.62
+
+### Next
+- [ ] Watch a full `?demo=true` loop at wave 72 and confirm the shield/deflect flash reads at demo zoom
+- [ ] Check that HARD/IMPOSSIBLE bots guarding sentry volleys do not become too defensive in VS BOTS
 
 ---
 

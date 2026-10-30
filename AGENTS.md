@@ -183,7 +183,10 @@ continuous (approach far, orbit at the hold range, back off only when crowded). 
 "too close" thresholds: they made bots pump straight in and out in place, which read as jitter. The
 route is committed for a beat once cover breaks the straight line, and the near-field cover probe is
 skipped while a route is active, because running both shoved bots off their own path. Bots also raise
-the 180° **guard** on incoming bolts outside melee reach instead of only swatting or dodging.
+the 180° **guard** on every deflectable incoming shot outside melee reach, not only player bolts: gauntlet
+sentry fire is type 3 and missile pods are type 4, and the old type-0 filter made the pilot silently skip
+the shield in the attract demo. Close shots are swatted; bombs, mines and bug walls are dodged. Do not
+narrow the bot threat filter back to the player bolt type.
 
 ### D7 — Networking transport (decided 2026-10-28)
 `peerjs` with PeerJS's public cloud broker for v1 and BinaryPack serialization of nested numeric arrays.

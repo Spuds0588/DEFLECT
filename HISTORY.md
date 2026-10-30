@@ -2871,3 +2871,26 @@ reload restored RUMBLE OFF from storage until it was turned back on. No physical
 
 **Next:** play a run on a real DualSense/Xbox pad and tune the six strengths/durations if any cue is too
 subtle or too strong at couch distance.
+
+## 2026-10-30 — Bots guard sentry fire (v0.1.62)
+
+**Goal:** the attract pilot almost never raised its shield. The guard was written, but the demo is a
+gauntlet run, and gauntlet fire was invisible to the bot's defence filter.
+
+**Changes:**
+- `canDeflectShot` in `bot.ts` now accepts every shot type the world's guard/lash can send back (all but
+  mines 1, bug walls 2 and bomber shells 8/9). The old `threatType === 0` check only allowed player bolts;
+  sentry bolts are type 3 and missile pods type 4, so the shield and close swat branches never fired in
+  the demo.
+- Guard chance is 0.85 (was 0.7) and the bot's breather is 0.9–1.8 s (was 1.2–2.4 s). The dodge remains
+  the answer when the guard is cooling down, and the pilot does not chain shields indefinitely.
+- Close-range swat now reflects sentry shots too, not just player bolts. Bombs, mines and bug walls are
+  still dodged rather than guarded. README and AGENTS D6 record the type rule; build stamped 0.1.62.
+
+**Verification:** `npx tsc --noEmit` and `npm run build` clean. A headless wave-72 gauntlet simulation
+ran Probe, Sweep and Atomize for 45 s on three seeds each. Every run reflected sentry fire: 14–53
+deflections and 1.8–6.6 s of active guard time; six of nine pilots survived the full 45 s. The deflections
+are guard catches (`EV.DEFLECT`), not merely shield idle time.
+
+**Next:** watch a full `?demo=true` loop and confirm the shield plus deflect spark reads at the demo
+camera zoom; then check the higher guard rate in VS BOTS so HARD bots do not turn into turtles.

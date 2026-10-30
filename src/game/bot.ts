@@ -90,6 +90,15 @@ const STYLES: readonly BotStyle[] = [
 ];
 
 /**
+ * Shot types a guard or lash can send back. Mines (1), bug walls (2) and the two
+ * bomber shells (8, 9) are excluded by the world's deflect branches; a threat that
+ * cannot be returned must be dodged instead.
+ */
+function canDeflectShot(type: number): boolean {
+  return type !== 1 && type !== 2 && type !== 8 && type !== 9;
+}
+
+/**
  * A local digital opponent. It produces the same InputFrame a human does, so it is bound
  * by single-stick facing, swing locks, dash cooldowns and energy costs. It has no direct
  * access to world mutation: reaction error and imperfect lead keep the tiers honest.
@@ -1029,13 +1038,14 @@ export class BotBrain {
       return true;
     }
 
-    // Raise the shield against an incoming bolt that is still outside melee reach.
+    // Raise the shield against an incoming shot that is still outside melee reach.
     // The guard reflects every shot in front for a second, so it beats a swat at
-    // range; the dodge and Wedge's wall stay in the mix. This is the bot's main use
-    // of the guard, which it used to ignore entirely.
+    // range; the dodge and Wedge's wall stay in the mix. Sentry bolts are types 3
+    // and 4, not the player bolt type 0, which is why the pilot used to ignore
+    // every gauntlet shot instead of reflecting it.
     if (
       !this.threatOwn &&
-      this.threatType === 0 &&
+      canDeflectShot(this.threatType) &&
       me.guardT <= 0 &&
       me.guardCd <= 0 &&
       this.guardCd <= 0 &&
@@ -1044,21 +1054,30 @@ export class BotBrain {
       dist > PLAYER.swingReach + 10 &&
       this.threatTime > 0.12 &&
       this.threatTime < 0.62 &&
-      this.rng.next() < 0.7
+      this.rng.next() < 0.85
     ) {
-      // Turn to face the bolt while the shield arms. The guard only catches the
+      // Turn to face the shot while the shield arms. The guard only catches the
       // front half-plane, so a shot arriving from behind has to be dodged instead.
       out.mx = dirX * 0.45;
       out.my = dirY * 0.45;
       out.held |= ACTION.SWING;
       this.guardHoldT = 0.42;
-      this.guardCd = this.rng.range(1.2, 2.4);
+      // A shorter breather than the old 1.2-2.4 s makes the shield a visible part
+      // of the kit, while still leaving the dodge as the answer between guards.
+      this.guardCd = this.rng.range(0.9, 1.8);
       return true;
     }
 
-    // Candles are never safe to swat at close range. Own bolts are a ricochet
-    // problem, so evade rather than trying to re-deflect a bad shot.
-    if (!this.threatOwn && this.threatType === 0 && dist < PLAYER.swingReach + 14 && me.swingPhase === 0 && this.swingCd <= 0) {
+    // Close shots are swatted rather than guarded; the lash reflects hostile sentry
+    // fire too. Own bolts are a ricochet problem, so evade rather than trying to
+    // re-deflect a bad shot.
+    if (
+      !this.threatOwn &&
+      canDeflectShot(this.threatType) &&
+      dist < PLAYER.swingReach + 14 &&
+      me.swingPhase === 0 &&
+      this.swingCd <= 0
+    ) {
       out.mx = dirX;
       out.my = dirY;
       out.pressed |= ACTION.SWING;

@@ -237,8 +237,10 @@ overlay with a rematch option.
 Three styles alternate across the three bots: `DUELIST` closes distance, `TRICKSTER` orbits and
 looks for deflections, and `SIEGE` holds range and charges beams. Wedge bots plant their bracket between
 themselves and incoming fire, and Fisher bots drop a lure before stepping away; a bot never chases its own
-beacon. Bots route around cover with a small per-arena grid path instead of hugging the nearest wall. They
-are local-only test opponents; they do not occupy multiplayer room slots.
+beacon. Bots raise the guard against incoming shots outside melee reach, including sentry bolts and
+missiles in the gauntlet, and swat the ones that arrive close. Bots route around cover with a small
+per-arena grid path instead of hugging the nearest wall. They are local-only test opponents; they do not
+occupy multiplayer room slots.
 
 ## Gauntlet
 
