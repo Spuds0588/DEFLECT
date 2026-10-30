@@ -202,7 +202,9 @@ are local-only test opponents; they do not occupy multiplayer room slots.
 ## Gauntlet
 
 `GAUNTLET` is a local threat sandbox, not ranked PvP and not networked. Pick an arena and begin a
-one-life run. When your last health segment goes, the run ends and the results overlay records your callsign, arena,
+one-life run. Run setup has a `FRIENDLY FIRE` toggle, on by default: enemy shots can damage other threat
+families. Turn it off and hostile fire passes through worms, viruses and error blocks, so only you are at
+risk. The same saved rule applies to a campaign run. When your last health segment goes, the run ends and the results overlay records your callsign, arena,
 wave reached, survival time and kills. There is no in-run respawn; training is the practice space.
 
 The setup screen shows the local top eight runs, ranked by wave, then survival time, then kills. The title
@@ -223,7 +225,7 @@ rules. They still infect worms and split on a timer.
 - **SENTRIES**: pulse squares, triplex shotguns, homing trapezoids and dart flocks. They land in a zone
 and hold it, with a 100–250 unit leash instead of following you across the arena. Heavy triplex and homing
 silhouettes are much slower than the pulse and flock. Packs arrive one at a time, low-tier shots are
-short-ranged and disperse on cover, and enemy fire damages other enemies too.
+short-ranged and disperse on cover, and enemy fire damages other enemies too while `FRIENDLY FIRE` is on.
 - **CASCADING ERRORS**: yellow blocks stamped with red exclamation marks. They spread outward like a
   plant, one block every 4.0 s early and 2.0 s at full pressure, hurt on contact, and take three hits to
   delete a single block. The first colony starts at four blocks and the live cap grows over many waves.

@@ -2592,3 +2592,29 @@ targets. The select portrait and How to Play roster both pick up the new mark fr
 
 **Next:** check it in a live Probe mirror at normal camera zoom; if the star reads as a generic sparkle,
 lengthen the cardinal tips or add four short cardinal ticks between the star and the ring.
+
+## 2026-10-30 — Friendly fire is a gauntlet/campaign run rule (v0.1.53)
+
+**Goal:** let a run choose whether enemy shots can damage rival threat families, without changing the
+sandbox default.
+
+**Changes:**
+- `World.friendlyFire` defaults to true. `projectileHitsGauntlet` returns early for a hostile projectile
+  (`owner < 0`, `type >= 3`) when the rule is off, so it passes through worms, viruses and error blocks
+  and only threatens players. Player shots, mines, spears and hourglasses still hit every threat family.
+- The rule is set once when the run is created: `startGauntlet` and `startCampaignLevel` copy the saved
+  preference onto the world. Training, VS BOTS, online matches and the attract demo keep the default on.
+- `FRIENDLY FIRE` is a row in GAUNTLET run setup and the CAMPAIGN save-slot stage, so both new and resumed
+  runs can change it. Both toggles read the same `deflect.friendlyFire` key and update together; the
+  default is on. A short hint says what off does.
+- Firewalls remain environmental damage and still burn enemies. Worm/virus feeding is untouched. Sentry
+  packs still ignore each other because a projectile has no source silhouette.
+- Local-only: no snapshot, network or renderer change. Build stamped 0.1.53.
+
+**Verification:** `npx tsc --noEmit` and `npm run build` clean. Headless gauntlet check on a virus body:
+a hostile bolt damages it with the rule on, passes through with the rule off, and a player-owned bolt still
+damages it with the rule off. Browser pass on the two setup screens for the toggle state and the persisted
+value.
+
+**Next:** playtest whether off makes the wave ramp too hard on wide arenas; if so, lower early sentry
+cadence or raise the drop rate rather than reverting the rule.

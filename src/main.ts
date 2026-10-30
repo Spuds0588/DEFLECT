@@ -74,6 +74,8 @@ const gauntletStageLabel = el('gauntlet-stage-label');
 const gauntletStartBtn = el<HTMLButtonElement>('btn-gauntlet-start');
 const gauntletRecordsEl = el<HTMLOListElement>('gauntlet-records');
 const gauntletBestValue = el('gauntlet-best');
+const gauntletFriendlyBtn = el<HTMLButtonElement>('btn-gauntlet-friendly-fire');
+const gauntletFriendlyValue = el('gauntlet-friendly-fire-value');
 const botCountEl = el('bot-count');
 const botTierEl = el('bot-tier');
 const botStageLabel = el('bot-stage-label');
@@ -118,6 +120,8 @@ const menuMulti = el('menu-multi');
 const menuOnline = el('menu-online');
 const menuLocal = el('menu-local');
 const campaignBotsEl = el('campaign-bots');
+const campaignFriendlyBtn = el<HTMLButtonElement>('btn-campaign-friendly-fire');
+const campaignFriendlyValue = el('campaign-friendly-fire-value');
 const soloCampaignBtn = el<HTMLButtonElement>('btn-solo-campaign');
 
 const modeSoloBtn = el<HTMLButtonElement>('btn-mode-solo');
@@ -207,6 +211,8 @@ let botCount = 3;
 let botTier: BotTier = 'veteran';
 /** Training and VS BOTS keep separate difficulty picks; gauntlet/campaign use the training slot. */
 const botTierPrefs: Record<'training' | 'bots', BotTier> = { training: 'veteran', bots: 'veteran' };
+/** Local gauntlet/campaign run rule: enemy shots can damage other threat families. */
+let friendlyFire = true;
 let stress = false;
 let stressBots = 0;
 let stressTick = 0;
@@ -301,7 +307,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.52 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.53 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -336,6 +342,8 @@ function bindUi(): void {
   el<HTMLButtonElement>('btn-arena-back').addEventListener('click', () => showMenuStage('soloProgram'));
   el<HTMLButtonElement>('btn-gauntlet-back').addEventListener('click', () => showMenuStage('soloArena'));
   gauntletStartBtn.addEventListener('click', () => startGauntlet());
+  gauntletFriendlyBtn.addEventListener('click', toggleFriendlyFire);
+  campaignFriendlyBtn.addEventListener('click', toggleFriendlyFire);
   el<HTMLButtonElement>('btn-bots-back').addEventListener('click', () => showMenuStage('soloArena'));
   el<HTMLButtonElement>('btn-tier-back').addEventListener('click', () => showMenuStage('soloBots'));
   createBtn.addEventListener('click', () => void createRoom());
@@ -588,6 +596,8 @@ function loadArenaPrefs(): void {
     }
     botTier = botTierPrefs.training;
     selectedProgram = clampProgram(Number(localStorage.getItem('deflect.program') ?? String(PROGRAM_ID.PROBE)));
+    // Enemy crossfire is part of the sandbox by default; the run setup can turn it off.
+    friendlyFire = localStorage.getItem('deflect.friendlyFire') !== '0';
   } catch {
     /* storage disabled: use defaults */
   }
@@ -754,6 +764,7 @@ function persistArenaPrefs(): void {
     localStorage.setItem('deflect.botTier.training', botTierPrefs.training);
     localStorage.setItem('deflect.botTier.bots', botTierPrefs.bots);
     localStorage.setItem('deflect.program', String(selectedProgram));
+    localStorage.setItem('deflect.friendlyFire', friendlyFire ? '1' : '0');
   } catch {
     /* storage disabled */
   }
@@ -1010,10 +1021,30 @@ function updateGauntletBestLabel(): void {
     : 'No scored runs yet';
 }
 
+/**
+ * Local run rule shared by gauntlet and campaign. On, hostile shots can damage rival
+ * threat families; off, they pass through and only threaten players. Default on.
+ */
+function renderFriendlyFire(): void {
+  const label = friendlyFire ? 'ON' : 'OFF';
+  gauntletFriendlyBtn.setAttribute('aria-pressed', String(friendlyFire));
+  gauntletFriendlyValue.textContent = label;
+  campaignFriendlyBtn.setAttribute('aria-pressed', String(friendlyFire));
+  campaignFriendlyValue.textContent = label;
+}
+
+function toggleFriendlyFire(): void {
+  friendlyFire = !friendlyFire;
+  persistArenaPrefs();
+  renderFriendlyFire();
+  toast(`FRIENDLY FIRE // ${friendlyFire ? 'ON' : 'OFF'}`);
+}
+
 function renderGauntletSetup(): void {
   const arena = getArena(arenaIndex);
   const def = programDef(selectedProgram);
   gauntletStageLabel.textContent = `GAUNTLET // ${def.name} // ${arena.name}`;
+  renderFriendlyFire();
   renderGauntletRecords();
 }
 
@@ -1030,6 +1061,7 @@ function openStory(): void {
 }
 
 function renderStorySetup(): void {
+  renderFriendlyFire();
   renderStorySlots();
 }
 
@@ -1089,6 +1121,7 @@ function startCampaignLevel(): void {
   for (let i = 1; i <= drill; i++) names[i] = BOT_NAMES[(i - 1) % BOT_NAMES.length];
   const botPrograms = botProgramList(drill);
   world = new World('gauntlet', names, 0, arena, false, selectedProgram, drill, botPrograms, true, level.dataCrates);
+  world.friendlyFire = friendlyFire;
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
   botBrains = new Array(MAX_PLAYERS).fill(null);
@@ -1106,7 +1139,7 @@ function startCampaignLevel(): void {
   beginLoadSequence(`${level.name} // ${level.code}`);
   audio.unlock();
   audio.startMusic();
-  console.log('[DEFLECT-STATE] Campaign node', level.name, 'drill bots', drill);
+  console.log('[DEFLECT-STATE] Campaign node', level.name, 'drill bots', drill, 'friendly fire', friendlyFire ? 'on' : 'off');
 }
 
 /** Back to the save-slot stage, abandoning the live node. */
@@ -1758,6 +1791,7 @@ function startGauntlet(aiLocal = false): void {
   autoplay = aiLocal;
   const arena = getArena(arenaIndex);
   world = new World('gauntlet', [getCallsign()], 0, arena, false, selectedProgram);
+  world.friendlyFire = friendlyFire;
   trainingInputs = [localFrame];
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
@@ -1771,7 +1805,7 @@ function startGauntlet(aiLocal = false): void {
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
-  console.log('[DEFLECT-STATE] Gauntlet start', arena.name, 'one life', aiLocal ? 'AUTOPILOT' : '');
+  console.log('[DEFLECT-STATE] Gauntlet start', arena.name, 'one life', aiLocal ? 'AUTOPILOT' : '', 'friendly fire', friendlyFire ? 'on' : 'off');
 }
 
 /** Timestamp for the title idle clock. Any device counts. */

@@ -29,7 +29,7 @@
 ██████╔╝███████╗██║     ███████╗███████╗╚██████╗   ██║   
 ╚═════╝ ╚══════╝╚═╝     ╚══════╝╚══════╝ ╚═════╝   ╚═╝   </pre><span class="caret" aria-hidden="true">_</span>
             </h1>
-            <p class="console-version">v0.1.52 <span class="build-tag">IN TESTING</span></p>
+            <p class="console-version">v0.1.53 <span class="build-tag">IN TESTING</span></p>
           </header>
 
           <div class="console-shell">
@@ -95,6 +95,14 @@
               </button>
 
               <div class="console-group console-group-tight">
+                <p class="console-stage-label">RUN RULES</p>
+                <button id="btn-gauntlet-friendly-fire" class="console-option" data-nav aria-pressed="true">
+                  <span class="option-key">02</span><span class="option-label">FRIENDLY FIRE</span><span id="gauntlet-friendly-fire-value" class="option-value">ON</span>
+                </button>
+                <p class="console-note">ENEMY SHOTS DAMAGE OTHER THREAT FAMILIES. OFF MAKES THEM PASS THROUGH.</p>
+              </div>
+
+              <div class="console-group console-group-tight">
                 <p class="console-stage-label">TOP RUNS // LOCAL</p>
                 <ol id="gauntlet-records" class="console-records" aria-label="Local gauntlet top runs"></ol>
               </div>
@@ -107,6 +115,14 @@
               <p class="console-stage-label">CAMPAIGN // SAVE SLOTS</p>
 
               <div id="story-slots" class="console-menu" role="group" aria-label="Campaign save slots"></div>
+
+              <div class="console-group console-group-tight">
+                <p class="console-stage-label">RUN RULES</p>
+                <button id="btn-campaign-friendly-fire" class="console-option" data-nav aria-pressed="true">
+                  <span class="option-key">RULE</span><span class="option-label">FRIENDLY FIRE</span><span id="campaign-friendly-fire-value" class="option-value">ON</span>
+                </button>
+                <p class="console-note">ENEMY SHOTS DAMAGE OTHER THREAT FAMILIES. OFF MAKES THEM PASS THROUGH.</p>
+              </div>
 
               <p id="story-status" class="console-status-line" role="status"></p>
             </div>
@@ -399,7 +415,7 @@
                   </div>
                   <div class="setting-row">
                     <span>BUILD</span>
-                    <b>0.1.52 // CONSOLE</b>
+                    <b>0.1.53 // CONSOLE</b>
                   </div>
                   <div class="setting-row">
                     <span>RESET OPTIONS</span>

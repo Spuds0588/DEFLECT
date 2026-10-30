@@ -127,6 +127,13 @@ export class World {
   gauntletKills = 0;
   /** True after a scored gauntlet run has ended; the simulation holds the last frame. */
   gauntletOver = false;
+  /**
+   * Local run rule for gauntlet and campaign. On, hostile fire can damage rival threat
+   * families (the crossfire the docs call friendly fire). Off, a hostile shot passes
+   * through worms, viruses and error blocks and only threatens players. Set once when
+   * the run is created; never part of a snapshot.
+   */
+  friendlyFire = true;
   /** Internal bench/headless path: endless respawns and max threat caps. Not exposed in the UI. */
   readonly gauntletPractice: boolean;
   /**
@@ -8112,8 +8119,10 @@ export class World {
     }
     // Enemy fire is not a friendly-fire-free laser tag beam. A missed sentry shot can
     // chew through a worm, a virus, or an error block. Sentries ignore their own pack,
-    // because a projectile has no source silhouette to exclude safely.
+    // because a projectile has no source silhouette to exclude safely. The run can
+    // turn the crossfire off, in which case hostile fire only threatens players.
     const hostile = proj.owner < 0 && proj.type >= 3;
+    if (hostile && !this.friendlyFire) return false;
 
     // Player bolts can shoot down hostile shots and homing missiles. This is the
     // intended answer when a missile is too close to swat or too far to outrun.

@@ -2,7 +2,21 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.52 GHOST.EXE)
+Last updated: 2026-10-30 (v0.1.53 friendly-fire run rule)
+
+---
+
+## v0.1.53 — Friendly fire is a gauntlet/campaign run rule (2026-10-30)
+
+- [x] `World.friendlyFire` (default on) gates hostile projectile damage to worms, viruses and error blocks.
+      Off, an enemy shot passes through rival threat families and only threatens players
+- [x] `FRIENDLY FIRE` toggle in GAUNTLET run setup and the CAMPAIGN save-slot stage; the shared setting
+      persists as `deflect.friendlyFire` and both stages read it, so a resumed run can change it too
+- [x] Only hostile fire is gated. Firewalls stay environmental, worm/virus feeding and player shots are
+      unchanged, and sentry packs still ignore each other
+- [x] Local-only; no snapshot, networking or renderer change
+- [x] Docs: AGENTS D9, README, this entry; build stamped 0.1.53
+- [x] `npx tsc --noEmit` / `npm run build` clean; headless check covers on, off and player shots
 
 ---
 

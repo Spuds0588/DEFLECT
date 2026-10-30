@@ -245,6 +245,12 @@ the network. It is a test bed for the eventual PvE direction, not a promise of o
   bouncing.
 - Enemy fire is factional. A missed sentry shot can damage worms, viruses, and cascading errors. Sentries
   do not shoot their own pack because a projectile has no source silhouette to exclude safely.
+- **Friendly fire is a run rule, not a constant.** GAUNTLET and CAMPAIGN setup carry a `FRIENDLY FIRE`
+  toggle (default on, persisted as `deflect.friendlyFire`). On, the crossfire above works as written. Off,
+  a hostile projectile passes through worms, viruses and error blocks and only threatens players; sentry
+  packs are still ignored because there is no source silhouette. The rule never touches environmental
+  damage (firewalls), worm/virus feeding, or the player's own shots. It is local-only, set when the run is
+  created, and never enters `Snapshot`.
 - Every enemy assembles in over a short spawn window, holds still while its parts arrive, and de-rezzes
   into a size-scaled triangle burst on death.
 - Waves are 30 s and the difficulty ramp is intentionally long: threat families unlock one at a time
