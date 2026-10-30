@@ -2,7 +2,45 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.35 drill squad + camera framing)
+Last updated: 2026-10-30 (v0.1.36 split cameras + death spectate)
+
+---
+
+## v0.1.36 — Split cameras, death spectate, Kaboom clearance (2026-10-30)
+
+### Camera
+- [x] Dynamic zoom with `CAMERA.zoomMin` (0.88) and `zoomMax` (1.03) as multipliers of the base. A tight
+      group sits at the max; a group spread across `CAMERA.focusRange` pulls to the min. Separate
+      `CAMERA.zoomFollow` easing
+- [x] Split-screen plumbing: up to four panes, one full screen, two side by side, three or four in a 2x2
+      grid. Each local slot gets its own camera, zoom, lock reticle, readiness dock, minimap and lift
+      overlay. `?split=N` is a QA-only visual hook
+- [x] Death spectate: while a local slot is dead its camera follows a surviving campaign drill partner,
+      then the body that struck the killing blow, then the nearest living player. Respawn and pad swaps
+      snap instead of panning across the arena
+- [x] Killer attribution: every `damagePlayer` records `killerKind`/`killerId`; hostile bolts carry the
+      sentry index (or the drone), and worm, cascading-error and firewall contact pass their pool index
+
+### Kaboom
+- [x] Hull fins moved outward and shortened: base `0.46r` → `0.72r`, half-base `0.95` → `0.56` rad. Center
+      mark `coreScale` `0.98` → `0.86`
+- [x] Hull clearance rule recorded in AGENTS D4: a health segment's inner radius stays outside the 0.6r
+      core disc, at full and one-segment health
+
+### Verification
+- [x] Headless: fins clear the core disc by 1.33 units at full and one-segment health; Kaboom draws no
+      frame; a hostile bolt attributes to its sentry; a worm blow attributes to its worm
+- [x] Browser at 1280×800: 2-pane and 4-pane layouts with per-pane docks and minimaps and independent
+      cameras; a training drone kill moved the camera 48 → 936 while tracking the drone; respawn snapped
+      back to 48; drill ally priority vs assault killer priority checked directly
+- [ ] Playtest the min/max zoom in production and tune `CAMERA.zoomMin` / `zoomMax`
+
+### Next
+- [ ] Local input slots and the same-screen menu flow for 2–4 humans. The renderer is ready; input/sim
+      slot ownership, device assignment and the LOCAL menu are not
+- [ ] Per-pane campaign/wave banners in split; the score strip is currently one shared strip
+- [ ] A real team field so surviving bot allies can be followed outside the campaign drill
+- [ ] Decide whether a firewall death should follow the beam; today it falls back to the nearest player
 
 ---
 
@@ -33,8 +71,9 @@ Last updated: 2026-10-30 (v0.1.35 drill squad + camera framing)
 
 ### Next
 - [ ] Playtest the pull in 1v1, 1v3 and gauntlet; tune `CAMERA.focusRange` and `CAMERA.maxBias`
-- [ ] Revisit dynamic zoom only if a match regularly spreads beyond one screen; it would also need the
-      Sweep heavy and sentry pack window moved off the fixed `CAMERA_ZOOM`
+- [x] Dynamic zoom landed in v0.1.36. `SWEEP.powerSpan` and the sentry pack window stay in world units;
+      their screen coverage is approximate as the camera zooms, which is accepted (the heavy is still a
+      wide sweep, just not a literal screen width at every zoom)
 
 ---
 

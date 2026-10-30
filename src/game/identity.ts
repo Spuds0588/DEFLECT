@@ -276,11 +276,12 @@ export function pathProgramHealth(
   const sides = programHullSides(programId);
   ctx.beginPath();
   // Kaboom's hull is three outward-pointing triangles, one health segment each, spaced
-  // 120° apart so the set reads as a triangle made of triangles. Each base sits behind
-  // the core disc and only the point clears it, so the segments read as three fins.
+  // 120° apart so the set reads as a triangle made of triangles. The bases sit outside
+  // the core disc (max 0.6r at full health) so no health segment ever crosses the
+  // center mark: each blade is a short fin on the rim, not a wedge behind the bomb.
   if (programId === 5) {
-    const baseR = r * 0.46;
-    const halfAngle = 0.95;
+    const baseR = r * 0.72;
+    const halfAngle = 0.56;
     for (let seg = 0; seg < freshSegments; seg++) {
       const a = spin + seg * (twoPi / 3);
       ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);

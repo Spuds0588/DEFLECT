@@ -117,7 +117,9 @@ export const PROGRAMS: readonly ProgramDef[] = [
      */
     glyph: 'M',
     symbolFont: 'Wingdings',
-    coreScale: 0.98,
+    // The hull fins start at 0.72r, so the bomb keeps clear air around it instead of
+    // crowding the health segments.
+    coreScale: 0.86,
     bugKind: 8,
   },
 ];

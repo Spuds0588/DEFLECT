@@ -92,7 +92,7 @@ an amber diamond with `▣`, Fisher an indigo hex reel with `≈`, Sweep a lime 
 with `☠`, Kaboom a red-orange triangle built from three outward triangles with a bomb at the center. The select screen and the arena share that
 shape and glyph, so a program reads the same in the roster, intro and fight.A program's `glyph` may be a single character, a multi-character text combo, Unicode dingbats/wingdings, or a multi-line ASCII picture; `drawSymbol` scales it to the core and portrait, strips common indentation, and measures the real advance against the symbol font stack (`ui-monospace` first, then `Segoe UI Symbol`, `Noto Sans Symbols 2`, `Apple Symbols`, Wingdings, Webdings) so a wide mark shrinks instead of spilling through the hull. Prefer direction-neutral marks: a pointing glyph at the core reads as facing. Each program also owns `coreScale` so a tight hull keeps clearance from its
 rotating health segments: Probe `1.12`, Wedge `0.88` (the diamond's sides are the tightest core), Fisher
-`1.10`, Sweep `1.06`, Toxic `1.0`, Kaboom `0.98`. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
+`1.10`, Sweep `1.06`, Toxic `1.0`, Kaboom `0.86`. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
 uses the empty space between the core disc and the hull, with tighter row spacing and a narrower width
 budget; a single glyph keeps the default 0.51. The low-health core keeps a scale floor
 (`0.78 + 0.22 * coreHp`) so the mark stays visible while the hull ghosts carry the damage read. Check a
@@ -103,8 +103,13 @@ segment at three corners, a short frame-weight tab at the fourth corner, and a t
 The tab and rim keep the silhouette closed at full health without counting as a health segment; keep them
 below the health stroke weight. Kaboom does not need that compromise: he has exactly three health
 segments, so his hull is three outward-pointing triangles spaced 120° apart. Their points face out, their
-bases sit behind the core disc, and the three together read as one larger triangle around the bomb. He
-draws no frame: the three segments are the whole hull. Do not revert to equal perimeter slices on the diamond, which cut through
+bases start outside the core disc, and the three together read as one larger triangle around the bomb.
+He draws no frame: the three segments are the whole hull. **Hull clearance is a design rule**: the bright
+health path must not cross the center mark or crowd the core disc (max `0.6r` at full health). Kaboom's
+bases sit at `0.72r`, fully outside it. Toxic's star tucks its inner vertices behind the opaque disc; that
+is the only allowed overlap because the disc covers them and the visible points start at its rim. Do not
+add a hull whose blades run across the disc; that reads as touching the core. Do not revert to equal
+perimeter slices on the diamond, which cut through
 corners and read as arbitrary chunks. A five-sided hull has the same problem in a milder form: its slices
 cut corners irregularly, so Sweep uses an **eight-sided** hull, where three equal perimeter segments read
 as clean arcs. Networked matches still use the slot palette and slot glyphs because the
@@ -498,6 +503,9 @@ reads as a letter. `document.fonts.check` alone reports true for missing system 
 - Bombs are **not deflectable**: every `proj.type >= 3` deflect/guard/net branch must exclude types 8 and
   9 explicitly, or a caught shell would turn into a bolt. A bomb that hits cover dies there and detonates
   on the same frame.
+- **Hull**: three short fins start at `0.72r` with a 0.56 rad half-base and `coreScale` 0.86, so no health
+  segment touches the core disc or the bomb mark. The clearance rule is in D4. Do not grow the fins back
+  toward the core to make them read bigger; the silhouette, not the size of one blade, carries the identity.
 - Bots lob when a target sits between 90 and `lobRange + 60`; the generic heavy hold builds the carpet.
   The kit is local-only like every other program; do not add bombs to `Snapshot` fields.
 
@@ -530,6 +538,33 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
 - Campaign numbers live in the `CAMPAIGN` block in `config.ts`. The node identity, arena blockout and
   sector link live in `campaign.ts`; never put node geometry in a switch on level id.
 - Everything here is local, like the gauntlet. Nothing campaign-shaped enters `Snapshot`.
+
+### D18 — Camera frames the fight, split panes, death spectate (built 2026-10-30)
+
+The camera is part of the read, not a fixed follow. All numbers live in `CAMERA` in `config.ts`.
+
+- **Framing**: the local avatar is the anchor. Other live players, the training drone, worms, viruses,
+  sentries and cascading-error blocks inside `CAMERA.focusRange` pull the frame toward the group by a
+  distance-weighted mean offset, capped at `CAMERA.maxBias`. A brawl on every side cancels out. The anchor
+  is then clamped to the middle band (`CAMERA.edgeMargin`); an arena bound can still pin the camera first.
+- **Dynamic zoom**: `CAMERA.zoomMin` and `zoomMax` are multipliers of the base `CAMERA_ZOOM` (and of
+  `CAMERA.splitZoom` in a pane). A tight group sits at the max; a group spread across the focus range pulls
+  to the min. Zoom eases separately (`zoomFollow`). Kit numbers stay in world units (`SWEEP.powerSpan`,
+  `SENTRY.spawnView*`), so their screen coverage is approximate as the camera zooms; do not move camera
+  state into `World` to make an attack screen-sized. Tune the two multipliers, not a hidden knob.
+- **Split screen**: `Renderer.setLocalSlots([...])` gives each local slot its own viewport, camera, zoom,
+  lock reticle, readiness dock, minimap and lift overlay. One slot is full screen, two are side by side,
+  three or four use a 2x2 grid with a `CAMERA.splitGap` divider. Panes clip at their viewport. Slots that
+  are not active fall back to the primary slot. World effect emitters (slide/broom/toxic dust, projectile
+  and dash trails) run once per frame; only their draw calls run per pane.
+- The split path is camera/render plumbing only. Local input slots, same-screen menus and a second human
+  controller are not built; `?split=N` is a QA-only visual hook and stays out of the menus.
+- **Death spectate**: `damagePlayer` records the attacker family and index (`SRC`) on every hit. While a
+  local slot is dead its camera follows a surviving campaign drill partner first, then the killing body
+  (player, worm, virus, sentry, cascading error or training drone), then the nearest living player. A
+  firewall has no body, so that death falls through to the player fallback. Respawn and pad swaps snap the
+  camera instead of panning across the arena. Team modes need a real team field before the ally branch can
+  cover them; today the campaign drill is the only ally-shaped group.
 
 
 ---
@@ -642,9 +677,10 @@ public/               manifest, generated icons, service worker
   sentries and cascading-error blocks inside `CAMERA.focusRange` pull the frame toward the group by a
   distance-weighted mean offset, capped at `CAMERA.maxBias`. A body across the arena does not count, and
   a brawl on every side cancels out. The anchor is then clamped to the middle band of the view
-  (`CAMERA.edgeMargin`), unless the arena bound already pins the camera. All numbers live in `CAMERA` in
-  `config.ts`; do not make the view follow the group centroid without the anchor clamp, and do not add a
-  dynamic zoom (screen-wide kit numbers in `SWEEP` assume the fixed `CAMERA_ZOOM`).
+  (`CAMERA.edgeMargin`), unless the arena bound already pins the camera. Dynamic zoom pulls back when the
+  group is spread (`CAMERA.zoomMin`/`zoomMax`). Up to four local panes each get their own camera, zoom and
+  HUD through `setLocalSlots`; see D18. All numbers live in `CAMERA` in `config.ts`; do not make the view
+  follow the group centroid without the anchor clamp.
 - Dark background, grid, arena frame, corner brackets, and the active arena's pillars.
 - Each arena supplies an accent and a floor signature (cross, square, rings, chevrons). The title
   picker draws the same geometry into small preview canvases; no separate art path.

@@ -38,6 +38,8 @@ export function createPlayer(slot: number): Player {
     hp: PLAYER.hp,
     maxHp: PLAYER.hp,
     energy: PLAYER.energyMax,
+    killerKind: 0,
+    killerId: -1,
     poisonT: 0,
     poisonTickT: 0,
     poisonSrc: 0,

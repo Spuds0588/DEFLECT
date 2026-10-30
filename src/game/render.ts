@@ -5,7 +5,7 @@ import { drawGlyph, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHe
 import { P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
-import type { Barrier, CampaignPhase, CascadingError, Drone, Firewall, GameMode, Lure, Net, Phase, Pickup, Player, Projectile, Sentry, Virus, Worm } from './types';
+import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type Lure, type Net, type Phase, type Pickup, type Player, type Projectile, type Sentry, type Virus, type Worm } from './types';
 
 export interface RenderState {
   mode: GameMode;
@@ -90,6 +90,39 @@ function broomTeethRow(cols: number): string {
   return row;
 }
 
+/** One local camera. Split screen gives each local slot its own framing and zoom. */
+interface CameraView {
+  slot: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  camX: number;
+  camY: number;
+  zoom: number;
+  ready: boolean;
+  arena: number;
+  wasAlive: boolean;
+}
+
+const MAX_VIEWS = 4;
+
+function createCameraView(): CameraView {
+  return {
+    slot: 0,
+    x: 0,
+    y: 0,
+    w: VIEW_W,
+    h: VIEW_H,
+    camX: 0,
+    camY: 0,
+    zoom: CAMERA_ZOOM,
+    ready: false,
+    arena: -1,
+    wasAlive: false,
+  };
+}
+
 const TWO_PI = Math.PI * 2;
 const FIRST_TO = `FIRST TO ${ROUND.winsNeeded}`;
 const LABEL_TRAINING = 'TRAINING';
@@ -165,14 +198,21 @@ export class Renderer {
   private trailLastT = new Float32Array(MAX_PLAYERS).fill(-999);
   private trailLastX = new Float32Array(MAX_PLAYERS);
   private trailLastY = new Float32Array(MAX_PLAYERS);
-  private camX = 0;
-  private camY = 0;
-  private camReady = false;
-  private camArena = -1;
+  private views: CameraView[] = [];
+  private viewSlots = new Int32Array(MAX_VIEWS);
+  private viewCount = 0;
+  /** Local slots to render as split panes. `null` is the normal single view. */
+  private splitSlots: readonly number[] | null = null;
   /** Per-frame camera pull scratch: total weight and weighted offset from the anchor. */
   private camPullW = 0;
   private camPullX = 0;
   private camPullY = 0;
+  private camSpread = 0;
+  /** Spectate scratch, set by `findSpectateTarget` and consumed by `updateCamera`. */
+  private spectateKind: number = SRC.NONE;
+  private spectateId = -1;
+  private spectateX = 0;
+  private spectateY = 0;
   private lastRenderT = 0;
   private introT = INTRO_LEN;
   private introActive = false;
@@ -194,7 +234,16 @@ export class Renderer {
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Canvas 2D unavailable');
     this.ctx = ctx;
+    for (let i = 0; i < MAX_VIEWS; i++) this.views.push(createCameraView());
     this.resize();
+  }
+
+  /**
+   * Local split screen. Each slot gets its own camera, zoom and viewport; one slot is
+   * the normal full-screen view. Slots that are not active fall back to the primary.
+   */
+  setLocalSlots(slots: readonly number[] | null): void {
+    this.splitSlots = slots && slots.length > 0 ? slots.slice(0, MAX_VIEWS) : null;
   }
 
   resize(): void {
@@ -229,7 +278,10 @@ export class Renderer {
   beginIntro(): void {
     this.introT = 0;
     this.introActive = true;
-    this.camReady = false;
+    for (let i = 0; i < this.views.length; i++) {
+      this.views[i].ready = false;
+      this.views[i].wasAlive = false;
+    }
   }
 
   render(state: RenderState, alpha: number, fx: Fx): void {
@@ -244,62 +296,105 @@ export class Renderer {
     }
     const intro = this.introActive ? this.introT : INTRO_LEN;
     const introDone = intro >= INTRO_LEN;
-    this.updateCamera(state, alpha, dt);
+    this.layoutViews(state);
+
+    // Effects that advance per-frame state run once, never once per pane. Drawing them
+    // per pane would double the dust and trail samples in a split match.
+    this.emitSlideDust(state, alpha, fx, dt);
+    this.emitBroomDust(state, alpha, fx, dt);
+    this.emitToxicBurst(state, alpha, fx);
+    this.updatePlayerTrails(state, t);
+    this.updateTrails(state, alpha);
+
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    const sx = this.dpr * this.scale * CAMERA_ZOOM;
-    ctx.setTransform(
-      sx,
-      0,
-      0,
-      sx,
-      this.dpr * this.offX + fx.shakeX * this.scale * this.dpr,
-      this.dpr * this.offY + fx.shakeY * this.scale * this.dpr,
-    );
-    ctx.translate(-this.camX, -this.camY);
-    if (fx.rotationShake !== 0) {
-      // Pivot on the middle of the visible camera window, not world origin.
-      const pivotX = this.camX + VIEW_W / CAMERA_ZOOM * 0.5;
-      const pivotY = this.camY + VIEW_H / CAMERA_ZOOM * 0.5;
-      ctx.translate(pivotX, pivotY);
-      ctx.rotate(fx.rotationShake);
-      ctx.translate(-pivotX, -pivotY);
+    const base = this.dpr * this.scale;
+    for (let vi = 0; vi < this.viewCount; vi++) {
+      const view = this.views[vi];
+      this.updateCamera(state, view, alpha, dt);
+
+      // Clip the pane in virtual screen space, then set up its own world camera.
+      ctx.setTransform(base, 0, 0, base, this.dpr * this.offX, this.dpr * this.offY);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(view.x, view.y, view.w, view.h);
+      ctx.clip();
+      const s = base * view.zoom;
+      ctx.setTransform(
+        s,
+        0,
+        0,
+        s,
+        this.dpr * (this.offX + view.x * this.scale) + fx.shakeX * this.scale * this.dpr,
+        this.dpr * (this.offY + view.y * this.scale) + fx.shakeY * this.scale * this.dpr,
+      );
+      ctx.translate(-view.camX, -view.camY);
+      if (fx.rotationShake !== 0) {
+        // Pivot on the middle of this pane's visible world window, not world origin.
+        const pivotX = view.camX + (view.w / view.zoom) * 0.5;
+        const pivotY = view.camY + (view.h / view.zoom) * 0.5;
+        ctx.translate(pivotX, pivotY);
+        ctx.rotate(fx.rotationShake);
+        ctx.translate(-pivotX, -pivotY);
+      }
+
+      this.drawArena(t, state.arena, intro);
+      if (introDone) {
+        if (state.firewalls) this.drawFirewalls(state.firewalls, state.arena, alpha, t);
+        this.drawPlayerTrails(state, t);
+        this.drawTrails(state, alpha);
+        this.drawProjectiles(state, alpha, t);
+        if (state.worms) this.drawWorms(state.worms, alpha, t);
+        if (state.viruses) this.drawViruses(state.viruses, alpha, t);
+        if (state.sentries) this.drawSentries(state.sentries, alpha, t);
+        if (state.errors) this.drawErrors(state.errors, alpha, t);
+        if (state.pickups) this.drawPickups(state.pickups, alpha, t);
+        if (state.nets) this.drawNets(state, alpha, t);
+        if (state.barriers) this.drawBarriers(state.barriers, t);
+        if (state.lures) this.drawLures(state.lures, t);
+        this.drawGas(state, alpha, t);
+        this.drawLasers(state, alpha, t);
+        if (state.drone) this.drawDrone(state.drone, alpha, t);
+      }
+      this.drawPlayers(state, alpha, t, intro, view.slot);
+      if (introDone) {
+        this.drawTravelProgress(state, view.slot);
+        this.drawLockReticle(state, view.slot, t);
+        fx.particles.draw(ctx);
+      }
+      ctx.restore();
+
+      // Screen-space pane HUD. Never panned or shaken, and clipped to the pane so a
+      // split match keeps each dock on its own side of the divider.
+      ctx.setTransform(base, 0, 0, base, this.dpr * this.offX, this.dpr * this.offY);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(view.x, view.y, view.w, view.h);
+      ctx.clip();
+      ctx.translate(view.x, view.y);
+      const local = state.players[view.slot];
+      if (introDone && local && local.alive && local.hp <= 1 && this.lowHpGradient) {
+        ctx.save();
+        ctx.scale(view.w / VIEW_W, view.h / VIEW_H);
+        ctx.globalAlpha = 0.35 + Math.sin(t * 4) * 0.08;
+        ctx.fillStyle = this.lowHpGradient;
+        ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+        ctx.restore();
+      }
+      if (introDone) {
+        this.drawReadiness(state, t, view.slot);
+        if (this.showMinimap) this.drawMinimap(state, t, view.slot, view.h);
+      }
+      this.drawTravelOverlay(state, view);
+      ctx.restore();
     }
 
-    this.drawArena(t, state.arena, intro);
-    if (introDone) {
-      if (state.firewalls) this.drawFirewalls(state.firewalls, state.arena, alpha, t);
-      this.drawPlayerTrails(state, t);
-      this.drawTrails(state, alpha);
-      this.drawProjectiles(state, alpha, t);
-      if (state.worms) this.drawWorms(state.worms, alpha, t);
-      if (state.viruses) this.drawViruses(state.viruses, alpha, t);
-      if (state.sentries) this.drawSentries(state.sentries, alpha, t);
-      if (state.errors) this.drawErrors(state.errors, alpha, t);
-      if (state.pickups) this.drawPickups(state.pickups, alpha, t);
-      if (state.nets) this.drawNets(state, alpha, t);
-      if (state.barriers) this.drawBarriers(state.barriers, t);
-      if (state.lures) this.drawLures(state.lures, t);
-      this.drawGas(state, alpha, t);
-      this.drawLasers(state, alpha, t);
-      if (state.drone) this.drawDrone(state.drone, alpha, t);
-    }
-    this.emitSlideDust(state, alpha, fx, dt);
-    this.emitBroomDust(state, alpha, fx, dt);
-    this.emitToxicBurst(state, alpha, fx);
-    this.drawPlayers(state, alpha, t, intro);
-    if (introDone) {
-      this.drawTravelProgress(state);
-      this.drawLockReticle(state, t);
-      fx.particles.draw(ctx);
-    }
+    // Screen-space overlays shared by the whole frame.
+    ctx.setTransform(base, 0, 0, base, this.dpr * this.offX, this.dpr * this.offY);
+    if (this.viewCount > 1) this.drawViewDivider(state);
 
-    // Screen-space overlays and HUD are never panned or shaken.
-    ctx.setTransform(this.dpr * this.scale, 0, 0, this.dpr * this.scale, this.dpr * this.offX, this.dpr * this.offY);
-
-    // Impact flash.
     if (fx.flash > 0.002) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -309,24 +404,94 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Local low-health vignette.
-    if (state.mode === 'match' || state.mode === 'training' || state.mode === 'gauntlet') {
-      const local = state.players[state.localSlot];
-      if (local && local.alive && local.hp <= 1 && this.lowHpGradient) {
-        ctx.save();
-        ctx.globalAlpha = 0.35 + Math.sin(t * 4) * 0.08;
-        ctx.fillStyle = this.lowHpGradient;
-        ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-        ctx.restore();
+    if (introDone) this.drawHud(state, t);
+  }
+
+  /**
+   * Builds the local panes. One slot is a full-screen view; two are side by side; three
+   * or four use a 2x2 grid. Slots that are not active fall back to the primary so a
+   * solo match never renders an empty pane.
+   */
+  private layoutViews(state: RenderState): void {
+    let count = 1;
+    this.viewSlots[0] = state.localSlot;
+    const wanted = this.splitSlots;
+    if (wanted && wanted.length > 1) {
+      count = 0;
+      for (let i = 0; i < wanted.length && count < MAX_VIEWS; i++) {
+        const slot = wanted[i];
+        if (slot >= 0 && slot < state.players.length && state.players[slot].active) {
+          this.viewSlots[count++] = slot;
+        }
+      }
+      if (count === 0) {
+        this.viewSlots[0] = state.localSlot;
+        count = 1;
       }
     }
 
-    if (introDone) {
-      this.drawHud(state, t);
-      this.drawReadiness(state, t);
-      if (this.showMinimap) this.drawMinimap(state, t);
+    const gap = CAMERA.splitGap;
+    for (let i = 0; i < count; i++) {
+      const view = this.views[i];
+      const slot = this.viewSlots[i];
+      if (view.slot !== slot) {
+        view.slot = slot;
+        view.ready = false;
+        view.wasAlive = false;
+      }
+      if (count === 1) {
+        view.x = 0;
+        view.y = 0;
+        view.w = VIEW_W;
+        view.h = VIEW_H;
+      } else if (count === 2) {
+        const w = (VIEW_W - gap) * 0.5;
+        view.x = i === 0 ? 0 : w + gap;
+        view.y = 0;
+        view.w = w;
+        view.h = VIEW_H;
+      } else {
+        const w = (VIEW_W - gap) * 0.5;
+        const h = (VIEW_H - gap) * 0.5;
+        view.x = (i % 2) === 0 ? 0 : w + gap;
+        view.y = i < 2 ? 0 : h + gap;
+        view.w = w;
+        view.h = h;
+      }
     }
-    this.drawTravelOverlay(state);
+    this.viewCount = count;
+  }
+
+  /** Thin line through the split gap, so two cameras read as two panes. */
+  private drawViewDivider(state: RenderState): void {
+    const ctx = this.ctx;
+    const gap = CAMERA.splitGap;
+    ctx.save();
+    ctx.fillStyle = 'rgba(2, 6, 10, 0.92)';
+    if (this.viewCount === 2) {
+      ctx.fillRect((VIEW_W - gap) * 0.5, 0, gap, VIEW_H);
+    } else {
+      ctx.fillRect((VIEW_W - gap) * 0.5, 0, gap, VIEW_H);
+      ctx.fillRect(0, (VIEW_H - gap) * 0.5, VIEW_W, gap);
+    }
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = state.arena.accent;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (this.viewCount === 2) {
+      const x = VIEW_W * 0.5 + 0.5;
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, VIEW_H);
+    } else {
+      const x = VIEW_W * 0.5 + 0.5;
+      const y = VIEW_H * 0.5 + 0.5;
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, VIEW_H);
+      ctx.moveTo(0, y);
+      ctx.lineTo(VIEW_W, y);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   /** Weighted pull of one body on the camera. `updateCamera` resets the scratch each frame. */
@@ -335,16 +500,129 @@ export class Renderer {
     const dy = y - anchorY;
     const d = Math.hypot(dx, dy);
     if (d > CAMERA.focusRange) return;
+    if (d > this.camSpread) this.camSpread = d;
     const w = 1 - d / CAMERA.focusRange;
     this.camPullW += w;
     this.camPullX += dx * w;
     this.camPullY += dy * w;
   }
 
-  private updateCamera(state: RenderState, alpha: number, dt: number): void {
+  /**
+   * While a local slot is dead, its camera follows the surviving squad first, then the
+   * body that struck the killing blow, then the nearest living player. The killer can
+   * be a player, a worm, a sentry, a cascading error or the training drone; a firewall
+   * has no body to follow, so it falls through to the player fallback.
+   */
+  private findSpectateTarget(state: RenderState, local: Player): boolean {
+    this.spectateKind = SRC.NONE;
+    this.spectateId = -1;
+
+    // Campaign drill partners are the only team-shaped group today. Team modes should
+    // read a real team field here once one exists.
+    if (state.campaign && state.campaignPhase === 'drill') {
+      let best = -1;
+      let bestD = Infinity;
+      for (let i = 0; i < state.players.length; i++) {
+        const p = state.players[i];
+        if (i === local.slot || !p.active || !p.alive || p.thrall) continue;
+        const d = (p.x - local.x) * (p.x - local.x) + (p.y - local.y) * (p.y - local.y);
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      }
+      if (best >= 0) {
+        this.spectateKind = SRC.PLAYER;
+        this.spectateId = best;
+        this.spectateX = state.players[best].x;
+        this.spectateY = state.players[best].y;
+        return true;
+      }
+    }
+
+    const id = local.killerId;
+    if (local.killerKind === SRC.PLAYER) {
+      const p = id >= 0 && id < state.players.length ? state.players[id] : null;
+      if (p && p.active && p.alive) {
+        this.spectateKind = SRC.PLAYER;
+        this.spectateId = id;
+        this.spectateX = p.x;
+        this.spectateY = p.y;
+        return true;
+      }
+    } else if (local.killerKind === SRC.WORM) {
+      const w = state.worms && id >= 0 ? state.worms[id] : null;
+      if (w && w.active) {
+        this.spectateKind = SRC.WORM;
+        this.spectateId = id;
+        this.spectateX = w.x;
+        this.spectateY = w.y;
+        return true;
+      }
+    } else if (local.killerKind === SRC.VIRUS) {
+      const v = state.viruses && id >= 0 ? state.viruses[id] : null;
+      if (v && v.active) {
+        this.spectateKind = SRC.VIRUS;
+        this.spectateId = id;
+        this.spectateX = v.x;
+        this.spectateY = v.y;
+        return true;
+      }
+    } else if (local.killerKind === SRC.SENTRY) {
+      const s = state.sentries && id >= 0 ? state.sentries[id] : null;
+      if (s && s.active) {
+        this.spectateKind = SRC.SENTRY;
+        this.spectateId = id;
+        this.spectateX = s.x;
+        this.spectateY = s.y;
+        return true;
+      }
+    } else if (local.killerKind === SRC.ERROR) {
+      const e = state.errors && id >= 0 ? state.errors[id] : null;
+      if (e && e.active) {
+        this.spectateKind = SRC.ERROR;
+        this.spectateId = id;
+        this.spectateX = e.x;
+        this.spectateY = e.y;
+        return true;
+      }
+    } else if (local.killerKind === SRC.DRONE) {
+      const d = state.drone;
+      if (d && d.active) {
+        this.spectateKind = SRC.DRONE;
+        this.spectateId = 0;
+        this.spectateX = d.x;
+        this.spectateY = d.y;
+        return true;
+      }
+    }
+
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      if (i === local.slot || !p.active || !p.alive) continue;
+      const d = (p.x - local.x) * (p.x - local.x) + (p.y - local.y) * (p.y - local.y);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best >= 0) {
+      this.spectateKind = SRC.PLAYER;
+      this.spectateId = best;
+      this.spectateX = state.players[best].x;
+      this.spectateY = state.players[best].y;
+      return true;
+    }
+    return false;
+  }
+
+  private updateCamera(state: RenderState, view: CameraView, alpha: number, dt: number): void {
     const arena = state.arena;
     const b = arena.bounds;
-    const local = state.players[state.localSlot];
+    const local = state.players[view.slot];
+    const alive = !!(local && local.active && local.alive);
     // A pad swap is a cut, not a pan. Snap on the half where the body changes plates.
     const padSwap = !!(
       local &&
@@ -356,53 +634,77 @@ export class Renderer {
     let focusY = (b.top + b.bottom) * 0.5;
     let anchorX = focusX;
     let anchorY = focusY;
+    let spectating = false;
+    this.camSpread = 0;
     if (local && local.active) {
-      anchorX = lerp(local.prevX, local.x, alpha);
-      anchorY = lerp(local.prevY, local.y, alpha);
+      if (alive) {
+        anchorX = lerp(local.prevX, local.x, alpha);
+        anchorY = lerp(local.prevY, local.y, alpha);
+      } else if (this.findSpectateTarget(state, local)) {
+        anchorX = this.spectateX;
+        anchorY = this.spectateY;
+        spectating = true;
+      } else {
+        anchorX = local.x;
+        anchorY = local.y;
+      }
       focusX = anchorX;
       focusY = anchorY;
     }
 
     // Nearby bodies lead the frame. The mean offset is damped so one threat behind the
     // player opens the view, while a brawl around them leaves the frame on the player.
-    if (local && local.active && local.alive) {
+    // A dead slot pulls around its spectate target instead of the corpse.
+    if (local && local.active && (alive || spectating)) {
       this.camPullW = 0;
       this.camPullX = 0;
       this.camPullY = 0;
+      this.camSpread = 0;
       for (let i = 0; i < state.players.length; i++) {
-        if (i === state.localSlot) continue;
+        if (i === view.slot) continue;
+        if (spectating && this.spectateKind === SRC.PLAYER && i === this.spectateId) continue;
         const p = state.players[i];
         if (!p.active || !p.alive) continue;
         this.addCameraFocus(p.x, p.y, anchorX, anchorY);
       }
       const drone = state.drone;
-      if (drone && drone.active) this.addCameraFocus(drone.x, drone.y, anchorX, anchorY);
+      if (drone && drone.active && !(spectating && this.spectateKind === SRC.DRONE)) {
+        this.addCameraFocus(drone.x, drone.y, anchorX, anchorY);
+      }
       const worms = state.worms;
       if (worms) {
         for (let i = 0; i < worms.length; i++) {
           const w = worms[i];
-          if (w.active) this.addCameraFocus(w.x, w.y, anchorX, anchorY);
+          if (!w.active) continue;
+          if (spectating && this.spectateKind === SRC.WORM && i === this.spectateId) continue;
+          this.addCameraFocus(w.x, w.y, anchorX, anchorY);
         }
       }
       const viruses = state.viruses;
       if (viruses) {
         for (let i = 0; i < viruses.length; i++) {
           const v = viruses[i];
-          if (v.active) this.addCameraFocus(v.x, v.y, anchorX, anchorY);
+          if (!v.active) continue;
+          if (spectating && this.spectateKind === SRC.VIRUS && i === this.spectateId) continue;
+          this.addCameraFocus(v.x, v.y, anchorX, anchorY);
         }
       }
       const sentries = state.sentries;
       if (sentries) {
         for (let i = 0; i < sentries.length; i++) {
           const s = sentries[i];
-          if (s.active) this.addCameraFocus(s.x, s.y, anchorX, anchorY);
+          if (!s.active) continue;
+          if (spectating && this.spectateKind === SRC.SENTRY && i === this.spectateId) continue;
+          this.addCameraFocus(s.x, s.y, anchorX, anchorY);
         }
       }
       const errors = state.errors;
       if (errors) {
         for (let i = 0; i < errors.length; i++) {
           const e = errors[i];
-          if (e.active) this.addCameraFocus(e.x, e.y, anchorX, anchorY);
+          if (!e.active) continue;
+          if (spectating && this.spectateKind === SRC.ERROR && i === this.spectateId) continue;
+          this.addCameraFocus(e.x, e.y, anchorX, anchorY);
         }
       }
       if (this.camPullW > 0.001) {
@@ -412,10 +714,16 @@ export class Renderer {
       }
     }
 
+    // Zoom out when the focus group is spread, so both ends of the fight stay on screen.
+    // The range is a multiplier of the base zoom: full view or split pane.
+    const zoomBase = CAMERA_ZOOM * (this.viewCount > 1 ? CAMERA.splitZoom : 1);
+    const spreadFrac = Math.min(1, this.camSpread / CAMERA.focusRange);
+    const zoomTarget = zoomBase * (CAMERA.zoomMax + (CAMERA.zoomMin - CAMERA.zoomMax) * spreadFrac);
+
     let targetX: number;
     let targetY: number;
-    const viewW = VIEW_W / CAMERA_ZOOM;
-    const viewH = VIEW_H / CAMERA_ZOOM;
+    const viewW = view.w / zoomTarget;
+    const viewH = view.h / zoomTarget;
     const spanX = b.right - b.left;
     const spanY = b.bottom - b.top;
     if (spanX <= viewW) targetX = (b.left + b.right - viewW) * 0.5;
@@ -442,16 +750,23 @@ export class Renderer {
       targetY = Math.max(b.top, Math.min(b.bottom - viewH, targetY));
     }
 
-    if (padSwap || !this.camReady || this.camArena !== arena.id) {
-      this.camX = targetX;
-      this.camY = targetY;
-      this.camReady = true;
-      this.camArena = arena.id;
-      return;
+    // Respawn is a cut too: the body reappears at a spawn, not where the spectate pane
+    // was looking, so panning back would sweep the whole arena.
+    const respawned = alive && !view.wasAlive;
+    if (padSwap || respawned || !view.ready || view.arena !== arena.id) {
+      view.camX = targetX;
+      view.camY = targetY;
+      view.zoom = zoomTarget;
+      view.ready = true;
+      view.arena = arena.id;
+    } else {
+      const k = 1 - Math.exp(-CAMERA.follow * dt);
+      view.camX += (targetX - view.camX) * k;
+      view.camY += (targetY - view.camY) * k;
+      const kz = 1 - Math.exp(-CAMERA.zoomFollow * dt);
+      view.zoom += (zoomTarget - view.zoom) * kz;
     }
-    const k = 1 - Math.exp(-CAMERA.follow * dt);
-    this.camX += (targetX - this.camX) * k;
-    this.camY += (targetY - this.camY) * k;
+    view.wasAlive = alive;
   }
 
   /**
@@ -1540,6 +1855,18 @@ export class Renderer {
     return true;
   }
 
+  /** Advances each projectile's trail once per frame, never once per split pane. */
+  private updateTrails(state: RenderState, alpha: number): void {
+    for (let i = 0; i < state.projectiles.length; i++) {
+      const p = state.projectiles[i];
+      if (!p.active) continue;
+      // The thrown broom head and the venom needle are solid objects, not bolts: no
+      // motion tail. Their bodies are drawn with the rest of the projectile shapes.
+      if (p.type === 6 || p.type === 7 || p.type === 8 || p.type === 9) continue;
+      this.pushTrail(p, lerp(p.prevX, p.x, alpha), lerp(p.prevY, p.y, alpha));
+    }
+  }
+
   private drawTrails(state: RenderState, alpha: number): void {
     const ctx = this.ctx;
     ctx.save();
@@ -1555,12 +1882,9 @@ export class Renderer {
         : ownerPlayer
           ? playerColor(state, ownerPlayer)
           : particleColor(P_COLOR_ICE);
-      const x = lerp(p.prevX, p.x, alpha);
-      const y = lerp(p.prevY, p.y, alpha);
       // The thrown broom head and the venom needle are solid objects, not bolts: no
       // motion tail. Their bodies are drawn with the rest of the projectile shapes.
       if (p.type !== 6 && p.type !== 7 && p.type !== 8 && p.type !== 9) {
-        this.pushTrail(p, x, y);
         if (p.trailCount >= 2) {
       // Hostile shots get a short tail so the screen does not fill with long lines.
       const count = p.type >= 3 ? Math.min(p.trailCount, 5) : p.trailCount;
@@ -2154,6 +2478,25 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** Advances the charged-dash trail samples once per frame, never once per pane. */
+  private updatePlayerTrails(state: RenderState, t: number): void {
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      if (!p.active || !p.alive || p.dashT <= 0 || p.dashKind !== 1) continue;
+      const dx = p.x - this.trailLastX[p.slot];
+      const dy = p.y - this.trailLastY[p.slot];
+      if (t - this.trailLastT[p.slot] < SPIN_TRAIL_INTERVAL || dx * dx + dy * dy <= 9) continue;
+      const index = p.slot * SPIN_TRAIL_LEN + this.trailHead[p.slot];
+      this.trailX[index] = p.x;
+      this.trailY[index] = p.y;
+      this.trailBirth[index] = t;
+      this.trailHead[p.slot] = (this.trailHead[p.slot] + 1) % SPIN_TRAIL_LEN;
+      this.trailLastT[p.slot] = t;
+      this.trailLastX[p.slot] = p.x;
+      this.trailLastY[p.slot] = p.y;
+    }
+  }
+
   /** Fading squares mark the path of a charged triangle dash. */
   private drawPlayerTrails(state: RenderState, t: number): void {
     const ctx = this.ctx;
@@ -2161,21 +2504,6 @@ export class Renderer {
       const p = state.players[i];
       if (!p.active) continue;
       const base = p.slot * SPIN_TRAIL_LEN;
-      const moving = p.alive && p.dashT > 0 && p.dashKind === 1;
-      if (moving) {
-        const dx = p.x - this.trailLastX[p.slot];
-        const dy = p.y - this.trailLastY[p.slot];
-        if (t - this.trailLastT[p.slot] >= SPIN_TRAIL_INTERVAL && dx * dx + dy * dy > 9) {
-          const index = base + this.trailHead[p.slot];
-          this.trailX[index] = p.x;
-          this.trailY[index] = p.y;
-          this.trailBirth[index] = t;
-          this.trailHead[p.slot] = (this.trailHead[p.slot] + 1) % SPIN_TRAIL_LEN;
-          this.trailLastT[p.slot] = t;
-          this.trailLastX[p.slot] = p.x;
-          this.trailLastY[p.slot] = p.y;
-        }
-      }
       const color = playerColor(state, p);
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -2200,8 +2528,8 @@ export class Renderer {
   }
 
   /** Local lock-on marker: translucent while acquiring, solid once locked. */
-  private drawLockReticle(state: RenderState, t: number): void {
-    const p = state.players[state.localSlot];
+  private drawLockReticle(state: RenderState, slot: number, t: number): void {
+    const p = state.players[slot];
     if (!p || !p.active || !p.alive || p.lockKind === 0) return;
     let tx = 0;
     let ty = 0;
@@ -2444,7 +2772,13 @@ export class Renderer {
     }
   }
 
-  private drawPlayers(state: RenderState, alpha: number, t: number, intro = INTRO_LEN): void {
+  private drawPlayers(
+    state: RenderState,
+    alpha: number,
+    t: number,
+    intro = INTRO_LEN,
+    localSlot = state.localSlot,
+  ): void {
     const ctx = this.ctx;
     if (intro < 1.85) {
       const a = Math.max(0, Math.min(1, (intro - 1.55) / 0.3));
@@ -2481,7 +2815,7 @@ export class Renderer {
       const y = lerp(p.prevY, p.y, alpha);
       const facing = lerpAngle(p.prevFacing, p.facing, alpha);
       const color = playerColor(state, p);
-      const isLocal = p.slot === state.localSlot;
+      const isLocal = p.slot === localSlot;
 
       // A dead body leaves no marker on the field. The death burst and the respawn
       // timer carry the state; a dashed ring with an X read as another interactable.
@@ -2489,7 +2823,7 @@ export class Renderer {
       // Lift riders are hidden under the car transition. A pad rider is drawn in its
       // layer-by-layer unload/reload at the two plates instead.
       if (p.travelT > 0) {
-        if (p.travelKind === TRAVEL.pad) this.drawPadTransit(state, p, t);
+        if (p.travelKind === TRAVEL.pad) this.drawPadTransit(state, p, t, localSlot);
         continue;
       }
 
@@ -3179,8 +3513,8 @@ export class Renderer {
    * energy stay on the avatar; ammo, dash, skill, heavy and the active pickup live
    * here so they never sit between the avatar and an incoming shot.
    */
-  private drawReadiness(state: RenderState, t: number): void {
-    const p = state.players[state.localSlot];
+  private drawReadiness(state: RenderState, t: number, slot: number): void {
+    const p = state.players[slot];
     if (!p || !p.active || !p.alive) return;
     const ctx = this.ctx;
     const color = playerColor(state, p);
@@ -3602,7 +3936,7 @@ export class Renderer {
    * rebuild at the mate. The hull goes first on the way out and last on the way in,
    * so the character reads as decompiling and recompiling rather than blinking.
    */
-  private drawPadTransit(state: RenderState, p: Player, t: number): void {
+  private drawPadTransit(state: RenderState, p: Player, t: number, localSlot = state.localSlot): void {
     if (p.travelDur <= 0) return;
     const pct = 1 - Math.max(0, Math.min(1, p.travelT / p.travelDur));
     const unload = pct < 0.5;
@@ -3611,7 +3945,7 @@ export class Renderer {
     const x = p.x;
     const y = p.y;
     const color = playerColor(state, p);
-    const isLocal = p.slot === state.localSlot;
+    const isLocal = p.slot === localSlot;
     const hull = Math.max(0, Math.min(1, (reveal - 0.5) / 0.5));
     const core = Math.max(0, Math.min(1, (reveal - 0.2) / 0.6));
     const glyphA = Math.max(0, Math.min(1, reveal / 0.35));
@@ -3681,8 +4015,8 @@ export class Renderer {
   }
 
   /** Fills around the local avatar while a pad or lift is waiting for the ride to arm. */
-  private drawTravelProgress(state: RenderState): void {
-    const p = state.players[state.localSlot];
+  private drawTravelProgress(state: RenderState, slot: number): void {
+    const p = state.players[slot];
     if (!p || !p.active || !p.alive || p.travelT > 0 || p.travelDwell <= 0) return;
     const needed = p.travelKind === TRAVEL.lift ? TRAVERSE.liftDwell : TRAVERSE.padDwell;
     const pct = Math.max(0, Math.min(1, p.travelDwell / needed));
@@ -3710,15 +4044,17 @@ export class Renderer {
    * centre while the veil rises, which reads as the floor dropping away; the pad is a
    * short white ring flash. Both hide the body swap that already happened in the sim.
    */
-  private drawTravelOverlay(state: RenderState): void {
-    const p = state.players[state.localSlot];
+  private drawTravelOverlay(state: RenderState, view: CameraView): void {
+    const p = state.players[view.slot];
     // Only the lift is a full-screen transition; pad transit is drawn on the avatar
     // itself, so the unload and reload stay visible at both plates.
     if (!p || p.travelT <= 0 || p.travelDur <= 0 || p.travelKind !== TRAVEL.lift) return;
     const pct = 1 - Math.max(0, Math.min(1, p.travelT / p.travelDur));
     const ctx = this.ctx;
-    const cx = VIEW_W * 0.5;
-    const cy = VIEW_H * 0.5;
+    const viewW = view.w;
+    const viewH = view.h;
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.5;
     ctx.save();
     const rise = Math.min(1, pct / 0.52);
     const fall = Math.max(0, (pct - 0.52) / 0.48);
@@ -3729,15 +4065,15 @@ export class Renderer {
     for (let i = 0; i < 5; i++) {
       const k = i / 4;
       const s = (1 - rise) * (0.94 - k * 0.15) + 0.05;
-      const w = VIEW_W * 0.94 * s;
-      const h = VIEW_H * 0.86 * s;
+      const w = viewW * 0.94 * s;
+      const h = viewH * 0.86 * s;
       ctx.globalAlpha = (0.4 - k * 0.06) * (1 - fall);
       ctx.strokeRect(cx - w * 0.5, cy - h * 0.5, w, h);
     }
     ctx.globalAlpha = 0.3 * (1 - fall);
     ctx.beginPath();
     for (let i = 0; i < 12; i++) {
-      const yy = ((i / 12 + pct * 1.6) % 1) * VIEW_H;
+      const yy = ((i / 12 + pct * 1.6) % 1) * viewH;
       ctx.moveTo(cx - 26, yy);
       ctx.lineTo(cx + 26, yy);
     }
@@ -3745,7 +4081,7 @@ export class Renderer {
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#01040a';
     ctx.globalAlpha = veil;
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillRect(0, 0, viewW, viewH);
     if (fall > 0) {
       ctx.globalCompositeOperation = 'lighter';
       ctx.strokeStyle = state.arena.accent;
@@ -3762,7 +4098,7 @@ export class Renderer {
    * Toggleable minimap. It shows cover, the local avatar, other players and local
    * gauntlet threats. No labels; the shapes already carry meaning.
    */
-  private drawMinimap(state: RenderState, t: number): void {
+  private drawMinimap(state: RenderState, t: number, localSlot: number, viewH: number): void {
     const arena = state.arena;
     const b = arena.bounds;
     const spanX = Math.max(1, b.right - b.left);
@@ -3770,7 +4106,7 @@ export class Renderer {
     const w = 148;
     const h = Math.max(74, Math.min(116, w * (spanY / spanX)));
     const x0 = 12;
-    const y0 = VIEW_H - h - 12;
+    const y0 = viewH - h - 12;
     const sx = w / spanX;
     const sy = h / spanY;
     const ctx = this.ctx;
@@ -3886,9 +4222,9 @@ export class Renderer {
       const py = y0 + (p.y - b.top) * sy;
       ctx.fillStyle = playerColor(state, p);
       ctx.beginPath();
-      ctx.arc(px, py, i === state.localSlot ? 3.4 : 2.4, 0, TWO_PI);
+      ctx.arc(px, py, i === localSlot ? 3.4 : 2.4, 0, TWO_PI);
       ctx.fill();
-      if (i === state.localSlot) {
+      if (i === localSlot) {
         ctx.globalAlpha = 0.65 + 0.25 * Math.sin(t * 5);
         ctx.strokeStyle = playerColor(state, p);
         ctx.lineWidth = 1.2;

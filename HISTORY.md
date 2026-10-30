@@ -1984,3 +1984,46 @@ camera so the player sat at 0.39 of the view and the sentry at 0.90 (no pull wou
 
 **Next:** playtest the pull in 1v1, 1v3 and gauntlet and tune `focusRange`/`maxBias`; dynamic zoom stays
 deferred behind the fixed-zoom kit numbers; add the next campaign node.
+
+## 2026-10-30 — Split-screen camera plumbing, death spectate, Kaboom clearance
+
+**Goal:** give the local camera more to work with as bridges and pads spread a match across an arena, make a
+death readable by following what killed you, and finish Kaboom's hull so its health blades never cross the
+bomb mark.
+
+**Changes:**
+- Renderer: the single camera became up to four `CameraView`s. `Renderer.setLocalSlots([...])` lays out one
+  full-screen pane, two side-by-side panes, or a 2x2 grid for three or four local slots. Each pane owns its
+  camera position, zoom, lock reticle, readiness dock, minimap and lift overlay; panes clip at their
+  viewport. `?split=N` is a QA-only boot hook (no menus, no snapshot fields).
+- Config: new `CAMERA.zoomMin` (0.88) and `CAMERA.zoomMax` (1.03) multipliers around `CAMERA_ZOOM`,
+  `CAMERA.zoomFollow` (3.4/s), `CAMERA.splitZoom` (0.8) and `CAMERA.splitGap` (4). The old camera had no
+  dynamic zoom (fixed `CAMERA_ZOOM` 1.28). A tight focus group now sits at 1.03x the base; a group spread
+  across `focusRange` pulls to 0.88x. The previous fixed zoom stays the base, so the old framing is the
+  center of the new range.
+- Split rendering: world effect emissions (slide dust, broom dust, toxic burst, projectile trails, dash
+  trails) run once per frame; only their draw passes run per pane, so a split match does not double the
+  particle count.
+- Death spectate: `Player` gains `killerKind`/`killerId`; `damagePlayer` records the attacker family and
+  index. Hostile projectiles carry `srcKind`/`srcId` (sentry index, or the drone). Worm, cascading-error and
+  firewall contact pass their pool index. While a local slot is dead the camera follows a surviving
+  campaign drill partner first, then the killing body, then the nearest living player; respawn and pad
+  swaps snap rather than pan across the arena.
+- Kaboom hull: base radius 0.46r → 0.72r, half-base 0.95 → 0.56 rad, and `coreScale` 0.98 → 0.86. The
+  three blades are now short fins on the rim instead of wedges tucked behind the core; the bomb mark has
+  clear air around it. Recorded the general rule in AGENTS D4: health segments must stay outside the 0.6r
+  core disc at full and one-segment health.
+- Bumped to v0.1.36 and refreshed the service worker cache.
+
+**Verification:** headless probe — Kaboom's fins clear the core disc by 1.33 units at full and one-segment
+health (glow stroke included), the center mark radius is 9.65 against a 13.21 core disc, and Kaboom still
+draws no frame. A sentry bolt kills through attribution kind 4 / id 2, and a worm blow records kind 2 / id
+3. Browser at 1280x800: 2-pane and 4-pane layouts render with per-pane docks, minimaps and independent
+cameras; killing the training player with a drone-sourced blow moved the camera from x=48 to 893 then 936
+while the drone target was 904 then 945; respawn snapped back to the arena-left clamp at 48; a staged drill
+ally was preferred over the drone killer, and the same world switched to the drone when the campaign phase
+moved to assault. `npx tsc --noEmit`, `npm run build` and `npm run bench` clean.
+
+**Next:** local input slots and the same-screen menu flow are still missing, so split screen is proven
+plumbing rather than playable local multiplayer. Tune `zoomMin`/`zoomMax` from the production build; move
+the heavy/sentry numbers only if the screen coverage at the new range reads wrong in play.

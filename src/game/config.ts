@@ -23,6 +23,19 @@ export const CAMERA = {
   edgeMargin: 0.3,
   /** Follow rate, 1/s. Lower is calmer; the old fixed follow was 9. */
   follow: 6.2,
+  /**
+   * Dynamic zoom, expressed as a multiplier of the view's base zoom. A tight fight sits
+   * at `zoomMax`; a group spread across the whole focus range pulls back to `zoomMin`.
+   * Tune these two first when the framing feels too close or too wide.
+   */
+  zoomMin: 0.88,
+  zoomMax: 1.03,
+  /** Zoom rate, 1/s. Slower than the pan so the frame does not breathe. */
+  zoomFollow: 3.4,
+  /** Split-screen panes start pulled back so each local player keeps context. */
+  splitZoom: 0.8,
+  /** Gap between split panes, in virtual pixels. */
+  splitGap: 4,
 } as const;
 
 export const ARENA = {

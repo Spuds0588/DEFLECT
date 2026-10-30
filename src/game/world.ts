@@ -52,6 +52,7 @@ import { Rng } from './rng';
 import {
   ACTION,
   EV,
+  SRC,
   type Barrier,
   type CampaignPhase,
   type CascadingError,
@@ -2795,7 +2796,7 @@ export class World {
     p.poisonTickT -= dt;
     if (p.poisonTickT > 0) return;
     p.poisonTickT += TOXIC.poisonTick;
-    this.damagePlayer(p, TOXIC.poisonDamage, p.poisonSrc, 0, -1, 0);
+    this.damagePlayer(p, TOXIC.poisonDamage, p.poisonSrc, 0, -1, 0, SRC.PLAYER, p.poisonSrc);
   }
 
   private tickDronePoison(d: Drone, dt: number): void {
@@ -3967,29 +3968,33 @@ export class World {
         this.explodeMine(proj, proj.owner);
         return true;
       }
+      // A hostile bolt has no owner slot, so it carries the sentry or drone that
+      // fired it. Player shots are attributed by owner slot.
+      const hitKind = proj.owner >= 0 ? SRC.PLAYER : proj.srcKind ?? SRC.NONE;
+      const hitId = proj.owner >= 0 ? proj.owner : proj.srcId ?? -1;
       const speed = Math.hypot(proj.vx, proj.vy) || 1;
       if (proj.type === 5) {
         // Spear: damage each player once and keep travelling.
         const bit = 1 << p.slot;
         if ((proj.hitPlayers & bit) !== 0) continue;
         proj.hitPlayers |= bit;
-        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, FISHER.spearKnockback);
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, FISHER.spearKnockback, hitKind, hitId);
         continue;
       }
       if (proj.type === 6) {
         // Broom: a heavy throw, so it stops on the body and slides it well back.
-        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, SWEEP.shotKnockback);
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, SWEEP.shotKnockback, hitKind, hitId);
         proj.active = false;
         return true;
       }
       if (proj.type === 7) {
         // Needle: light damage, then the venom keeps working.
-        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, TOXIC.needleKnockback);
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, TOXIC.needleKnockback, hitKind, hitId);
         this.poisonPlayer(p, proj.owner);
         proj.active = false;
         return true;
       }
-      this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, BOLT.knockback);
+      this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, BOLT.knockback, hitKind, hitId);
       proj.active = false;
       return true;
     }
@@ -4030,8 +4035,13 @@ export class World {
     dirX: number,
     dirY: number,
     force: number,
+    sourceKind: number = SRC.PLAYER,
+    sourceId = -1,
   ): void {
     if (!p.alive || p.iframes > 0 || p.ghostT > 0 || p.travelT > 0) return;
+    // The death camera reads this: who last touched the body, by family and pool index.
+    p.killerKind = sourceKind;
+    p.killerId = sourceId >= 0 ? sourceId : sourceSlot;
     p.hp -= amount;
     p.hitFlash = PLAYER.hitFlash;
     p.kx += dirX * force;
@@ -4589,6 +4599,8 @@ export class World {
     proj.serial = ++this.serial;
     proj.type = 0;
     proj.owner = -1;
+    proj.srcKind = SRC.DRONE;
+    proj.srcId = 0;
     proj.x = x;
     proj.y = y;
     proj.prevX = x;
@@ -5146,8 +5158,9 @@ export class World {
       return;
     }
     const aim = Math.atan2(dy, dx);
+    const srcId = this.sentries.indexOf(s);
     if (s.kind === 0) {
-      this.spawnHostileProjectile(s.x, s.y, aim, SENTRY.pulse.boltSpeed, SENTRY.boltRadius, SENTRY.boltDamage, 3, SENTRY.pulse.boltTtl);
+      this.spawnHostileProjectile(s.x, s.y, aim, SENTRY.pulse.boltSpeed, SENTRY.boltRadius, SENTRY.boltDamage, 3, SENTRY.pulse.boltTtl, srcId);
     } else if (s.kind === 1) {
       for (let b = -2; b <= 2; b++) {
         this.spawnHostileProjectile(
@@ -5159,10 +5172,11 @@ export class World {
           SENTRY.boltDamage,
           3,
           SENTRY.triplex.boltTtl,
+          srcId,
         );
       }
     } else if (s.kind === 2) {
-      this.spawnHostileProjectile(s.x, s.y, aim, SENTRY.missileSpeed, SENTRY.missileRadius, SENTRY.boltDamage, 4, SENTRY.missileTtl);
+      this.spawnHostileProjectile(s.x, s.y, aim, SENTRY.missileSpeed, SENTRY.missileRadius, SENTRY.boltDamage, 4, SENTRY.missileTtl, srcId);
     } else {
       for (let b = -1; b <= 1; b++) {
         this.spawnHostileProjectile(
@@ -5174,6 +5188,7 @@ export class World {
           SENTRY.boltDamage,
           3,
           SENTRY.flock.boltTtl,
+          srcId,
         );
       }
     }
@@ -5205,6 +5220,7 @@ export class World {
     damage: number,
     type: 3 | 4,
     ttl: number,
+    srcId = -1,
   ): void {
     let proj: Projectile | null = null;
     for (let i = 0; i < this.projectiles.length; i++) {
@@ -5218,6 +5234,8 @@ export class World {
     proj.serial = ++this.serial;
     proj.type = type;
     proj.owner = -1;
+    proj.srcKind = SRC.SENTRY;
+    proj.srcId = srcId;
     proj.x = proj.prevX = x;
     proj.y = proj.prevY = y;
     proj.vx = Math.cos(angle) * speed;
@@ -5288,7 +5306,7 @@ export class World {
       if (dx * dx + dy * dy > rr * rr) continue;
       const d = Math.hypot(dx, dy) || 1;
       e.touchCd = CASCADING_ERROR.touchCooldown;
-      this.damagePlayer(player, CASCADING_ERROR.touchDamage, -1, dx / d, dy / d, CASCADING_ERROR.knockback);
+      this.damagePlayer(player, CASCADING_ERROR.touchDamage, -1, dx / d, dy / d, CASCADING_ERROR.knockback, SRC.ERROR, i);
     }
 
     if (active === 0) {
@@ -5691,7 +5709,7 @@ export class World {
       }
       if (hit) {
         const d = Math.hypot(hdx, hdy) || 1;
-        this.damagePlayer(p, WORM.touchDamage, -1, hdx / d, hdy / d, WORM.knockback);
+        this.damagePlayer(p, WORM.touchDamage, -1, hdx / d, hdy / d, WORM.knockback, SRC.WORM, this.worms.indexOf(w));
         w.aggroT = WORM.aggroTime;
         w.touchCd = WORM.touchCooldown;
       }
@@ -6135,7 +6153,7 @@ export class World {
       if (!p.active || !p.alive) continue;
       if (!this.beamHits(f, p.x, p.y, PLAYER.radius)) continue;
       const sign = (f.axis === 0 ? p.x - f.pos : p.y - f.pos) >= 0 ? 1 : -1;
-      this.damagePlayer(p, FIREWALL.damage, -1, nx * sign, ny * sign, FIREWALL.knockback);
+      this.damagePlayer(p, FIREWALL.damage, -1, nx * sign, ny * sign, FIREWALL.knockback, SRC.FIREWALL, this.firewalls.indexOf(f));
     }
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];

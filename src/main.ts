@@ -246,6 +246,14 @@ function boot(): void {
   const params = new URLSearchParams(location.search);
   const stressParam = Number(params.get('stress') ?? '0');
   const autoplayParam = Number(params.get('autoplay') ?? '0');
+  // QA-only split-screen hook: `?split=2` (with `?autoplay=N`) renders N local panes.
+  // Local same-screen play has no input slots yet, so this is the visual test bed.
+  const splitParam = Math.floor(Number(params.get('split') ?? '0'));
+  if (splitParam >= 2) {
+    const slots: number[] = [];
+    for (let i = 0; i < Math.min(4, splitParam); i++) slots.push(i);
+    renderer.setLocalSlots(slots);
+  }
   if (stressParam >= 2 && stressParam <= MAX_PLAYERS) {
     window.setTimeout(() => startStress(stressParam), 250);
   } else if (autoplayParam >= 1) {
@@ -253,7 +261,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.34 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.36 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {

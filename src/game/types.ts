@@ -59,6 +59,22 @@ export const PF = {
   GUARD: 262144,
 } as const;
 
+/**
+ * Attacker families for the death camera. `killerKind` on a player names the last
+ * body that damaged them; only local simulations fill it, so a guest's snapshot
+ * leaves it at `NONE`.
+ */
+export const SRC = {
+  NONE: 0,
+  PLAYER: 1,
+  WORM: 2,
+  VIRUS: 3,
+  SENTRY: 4,
+  ERROR: 5,
+  FIREWALL: 6,
+  DRONE: 7,
+} as const;
+
 export const EV = {
   SHOOT: 1,
   SWING: 2,
@@ -123,6 +139,9 @@ export interface Player {
   hp: number;
   maxHp: number;
   energy: number;
+  /** Last attacker family (see `SRC`) and its slot or pool index, for the death camera. */
+  killerKind: number;
+  killerId: number;
   /** Toxic venom: seconds left, time to the next tick, and the slot that applied it. */
   poisonT: number;
   poisonTickT: number;
@@ -341,6 +360,10 @@ export interface Projectile {
   hitErrors: number;
   hitSentries: number;
   hitDrone: boolean;
+
+  /** Local-only attacker attribution for hostile shots, used by the death camera. */
+  srcKind?: number;
+  srcId?: number;
 
   /** Renderer-owned trail ring buffer (also used by network views). */
   trailX: Float32Array;
