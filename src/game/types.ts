@@ -124,6 +124,8 @@ export const EV = {
   TIME_WARP: 39,
   /** A projectile reached its TTL without touching a body or cover. */
   DISSOLVE: 40,
+  /** Overcharge beam switched off: embers along the shaft and a puff at its stop. */
+  BEAM_END: 41,
 } as const;
 
 /** Breakable file boxes. The renderer maps each to one glyph. */
@@ -261,6 +263,13 @@ export interface Player {
   laserTickT: number;
   /** Facing committed when the beam begins. */
   laserFacing: number;
+  /**
+   * Overcharge ranged fire: seconds left in the short spin-up before the beam exists,
+   * and seconds left of the cooling afterglow after it switches off. Both local only;
+   * the powerup never enters a snapshot.
+   */
+  ocChargeT: number;
+  ocFadeT: number;
   /**
    * A raised guard caught the heavy beam: seconds of reflected flash left, the direction
    * the reflected shaft travels, and how far it reaches back to the caster. Local only.

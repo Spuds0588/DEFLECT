@@ -1667,6 +1667,7 @@ export class World {
       if (p.chargeDashCd > 0) p.chargeDashCd = Math.max(0, p.chargeDashCd - pdt);
       if (p.laserCd > 0) p.laserCd = Math.max(0, p.laserCd - pdt);
       if (p.beamReflectT > 0) p.beamReflectT = Math.max(0, p.beamReflectT - dt);
+      if (p.ocFadeT > 0) p.ocFadeT = Math.max(0, p.ocFadeT - dt);
       // Gas/stream visual lifetime. Damage resolved on use; this only retires the draw.
       if (p.toxT > 0) p.toxT = Math.max(0, p.toxT - dt);
       this.tickPlayerPoison(p, dt);
@@ -1696,9 +1697,11 @@ export class World {
       if (p.powerupT > 0) {
         p.powerupT = Math.max(0, p.powerupT - dt);
         if (p.powerupT === 0) {
-          if (p.powerupKind === POWERUP_KIND.OVERCHARGE && p.laserT > 0) {
+          if (p.powerupKind === POWERUP_KIND.OVERCHARGE) {
             p.laserT = 0;
             p.laserTickT = 0;
+            p.ocChargeT = 0;
+            p.ocFadeT = 0;
           }
           p.powerupKind = -1;
         }
@@ -1988,8 +1991,9 @@ export class World {
         }
         p.dashChargeHeld = heldDash;
         if (input.pressed & ACTION.BOLT) {
-          if (overcharged) this.startOverchargeBeam(p);
-          else this.tryShoot(p);
+          // Overcharge answers the held-trigger block below, not this press: its spin-up
+          // owns the start, so a tap cannot skip the wind-up frame.
+          if (!overcharged) this.tryShoot(p);
         }
         if (input.pressed & ACTION.CANDLE) {
           if (
@@ -2026,13 +2030,46 @@ export class World {
       // Overcharge: holding weak attack keeps the beam alive; releasing it stops on the
       // next tick. The normal charged beam still owns `laserT` outside this powerup.
       if (overcharged && !p.laserChargeHeld && p.wedgeT <= 0) {
-        if (canAct && input && (input.held & ACTION.BOLT) !== 0 && p.swingPhase === 0 && p.dashT <= 0) {
-          if (p.laserT <= 0) this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
-          p.laserT = Math.max(p.laserT, 0.06);
+        const holdingBeam =
+          canAct && input && (input.held & ACTION.BOLT) !== 0 && p.swingPhase === 0 && p.dashT <= 0;
+        if (holdingBeam) {
           p.laserFacing = p.facing;
-        } else if (p.laserT > 0) {
-          p.laserT = 0;
-          p.laserTickT = 0;
+          p.ocFadeT = 0;
+          if (p.laserT > 0) {
+            p.laserT = Math.max(p.laserT, 0.06);
+          } else {
+            // A short spin-up, the heavy charge animation played fast. The beam only
+            // exists after it, so the instant powerup still has a readable start.
+            if (p.ocChargeT <= 0) p.ocChargeT = POWERUP.overchargeSpinup;
+            p.ocChargeT = Math.max(0, p.ocChargeT - dt);
+            if (p.ocChargeT === 0) this.startOverchargeBeam(p);
+          }
+        } else {
+          p.ocChargeT = 0;
+          if (p.laserT > 0) {
+            // The overcharge beam can be switched off on any frame. Stamp the stop so the
+            // renderer and FX can cool it down instead of blinking it out of existence.
+            // A charged heavy that happens to be live is not this beam: it just ends, as
+            // it always has, because the overcharge block owns the trigger here.
+            const overchargeBeam = p.laserT <= 0.12;
+            const dirX = Math.cos(p.laserFacing);
+            const dirY = Math.sin(p.laserFacing);
+            const reach = overchargeBeam ? this.laserReach(p) : 0;
+            p.laserT = 0;
+            p.laserTickT = 0;
+            if (overchargeBeam) {
+              p.ocFadeT = POWERUP.overchargeFade;
+              this.emit(
+                EV.BEAM_END,
+                p.slot,
+                p.x + dirX * PLAYER.radius,
+                p.y + dirY * PLAYER.radius,
+                reach,
+                dirX,
+                dirY,
+              );
+            }
+          }
         }
       }
 
@@ -2545,9 +2582,10 @@ export class World {
     }
   }
 
-  /** Overcharge weak attack: no charge, no cooldown, no root. */
+  /** Overcharge weak attack: the beam itself has no cost, no cooldown and no root. */
   private startOverchargeBeam(p: Player): void {
     p.ghostT = 0;
+    p.ocChargeT = 0;
     p.laserT = 0.06;
     p.laserTickT = PLAYER.laserTick;
     p.laserFacing = p.facing;
@@ -6438,6 +6476,8 @@ export class World {
       p.laserChargeHeld = false;
       p.laserChargeT = 0;
       p.laserT = 0;
+      p.ocChargeT = 0;
+      p.ocFadeT = 0;
       p.waveT = 0;
       // A web still being drawn is dropped with the body; an in-flight one stays.
       this.releaseNetDraft(p);

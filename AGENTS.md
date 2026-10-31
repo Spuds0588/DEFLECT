@@ -360,8 +360,11 @@ are a deliberately rare safety net (`firstSpawn` 24 s, then every 42 s).
 - `RESTORE_STATUS` repairs the three health segments and clears slow/infection once those exist.
 - `MACHINE GUN` turns held ranged fire into a low-damage spray.
 - `SCATTER` replaces the ranged burst with a short-range fan.
-- `OVERCHARGE` makes ranged fire an instant-on/off beam, triples dash distance, and replaces the core
-  symbol with a lightning bolt while active.
+- `OVERCHARGE` turns held ranged fire into a beam: a short `overchargeSpinup` (0.14 s) plays the heavy
+  charge ring at a tighter radius, then the beam stays on while the trigger is held. Releasing switches it
+  off on the next frame and leaves `overchargeFade` (0.2 s) of cooling shaft plus a `BEAM_END` ember spray
+  along the line, so a quick tap does not read as a light being unplugged. It also triples dash distance
+  and replaces the core symbol with a lightning bolt while active.
 - `BARBED WHIP` replaces the melee lash and guard with a red lash and multiplies reflect reach and
   damage by four.
 - `PATHFIND` turns ranged bolts into axis-aligned seekers that turn at right angles toward the nearest

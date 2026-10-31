@@ -207,6 +207,37 @@ export class Fx {
         this.shake = Math.max(this.shake, 7);
         break;
       }
+      case EV.BEAM_END: {
+        // A switched-off overcharge beam sheds embers along its shaft and a small puff
+        // where it stopped, so a quick tap release does not blink the light out.
+        const reach = Math.max(24, Math.min(ev.power, PLAYER.laserRange));
+        const ax = ev.dirX;
+        const ay = ev.dirY;
+        const px = -ay;
+        const py = ax;
+        const bits = Math.max(6, Math.min(22, Math.round(reach / 44)));
+        for (let i = 0; i < bits; i++) {
+          const along = ((i + 0.5) / bits) * reach;
+          const side = (Math.random() - 0.5) * PLAYER.laserHalfWidth * 1.8;
+          this.particles.spawn(
+            0,
+            ev.x + ax * along + px * side,
+            ev.y + ay * along + py * side,
+            px * (Math.random() - 0.5) * 120 + ax * 42,
+            py * (Math.random() - 0.5) * 120 + ay * 42,
+            0.22 + Math.random() * 0.4,
+            1 + Math.random() * 1.6,
+            i % 5 === 0 ? P_COLOR_WHITE : color,
+            3.2,
+          );
+        }
+        const endX = ev.x + ax * reach;
+        const endY = ev.y + ay * reach;
+        this.particles.burst(endX, endY, 6, color, 40, 170);
+        this.particles.burst(endX, endY, 3, P_COLOR_WHITE, 30, 120);
+        this.particles.ring(endX, endY, color, 3, 34, 0.2);
+        break;
+      }
       case EV.ERROR_SPAWN: {
         this.particles.ring(ev.x, ev.y, P_COLOR_FIREWALL, 6, 56, 0.45);
         this.particles.shards(ev.x, ev.y, 5, P_COLOR_FIREWALL, 40, 150);

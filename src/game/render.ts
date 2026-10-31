@@ -2865,6 +2865,119 @@ export class Renderer {
     ctx.restore();
   }
 
+  /**
+   * The orbiting-dot beam charge. Probe's heavy and the overcharge spin-up share it, so
+   * the powerup reads as the same move at a smaller radius and a fraction of the time.
+   */
+  private drawBeamCharge(
+    x: number,
+    y: number,
+    ring: number,
+    charge: number,
+    facing: number,
+    color: string,
+    t: number,
+  ): void {
+    const ctx = this.ctx;
+    ctx.globalAlpha = 0.14 + charge * 0.2;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(x, y, ring, 0, TWO_PI);
+    ctx.stroke();
+
+    // Charge progress runs around the ring from the back to the front.
+    ctx.globalAlpha = 0.32 + charge * 0.45;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(x, y, ring, -Math.PI / 2, -Math.PI / 2 + TWO_PI * charge);
+    ctx.stroke();
+
+    // Two dots orbit from behind and meet at the muzzle point.
+    const a1 = facing + Math.PI - charge * Math.PI;
+    const a2 = facing - Math.PI + charge * Math.PI;
+    for (let d = 0; d < 2; d++) {
+      const a = d === 0 ? a1 : a2;
+      const dx = x + Math.cos(a) * ring;
+      const dy = y + Math.sin(a) * ring;
+      ctx.globalAlpha = 0.25 + charge * 0.45;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(dx, dy, 5 + charge * 2, 0, TWO_PI);
+      ctx.fill();
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(dx, dy, 1.8, 0, TWO_PI);
+      ctx.fill();
+    }
+
+    if (charge >= 1) {
+      const mx = x + Math.cos(facing) * ring;
+      const my = y + Math.sin(facing) * ring;
+      ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 30);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(mx, my, 8 + Math.sin(t * 22) * 2, 0, TWO_PI);
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * Overcharge afterglow. A switched-off beam keeps a cooling shaft and its stop flare
+   * for a few frames so a tap release does not read as a light being unplugged.
+   */
+  private drawBeamFade(state: RenderState, p: Player, alpha: number): void {
+    const ctx = this.ctx;
+    const fade = Math.max(0, Math.min(1, p.ocFadeT / POWERUP.overchargeFade));
+    const x = lerp(p.prevX, p.x, alpha);
+    const y = lerp(p.prevY, p.y, alpha);
+    const ax = Math.cos(p.laserFacing);
+    const ay = Math.sin(p.laserFacing);
+    const origin = PLAYER.radius + 12;
+    const reach = Math.max(
+      origin + 8,
+      beamReach(state.arena, state.barriers, state.pusherActive === true, state.pusherY ?? 0, x, y, ax, ay, PLAYER.laserRange),
+    );
+    const color = playerColor(state, p);
+    const x0 = x + ax * PLAYER.radius;
+    const y0 = y + ay * PLAYER.radius;
+    const x1 = x + ax * reach;
+    const y1 = y + ay * reach;
+    const width = PLAYER.laserHalfWidth * 2;
+    ctx.strokeStyle = color;
+    ctx.lineCap = 'butt';
+    ctx.globalAlpha = 0.1 * fade;
+    ctx.lineWidth = width + 30;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+    ctx.globalAlpha = 0.3 * fade;
+    ctx.lineWidth = width;
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.globalAlpha = 0.6 * fade * fade;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // The stop point keeps a small star for the first part of the fade.
+    if (fade > 0.35) {
+      const k = (fade - 0.35) / 0.65;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.55 * k;
+      ctx.beginPath();
+      ctx.arc(x1, y1, 5 + (1 - k) * 9, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.globalAlpha = 0.7 * k;
+      ctx.beginPath();
+      ctx.arc(x1, y1, 2.2, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   /** Charged heavy beam. The drawn line stops exactly where cover stops the damage. */
   private drawLasers(state: RenderState, alpha: number, t: number): void {
     const ctx = this.ctx;
@@ -2874,6 +2987,23 @@ export class Renderer {
     for (let i = 0; i < state.players.length; i++) {
       const p = state.players[i];
       if (!p.active || !p.alive) continue;
+      // Overcharge spin-up: the heavy beam charge, played fast. It runs before the
+      // beam exists, so the instant-off powerup still has a readable start.
+      if (p.ocChargeT > 0 && p.laserT <= 0 && !p.laserChargeHeld) {
+        const x = lerp(p.prevX, p.x, alpha);
+        const y = lerp(p.prevY, p.y, alpha);
+        const charge = 1 - Math.max(0, p.ocChargeT) / POWERUP.overchargeSpinup;
+        this.drawBeamCharge(
+          x,
+          y,
+          PLAYER.radius + 9 + charge * 5,
+          charge,
+          p.laserFacing,
+          playerColor(state, p),
+          t,
+        );
+        continue;
+      }
       if (p.laserChargeHeld) {
         // Atomize's heavy is a field, not a beam. Its wind-up is the atom opening up,
         // so the player sees the field coming instead of a beam muzzle.
@@ -2946,58 +3076,26 @@ export class Renderer {
         const x = lerp(p.prevX, p.x, alpha);
         const y = lerp(p.prevY, p.y, alpha);
         const charge = Math.min(1, p.laserChargeT / PLAYER.laserChargeTime);
-        const color = playerColor(state, p);
-        const ring = PLAYER.radius + 15 + charge * 4;
-        const facing = p.laserFacing;
-        ctx.globalAlpha = 0.14 + charge * 0.2;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.arc(x, y, ring, 0, TWO_PI);
-        ctx.stroke();
-
-        // Charge progress runs around the ring from the back to the front.
-        ctx.globalAlpha = 0.32 + charge * 0.45;
-        ctx.lineWidth = 2.4;
-        ctx.beginPath();
-        ctx.arc(x, y, ring, -Math.PI / 2, -Math.PI / 2 + TWO_PI * charge);
-        ctx.stroke();
-
-        // Two dots orbit from behind and meet at the muzzle point.
-        const a1 = facing + Math.PI - charge * Math.PI;
-        const a2 = facing - Math.PI + charge * Math.PI;
-        for (let d = 0; d < 2; d++) {
-          const a = d === 0 ? a1 : a2;
-          const dx = x + Math.cos(a) * ring;
-          const dy = y + Math.sin(a) * ring;
-          ctx.globalAlpha = 0.25 + charge * 0.45;
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(dx, dy, 5 + charge * 2, 0, TWO_PI);
-          ctx.fill();
-          ctx.globalAlpha = 0.95;
-          ctx.fillStyle = '#ffffff';
-          ctx.beginPath();
-          ctx.arc(dx, dy, 1.8, 0, TWO_PI);
-          ctx.fill();
-        }
-
-        if (charge >= 1) {
-          const mx = x + Math.cos(facing) * ring;
-          const my = y + Math.sin(facing) * ring;
-          ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 30);
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.6;
-          ctx.beginPath();
-          ctx.arc(mx, my, 8 + Math.sin(t * 22) * 2, 0, TWO_PI);
-          ctx.stroke();
-        }
+        this.drawBeamCharge(
+          x,
+          y,
+          PLAYER.radius + 15 + charge * 4,
+          charge,
+          p.laserFacing,
+          playerColor(state, p),
+          t,
+        );
         // A charge and a live beam can overlap: overcharge fires while the heavy is
         // winding up. Fall through to the beam instead of skipping it for the whole
         // charge, which is what hid the overcharge beam in the attract demo.
         if (p.laserT <= 0) continue;
       }
-      if (p.laserT <= 0) continue;
+      if (p.laserT <= 0) {
+        // Overcharge afterglow: the switched-off shaft cools for a few frames instead of
+        // blinking out. It deals no damage; this is the draw only.
+        if (p.ocFadeT > 0) this.drawBeamFade(state, p, alpha);
+        continue;
+      }
       // Toxic's power is a venom jet, drawn by drawGas, not the heavy beam.
       if (p.program === PROGRAM_ID.TOXIC) continue;
 

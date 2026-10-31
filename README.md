@@ -171,8 +171,9 @@ power:
 
 - `MACHINE GUN`: held ranged fire becomes a low-damage spray.
 - `SCATTER`: short-range fan of pellets.
-- `OVERCHARGE`: ranged fire becomes an instant-on/off beam, dodge distance triples, and the core becomes a
-  lightning bolt.
+- `OVERCHARGE`: held ranged fire winds up with a fast version of the heavy charge ring, then becomes a
+  beam that stays on while you hold it. Let go and the shaft cools with a spray of embers instead of
+  blinking out. Dodge distance triples, and the core becomes a lightning bolt.
 - `BARBED WHIP`: the melee lash and guard become a red lash with four times the reach and damage.
 - `PATHFIND`: ranged bolts seek by axis-aligned right turns.
 
@@ -355,9 +356,9 @@ drop its lure, then step out of the way instead of standing on it.
   the beam before it reaches the cap.
 - Let viruses stack on you until the infection bar fills. A thrall should spawn nearby, chase you, swing
   and shoot, and drop when eliminated.
-- Pick up each timed drop: machine gun, scatter, overcharge (instant beam, triple dodge, lightning core),
-  barbed whip (long red lash), and pathfinding (right-angle seekers). `RESTORE_STATUS` should refill your
-  health segments.
+- Pick up each timed drop: machine gun, scatter, overcharge (fast charge ring, a held beam that leaves a
+  cooling afterglow and ember spray on release, triple dodge, lightning core), barbed whip (long red
+  lash), and pathfinding (right-angle seekers). `RESTORE_STATUS` should refill your health segments.
 - Stand in a firewall warning lane, then step behind a pillar. The beam should stop burning you behind
   cover. Take a bolt and a beam tick and check the push and triangle spray direction.
 - Open Settings and step through Feedback, Audio and System. Change hit rotation, impact flash, volume,

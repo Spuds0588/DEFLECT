@@ -72,6 +72,8 @@
     "duration": 15,
     "shotgunDuration": 13,
     "overchargeDuration": 11,
+    "overchargeSpinup": 0.14,
+    "overchargeFade": 0.2,
     "whipDuration": 12,
     "pathDuration": 15,
     "machineInterval": 0.08,

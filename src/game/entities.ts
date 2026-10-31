@@ -135,6 +135,8 @@ export function createPlayer(slot: number): Player {
     laserCd: 0,
     laserTickT: 0,
     laserFacing: 0,
+    ocChargeT: 0,
+    ocFadeT: 0,
     beamReflectT: 0,
     beamReflectFacing: 0,
     beamReflectDist: 0,
@@ -581,6 +583,8 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.laserCd = 0;
   p.laserTickT = 0;
   p.laserFacing = facing;
+  p.ocChargeT = 0;
+  p.ocFadeT = 0;
   p.beamReflectT = 0;
   p.beamReflectFacing = 0;
   p.beamReflectDist = 0;

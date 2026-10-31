@@ -2979,3 +2979,32 @@ threats). AGENTS D26 and the README control/QA text now describe the eviction.
 
 **Next:** play a Ghost gauntlet run on THE LEDGE and check that a scare can shove a threat over the lip;
 tune `scareClearance` if bodies settle back in too quickly.
+
+## 2026-10-30 — Overcharge winds up and cools down (v0.1.63 tuning)
+
+**Goal:** the OVERCHARGE powerup's beam snapped on and off between frames. Give it a fast version of the
+heavy beam charge animation, and leave particles behind when it stops.
+
+**Changed:**
+- `Player.ocChargeT` / `Player.ocFadeT` (local only, never in `Snapshot`). Holding ranged fire under
+  OVERCHARGE now plays a `POWERUP.overchargeSpinup` (0.14 s) wind-up before the beam exists; the beam
+  itself is unchanged (0.06 s slices while held, no cost, no root, no cooldown). Releasing during the
+  spin-up cancels it, matching the heavy's release-before-charge rule.
+- On release the beam stops on that frame, starts a `POWERUP.overchargeFade` (0.2 s) afterglow, and emits
+  the additive `EV.BEAM_END` with the muzzle, facing and solid reach. FX sprays embers along the shaft
+  and a small puff at its stop; the renderer draws a cooling shaft and stop star for the fade. Damage
+  still ends the moment the trigger is released.
+- `drawBeamCharge` extracts the orbiting-dot charge ring so Probe's heavy and the overcharge spin-up share
+  one drawing, at a tighter radius for the powerup. A live charged heavy is untouched: the afterglow and
+  the stop event only fire for the short overcharge beam (`laserT <= 0.12`).
+- Death, respawn, powerup expiry and swapping to another timed drop all clear both timers.
+
+**Verification:** `npx tsc --noEmit` and `npm run build` clean. Headless training run with the powerup
+forced: the beam first exists on frame 8 (0.14 s), stays live while held, and on release `laserT` is 0,
+`ocFadeT` is 0.200 and one `BEAM_END` arrives with reach 384. Browser run at 1280x720 (training, Probe,
+overcharge forced): the spin-up ring and the lightning core render, the held beam draws its normal layers,
+and the fade renders as a dim cooling shaft with no console errors. AGENTS D12 and the README powerup
+lines are updated.
+
+**Next:** play with the real pickup in the gauntlet and tune `overchargeSpinup`/`overchargeFade` if the
+wind-up eats quick taps or the afterglow lingers too long.
