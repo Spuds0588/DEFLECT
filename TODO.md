@@ -2,7 +2,23 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-31 (v0.1.66 PINBALL.EXE + sound mix)
+Last updated: 2026-10-31 (v0.1.67 menu music)
+
+---
+
+## v0.1.67 — Menu music: a quieter bed on every menu screen (2026-10-31)
+
+### Built
+- [x] One scheduler, two beds: `startMusic(mode)` runs the 82 BPM match loop or a 62 BPM menu loop with the
+      same changes, no drums, one held pad per bar, a soft bell and `MENU_BUS_TRIM` 0.6 on the music bus
+- [x] `startMenuMusic()` plus `setScreen` wiring: entering a session stops the bed, every other screen starts
+      the menu one; `unlockAudio` brings it up on the first gesture outside a session
+- [x] `?debug=1` exposes `audio` beside the renderer/world handles so the mix can be measured in place
+- [x] Build stamped 0.1.67 (`index.html`, `main.ts`, `sw.js`, `package.json`, lockfile)
+
+### Next
+- [ ] Audition the handoff: title → program select → match → title, with no gap and no double bed
+- [ ] Decide whether the attract/demo kiosk keeps the match bed instead of the menu one
 
 ---
 

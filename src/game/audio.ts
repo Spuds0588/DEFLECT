@@ -32,6 +32,17 @@ const MUSIC_CHORDS: readonly (readonly number[])[] = [
 ];
 const MUSIC_BASS = [36, 33, 38, 31] as const; // C2, A1, D2, G1
 
+/**
+ * Menu bed: the same changes, slower and sparser, with no drums and a long held pad.
+ * It plays under the title/settings/lobby screens and is trimmed below the match loop
+ * so entering a session always feels like the music steps forward.
+ */
+const MUSIC_MENU_BPM = 62;
+const MUSIC_MENU_STEP = 60 / MUSIC_MENU_BPM / 4;
+const MENU_BUS_TRIM = 0.6;
+
+type MusicMode = 'match' | 'menu';
+
 function midiToHz(note: number): number {
   return 440 * Math.pow(2, (note - 69) / 12);
 }
@@ -52,6 +63,8 @@ export class AudioEngine {
   private musicStep = 0;
   private nextNoteTime = 0;
   private musicPlaying = false;
+  private musicMode: MusicMode = 'match';
+  private musicTrim = 1;
 
   muted = false;
   musicWanted = true;
@@ -137,7 +150,7 @@ export class AudioEngine {
   private applyBusLevels(): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    this.musicBus?.gain.setTargetAtTime(MUSIC_BUS_LEVEL * this.musicVolume, now, 0.02);
+    this.musicBus?.gain.setTargetAtTime(MUSIC_BUS_LEVEL * this.musicVolume * this.musicTrim, now, 0.02);
     this.sfxBus?.gain.setTargetAtTime(0.9 * this.sfxVolume, now, 0.02);
     this.menuBus?.gain.setTargetAtTime(0.8 * this.menuVolume, now, 0.02);
   }
@@ -162,7 +175,7 @@ export class AudioEngine {
       this.master = master;
 
       const musicBus = ctx.createGain();
-      musicBus.gain.value = MUSIC_BUS_LEVEL * this.musicVolume;
+      musicBus.gain.value = MUSIC_BUS_LEVEL * this.musicVolume * this.musicTrim;
       // Warm the whole music bed. Combat cues keep their sharper digital edge.
       const musicFilter = ctx.createBiquadFilter();
       musicFilter.type = 'lowpass';
@@ -409,14 +422,26 @@ export class AudioEngine {
 
   // --- Music -------------------------------------------------------------------------------
 
-  startMusic(): void {
-    if (this.musicPlaying || !this.musicWanted || !this.ctx || !this.musicBus) return;
+  /** Match loop. Called by every session start; a mode change restarts the scheduler. */
+  startMusic(mode: MusicMode = 'match'): void {
+    if (!this.musicWanted || !this.ctx || !this.musicBus) return;
+    const modeChanged = this.musicMode !== mode;
+    if (this.musicPlaying && !modeChanged) return;
+    this.musicMode = mode;
+    this.musicTrim = mode === 'menu' ? MENU_BUS_TRIM : 1;
+    this.applyBusLevels();
+    if (this.musicPlaying) this.stopMusic();
     this.musicPlaying = true;
     this.musicStep = 0;
     this.nextNoteTime = this.ctx.currentTime + 0.08;
     this.musicTimer = window.setInterval(() => this.scheduleMusic(), 50);
     this.startVinyl();
     this.scheduleMusic();
+  }
+
+  /** Quieter loop for the menus. Same graph and scheduler, different pattern and trim. */
+  startMenuMusic(): void {
+    this.startMusic('menu');
   }
 
   stopMusic(): void {
@@ -482,13 +507,16 @@ export class AudioEngine {
   private scheduleMusic(): void {
     const ctx = this.ctx;
     if (!ctx || !this.musicPlaying || !this.musicBus) return;
+    const stepDur = this.musicMode === 'menu' ? MUSIC_MENU_STEP : MUSIC_STEP;
     while (this.nextNoteTime < ctx.currentTime + 0.2) {
       const s = this.musicStep % MUSIC_LOOP;
       const bar = Math.floor(s / 16) % 4;
       const beat = s % 16;
       const when = this.nextNoteTime - ctx.currentTime;
       const swing = beat % 4 === 2 ? 0.028 : 0;
-      if (when >= 0) {
+      if (when >= 0 && this.musicMode === 'menu') {
+        this.scheduleMenuStep(bar, beat, s, when);
+      } else if (when >= 0) {
         // Soft four-on-the-floor kick: strong on 1 and 3, lighter on 2 and 4.
         if (beat % 4 === 0) {
           const accent = beat === 0 || beat === 8 ? 1 : 0.8;
@@ -535,8 +563,31 @@ export class AudioEngine {
           this.tone('triangle', root * 2, root * 2, 0.22, 0.05, when, this.musicBus);
         }
       }
-      this.nextNoteTime += MUSIC_STEP;
+      this.nextNoteTime += stepDur;
       this.musicStep++;
+    }
+  }
+
+  /** Sparse menu bar: one held pad per bar, a soft bell, no drums. */
+  private scheduleMenuStep(bar: number, beat: number, step: number, when: number): void {
+    const chord = MUSIC_CHORDS[bar];
+    if (beat === 0) {
+      const root = midiToHz(MUSIC_BASS[bar]);
+      for (let i = 0; i < chord.length; i++) {
+        const f = midiToHz(chord[i]);
+        this.pad('triangle', f, 0.13, 2.9, when + 0.01, this.musicBus);
+        this.pad('sine', f * 2, 0.042, 1.4, when + 0.014, this.musicBus);
+      }
+      this.pad('sine', root, 0.2, 2.6, when, this.musicBus);
+      this.pad('triangle', root * 1.5, 0.12, 1.1, when + 0.02, this.musicBus);
+    }
+    // One soft bell per bar keeps the screen from going dead between changes.
+    if (step % 16 === 6 || step % 16 === 14) {
+      const top = midiToHz(chord[chord.length - 1] + 12);
+      this.tone('triangle', top, top, 1.1, 0.06, when, this.musicBus);
+    }
+    if (beat % 4 === 2) {
+      this.noise(0.05, 0.03, 7000, 5200, 'highpass', when, this.musicBus);
     }
   }
 }

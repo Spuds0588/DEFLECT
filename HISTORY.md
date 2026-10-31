@@ -3222,3 +3222,26 @@ sustained envelope the loop read −21 dBFS peak / −41 dBFS RMS; after the pad
 
 **Next:** listen on the laptop speakers at the default 65 % soundtrack; if the hats still disappear, lift
 the 6–8 kHz region rather than the whole bus. Decide whether the menus should get music.
+
+## 2026-10-31 — Menu music: a quieter bed on every menu screen (v0.1.67)
+
+**Goal:** the title, program-select, settings and lobby screens were silent. Give them a bed of their own
+without competing with the match loop, and without a second scheduler to keep in sync.
+
+- One scheduler, two patterns. `startMusic(mode)` takes `'match' | 'menu'`, applies `MENU_BUS_TRIM` (0.6) to
+  the music bus, and restarts the note clock on a mode change so the two beds never overlap;
+  `startMenuMusic()` is the menu entry point. Drums, vinyl and the 7 kHz low-pass are shared.
+- Menu loop: 62 BPM over the same Cmaj7/Am7/Dm7/G7 changes, no kick and no clap, one 2.9 s held pad per
+  bar, a bass pad with a fifth lift, one soft bell on the off-beat and a very quiet closed hat.
+- Wiring: `setScreen` stops music for `game` and starts the menu bed for every other screen; `unlockAudio`
+  starts it on the first gesture outside a session, so a clicked title screen is never silent.
+- `?debug=1` now exposes `audio` beside the renderer/world handles, so the mix can be measured in place.
+- Build stamped 0.1.67 in `index.html`, `main.ts`, `sw.js`, `package.json` and the lockfile.
+
+**Verification:** `npx tsc --noEmit` clean; `npm run build` passes. Measured live through the debug audio
+handle at the title screen: menu bed −24.5 dBFS peak / −35.6 dBFS RMS; `startMusic()` flips the mode to
+`match` with trim 1 and reads −14.4 / −28; `startMenuMusic()` returns to `menu` with trim 0.6. The menu bed
+sits about 7–8 dB under the match loop.
+
+**Next:** audition title → program select → match → title and confirm the handoff; decide whether the
+attract/demo kiosk should keep the match bed or the menu one.

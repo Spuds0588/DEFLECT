@@ -20,7 +20,7 @@ is deployed from `main` on every push.
 | --- | --- |
 | Language | TypeScript, strict, ES2020 output |
 | Rendering | Canvas 2D, one canvas, no WebGL |
-| Audio | Web Audio synthesis; an 82 BPM lofi-house loop built from MIDI notes |
+| Audio | Web Audio synthesis; an 82 BPM lofi-house match loop and a 62 BPM menu bed built from MIDI notes |
 | Menus | DOM/HTML over the arena canvas |
 | Build | Vite, static `dist/`, no SSR and no server runtime |
 | Multiplayer | PeerJS over WebRTC data channels, host-authoritative |

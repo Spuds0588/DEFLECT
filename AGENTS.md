@@ -1343,8 +1343,11 @@ keeps it lower-left; a split view or more than one local player puts it top-cent
   (quick attack, held level, short tail) instead of `tone()`'s full-length exponential decay, because the
   bed has to keep body in the 250 Hz–2 kHz band that laptop speakers actually reproduce. Target: the loop
   measures roughly −33 dBFS RMS with −18 dBFS peaks, about 8–12 dB under a combat cue peak (a bolt is
-  ≈ −22 dBFS) and starting with a match, never from the menus. Measure through the engine's master tap
-  before changing these numbers; the previous 0.24 bus left the chords near −59 dBFS and silent in practice.
+  ≈ −22 dBFS). The match loop starts with a session; the menu bed is the same changes at 62 BPM with no
+  drums, one held pad per bar, a soft bell, and `MENU_BUS_TRIM` (0.6) on the same bus, so leaving the arena
+  drops back to it. One scheduler owns both (`startMusic(mode)` restarts on a mode change) and `setScreen`
+  switches between them; do not run two timers or two buses. Measure through the engine's master tap before
+  changing these numbers; the previous 0.24 bus left the chords near −59 dBFS and silent in practice.
 
 ---
 

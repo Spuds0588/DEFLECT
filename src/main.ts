@@ -333,6 +333,7 @@ function boot(): void {
       touch: () => touchVisible,
       assist: () => ({ autoLock, autoAttack, touchMode }),
       frame: () => localFrame,
+      audio,
     };
   }
   if (demoMode) {
@@ -348,7 +349,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.66 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.67 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -504,7 +505,11 @@ function bindUi(): void {
 
 function unlockAudio(): void {
   audio.unlock();
-  if (screen === 'game' && audio.musicWanted) audio.startMusic();
+  if (screen === 'game') {
+    if (audio.musicWanted) audio.startMusic();
+  } else {
+    audio.startMenuMusic();
+  }
 }
 
 // Boot transition ----------------------------------------------------------------------------
@@ -2647,6 +2652,11 @@ function setScreen(next: Screen): void {
     bootScreen.hidden = true;
     bootScreen.classList.remove('active', 'leaving');
   }
+  // Menus get their own quieter loop. Entering a session stops it here so the match bed
+  // owns the speakers; leaving returns to it. Both calls are no-ops before the first
+  // gesture has created the AudioContext.
+  if (next === 'game') audio.stopMusic();
+  else audio.startMenuMusic();
   clearMenuSelection();
 }
 
