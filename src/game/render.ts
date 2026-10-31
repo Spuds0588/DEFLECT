@@ -1,5 +1,15 @@
 import { ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
-import type { ArenaDef } from './arenas';
+import {
+  discArmAngle,
+  discArmLength,
+  discArmPivotX,
+  discArmPivotY,
+  discCenterX,
+  discCenterY,
+  discHoleX,
+  discHoleY,
+  type ArenaDef,
+} from './arenas';
 import { Fx } from './fx';
 import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourglassMark, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
 import { P_COLOR_DANGER, P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
@@ -57,6 +67,8 @@ export interface RenderState {
   pusherFlashT?: number;
   pusherY?: number;
   pusherActive?: boolean;
+  /** Rotating platter phase. Absent freezes the disc at its authored resting pose. */
+  discT?: number;
   /** Bad Lag's time dilation, in seconds of real time left, and who cast it. */
   timeSlowT?: number;
   timeSlowOwner?: number;
@@ -430,7 +442,7 @@ export class Renderer {
         ctx.translate(-pivotX, -pivotY);
       }
 
-      this.drawArena(t, state.arena, intro);
+      this.drawArena(t, state.arena, intro, state.discT ?? 0);
       if (introDone) {
         if (state.props) this.drawProps(state.props);
         if (state.arena.pushers) this.drawPusher(state);
@@ -1541,7 +1553,345 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawArena(t: number, arena: ArenaDef, intro = INTRO_LEN): void {
+  /**
+   * A round platter instead of a rectangular plate. The floor, its concentric tracks and
+   * every hole turn with the disc; the read arm pivots outside the rim and sweeps across
+   * the face. Nothing here simulates: the world owns the phase and the holes it tests.
+   */
+  private drawDiscArena(t: number, arena: ArenaDef, groundA: number, frameA: number, discT: number): void {
+    const ctx = this.ctx;
+    const disc = arena.disc;
+    if (!disc) return;
+    const cx = discCenterX(arena);
+    const cy = discCenterY(arena);
+    const r = disc.radius;
+    const spin = discT * disc.spin;
+    const b = arena.bounds;
+
+    if (this.dustArena !== arena.id) {
+      this.dustArena = arena.id;
+      for (let i = 0; i < this.dustX.length; i++) {
+        const a = (i / this.dustX.length) * TWO_PI + (i % 5) * 0.37;
+        const d = Math.sqrt((i * 0.618) % 1) * (r - 18);
+        this.dustX[i] = cx + Math.cos(a) * d;
+        this.dustY[i] = cy + Math.sin(a) * d;
+      }
+    }
+
+    // The well around the plate. A wide low glow separates the disc from empty space
+    // without drawing a rectangular frame the pop-up picker would contradict.
+    ctx.save();
+    ctx.strokeStyle = arena.accent;
+    ctx.globalAlpha = 0.05 * frameA;
+    ctx.lineWidth = 84;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 30, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.16 * frameA;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 14, 0, TWO_PI);
+    ctx.stroke();
+    ctx.setLineDash([10, 16]);
+    ctx.globalAlpha = 0.1 * frameA;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 42, 0, TWO_PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // Plate face, clipped to the round lip. The board pattern still sits underneath,
+    // but the platter's own servo tracks are what make the spin readable.
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TWO_PI);
+    ctx.clip();
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = this.floorGradient ?? '#050b12';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.fillStyle = arena.accentFaint;
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    if (this.floorPattern) {
+      ctx.globalAlpha = groundA * 0.7;
+      ctx.fillStyle = this.floorPattern;
+      ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    }
+    // Static dust, then the rotating hardware.
+    ctx.globalAlpha = 0.13 * groundA;
+    ctx.fillStyle = 'rgba(175, 225, 245, 0.7)';
+    for (let i = 0; i < this.dustX.length; i++) ctx.fillRect(this.dustX[i], this.dustY[i], 1.5, 1.5);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(spin);
+    // Concentric servo tracks.
+    ctx.strokeStyle = arena.accent;
+    ctx.globalAlpha = 0.13 * groundA;
+    ctx.lineWidth = 1.4;
+    for (let rr = 96; rr < r - 24; rr += 74) {
+      ctx.beginPath();
+      ctx.arc(0, 0, rr, 0, TWO_PI);
+      ctx.stroke();
+    }
+    // Sector seams, with a heavier seam every quarter turn.
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * TWO_PI;
+      ctx.globalAlpha = (i % 6 === 0 ? 0.2 : 0.08) * groundA;
+      ctx.lineWidth = i % 6 === 0 ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 76, Math.sin(a) * 76);
+      ctx.lineTo(Math.cos(a) * (r - 16), Math.sin(a) * (r - 16));
+      ctx.stroke();
+    }
+    // Three bright platter arcs, so the rotation reads even when the holes are offscreen.
+    ctx.globalAlpha = 0.2 * groundA;
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * TWO_PI;
+      ctx.beginPath();
+      ctx.arc(0, 0, r - 54, a, a + 0.42);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // Scan sweep, clipped by the plate once more so the band never crosses the rim.
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TWO_PI);
+    ctx.clip();
+    const scanY = cy - r + ((t * 22) % (r * 2));
+    ctx.globalAlpha = 0.045 * groundA;
+    ctx.fillStyle = arena.accent;
+    ctx.fillRect(cx - r, scanY, r * 2, 14);
+    ctx.restore();
+
+    // Holes. The same polar data the world tests, so what the eye reads is the floor.
+    ctx.save();
+    for (let i = 0; i < disc.holes.length; i++) {
+      const hx = discHoleX(arena, i, discT);
+      const hy = discHoleY(arena, i, discT);
+      const hr = disc.holes[i].radius;
+      ctx.globalAlpha = 0.28 * frameA;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(hx, hy, hr + 5, 0, TWO_PI);
+      ctx.fill();
+      ctx.globalAlpha = frameA;
+      ctx.fillStyle = '#010309';
+      ctx.beginPath();
+      ctx.arc(hx, hy, hr, 0, TWO_PI);
+      ctx.fill();
+      // Cut edge: a soft outer band, a hard lit rim, and a darker inner wall.
+      ctx.strokeStyle = arena.accent;
+      ctx.globalAlpha = 0.24 * frameA;
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.arc(hx, hy, hr + 1, 0, TWO_PI);
+      ctx.stroke();
+      ctx.globalAlpha = 0.75 * frameA;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(hx, hy, hr, 0, TWO_PI);
+      ctx.stroke();
+      ctx.globalAlpha = 0.2 * frameA;
+      ctx.strokeStyle = '#eaffff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(hx, hy, hr - 4, Math.PI * 1.05, Math.PI * 1.8);
+      ctx.stroke();
+      // A notch at the lip reinforces "hole in a spinning plate".
+      ctx.globalAlpha = 0.45 * frameA;
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(hx - hr - 1, hy);
+      ctx.lineTo(hx - hr - 8, hy);
+      ctx.moveTo(hx + hr + 1, hy);
+      ctx.lineTo(hx + hr + 8, hy);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Spindle hub at the middle of the plate.
+    ctx.save();
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#070d14';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 62, 0, TWO_PI);
+    ctx.fill();
+    ctx.strokeStyle = arena.accent;
+    ctx.globalAlpha = 0.3 * frameA;
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 58, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.8 * frameA;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 50, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.45 * frameA;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 38, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.9 * frameA;
+    ctx.fillStyle = arena.accent;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 7, 0, TWO_PI);
+    ctx.fill();
+    // Four bolts, fixed to the housing rather than the spinning plate.
+    ctx.globalAlpha = 0.4 * frameA;
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * TWO_PI + Math.PI / 4;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(a) * 44, cy + Math.sin(a) * 44, 3, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Rim. Bright on the inside, with rotating ticks so the lip itself reads as moving.
+    ctx.save();
+    ctx.strokeStyle = arena.accent;
+    ctx.globalAlpha = 0.14 * frameA;
+    ctx.lineWidth = 26;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.9 * frameA;
+    ctx.lineWidth = 4.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 2, 0, TWO_PI);
+    ctx.stroke();
+    ctx.strokeStyle = '#f2fbff';
+    ctx.globalAlpha = 0.85 * frameA;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 6, 0, TWO_PI);
+    ctx.stroke();
+    ctx.strokeStyle = arena.accent;
+    ctx.globalAlpha = 0.34 * frameA;
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([3, 14]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 22, 0, TWO_PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.translate(cx, cy);
+    ctx.rotate(spin);
+    ctx.globalAlpha = 0.5 * frameA;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 36; i++) {
+      const a = (i / 36) * TWO_PI;
+      const inner = r - (i % 3 === 0 ? 22 : 13);
+      ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+      ctx.lineTo(Math.cos(a) * (r - 7), Math.sin(a) * (r - 7));
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    this.drawReadArm(arena, discT, frameA);
+  }
+
+  /** The HDD read arm: a fixed pivot outside the rim, a beam across the plate, a head. */
+  private drawReadArm(arena: ArenaDef, discT: number, alpha: number): void {
+    const disc = arena.disc;
+    if (!disc) return;
+    const ctx = this.ctx;
+    const px = discArmPivotX(arena);
+    const py = discArmPivotY(arena);
+    const a = discArmAngle(arena, discT);
+    const len = discArmLength(arena);
+    const ux = Math.cos(a);
+    const uy = Math.sin(a);
+    const tipX = px + ux * len;
+    const tipY = py + uy * len;
+    const thick = disc.arm.thickness;
+    ctx.save();
+    ctx.globalAlpha = 0.9 * alpha;
+
+    // Housing and its sweep slot.
+    ctx.strokeStyle = arena.accent;
+    ctx.globalAlpha = 0.1 * alpha;
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.arc(px, py, len * 0.42, a - disc.arm.sweep - 0.1, a + disc.arm.sweep + 0.1);
+    ctx.stroke();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#0a131c';
+    ctx.beginPath();
+    ctx.arc(px, py, thick * 0.9, 0, TWO_PI);
+    ctx.fill();
+    ctx.strokeStyle = arena.accent;
+    ctx.globalAlpha = 0.65 * alpha;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(px, py, thick * 0.9, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.9 * alpha;
+    ctx.fillStyle = arena.accent;
+    ctx.beginPath();
+    ctx.arc(px, py, 5, 0, TWO_PI);
+    ctx.fill();
+
+    // Arm shadow, then the beam. The shadow makes it sit above the plate, not in it.
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.34 * alpha;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = thick + 12;
+    ctx.beginPath();
+    ctx.moveTo(px + 5, py + 10);
+    ctx.lineTo(tipX + 5, tipY + 10);
+    ctx.stroke();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#121d27';
+    ctx.lineWidth = thick;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+    ctx.globalAlpha = 0.4 * alpha;
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = thick - 12;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+    // Top light along one edge.
+    ctx.globalAlpha = 0.8 * alpha;
+    ctx.strokeStyle = '#eaf7ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px - uy * thick * 0.34, py + ux * thick * 0.34);
+    ctx.lineTo(tipX - uy * thick * 0.34, tipY + ux * thick * 0.34);
+    ctx.stroke();
+
+    // Read head near the tip, with a bright lens. This is the part that shoves.
+    const hx = px + ux * len * 0.82;
+    const hy = py + uy * len * 0.82;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#0a121a';
+    ctx.beginPath();
+    ctx.arc(hx, hy, thick * 0.66, 0, TWO_PI);
+    ctx.fill();
+    ctx.strokeStyle = arena.accent;
+    ctx.globalAlpha = 0.8 * alpha;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(hx, hy, thick * 0.66, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.95 * alpha;
+    ctx.fillStyle = '#f2fbff';
+    ctx.beginPath();
+    ctx.arc(hx + ux * 4, hy + uy * 4, 3.4, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private drawArena(t: number, arena: ArenaDef, intro = INTRO_LEN, discT = 0): void {
     const ctx = this.ctx;
     const b = arena.bounds;
     this.ensureFloorPattern(arena);
@@ -1551,6 +1901,10 @@ export class Renderer {
     const frameA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 0.7) / 0.75));
     const pillarA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 1.15) / 0.8));
     const pillarDrop = (1 - pillarA) * 30;
+    if (arena.disc) {
+      this.drawDiscArena(t, arena, groundA, frameA, discT);
+      return;
+    }
     if (this.dustArena !== arena.id) {
       for (let i = 0; i < this.dustX.length; i++) {
         this.dustX[i] = b.left + Math.random() * (b.right - b.left);
@@ -6590,7 +6944,33 @@ export class Renderer {
     ctx.lineWidth = 1.4;
     ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
     ctx.globalAlpha = 0.22;
-    if (arena.walls === 'open') {
+    const disc = arena.disc;
+    const discX = x0 + (discCenterX(arena) - b.left) * sx;
+    const discY = y0 + (discCenterY(arena) - b.top) * sy;
+    const discR = disc ? disc.radius * Math.min(sx, sy) : 0;
+    if (disc) {
+      // The round lip is the only edge on this map. A dashed inner arc keeps the drop
+      // reading, without a rectangular frame the arena does not have.
+      ctx.beginPath();
+      ctx.arc(discX, discY, discR, 0, TWO_PI);
+      ctx.stroke();
+      ctx.setLineDash([4, 4]);
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.arc(discX, discY, discR - 3, 0, TWO_PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // The read arm at the current phase, so the map agrees with the plate.
+      const aa = discArmAngle(arena, state.discT ?? 0);
+      const apx = x0 + (discArmPivotX(arena) - b.left) * sx;
+      const apy = y0 + (discArmPivotY(arena) - b.top) * sy;
+      const alen = discArmLength(arena) * Math.min(sx, sy);
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      ctx.moveTo(apx, apy);
+      ctx.lineTo(apx + Math.cos(aa) * alen, apy + Math.sin(aa) * alen);
+      ctx.stroke();
+    } else if (arena.walls === 'open') {
       // A broken inner rim on the map: the edge is a drop, not a wall.
       ctx.setLineDash([4, 4]);
       ctx.strokeRect(x0 + 5.5, y0 + 5.5, w - 11, h - 11);
@@ -6600,6 +6980,17 @@ export class Renderer {
     }
     ctx.globalAlpha = 1;
     // Holes are the darkest thing on the map: a floor opening, not cover.
+    if (disc) {
+      ctx.fillStyle = '#010309';
+      const dt = state.discT ?? 0;
+      for (let i = 0; i < disc.holes.length; i++) {
+        const hx = discHoleX(arena, i, dt);
+        const hy = discHoleY(arena, i, dt);
+        ctx.beginPath();
+        ctx.arc(x0 + (hx - b.left) * sx, y0 + (hy - b.top) * sy, Math.max(1.3, disc.holes[i].radius * Math.min(sx, sy)), 0, TWO_PI);
+        ctx.fill();
+      }
+    }
     if (arena.voids) {
       ctx.fillStyle = '#010309';
       for (let i = 0; i < arena.voids.length; i++) {

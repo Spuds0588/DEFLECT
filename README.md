@@ -19,9 +19,9 @@ numbers, with a vinyl-crackle bed.
 **Playable now:** solo training against a sparring drone or endless 1v1–1v3 bot practice, **VS BOTS**
 round matches against one to three local opponents, a scored local **GAUNTLET** against worms, viruses,
 cascading errors, shooters and infected thralls, the first **CAMPAIGN** node, or host/join a room for up
-to 8 players. Eight arenas are selectable from the title screen, including the multi-district
-`MAINFRAME`, the multi-deck `TRANSIT`, the wall-less `THE LEDGE` and the compaction-plate
-`RECYCLING BIN`. Match modes are first to 3 rounds; training is continuous practice, while gauntlet is a
+to 8 players. Nine arenas are selectable from the title screen, including the multi-district
+`MAINFRAME`, the multi-deck `TRANSIT`, the wall-less `THE LEDGE`, the compaction-plate `RECYCLING BIN`
+and the spinning, hole-riddled `DISK PLATTER`. Match modes are first to 3 rounds; training is continuous practice, while gauntlet is a
 one-life score chase with a local top-runs table.
 
 **Campaign (story mode):** `SINGLE PLAYER > CAMPAIGN` opens three local save slots first. An empty slot
@@ -193,6 +193,7 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `TRANSIT` | Two decks over a service trench. Cross on the central bridge, ride the paired transporter pads, or take the lift on the east end. The trench blocks bodies but not shots; dashes phase it. |
 | `THE LEDGE` | No outer wall. The floor ends in a dashed lip over the void: a shove that carries a body over it kills, shots fall instead of ricocheting, and a pushed threat is a clear in the gauntlet. |
 | `RECYCLING BIN` | A trapezoid floor with no cover and a big hole in the bottom edge. A 130-unit compaction plate descends every 30 s, stops on the hole's rim and rides everything on the sides down to the ledges. Breakable file boxes are the only clutter, and they are light: shove them, launch them, bat them with a guard. |
+| `DISK PLATTER` | A round platter with no outer wall. Nine holes turn with the disc, and a read arm sweeps across the face every 11.5 s, shoving anything it catches toward those holes or the rim. No cover: the floor and the arm are the whole fight. |
 
 ### Bridges, pads and lifts
 
@@ -210,6 +211,13 @@ the other side of it. Bots steer away from the drop and refuse a dash that would
 instant: for 0.6 s the body hangs over the drop with reduced steering, so a quick stick back can still save
 you. File boxes are light debris rather than cover, and Wedge's deployed wall is solid to shots with its own
 health: chip it and it cracks, then breaks.
+
+`DISK PLATTER` makes the drop round. The plate turns slowly, so every hole travels with it; stand still and
+one can drift under your feet. The read arm pivots just outside the rim and sweeps the face, shoving
+players, bots and threats along its tangent without damaging them. A body caught between the arm and a
+hole is a fall. A dash clears a hole (it is airborne), but landing inside one starts the same 0.6 s hang.
+Hosted matches keep the plate and its holes but park the spin and the arm, because the snapshot carries no
+disc phase; local training, gauntlet and campaign runs get the full moving floor.
 
 ### Laser emitters
 
@@ -305,10 +313,13 @@ push, throw a directional spray of rotating triangles, and tilt the view by the 
 
 This build is a test rig as much as a game. A useful pass:
 
-- All seven arenas in training. Learn `THE RING`'s four side gates, `SWITCHBACK`'s ricochet lanes,
-  `MAINFRAME`'s linked districts and `THE LEDGE`'s open lip.
+- All nine arenas in training. Learn `THE RING`'s four side gates, `SWITCHBACK`'s ricochet lanes,
+  `MAINFRAME`'s linked districts, `THE LEDGE`'s open lip and `DISK PLATTER`'s moving holes.
 - On `THE LEDGE`, shove a bot over the edge with Sweep's thrown broom. It should de-rez at the lip and the
   round should end; walk over the same edge yourself and you should fall too.
+- On `DISK PLATTER`, stand still and watch a hole drift under you; the 0.6 s hang should give you one beat
+  to walk out. Then stand in the read arm's path and let it shove you toward a hole. A dash should clear a
+  gap but landing inside one should still drop you.
 - Start training with `NO BOTS`. The sparring drone should drift, fire slow bolts and respawn.
 - 1v1, 1v2 and 1v3 at each tier. `EASY` is a moving target; `HARD` punishes slow attacks and bad dashes.
   Training never ends on a round; bots respawn after each defeat.

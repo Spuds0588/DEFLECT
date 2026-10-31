@@ -37,7 +37,18 @@ import {
   WORM,
   type Rect,
 } from './config';
-import { ARENAS, arenaSolids, type ArenaDef } from './arenas';
+import {
+  ARENAS,
+  arenaSolids,
+  discArmAngle,
+  discArmLength,
+  discArmPivotX,
+  discArmPivotY,
+  discHoleX,
+  discHoleY,
+  type ArenaDef,
+  type DiscDef,
+} from './arenas';
 import type { CampaignDataCrate } from './campaign';
 import { beamReach, circleRect, hitScratch } from './collision';
 import {
@@ -251,6 +262,24 @@ export class World {
   pusherActive = false;
   /** Brief flash when the arm reaches its stop line; the renderer fades it out. */
   pusherFlashT = 0;
+  /**
+   * Platter rotation in seconds. Public for the renderer so the holes and the read arm
+   * draw exactly where the simulation tests them. Frozen in hosted matches, because the
+   * snapshot carries no disc phase.
+   */
+  discT = 0;
+  /** Current world angle of the read arm, from its pivot. Public for the renderer. */
+  armAngle = 0;
+  /** Read-arm pivot, fixed for the life of the arena. Public for the renderer. */
+  armPivotX = 0;
+  armPivotY = 0;
+  /** Scratch for one arm contact: positional separation and the shove left behind. */
+  private armMoveX = 0;
+  private armMoveY = 0;
+  private armShoveX = 0;
+  private armShoveY = 0;
+  /** Disc holes, returned as a rect so the existing fall pull can aim at one. */
+  private discHoleScratch: Rect = { x: 0, y: 0, w: 0, h: 0 };
   /** Countdown to the next file box dropping into a compacted arena. */
   propDropT = FILE_PROP.dropEvery;
   /** Campaign score telemetry: crates authored, crates still standing, damage taken. */
@@ -288,6 +317,11 @@ export class World {
     this.solids = arenaSolids(arena);
     this.openWalls = arena.walls === 'open';
     this.pusherY = arena.bounds.top;
+    if (arena.disc) {
+      this.armPivotX = discArmPivotX(arena);
+      this.armPivotY = discArmPivotY(arena);
+      this.armAngle = discArmAngle(arena, 0);
+    }
     this.gauntletPractice = gauntletPractice;
     this.localSlot = localSlot;
     this.selectedProgram = clampProgram(program);
@@ -1559,6 +1593,9 @@ export class World {
     const canAct = this.phase === 'live' || this.phase === 'practice';
     if (this.mode === 'gauntlet') this.driveThrall(dt);
     if (this.arena.pushers && canAct) this.tickPusher(dt);
+    // A hosted match keeps the plate still: the snapshot has no disc phase, so a guest
+    // could not agree with the host about which hole is underfoot. Local modes spin.
+    if (this.arena.disc && canAct && this.mode !== 'match') this.tickDisc(dt);
     // The calibration prologue owns the room. Arena hazards wait for the drill, so a
     // stray beam cannot delete a trainee before the subjects have even opened their eyes.
     const calibrationHold = this.campaign && this.campaignPhase === 'calibration';
@@ -2129,7 +2166,7 @@ export class World {
         this.arena.bounds,
         this.openWalls,
       );
-      if (this.openWalls || this.arena.voids) {
+      if (this.openWalls || this.arena.voids || this.arena.disc) {
         this.checkFall(p);
         if (!p.alive) continue;
       }
@@ -2166,6 +2203,9 @@ export class World {
     if (this.mode === 'gauntlet' && (!this.campaign || this.campaignPhase === 'assault')) {
       this.updateGauntlet(threatDt);
     }
+    // Keep the roaming families on the plate without saving them from the arm: this
+    // clamps the rim only, so a hole still takes them. Run after every family update.
+    if (this.arena.disc) this.containDiscThreats();
 
     if (this.mode === 'match' && this.phase === 'live') {
       const active = this.activeCount();
@@ -6357,7 +6397,12 @@ export class World {
     if (this.openWalls) {
       const b = this.arena.bounds;
       const r = proj.radius;
-      if (proj.x > b.left + r && proj.x < b.right - r && proj.y > b.top + r && proj.y < b.bottom - r) return;
+      const disc = this.arena.disc;
+      if (disc) {
+        const dx = proj.x - this.centerX;
+        const dy = proj.y - this.centerY;
+        if (dx * dx + dy * dy <= (disc.radius - r) * (disc.radius - r)) return;
+      } else if (proj.x > b.left + r && proj.x < b.right - r && proj.y > b.top + r && proj.y < b.bottom - r) return;
       // There is no wall to hit, so nothing ricochets: the shot falls into the void. A
       // committed shape keeps its geometry death, which is what makes a bomb detonate
       // at the lip instead of disappearing.
@@ -6603,11 +6648,17 @@ export class World {
    */
   private checkFall(p: Player): void {
     const b = this.arena.bounds;
-    const pastLip = p.x < b.left || p.x > b.right || p.y < b.top || p.y > b.bottom;
+    // A disc's lip is its rim, not the square camera bounds. Either one starts the hang.
+    let pastLip = p.x < b.left || p.x > b.right || p.y < b.top || p.y > b.bottom;
+    const disc = this.arena.disc;
+    if (!pastLip && disc) {
+      const dx = p.x - this.centerX;
+      const dy = p.y - this.centerY;
+      pastLip = dx * dx + dy * dy > disc.radius * disc.radius;
+    }
     // A dash is airborne, so a short hole can be jumped. Land inside one and the fall
     // starts then, which is the point of a hole.
-    if (!pastLip && p.dashT > 0) return;
-    if (!pastLip && !this.offFloor(p.x, p.y)) return;
+    if (!pastLip && (p.dashT > 0 || !this.inVoid(p.x, p.y))) return;
     if (p.fallT > 0) return;
     p.fallT = FALL.grace;
     p.vx = 0;
@@ -6616,10 +6667,16 @@ export class World {
     p.ky = 0;
   }
 
-  /** Off the plate: past the lip, outside a trapezoid slant, or over a floor hole. */
+  /** Off the plate: past the lip, outside a trapezoid slant, a disc rim, or a floor hole. */
   private offFloor(x: number, y: number): boolean {
     const b = this.arena.bounds;
     if (x < b.left || x > b.right || y < b.top || y > b.bottom) return true;
+    const disc = this.arena.disc;
+    if (disc) {
+      const dx = x - this.centerX;
+      const dy = y - this.centerY;
+      if (dx * dx + dy * dy > disc.radius * disc.radius) return true;
+    }
     const slant = this.arena.slant;
     if (slant) {
       const k = (y - b.top) / (b.bottom - b.top);
@@ -6633,13 +6690,31 @@ export class World {
     return this.voidAt(x, y) !== null;
   }
 
-  /** The hole under a point, or null. Returns the arena's rect, never a copy. */
+  /** The hole under a point, or null. Returns an arena rect or the disc scratch. */
   private voidAt(x: number, y: number): Rect | null {
     const voids = this.arena.voids;
-    if (!voids) return null;
-    for (let i = 0; i < voids.length; i++) {
-      const r = voids[i];
-      if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return r;
+    if (voids) {
+      for (let i = 0; i < voids.length; i++) {
+        const r = voids[i];
+        if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return r;
+      }
+    }
+    const disc = this.arena.disc;
+    if (disc) {
+      for (let i = 0; i < disc.holes.length; i++) {
+        const h = disc.holes[i];
+        const hx = discHoleX(this.arena, i, this.discT);
+        const hy = discHoleY(this.arena, i, this.discT);
+        const dx = x - hx;
+        const dy = y - hy;
+        if (dx * dx + dy * dy >= h.radius * h.radius) continue;
+        const s = this.discHoleScratch;
+        s.x = hx - h.radius;
+        s.y = hy - h.radius;
+        s.w = h.radius * 2;
+        s.h = h.radius * 2;
+        return s;
+      }
     }
     return null;
   }
@@ -7233,8 +7308,20 @@ export class World {
     d.y += d.vy * dt;
 
     const pad = d.radius + 10;
-    d.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, d.x));
-    d.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, d.y));
+    if (this.arena.disc) {
+      const dx = d.x - this.centerX;
+      const dy = d.y - this.centerY;
+      const dist = Math.hypot(dx, dy);
+      const max = this.arena.disc.radius - pad;
+      if (dist > max) {
+        d.x = this.centerX + (dx / dist) * max;
+        d.y = this.centerY + (dy / dist) * max;
+        this.pickDroneTarget();
+      }
+    } else {
+      d.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, d.x));
+      d.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, d.y));
+    }
     for (let i = 0; i < this.solids.length; i++) {
       if (circleRect(d.x, d.y, d.radius, this.solids[i], hitScratch)) {
         d.x = hitScratch.px;
@@ -7274,6 +7361,8 @@ export class World {
         }
       }
       if (blocked) continue;
+      // A disc arena's corners are void; never send the drone to one.
+      if (this.arena.disc && this.offFloor(x, y)) continue;
       const p = this.players[0];
       if (p && Math.hypot(x - p.x, y - p.y) < 190) continue;
       d.targetX = x;
@@ -7302,8 +7391,19 @@ export class World {
     d.y = initial ? initialSpawn.y : d.targetY;
     d.prevX = d.x;
     d.prevY = d.y;
-    d.x = Math.max(this.arena.bounds.left + d.radius, Math.min(this.arena.bounds.right - d.radius, d.x));
-    d.y = Math.max(this.arena.bounds.top + d.radius, Math.min(this.arena.bounds.bottom - d.radius, d.y));
+    if (this.arena.disc) {
+      const dx = d.x - this.centerX;
+      const dy = d.y - this.centerY;
+      const dist = Math.hypot(dx, dy);
+      const max = this.arena.disc.radius - d.radius - 4;
+      if (dist > max) {
+        d.x = this.centerX + (dx / dist) * max;
+        d.y = this.centerY + (dy / dist) * max;
+      }
+    } else {
+      d.x = Math.max(this.arena.bounds.left + d.radius, Math.min(this.arena.bounds.right - d.radius, d.x));
+      d.y = Math.max(this.arena.bounds.top + d.radius, Math.min(this.arena.bounds.bottom - d.radius, d.y));
+    }
     d.fireTimer = this.rng.range(1.1, 2);
     if (!initial) this.emit(EV.RESPAWN, -1, d.x, d.y, 1);
   }
@@ -7465,6 +7565,9 @@ export class World {
         }
       }
       if (blocked) continue;
+      // A pickup on a hole or past a lip is unreachable, and on the platter the hole can
+      // drift away from it. Keep the drop on solid floor.
+      if (this.offFloor(x, y)) continue;
       const def = rollPowerup(this.rng.next());
       slot.active = true;
       slot.kind = def.kind;
@@ -7714,7 +7817,61 @@ export class World {
     for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) this.updateSentry(this.sentries[i], dt);
     for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) this.updateFirewall(this.firewalls[i], dt);
     this.updateErrors(dt);
-    if (this.openWalls || this.arena.voids) this.cullVoidThreats();
+    if (this.openWalls || this.arena.voids || this.arena.disc) this.cullVoidThreats();
+  }
+
+  /**
+   * Keep a roaming family on the platter. The compactor's arena walls do this with the
+   * rect clamp; a disc has no rect wall, so the rim is the bound. Holes are not handled
+   * here: those still take a body, which is what makes the arm dangerous.
+   */
+  private containDiscThreats(): void {
+    const disc = this.arena.disc;
+    if (!disc) return;
+    const cx = this.centerX;
+    const cy = this.centerY;
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      this.clampToDisc(w, WORM.headRadius, cx, cy, disc.radius);
+      for (let s = 0; s < w.segCount; s++) {
+        let dx = w.segX[s] - cx;
+        let dy = w.segY[s] - cy;
+        const d = Math.hypot(dx, dy);
+        const max = disc.radius - WORM.segmentRadius;
+        if (d <= max || d < 1e-6) continue;
+        dx /= d;
+        dy /= d;
+        w.segX[s] = cx + dx * max;
+        w.segY[s] = cy + dy * max;
+      }
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (v.active) this.clampToDisc(v, v.radius, cx, cy, disc.radius);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active) this.clampToDisc(s, s.radius, cx, cy, disc.radius);
+    }
+  }
+
+  /** Pulls one body centre back inside the rim and drops the outward velocity. */
+  private clampToDisc(body: { x: number; y: number; kx: number; ky: number }, r: number, cx: number, cy: number, radius: number): void {
+    let dx = body.x - cx;
+    let dy = body.y - cy;
+    const d = Math.hypot(dx, dy);
+    const max = Math.max(1, radius - r - 4);
+    if (d <= max) return;
+    dx /= d || 1;
+    dy /= d || 1;
+    body.x = cx + dx * max;
+    body.y = cy + dy * max;
+    const out = body.kx * dx + body.ky * dy;
+    if (out > 0) {
+      body.kx -= out * dx;
+      body.ky -= out * dy;
+    }
   }
 
   /**
@@ -7738,6 +7895,99 @@ export class World {
       const s = this.sentries[i];
       if (!s.active) continue;
       if (this.offFloor(s.x, s.y)) this.damageSentry(s, 9999, 0, 0, 0);
+    }
+  }
+
+  /**
+   * The platter's read arm. It swings across the face on a slow sine, so a body in its
+   * path is carried along the tangent and left with a shove. The arm never damages; the
+   * fall does. Holes turn with the disc, so the safe route keeps changing underfoot.
+   */
+  private tickDisc(dt: number): void {
+    const disc = this.arena.disc;
+    if (!disc) return;
+    const prev = this.armAngle;
+    this.discT += dt;
+    this.armAngle = discArmAngle(this.arena, this.discT);
+    const dAng = this.armAngle - prev;
+    if (Math.abs(dAng) < 1e-7) return;
+    this.carryWithReader(disc, dAng);
+  }
+
+  /**
+   * Test one body against the read arm. On contact, writes the separation and the shove
+   * into the scratch fields. The arm is a line, so this stays cheap for every body.
+   */
+  private readerHit(x: number, y: number, radius: number, disc: DiscDef, dAng: number): boolean {
+    const len = discArmLength(this.arena);
+    const ux = Math.cos(this.armAngle);
+    const uy = Math.sin(this.armAngle);
+    const rx = x - this.armPivotX;
+    const ry = y - this.armPivotY;
+    let t = rx * ux + ry * uy;
+    if (t < 0) t = 0;
+    else if (t > len) t = len;
+    let dx = x - (this.armPivotX + ux * t);
+    let dy = y - (this.armPivotY + uy * t);
+    let d = Math.hypot(dx, dy);
+    const min = disc.arm.thickness * 0.5 + radius;
+    if (d >= min) return false;
+    if (d < 1e-4) {
+      // Dead centre on the arm: push to the side the arm is sweeping away from.
+      dx = -uy;
+      dy = ux;
+      d = 1;
+    }
+    const nx = dx / d;
+    const ny = dy / d;
+    this.armMoveX = nx * (min - d - 0.5) - uy * dAng * t;
+    this.armMoveY = ny * (min - d - 0.5) + ux * dAng * t;
+    // The tangential shove is a velocity, not another positional nudge, so the body
+    // keeps travelling after the arm releases it.
+    const side = dAng >= 0 ? 1 : -1;
+    this.armShoveX = -uy * side * disc.arm.push;
+    this.armShoveY = ux * side * disc.arm.push;
+    return true;
+  }
+
+  /** Carries players, worms, viruses and sentries with one arm pass. */
+  private carryWithReader(disc: DiscDef, dAng: number): void {
+    const pr = PLAYER.radius;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.travelT > 0 || p.fallT > 0) continue;
+      if (!this.readerHit(p.x, p.y, pr, disc, dAng)) continue;
+      p.x += this.armMoveX;
+      p.y += this.armMoveY;
+      p.kx = this.armShoveX;
+      p.ky = this.armShoveY;
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      if (!this.readerHit(w.x, w.y, WORM.headRadius, disc, dAng)) continue;
+      w.x += this.armMoveX;
+      w.y += this.armMoveY;
+      w.kx = this.armShoveX;
+      w.ky = this.armShoveY;
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      if (!this.readerHit(v.x, v.y, v.radius, disc, dAng)) continue;
+      v.x += this.armMoveX;
+      v.y += this.armMoveY;
+      v.kx = this.armShoveX;
+      v.ky = this.armShoveY;
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      if (!this.readerHit(s.x, s.y, s.radius, disc, dAng)) continue;
+      s.x += this.armMoveX;
+      s.y += this.armMoveY;
+      s.kx = this.armShoveX;
+      s.ky = this.armShoveY;
     }
   }
 
@@ -7829,7 +8079,7 @@ export class World {
     }
     const cx = b.x + b.w * 0.5;
     const cy = b.y + b.h * 0.5;
-    if ((this.openWalls || this.arena.voids || this.arena.slant) && this.offFloor(cx, cy)) {
+    if ((this.openWalls || this.arena.voids || this.arena.slant || this.arena.disc) && this.offFloor(cx, cy)) {
       b.active = false;
       this.emit(EV.PROP_BREAK, 0, cx, cy, b.w + b.h);
       return;

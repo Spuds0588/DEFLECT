@@ -35,8 +35,19 @@ export function beamReach(
 ): number {
   let best = max;
 
-  // Arena bounds on a walled floor. An open arena has no wall to stop the beam.
-  if (arena.walls !== 'open') {
+  // Arena bounds on a walled floor. An open arena has no wall to stop the beam, but a
+  // round platter still has a rim, so the shaft ends where the floor does.
+  const disc = arena.disc;
+  if (disc) {
+    const cx = (arena.bounds.left + arena.bounds.right) * 0.5;
+    const cy = (arena.bounds.top + arena.bounds.bottom) * 0.5;
+    const rx = ox - cx;
+    const ry = oy - cy;
+    const b = rx * dx + ry * dy;
+    const c = rx * rx + ry * ry - disc.radius * disc.radius;
+    const t = -b + Math.sqrt(Math.max(0, b * b - c));
+    if (t > 0) best = Math.min(best, t);
+  } else if (arena.walls !== 'open') {
     const b = arena.bounds;
     if (dx < -1e-6) best = Math.min(best, (b.left - ox) / dx);
     else if (dx > 1e-6) best = Math.min(best, (b.right - ox) / dx);

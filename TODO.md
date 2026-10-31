@@ -2,7 +2,34 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.64 Compress.exe)
+Last updated: 2026-10-31 (v0.1.65 DISK PLATTER)
+
+---
+
+## v0.1.65 — DISK PLATTER: round floor, moving holes, read arm (2026-10-31)
+
+### Built
+- [x] New arena id 8: a 690-radius round platter inside square camera bounds, nine authored polar holes,
+      and an open rim. World, bot pathing, props, the drone and the camera all read the same floor test
+- [x] Holes turn with the platter at 0.075 rad/s. `voidAt` returns the hole under a body, so the existing
+      0.6 s fall hang pulls toward it; dashing still clears a hole, landing inside one does not
+- [x] Read arm pivots outside the rim and sweeps on an 11.5 s sine. Contact separates the body and leaves
+      a tangential 360 shove on players, worms, viruses and sentries; it never damages directly
+- [x] Threat containment clamps roaming families to the rim without saving them from holes. Bots steer off
+      the rim and the current hole positions, including the idle no-hostile drift
+- [x] Renderer: clipped round floor with rotating servo tracks, sector seams and platter arcs, spindle hub,
+      cut holes with lit lips, rotating rim ticks and the full read arm. Minimap and picker preview follow
+- [x] Online rooms keep the round plate and static holes but park the spin and arm: no disc phase in the
+      snapshot. Local training, gauntlet and campaign get the moving floor
+- [x] Docs: AGENTS D30, README arena table and QA checks, this entry
+
+### Next
+- [ ] Play a full gauntlet wave on DISK PLATTER and check that the arm's shove reads as a shove, not a
+      teleport, at couch distance; tune `push` before changing the sweep period
+- [ ] Watch three bots fight on the plate for a full round: confirm the hole steer holds under pressure and
+      no bot repeatedly walks into the same drifting hole
+- [ ] Decide whether a moving-hazard arena needs a snapshot phase before it is offered in an online room,
+      or whether the parked plate is the final rule
 
 ---
 

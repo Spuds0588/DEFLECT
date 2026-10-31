@@ -78,6 +78,53 @@ export interface ArenaEmitterDef {
 }
 
 /**
+ * One hole cut through a rotating platter. Authored in the platter's own frame, so the
+ * hole travels with the disc as it turns. Polar placement keeps the layout readable
+ * and keeps the data independent of the platter's radius.
+ */
+export interface DiscHoleDef {
+  /** Angle in the disc's local frame, radians. */
+  a: number;
+  /** Distance from the spindle, in world units. */
+  r: number;
+  /** Hole radius. */
+  radius: number;
+}
+
+/**
+ * The read arm. It pivots just outside the platter and sweeps across the face, shoving
+ * whatever it catches. It is a floor hazard, not cover: shots pass over it.
+ */
+export interface DiscArmDef {
+  /** Angle of the pivot around the spindle, radians. */
+  pivot: number;
+  /** Seconds for one full sweep there and back. */
+  period: number;
+  /** Half the arc the arm sweeps, radians. */
+  sweep: number;
+  /** Arm thickness, in world units. */
+  thickness: number;
+  /** Shove velocity left on a body the arm catches. */
+  push: number;
+  /** Arm length as a fraction of the platter radius, measured from the pivot. */
+  reach: number;
+}
+
+/**
+ * A rotating disc floor. The plate is round: outside it is a drop, and the holes turn
+ * with the disc. Local hazard content like the laser emitters, so hosted matches keep
+ * the plate and its holes but do not spin it. Never moves into `Snapshot`.
+ */
+export interface DiscDef {
+  /** Platter radius. Bounds should be a square that contains it. */
+  radius: number;
+  /** Platter rotation, radians per second. */
+  spin: number;
+  holes: DiscHoleDef[];
+  arm: DiscArmDef;
+}
+
+/**
  * A breakable file box. Bodies step over it; shots and lashes delete it in one or two
  * hits. Kind is a `PROP` id, which picks the mark on the box.
  */
@@ -133,7 +180,21 @@ export interface ArenaDef {
   props?: ArenaPropDef[];
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
+  /** A round spinning platter with a read arm. Implies an open drop around the rim. */
+  disc?: DiscDef;
 }
+
+/** Eight points around the disc, inset far enough that a spawn is never on the lip. */
+const discSpawns: SpawnPoint[] = [
+  { x: 995, y: 188 },
+  { x: 1391, y: 352 },
+  { x: 1555, y: 748 },
+  { x: 1391, y: 1144 },
+  { x: 995, y: 1308 },
+  { x: 599, y: 1144 },
+  { x: 435, y: 748 },
+  { x: 599, y: 352 },
+];
 
 const perimeterSpawns: SpawnPoint[] = [
   { x: 995, y: 131 },
@@ -456,7 +517,86 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 960, y: 300, w: 42, h: 30, kind: PROP.ZIP },
     ],
   },
+  {
+    id: 8,
+    name: 'DISK PLATTER',
+    tagline: 'It spins. The arm reads. Mind the gaps.',
+    hudLabel: 'ARENA // DISK PLATTER',
+    accent: '#cfe3f5',
+    accentSoft: 'rgba(207, 227, 245, 0.32)',
+    accentFaint: 'rgba(207, 227, 245, 0.03)',
+    signature: 2,
+    // A square plate for the camera, with the round floor inscribed inside it. The
+    // corners are void: the platter is the only ground.
+    bounds: { left: 295, top: 48, right: 1695, bottom: 1448 },
+    walls: 'open',
+    pillars: [],
+    spawns: discSpawns,
+    disc: {
+      radius: 690,
+      // A slow platter turn, visible in the tracks and the drifting holes without
+      // dragging a body's feet out from under it.
+      spin: 0.075,
+      // Deliberately irregular spacing: the layout reads as a damaged platter, not a
+      // ring of identical portholes. All of it is data, so host and guest agree.
+      holes: [
+        { a: 0.15, r: 380, radius: 48 },
+        { a: 0.95, r: 505, radius: 38 },
+        { a: 1.62, r: 300, radius: 56 },
+        { a: 2.55, r: 530, radius: 42 },
+        { a: 2.95, r: 395, radius: 50 },
+        { a: 3.62, r: 520, radius: 38 },
+        { a: 4.28, r: 310, radius: 54 },
+        { a: 4.96, r: 505, radius: 44 },
+        { a: 5.64, r: 385, radius: 52 },
+      ],
+      // Pivot sits just outside the rim. The arm crosses the spindle at rest and
+      // sweeps well past the holes, so it can rake a body toward one.
+      arm: { pivot: 0.35, period: 11.5, sweep: 0.55, thickness: 44, push: 360, reach: 1.06 },
+    },
+  },
 ];
+
+export function discCenterX(arena: ArenaDef): number {
+  return (arena.bounds.left + arena.bounds.right) * 0.5;
+}
+
+export function discCenterY(arena: ArenaDef): number {
+  return (arena.bounds.top + arena.bounds.bottom) * 0.5;
+}
+
+/** World angle of one hole at `discT` seconds into the spin. */
+export function discHoleAngle(disc: DiscDef, index: number, discT: number): number {
+  return disc.holes[index].a + discT * disc.spin;
+}
+
+export function discHoleX(arena: ArenaDef, index: number, discT: number): number {
+  return discCenterX(arena) + Math.cos(discHoleAngle(arena.disc!, index, discT)) * arena.disc!.holes[index].r;
+}
+
+export function discHoleY(arena: ArenaDef, index: number, discT: number): number {
+  return discCenterY(arena) + Math.sin(discHoleAngle(arena.disc!, index, discT)) * arena.disc!.holes[index].r;
+}
+
+/** World angle of the read arm. It points at the spindle at rest, then sweeps aside. */
+export function discArmAngle(arena: ArenaDef, discT: number): number {
+  const arm = arena.disc!.arm;
+  return arm.pivot + Math.PI + Math.sin((discT * Math.PI * 2) / arm.period) * arm.sweep;
+}
+
+export function discArmPivotX(arena: ArenaDef): number {
+  const disc = arena.disc!;
+  return discCenterX(arena) + Math.cos(disc.arm.pivot) * (disc.radius + disc.arm.thickness * 0.9);
+}
+
+export function discArmPivotY(arena: ArenaDef): number {
+  const disc = arena.disc!;
+  return discCenterY(arena) + Math.sin(disc.arm.pivot) * (disc.radius + disc.arm.thickness * 0.9);
+}
+
+export function discArmLength(arena: ArenaDef): number {
+  return arena.disc!.radius * arena.disc!.arm.reach;
+}
 
 export function getArena(index: number): ArenaDef {
   const n = ARENAS.length;
@@ -512,6 +652,55 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
 
   const previewW = (bounds.right - bounds.left) * sx;
   const previewH = (bounds.bottom - bounds.top) * sy;
+
+  // A disc arena has no rectangular lip to draw. The plate, its holes and the read
+  // arm are the whole floor signature, even at thumbnail size.
+  if (arena.disc) {
+    const disc = arena.disc;
+    const cx = mapX((bounds.left + bounds.right) * 0.5);
+    const cy = mapY((bounds.top + bounds.bottom) * 0.5);
+    const rr = disc.radius * Math.min(sx, sy);
+    ctx.fillStyle = '#08121d';
+    ctx.beginPath();
+    ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#010309';
+    const previewPhase = 0.45;
+    for (let i = 0; i < disc.holes.length; i++) {
+      const a = disc.holes[i].a + previewPhase * disc.spin;
+      ctx.beginPath();
+      ctx.arc(
+        cx + Math.cos(a) * disc.holes[i].r * sx,
+        cy + Math.sin(a) * disc.holes[i].r * sy,
+        Math.max(1.5, disc.holes[i].radius * Math.min(sx, sy)),
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+    // Arm at rest, pointing across the spindle, at the same phase as the holes.
+    const armAngle = discArmAngle(arena, previewPhase);
+    const pivotX = mapX(discArmPivotX(arena));
+    const pivotY = mapY(discArmPivotY(arena));
+    const len = discArmLength(arena) * Math.min(sx, sy);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pivotX, pivotY);
+    ctx.lineTo(pivotX + Math.cos(armAngle) * len, pivotY + Math.sin(armAngle) * len);
+    ctx.stroke();
+    ctx.fillStyle = arena.accent;
+    ctx.fillRect(pivotX - 2, pivotY - 2, 4, 4);
+    ctx.fillStyle = '#04080e';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+
   ctx.globalAlpha = 0.5;
   ctx.strokeStyle = arena.accent;
   ctx.lineWidth = 1;

@@ -1082,6 +1082,44 @@ burst) drives a purple squeeze pop or the wide burst ring; `P_COLOR_COMPRESS` is
 All numbers live in `tuning/programs.json` under `COMPRESS`. The kit is local-only like every other
 program: it adds no `Snapshot` fields, a guest does not see a shrunk body, and online still runs Probe.
 
+### D30 — DISK PLATTER: round floor, moving holes, read arm (built 2026-10-31)
+
+`DISK PLATTER` (id 8) is the first **round** arena. `ArenaDef.disc` owns the platter: radius, spin,
+authored polar holes and the read arm. It implies `walls: 'open'`; the square bounds only frame the
+camera. `offFloor` owns the floor test, so players, bots, threats, props and the drone all agree on where
+the plate ends. Do not add a second circular-bound check in a family branch.
+
+- **Holes are disc-local.** Each `DiscHoleDef` is `{ a, r, radius }` in the platter's own frame. World
+  angle is `a + discT * spin`, so the geometry is deterministic from one phase and needs no per-hole
+  update. `voidAt` returns a bounding rect for the existing fall pull, which means the 0.6 s hang already
+  aims at the hole the body is over. Holes are 38–56 units and sit 300–530 from the spindle, clear of the
+  hub. Shots fly over them, like a trench.
+- **The spin is local-only.** `World.discT` advances only outside `match`, because `Snapshot` carries no
+  disc phase. A hosted room keeps the round plate and the static authored holes but parks the arm, so a
+  guest cannot be killed by a hazard it cannot see. Do not add disc phase fields to a snapshot without a
+  protocol decision.
+- **The read arm** is a fixed pivot just outside the rim, an arm `reach` fraction long, and an angle that
+  follows a sine over `period`. It **shoves, never damages**: contact separates the body, adds the
+  tangential carry for that frame, and sets `kx`/`ky` in the sweep direction. One pass covers players,
+  worms, viruses and sentries. A body pushed over a hole falls; a body pushed past the rim falls. Do not
+  turn the arm into a damage plate or move its pivot to the spindle (the real hardware pivots outside the
+  platter, and the arm crossing the hub is what makes the lane read).
+- **Threat containment is rim-only.** `containDiscThreats` clamps worms (head and segments), viruses and
+  sentries to `radius - bodyRadius` after every family update, with a fresh clamp after the campaign
+  calibration shapes. It deliberately does not save a body from a hole: the hole kill still goes through
+  the normal damage path and counts for the clear. Bots steer off the rim and the current hole positions;
+  the idle no-hostile drift has its own hole steer because it never reaches `avoidFurniture`.
+- **Projectiles and beams** die at the rim. `bounceWalls` reads the circle in the open-wall branch, and
+  `beamReach` ends the heavy shaft at the plate edge. They still cross holes.
+- **Render** is one round plate: clipped board floor, concentric servo tracks and 24 sector seams turning
+  with `spin`, three platter arcs, the spindle hub, cut holes with a lit lip, and rotating rim ticks. The
+  read arm is drawn with its pivot housing, shadow, beam and head. The minimap and the picker preview use
+  the same helpers, so a thumbnail, the map and the arena cannot disagree.
+- **Numbers** live in `arenas.ts` on the arena record, not in `tuning/`: DISK PLATTER is radius 690,
+  spin 0.075 rad/s, arm period 11.5 s, sweep 0.55 rad, thickness 44, push 360, reach 1.06. Spawns are an
+  inset ring at radius 560. Check the hole ring against every spawn at phase 0 before shipping a change;
+  spawn 5 once sat on a hole.
+
 ---
 
 ## 3. Architecture
@@ -1096,7 +1134,7 @@ src/game/config.ts    typed facade over tuning JSON + engine limits and palette;
 src/game/programs.ts  roster: program ids, names, hues, core glyphs, signature skills
 src/game/campaign.ts  first playable campaign node: level identity, arena blockout, sector link
 src/game/road.ts      campaign route plate for the between-level transition (parked, not mounted)
-src/game/arenas.ts    eight arena layouts (MAINFRAME multi-district, THE LEDGE open-edged), spawns, previews
+src/game/arenas.ts    nine arena layouts (MAINFRAME multi-district, DISK PLATTER round), spawns, previews
 src/game/nav.ts       per-arena 20u navigation grid + reusable A* workspace for bots
 src/game/bot.ts       local bot brains: tiers, styles, same InputFrame as a human
 src/game/powerups.ts  local pickup ids, labels, colors, durations and weighted roll

@@ -3046,3 +3046,37 @@ hull; the attract rotation already logs a 3P Compress squad with no console erro
 
 **Next:** play a full VS BOTS set as Compress and decide whether two orbs (3 cap → 1) is too much of a
 cliff for a player target; check the Z ring at the 0.35 shrink floor and the burst at kiosk distance.
+
+## 2026-10-31 — DISK PLATTER: round floor, moving holes, read arm
+
+**Goal:** add a ninth arena built around a spinning hard-disc platter, with holes that move and a read arm
+that can shove bodies into them.
+
+- `ArenaDef.disc` owns a 690-radius plate, its spin, nine polar holes and a read arm. The square bounds are
+  only the camera frame; `walls: 'open'` and `offFloor` read the circle. Holes turn at 0.075 rad/s, so the
+  same hole geometry the world tests is what the renderer draws.
+- The read arm pivots just outside the rim, crosses the spindle at rest, and follows an 11.5 s sine sweep
+  (0.55 rad, 44 thick, reach 1.06r). Contact separates a body and leaves a 360 tangential shove; it never
+  damages directly. It covers players, worms, viruses and sentries.
+- A body pushed over a hole starts the existing 0.6 s fall hang, aimed at that hole; a dash still clears
+  one, but landing inside starts the hang. Threats are clamped to the rim after every family update and are
+  still deleted by holes through their normal damage path. Bots steer off the rim and the current hole
+  positions; the no-hostile drift got its own steer because it bypasses `avoidFurniture`.
+- The plate render is a clipped round floor with rotating servo tracks, 24 sector seams, three platter arcs,
+  spindle hub, cut holes with lit lips, rotating rim ticks and a full read arm with pivot housing and head.
+  The minimap and arena picker use the same hole/arm helpers.
+- Online rooms keep the plate and static holes but park the spin and arm: the snapshot carries no disc
+  phase. Local training, gauntlet and campaign get the moving floor.
+- One spawn sat on a hole at phase 0; hole 3 moved to angle 2.55 so spawn 5 is clear. Future hole edits must
+  be checked against the spawn ring at t=0.
+
+**Verification:** `npx tsc --noEmit` clean; `npm run build` passes. Headless: after 2 s `discT` 2.00 and
+`armAngle` moved 3.492 → 3.980; a player placed on a moving hole gets `fallT` 0.60 and is dead after the
+grace; six steps on the arm move the body (-8.9, 24.4) with a 118/-297 residual shove; crossing the rim
+starts a 0.60 hang. A 60 s training run with a HARD pilot recorded 2 deaths and 72 fall ticks, so the floor
+is dangerous but not constant. Live visual at `?gauntlet=1&arena=8&debug=1` shows the round plate, moving
+holes, moving arm and minimap. The first hands-off bot test walked into a hole at 1.7 s; the idle-drift hole
+steer fixed it, and the same pilot now skirts the holes.
+
+**Next:** judge the arm's shove at couch distance, then watch a full bot round for repeated hole walks and
+decide whether online needs a disc phase.

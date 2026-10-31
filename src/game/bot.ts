@@ -1,7 +1,7 @@
 import { ATOMIZE, BOLT, BUG, COMPRESS, FISHER, GHOST, KABOOM, PLAYER, TOXIC, WEDGE, type Rect } from './config';
 import { PROGRAM_ID } from './programs';
 import { POWERUP_KIND } from './powerups';
-import { arenaSolids, type ArenaDef } from './arenas';
+import { arenaSolids, discCenterX, discCenterY, discHoleX, discHoleY, type ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
 import { Rng } from './rng';
 import { arenaNav, NAV_MAX_PATH } from './nav';
@@ -727,7 +727,7 @@ export class BotBrain {
     }
 
     this.applySeparation(world, me, moveX, moveY);
-    this.avoidFurniture(me, moveX, moveY, world.arena);
+    this.avoidFurniture(me, moveX, moveY, world);
     const mag = Math.hypot(this.steerX, this.steerY);
     if (mag > 0.001) {
       const speed = mag > 1 ? 1 / mag : 0.82 + Math.min(0.18, this.rule.strafe * 0.1);
@@ -844,8 +844,31 @@ export class BotBrain {
       const dy = cy - me.y;
       const d = Math.hypot(dx, dy) || 1;
       if (d > 30) {
-        out.mx = (dx / d) * 0.55;
-        out.my = (dy / d) * 0.55;
+        let mx = (dx / d) * 0.55;
+        let my = (dy / d) * 0.55;
+        // The idle drift never reaches avoidFurniture, so a moving hole could swallow
+        // the pilot before the first pack lands. Steer off the nearest rims here.
+        const disc = world.arena.disc;
+        if (disc) {
+          for (let i = 0; i < disc.holes.length; i++) {
+            const hx = discHoleX(world.arena, i, world.discT);
+            const hy = discHoleY(world.arena, i, world.discT);
+            const ax = me.x - hx;
+            const ay = me.y - hy;
+            const ad = Math.hypot(ax, ay) || 1;
+            const reach = disc.holes[i].radius + 96;
+            if (ad >= reach) continue;
+            mx += (ax / ad) * ((reach - ad) / 20);
+            my += (ay / ad) * ((reach - ad) / 20);
+          }
+          const m = Math.hypot(mx, my);
+          if (m > 1) {
+            mx /= m;
+            my /= m;
+          }
+        }
+        out.mx = mx;
+        out.my = my;
       }
       return true;
     }
@@ -924,7 +947,7 @@ export class BotBrain {
       moveY = uy * radial + ux * orbit;
     }
     this.applySeparation(world, me, moveX, moveY);
-    this.avoidFurniture(me, moveX, moveY, world.arena);
+    this.avoidFurniture(me, moveX, moveY, world);
     const mag = Math.hypot(this.steerX, this.steerY);
     if (mag > 0.001) {
       const speed = mag > 1 ? 1 / mag : 0.85;
@@ -961,6 +984,9 @@ export class BotBrain {
   private steerY = 0;
 
   private nearWall(me: Player, arena: ArenaDef): boolean {
+    // A round platter's rim is handled by the furniture steer, which knows where the
+    // holes are. Pulling to the square bounds' centre would skip that read.
+    if (arena.disc) return false;
     // Only the outer ring counts. A bot beside interior cover must navigate, not
     // abandon the chase and shove itself into that cover on the way to center.
     const safe = 64;
@@ -1305,6 +1331,12 @@ export class BotBrain {
     const ey = y + dy * reach;
     const b = arena.bounds;
     if (ex <= b.left + 24 || ex >= b.right - 24 || ey <= b.top + 24 || ey >= b.bottom - 24) return false;
+    const disc = arena.disc;
+    if (disc) {
+      const dx = ex - (b.left + b.right) * 0.5;
+      const dy = ey - (b.top + b.bottom) * 0.5;
+      if (dx * dx + dy * dy > (disc.radius - 24) * (disc.radius - 24)) return false;
+    }
     const voids = arena.voids;
     if (voids) {
       // Landing over a hole is the same mistake as landing past the lip.
@@ -1316,9 +1348,10 @@ export class BotBrain {
     return true;
   }
 
-  private avoidFurniture(me: Player, x: number, y: number, arena: ArenaDef): void {
+  private avoidFurniture(me: Player, x: number, y: number, world: World): void {
     let sx = this.steerX;
     let sy = this.steerY;
+    const arena = world.arena;
     const b = arena.bounds;
 
     const margin = PLAYER.radius + 44;
@@ -1335,6 +1368,34 @@ export class BotBrain {
       if (me.x > b.right - lip) sx -= (me.x - (b.right - lip)) / 45;
       if (me.y < b.top + lip) sy += (b.top + lip - me.y) / 45;
       if (me.y > b.bottom - lip) sy -= (me.y - (b.bottom - lip)) / 45;
+    }
+
+    const disc = arena.disc;
+    if (disc) {
+      // A round floor has no straight lip, so steer back toward the spindle. The band
+      // starts further in than a square edge because the rim curves away underfoot.
+      const dcx = discCenterX(arena);
+      const dcy = discCenterY(arena);
+      const rx = me.x - dcx;
+      const ry = me.y - dcy;
+      const rd = Math.hypot(rx, ry) || 1;
+      const lip = disc.radius - 130;
+      if (rd > lip) {
+        sx -= (rx / rd) * ((rd - lip) / 30);
+        sy -= (ry / rd) * ((rd - lip) / 30);
+      }
+      // The holes turn with the plate, so read them at the world's current phase.
+      for (let i = 0; i < disc.holes.length; i++) {
+        const hx = discHoleX(arena, i, world.discT);
+        const hy = discHoleY(arena, i, world.discT);
+        const dx = me.x - hx;
+        const dy = me.y - hy;
+        const d = Math.hypot(dx, dy) || 1;
+        const reach = disc.holes[i].radius + 96;
+        if (d >= reach) continue;
+        sx += (dx / d) * ((reach - d) / 20);
+        sy += (dy / d) * ((reach - d) / 20);
+      }
     }
 
     const voids = arena.voids;
