@@ -1,4 +1,4 @@
-import { ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PINBALL, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import {
   discArmAngle,
   discArmLength,
@@ -11,7 +11,7 @@ import {
   type ArenaDef,
 } from './arenas';
 import { Fx } from './fx';
-import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourglassMark, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
+import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourglassMark, drawPinballMark, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
 import { P_COLOR_DANGER, P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
@@ -459,6 +459,7 @@ export class Renderer {
         if (state.pickups) this.drawPickups(state.pickups, alpha, t);
         if (state.nets) this.drawNets(state, alpha, t);
         if (state.barriers) this.drawBarriers(state.barriers, t);
+        this.drawPinballArms(state, alpha, t);
         if (state.lures) this.drawLures(state.lures, t);
         this.drawGas(state, alpha, t);
         this.drawLasers(state, alpha, t);
@@ -3997,7 +3998,14 @@ export class Renderer {
       // Hostile shots get a short tail so the screen does not fill with long lines.
       // Atomize's electron is the exception: its whole read is the white arc, so it keeps
       // a long trail even though the ball itself is a player shot.
-      const count = p.type === 11 ? Math.min(p.trailCount, 14) : p.type >= 3 ? Math.min(p.trailCount, 5) : p.trailCount;
+      const count =
+        p.type === 11
+          ? Math.min(p.trailCount, 14)
+          : p.type === 14 || p.type === 15
+            ? Math.min(p.trailCount, 18)
+            : p.type >= 3
+              ? Math.min(p.trailCount, 5)
+              : p.trailCount;
       const start = (p.trailHead - count + TRAIL_LEN) % TRAIL_LEN;
       ctx.beginPath();
       for (let k = 0; k < count; k++) {
@@ -4150,6 +4158,100 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(tipX, tipY, 4 + 2 * Math.sin(t * 12), 0, TWO_PI);
       ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /**
+   * Pinball's deployed flipper: a fixed base, a tapered bat and a life arc around the
+   * pivot. The arm is drawn on the floor plane under the avatars, so a body standing
+   * beside it still reads over the top.
+   */
+  private drawPinballArms(state: RenderState, _alpha: number, t: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      if (!p.active || !p.alive || p.armT <= 0) continue;
+      const color = playerColor(state, p);
+      const grow = Math.min(1, (p.armMax - p.armT) / 0.16);
+      const fade = Math.min(1, p.armT / 0.55);
+      const tipX = p.armX + Math.cos(p.armAngle) * PINBALL.armLength;
+      const tipY = p.armY + Math.sin(p.armAngle) * PINBALL.armLength;
+      const nx = -Math.sin(p.armAngle);
+      const ny = Math.cos(p.armAngle);
+      const baseW = 4.5 * grow;
+      const tipW = 8.5 * grow;
+
+      // Sweep arc: a faint track of where the bat travels, so the covered lane is
+      // readable before the paddle reaches it.
+      ctx.globalAlpha = 0.08 * fade;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.armX, p.armY, PINBALL.armLength, p.armBaseAngle - PINBALL.armArc, p.armBaseAngle + PINBALL.armArc);
+      ctx.stroke();
+
+      // Bat body: dark underlay, colour edge, bright inner line. The taper is the
+      // flipper read; a plain stick would look like another barrier.
+      ctx.beginPath();
+      ctx.moveTo(p.armX + nx * baseW, p.armY + ny * baseW);
+      ctx.lineTo(tipX + nx * tipW, tipY + ny * tipW);
+      ctx.lineTo(tipX - nx * tipW, tipY - ny * tipW);
+      ctx.lineTo(p.armX - nx * baseW, p.armY - ny * baseW);
+      ctx.closePath();
+      ctx.globalAlpha = 0.9 * fade;
+      ctx.fillStyle = 'rgba(4, 10, 16, 0.92)';
+      ctx.fill();
+      ctx.globalAlpha = 0.95 * fade;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+      ctx.globalAlpha = 0.5 * fade;
+      ctx.strokeStyle = '#e9f4ff';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(p.armX + nx * 1.6, p.armY + ny * 1.6);
+      ctx.lineTo(tipX + nx * 2.2, tipY + ny * 2.2);
+      ctx.stroke();
+
+      // Paddle cap: a solid bright head, the part that does the work.
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, tipW * 0.62, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#eef8ff';
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, tipW * 0.26, 0, TWO_PI);
+      ctx.fill();
+
+      // Pivot housing and a life arc, the only timer on the arm.
+      ctx.globalAlpha = 0.95 * fade;
+      ctx.fillStyle = 'rgba(4, 10, 16, 0.95)';
+      ctx.beginPath();
+      ctx.arc(p.armX, p.armY, 11.5 * grow, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(p.armX, p.armY, 11.5 * grow, 0, TWO_PI);
+      ctx.stroke();
+      const life = Math.max(0, Math.min(1, p.armT / Math.max(0.001, p.armMax)));
+      ctx.strokeStyle = '#e9f4ff';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(p.armX, p.armY, 16, -Math.PI * 0.5, -Math.PI * 0.5 + TWO_PI * life);
+      ctx.stroke();
+
+      // A tiny spark at the cap while the arm is live, so it never looks inert.
+      ctx.globalAlpha = (0.35 + 0.3 * Math.sin(t * 9 + i)) * fade;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, 13 + Math.sin(t * 9 + i) * 2, 0, TWO_PI);
+      ctx.fill();
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -4323,7 +4425,63 @@ export class Renderer {
         : ownerPlayer
           ? playerColor(state, ownerPlayer)
           : particleColor(P_COLOR_ICE);
-      if (p.type === 5) {
+      if (p.type === 14 || p.type === 15) {
+        // Pinball's ball: a chrome ring with the program's X stamp. The small ball
+        // spins its stamp, while the super ball is a huge rolling weight with a heavy
+        // outer glow. Heat ticks (bodies struck) brighten the core, so the escalating
+        // damage is visible before the next hit lands.
+        const big = p.type === 15;
+        const r = p.radius * (big ? 1.05 : 1.2);
+        const heat = Math.min(1, p.hits / 5);
+        const spin = p.spin + p.bounces * 0.55 + t * (big ? 0.8 : 2.6);
+        ctx.save();
+        ctx.translate(x, y);
+        // Motion streak behind the ball, in the owner's colour. A tapered wedge reads
+        // as speed without the heavy rectangular smear a thick round line leaves.
+        const trailLen = r * (big ? 2.5 : 1.9);
+        const trailHalf = r * (big ? 0.5 : 0.32);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = color;
+        ctx.globalAlpha = big ? 0.2 : 0.28;
+        ctx.beginPath();
+        ctx.moveTo(0, -r * 0.72);
+        ctx.lineTo(-trailLen, -trailHalf);
+        ctx.lineTo(-trailLen, trailHalf);
+        ctx.lineTo(0, r * 0.72);
+        ctx.closePath();
+        ctx.fill();
+        // Body: a dark disc under a bright rim, so the ball reads as a solid object
+        // even against the additive trails around it.
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(4, 9, 14, 0.9)';
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, TWO_PI);
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 0.35;
+        ctx.lineWidth = r * 0.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, TWO_PI);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = big ? 3.4 : 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, TWO_PI);
+        ctx.stroke();
+        ctx.rotate(spin);
+        ctx.fillStyle = heat > 0 ? '#fff0d8' : color;
+        drawPinballMark(ctx, 0, 0, r * (big ? 0.92 : 0.86));
+        if (heat > 0) {
+          ctx.globalAlpha = 0.35 + heat * 0.5;
+          ctx.strokeStyle = '#ffd9a0';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.arc(0, 0, r * 0.64, 0, TWO_PI);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else if (p.type === 5) {
         const angle = Math.atan2(p.vy, p.vx);
         const len = 28 + Math.min(12, p.deflects * 3);
         ctx.save();
@@ -5232,7 +5390,7 @@ export class Renderer {
         const edge = facing - PLAYER.guardHalfAngle;
         const end = facing + PLAYER.guardHalfAngle;
         const guardFade = Math.min(1, p.guardT / 0.08);
-        const radius = PLAYER.guardReach - 12;
+        const radius = p.guardReach - 12;
         ctx.save();
         ctx.fillStyle = color;
         ctx.globalAlpha = 0.1 * guardFade;
@@ -5249,7 +5407,7 @@ export class Renderer {
         ctx.arc(x, y, radius, edge, end);
         ctx.stroke();
         // Burn the last of the guard down from the edges inward.
-        const left = Math.max(0, Math.min(1, p.guardT / PLAYER.guardDuration));
+        const left = Math.max(0, Math.min(1, p.guardT / Math.max(0.001, p.guardMax)));
         ctx.globalAlpha = 0.7 * guardFade;
         ctx.lineWidth = 3.2;
         ctx.beginPath();
@@ -6168,9 +6326,9 @@ export class Renderer {
 
     // 1. Dash charges.
     const dashX = first;
-    const dashPct = p.dashCharges >= PLAYER.dashCharges ? 1 : 1 - Math.min(1, p.dashCd / PLAYER.dashCooldown);
-    for (let c = 0; c < PLAYER.dashCharges; c++) {
-      const off = (c - (PLAYER.dashCharges - 1) * 0.5) * 12;
+    const dashPct = p.dashCharges >= p.dashMax ? 1 : 1 - Math.min(1, p.dashCd / PLAYER.dashCooldown);
+    for (let c = 0; c < p.dashMax; c++) {
+      const off = (c - (p.dashMax - 1) * 0.5) * (p.dashMax > 2 ? 10 : 12);
       const filled = c < p.dashCharges;
       ctx.strokeStyle = '#dff7ff';
       ctx.lineJoin = 'round';
@@ -6189,7 +6347,7 @@ export class Renderer {
       ctx.stroke();
     }
     ctx.lineJoin = 'miter';
-    if (p.dashCharges < PLAYER.dashCharges) this.drawReadinessMask(dashX, cy, dashPct, '#dff7ff');
+    if (p.dashCharges < p.dashMax) this.drawReadinessMask(dashX, cy, dashPct, '#dff7ff');
 
     // 2. Skill (tap Y): a compact program mark with its own cooldown ring.
     const skillX = first + cell;
@@ -6296,6 +6454,14 @@ export class Renderer {
       ctx.lineTo(-2.4, 0);
       ctx.moveTo(-6, 3);
       ctx.lineTo(-2.8, 3);
+    } else if (p.bugKind === 13) {
+      // Deployed flipper: a round pivot with a tapered bat, angled across the lane.
+      // The heavy beside it is the huge ball, so the two jobs never share a mark.
+      ctx.moveTo(-5.2, 4.6);
+      ctx.lineTo(2.2, 0.2);
+      ctx.lineTo(4.6, 4.2);
+      ctx.moveTo(-5.2, 4.6);
+      ctx.arc(-5.2, 4.6, 1.5, 0, TWO_PI);
     } else {
       // Lure beacon: a center pulse with two open arcs, no star. Probe's compass uses
       // a closed housing and a four-point rose, so the two marks stay distinct.
@@ -6339,7 +6505,9 @@ export class Renderer {
                   ? GHOST.scareCooldown
                   : p.program === PROGRAM_ID.COMPRESS
                     ? COMPRESS.powerCooldown
-                    : PLAYER.laserCooldown;
+                    : p.program === PROGRAM_ID.PINBALL
+                      ? PINBALL.powerCooldown
+                      : PLAYER.laserCooldown;
     const heavyColor = p.program === PROGRAM_ID.WEDGE
       ? PROGRAM_COLORS.wedge
       : p.program === PROGRAM_ID.FISHER
@@ -6354,7 +6522,9 @@ export class Renderer {
                 ? PROGRAM_COLORS.ghost
                 : p.program === PROGRAM_ID.COMPRESS
                   ? PROGRAM_COLORS.compress
-                  : color;
+                  : p.program === PROGRAM_ID.PINBALL
+                    ? PROGRAM_COLORS.pinball
+                    : color;
     const heavyLive =
       p.laserT > 0 ||
       p.wedgeT > 0 ||
@@ -6367,7 +6537,8 @@ export class Renderer {
         p.program === PROGRAM_ID.BUFFER ||
         p.program === PROGRAM_ID.ATOMIZE ||
         p.program === PROGRAM_ID.GHOST ||
-        p.program === PROGRAM_ID.COMPRESS) &&
+        p.program === PROGRAM_ID.COMPRESS ||
+        p.program === PROGRAM_ID.PINBALL) &&
         p.laserChargeHeld);
     ctx.save();
     ctx.translate(heavyX, cy);
@@ -6435,6 +6606,18 @@ export class Renderer {
         ctx.lineTo(c * 2.4, s * 2.4);
         ctx.lineTo(c * 6.6 - s * 2.4, s * 6.6 + c * 2.4);
       }
+    } else if (p.program === PROGRAM_ID.PINBALL) {
+      // Giant ball: the circled X at full weight with two speed ticks behind it. The
+      // skill beside it is the flipper bat, so the two jobs never share a mark.
+      ctx.arc(0, 0, 5.8, 0, TWO_PI);
+      ctx.moveTo(-3.3, -3.3);
+      ctx.lineTo(3.3, 3.3);
+      ctx.moveTo(3.3, -3.3);
+      ctx.lineTo(-3.3, 3.3);
+      ctx.moveTo(-8, -2.4);
+      ctx.lineTo(-6.4, -2.4);
+      ctx.moveTo(-8.4, 2.4);
+      ctx.lineTo(-6.4, 2.4);
     } else if (p.program === PROGRAM_ID.GHOST) {
       // Jump-scare: a wide open maw with a zigzag of teeth. The skill beside it is the
       // closed eye, so cloak and scare never share a mark.

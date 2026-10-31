@@ -2,7 +2,35 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-31 (v0.1.65 DISK PLATTER)
+Last updated: 2026-10-31 (v0.1.66 PINBALL.EXE)
+
+---
+
+## v0.1.66 — PINBALL.EXE: ricochet ball, flipper arm, giant ball (2026-10-31)
+
+### Built
+- [x] Roster entry 10 (ricochet): cabinet blue `#4d8bff`, circular three-arc hull, vector circled-X core,
+      text glyph `⊗`. The mark is drawn at every size, so it never falls back to a font glyph
+- [x] Three stored dash charges (`Player.dashMax`) and a shield that is 1.85x longer and 1.65x wider
+      (`guardMax`/`guardReach`); respawn and the dock both read the per-body caps
+- [x] Ranged: type 14 ricochet ball, 520 u/s, 4.2 s, 24 bounces, speed +10% per wall/pillar/barrier and
+      +8% per body (cap 1480). Damage ladder 1-2-3-4-5 over five bodies, one pass each
+- [x] Skill: flipper arm planted in front for 16 s, swinging through a 2.3 rad arc. It punts hostile
+      shots at the nearest other enemy (1150 u/s) and swats one body per 0.2 s for 1 damage and 1500
+      knockback. Cooldown is `BUG.cooldown[13]` = 16 s
+- [x] Power: hold 0.7 s for one giant ball (type 15, radius 46, 3 damage, 7 s, 430 u/s). Bounces off arena
+      walls only; passes through bodies, cover, webs, props and Wedge walls and rolls over each body once
+- [x] Renderer: chrome ball and huge super ball, flipper arm with a pivot life arc, three-charge dock, and
+      distinct skill/heavy marks. Bots use the ball range and plant the arm at 90-360 units
+- [x] Docs: AGENTS D31 and D4/D10 notes, README roster/QA lines, this entry, build stamp 0.1.66
+
+### Next
+- [ ] Play a full VS BOTS set as Pinball and tune the arm's 16 s uptime and 1500 swat shove; if the
+      pinned lane decides too much, shorten `armLife` before lowering the shove
+- [ ] Watch the damage ladder in a 1v2: confirm the fifth hit lands at 5 damage before the ball retires,
+      and that a 24-bounce rally still reads at couch distance
+- [ ] Check the super ball on DISK PLATTER and THE LEDGE: it should turn at the rim/lip consistently and
+      never trap a body under its 46-unit radius
 
 ---
 

@@ -93,13 +93,15 @@ silhouette from `pathProgramHealth` in `src/game/identity.ts`: Probe is a cyan s
 an amber diamond with `▣`, Fisher an indigo hex reel with `≈`, Sweep a lime octagon with `✷`, Toxic a green six-point star
 with `☠`, Kaboom a red-orange triangle built from three outward triangles with a bomb at the center,
 Bad Lag six clock faces on a ring with a pinched hourglass, Atomize three overlapping white
-ellipse orbits with an atom at the center, and Ghost three outward steel-grey arcs with a closed eye at the
-core. Probe's mark is a vector compass rose (`drawCompassMark`): a thin housing ring around a four-point
+ellipse orbits with an atom at the center, Ghost three outward steel-grey arcs with a closed eye at the
+core, Compress six upright Z marks on a ring, and Pinball a cabinet-blue circular ring with a vector
+circled X at the core. Probe's mark is a vector compass rose (`drawCompassMark`): a thin housing ring around a four-point
 star, not the old concentric target. Its four tips are symmetric, so the compass never reads as a facing
 arrow. The select screen and the arena share that shape and glyph, so a
 program reads the same in the roster, intro and fight. A program's `glyph` may be a single character, a multi-character text combo, Unicode dingbats/wingdings, or a multi-line ASCII picture; `drawSymbol` scales it to the core and portrait, strips common indentation, and measures the real advance against the symbol font stack (`ui-monospace` first, then `Segoe UI Symbol`, `Noto Sans Symbols 2`, `Apple Symbols`, Wingdings, Webdings) so a wide mark shrinks instead of spilling through the hull. Prefer direction-neutral marks: a pointing glyph at the core reads as facing. Each program also owns `coreScale` so a tight hull keeps clearance from its
 rotating health segments: Probe `1.12`, Wedge `0.88` (the diamond's sides are the tightest core), Fisher
-`1.10`, Sweep `1.06`, Toxic `1.0`, Kaboom `0.76`, Bad Lag `0.72`, Atomize `0.72`, Ghost `0.82`. The select portrait applies `coreScale` too, at its own poster radius; do not draw the poster mark at full size or the vector centers overlap their hulls. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
+`1.10`, Sweep `1.06`, Toxic `1.0`, Kaboom `0.76`, Bad Lag `0.72`, Atomize `0.72`, Ghost `0.82`,
+Compress `0.8` and Pinball `1.0` (its circular hull leaves the core clear air). The select portrait applies `coreScale` too, at its own poster radius; do not draw the poster mark at full size or the vector centers overlap their hulls. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
 uses the empty space between the core disc and the hull, with tighter row spacing and a narrower width
 budget; a single glyph keeps the default 0.51. The low-health core keeps a scale floor
 (`0.78 + 0.22 * coreHp`) so the mark stays visible while the hull ghosts carry the damage read. Check a
@@ -297,8 +299,9 @@ bolt:
   cost makes sustained fire possible without turning it into a machine gun. Wedge fires a three-shot
   string, Fisher a piercing spear and Sweep a dust-trailing broom that stops on the body and shoves it
   hard. Toxic fires a needle, Kaboom a slow bomb, Bad Lag a heavy hourglass, Atomize an alternating
-  electron that leaves one hand and seeks a target in front of it (see D25), and Ghost throws a wide
-  chomping mouth that is slower than a bolt but hits for two and dazes (see D26). Do not restore the old
+  electron that leaves one hand and seeks a target in front of it (see D25), Ghost throws a wide
+  chomping mouth that is slower than a bolt but hits for two and dazes (see D26), and Pinball throws a
+  long-lived ricochet ball whose damage climbs 1-5 across five bodies (see D31). Do not restore the old
   long TTL without reworking the kit.
 - **Melee attack (`B` tap)**: the cone is **180°**. Every quick press is a fast spiked lash that sweeps
   the arc left, right, left. It reflects incoming fire and shoves players and hostiles sideways in the
@@ -314,7 +317,8 @@ bolt:
   enters a 0.28 s cooldown. Releasing early drops the shield into a 0.12 s release lockout. If target
   lock is holding facing, caught shots flatten toward the locked target instead of following the
   incoming angle. The shield visual is one clean crescent: fill, rim and burn-down edge, with no radial
-  fan and no cooldown ghost arc beside the avatar.
+  fan and no cooldown ghost arc beside the avatar. Pinball's shield is the same 180 degrees but wider
+  (`1.65x` reach) and longer (`1.85x` duration); read `Player.guardReach`/`guardMax`, not the globals.
 - **Skill (`Y` tap)**: the program's assigned skill, owned by `PROGRAMS` (`bugKind` is the wire field):
   Probe's proximity mine, Wedge's **static wall**, Fisher's lure beacon, Sweep's **split brooms**. Sweep
   starts two brooms together in front of him and sends them outward along the tangent, shoving bodies and
@@ -327,7 +331,8 @@ bolt:
   skill; guests read it from the snapshot. Atomize's skill raises three blue orbital shield balls: each
   blocks one full hit or damages the first hostile it touches, and they never expire on their own. Ghost's
   skill cloaks the body for a few seconds: enemies lose the target, shots pass through, and damage is
-  skipped (see D26).
+  skipped (see D26). Pinball plants a flipper arm for 16 s that punts hostile fire and swats bodies at
+  other enemies (see D31).
 - **Power attack (`Y` hold)**: program-specific heavy. Probe charges for 0.63 s, then **auto-fires**
   without waiting for release for 3 s, rooted, sweeping at `PLAYER.laserTurnRate` (0.55 rad/s), piercing
   every enemy in the line. The shaft stops on the first solid surface (see D22), and a raised guard
@@ -1124,6 +1129,48 @@ the plate ends. Do not add a second circular-bound check in a family branch.
   inset ring at radius 560. Check the hole ring against every spawn at phase 0 and keep every
   hole's outer edge inside the spawn ring: spawn 5 once sat on a hole, and a hole that crossed 560
   killed an idle start in under 10 s.
+
+### D31 — PINBALL.EXE: ricochet ball, flipper arm, giant ball (built 2026-10-31)
+
+`PINBALL.EXE` is the roster's **ricochet** program (id 10, `bugKind` 13). Identity:
+`PROGRAM_COLORS.pinball` (`#4d8bff`, cabinet blue), a circular three-arc hull, and a vector circled X at
+the core. The X is drawn (`drawPinballMark`), not the `⊗` codepoint, so the stamp is identical on every
+host and at every hull size; `⊗` is only the text metadata glyph. `coreScale` is 1.0 because a circular
+hull already leaves the core clear air. Do not put the mark behind the hull segments at low health.
+
+- **Three dodges.** `Player.dashMax` owns the charge cap (2 for every other program, `PINBALL.dashCharges`
+  3 here). Recharge, respawn and the readiness dock all read `dashMax`; do not restore a global
+  `PLAYER.dashCharges` check or a Pinball body will refill to two.
+- **Wider, longer shield.** `Player.guardMax` and `Player.guardReach` are set when the program is
+  assigned. Pinball's shield is `1.85x` duration and `1.65x` reach; world resolution, the drawn crescent
+  and the barrier-bat path all read the player fields, not the `PLAYER` globals. It is still the same
+  forward 180 degrees; do not widen the half-angle past `PI/2`.
+- **Ranged**: type `14`. A long-lived ball (`shotTtl` 4.2 s, `shotSpeed` 520, radius 7) with a
+  `maxBounces` cap of 24, not the bolt's one. Every wall, pillar or barrier bounce raises speed by
+  `shotBounceGain` 1.10; every body hit raises it by `shotHitGain` 1.08; both cap at `shotSpeedMax` 1480.
+  It passes through bodies, one pass each, and the damage ladder is `1, 2, 3, 4, 5` over five hits
+  (`shotHits`), retiring on the fifth. This is a commitment line, not a bolt: keep type 14 out of every
+  committed/heavy list in `bounceWalls`, `bounceBarriers` and `bouncePillars`, and give it its own bounce
+  cap through `noteBounce`. It bounces off Wedge's wall (chipping it) and dies at an open arena's lip.
+- **Skill**: a deployed **flipper arm**. The base is a fixed world point `armOffset` in front of the body
+  when cast, and stays there for `armLife` 16 s even if the player walks away. It sweeps `±armArc` at
+  `armSwingRate`; the paddle is a tapered segment of `armLength` and `armWidth`. A hostile shot it touches
+  is sent at the nearest other enemy at `armProjectileSpeed` 1150 (bombs keep their shell type; every
+  other shot returns as a plain bolt). It swats one body at a time on `armHitCooldown` 0.2 s for 1 damage
+  and a 1500 shove aimed at the nearest *other* enemy, with cover still respected by the damage path. It
+  is local-only and lives on `Player.arm*`; do not add a flipper to `Snapshot`.
+- **Power**: hold the heavy for `powerChargeTime` 0.7 s to launch one giant ball (type `15`, radius 46,
+  3 damage, 7 s, 430 u/s). It bounces off **arena walls only**: it ignores pillars, Wedge barriers, webs,
+  props and bodies, and it is excluded from guard/swing reflection. It rolls over each body once with a
+  1500 shove and never stops on a hit. Do not put type 15 into the pillar/barrier bounce lists; the
+  separation is what makes it a super rather than a bigger ball.
+- **Bots**: engagement distance uses the ball's own speed and TTL (not the bolt's 310-unit range), and the
+  brain plants the arm when the target is 90-360 units away. The generic heavy hold builds the giant ball.
+- **Dock**: the skill mark is a pivoted flipper bat; the heavy is the circled X with speed ticks. Both are
+  distinct from the core mark's plain circle-X.
+
+All numbers live in `tuning/programs.json` under `PINBALL`; the skill cooldown is the 14th entry in
+`BUG.cooldown` (16 s). The kit is local-only: no snapshot fields, online still runs Probe.
 
 ---
 

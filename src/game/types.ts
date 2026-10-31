@@ -212,8 +212,10 @@ export interface Player {
 
   dashT: number;
   dashCd: number;
-  /** Stored dodge charges. Two by default; both recharge on the same timer. */
+  /** Stored dodge charges. Two by default; Pinball carries three. */
   dashCharges: number;
+  /** Maximum stored charges for this program. Set when the program is assigned. */
+  dashMax: number;
   /** Last nonzero movement direction. Dash commits to this, not to lock facing. */
   moveDirX: number;
   moveDirY: number;
@@ -290,8 +292,25 @@ export interface Player {
   fallT: number;
   /** Remaining seconds of the held 180 degree guard. */
   guardT: number;
+  /** Full length of the current guard, for the burn-down read. Pinball's is longer. */
+  guardMax: number;
+  /** Forward reach of the guard screen. Pinball's shield is wider. */
+  guardReach: number;
   /** Short lockout after the guard breaks or is released. */
   guardCd: number;
+
+  /**
+   * Pinball's deployed flipper arm. The base is a fixed world point captured at cast,
+   * so leaving it behind is part of the skill. `armAngle` is the current paddle angle
+   * and `armHitCd` gates the next body swat. Local-only, never in a snapshot.
+   */
+  armT: number;
+  armMax: number;
+  armX: number;
+  armY: number;
+  armBaseAngle: number;
+  armAngle: number;
+  armHitCd: number;
   /** True while the deflect button is down, used to detect release. */
   chargeHeld: boolean;
   /** Remaining seconds of the forward shield-wave visual/active state. */
@@ -432,14 +451,17 @@ export interface Projectile {
   /**
    * 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile, 5 Fisher spear,
    * 6 Sweep broom, 7 Toxic needle, 8 Kaboom bomb, 9 Kaboom lobbed bomb, 10 Bad Lag
-   * hourglass, 11 Atomize electron, 12 Ghost bite, 13 Compress orb. Types 8/9 explode
-   * on contact and are never deflected, so every `type >= 3` deflect branch must
-   * exclude them explicitly. Type 10 is a player shot that passes through up to
-   * `BUFFER.shotHits` bodies; type 11 is a light seeking ball that leaves from
-   * alternating hands; type 12 is a wide, slow mouth that stops on the body and dazes
-   * it; type 13 is a pressure orb that shrinks and caps the victim's health.
+   * hourglass, 11 Atomize electron, 12 Ghost bite, 13 Compress orb, 14 Pinball ball,
+   * 15 Pinball super ball. Types 8/9 explode on contact and are never deflected, so
+   * every `type >= 3` deflect branch must exclude them explicitly. Type 10 is a player
+   * shot that passes through up to `BUFFER.shotHits` bodies; type 11 is a light seeking
+   * ball that leaves from alternating hands; type 12 is a wide, slow mouth that stops
+   * on the body and dazes it; type 13 is a pressure orb that shrinks and caps the
+   * victim's health. Type 14 ricochets, speeds up per bounce or body, and escalates
+   * 1-5 damage over five bodies. Type 15 is the huge super ball: walls bounce it,
+   * bodies do not, and it rolls through cover.
    */
-  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;
@@ -464,8 +486,8 @@ export interface Projectile {
   /** 0 horizontal, 1 vertical. */
   pathAxis: number;
   /**
-   * Hourglass state: bodies struck so far (stops at `BUFFER.shotHits`), current mark
-   * rotation and the direction it spins. Each body struck flips `spinDir`.
+   * Body hits so far. Hourglass stops at `BUFFER.shotHits`; Pinball uses it to escalate
+   * damage and stops at `PINBALL.shotHits`. Marks also use `spin`/`spinDir` for rotation.
    */
   hits: number;
   spin: number;

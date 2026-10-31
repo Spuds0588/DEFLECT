@@ -3103,3 +3103,41 @@ white. The temporary script was removed.
 
 **Next:** judge a bomb carpet and a mine at couch distance; if the blast reads flat, lengthen the shard
 life rather than adding a third colour.
+
+## 2026-10-31 — PINBALL.EXE: ricochet ball, flipper arm, giant ball (v0.1.66)
+
+**Goal:** add the roster's ricochet specialist, built around a ball that gets hotter as it pins around the
+arena, a long-lived flipper that returns fire, and one huge wall-only super ball.
+
+- Identity: id 10, cabinet blue `#4d8bff`, circular three-arc hull, vector circled-X (`drawPinballMark`)
+  at the core and a `⊗` text glyph. The hull uses the shared circular path, so the three health segments
+  keep clear of the core mark at every level.
+- Movement: `Player.dashMax` carries three dodge charges for Pinball while every other program keeps two.
+  `guardMax`/`guardReach` make the held shield 1.85x longer and 1.65x wider; the world guard, barrier bat
+  and drawn crescent all read those fields.
+- Ranged: type 14 ball, 520 u/s, 4.2 s, 24 bounces. Walls, pillars and Wedge walls gain 10% speed per
+  bounce; each body gains 8%; both cap at 1480. One pass per body, damage climbs 1 → 2 → 3 → 4 → 5 and the
+  fifth hit retires the ball. It bounces through the usual wall/pillar path instead of the committed heavy
+  list, so it does not die on its first rail.
+- Skill: a fixed flipper arm planted 30 units in front for 16 s, sweeping ±1.15 rad. Hostile shots are
+  re-aimed at the nearest other enemy at 1150 u/s and returned as plain bolts (bombs keep their shell);
+  bodies take 1 damage and a 1500 shove toward another enemy, one swat per 0.2 s. The base life arc is the
+  only timer.
+- Power: hold 0.7 s for type 15, radius 46, 3 damage, 7 s at 430 u/s. It bounces off arena walls only and
+  passes through pillars, barriers, webs, props and bodies, hitting each body once. Guard and swing cannot
+  turn it.
+- Bots: engagement range uses the ball's own speed/TTL, not the bolt's 310 units, and a dedicated branch
+  plants the arm at 90-360 units. Generic heavy hold builds the giant ball.
+- Docs: AGENTS D31 (plus D4/D10 roster notes), README roster/QA lines, TODO v0.1.66. Build stamped 0.1.66
+  in `index.html`, `main.ts`, `sw.js`, `package.json` and the lockfile.
+
+**Verification:** `npx tsc --noEmit` clean; `npm run build` passes. Headless: Pinball reports dash 3/3,
+guard 1.85 s and reach 95.7 (base 1.0/58); a tap deploys `armT` 16; a hostile shot near the paddle returns
+owned by slot 0 as type 0 at 1150 u/s; a body on the blade drops 5 → 4 hp with 1500 knock; a wall bounce
+takes the ball 520 → 572 u/s; the damage ladder reads 1,2,3,4,5 and retires the ball on the fifth; the
+super ball reports radius 46, damage 3, survives a body hit and bounces off a wall without deactivating.
+A 20 s HARD bot run produced balls, supers and an arm deployment with no errors. Live check on CROSSROADS
+confirmed the roster card, three-chevron dock, flipper bat and both ball silhouettes.
+
+**Next:** play a full VS BOTS set and decide whether 16 s of arm uptime is too much lane control; then watch
+the 24-bounce rally at couch distance. The kit is local-only, so no snapshot work follows.

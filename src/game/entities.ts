@@ -59,6 +59,7 @@ export function createPlayer(slot: number): Player {
     dashT: 0,
     dashCd: 0,
     dashCharges: PLAYER.dashCharges,
+    dashMax: PLAYER.dashCharges,
     moveDirX: 1,
     moveDirY: 0,
     dashDirX: 1,
@@ -148,7 +149,16 @@ export function createPlayer(slot: number): Player {
     chargeHeld: false,
     fallT: 0,
     guardT: 0,
+    guardMax: PLAYER.guardDuration,
+    guardReach: PLAYER.guardReach,
     guardCd: 0,
+    armT: 0,
+    armMax: 0,
+    armX: 0,
+    armY: 0,
+    armBaseAngle: 0,
+    armAngle: 0,
+    armHitCd: 0,
     bugKind: 0,
     bugCd: 0,
     fastT: 0,
@@ -527,7 +537,7 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.alive = true;
   p.dashT = 0;
   p.dashCd = 0;
-  p.dashCharges = PLAYER.dashCharges;
+  p.dashCharges = p.dashMax;
   p.dashKind = 0;
   p.dashChargeT = 0;
   p.dashChargeHeld = false;
@@ -605,6 +615,9 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.chargeHeld = false;
   p.guardT = 0;
   p.guardCd = 0;
+  p.armT = 0;
+  p.armMax = 0;
+  p.armHitCd = 0;
   p.ghostT = 0;
   p.dazeT = 0;
   p.cloakT = 0;

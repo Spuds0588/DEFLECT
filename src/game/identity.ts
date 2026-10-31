@@ -48,6 +48,8 @@ export const PROGRAM_COLORS = {
   ghost: '#b9c4d0',
   /** Compress: archive orchid, clear of Buffer's pink and Fisher's indigo. */
   compress: '#c46bff',
+  /** Pinball: electric cabinet blue, between Probe's cyan and Fisher's indigo. */
+  pinball: '#4d8bff',
   lure: '#7dffd4',
 } as const;
 
@@ -427,6 +429,40 @@ export function drawCompressMark(
 }
 
 /** Draws a program's core mark, including Kaboom's missing-font fallback. */
+/**
+ * Pinball's core: a chrome circle with an X, the ball's own stamp. Drawn as vectors so
+ * the mark never depends on U+2297 resolving to the same glyph or a colour emoji.
+ * Uses only the caller's fill colour.
+ */
+export function drawPinballMark(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  const ink = ctx.fillStyle as string;
+  ctx.save();
+  ctx.strokeStyle = ink;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'miter';
+  // Housing ring. A little smaller than the core so the circle reads as a ball rather
+  // than as another hull at low health.
+  ctx.lineWidth = Math.max(1.1, r * 0.12);
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.78, 0, Math.PI * 2);
+  ctx.stroke();
+  // The X meets the ring, not a hair inside it; otherwise it reads as a sticker.
+  const arm = r * 0.5;
+  ctx.lineWidth = Math.max(1.3, r * 0.14);
+  ctx.beginPath();
+  ctx.moveTo(cx - arm, cy - arm);
+  ctx.lineTo(cx + arm, cy + arm);
+  ctx.moveTo(cx + arm, cy - arm);
+  ctx.lineTo(cx - arm, cy + arm);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function drawProgramMark(
   ctx: CanvasRenderingContext2D,
   programId: number,
@@ -466,6 +502,11 @@ export function drawProgramMark(
     drawCompressMark(ctx, cx, cy, r * fontScale);
     return;
   }
+  // Pinball's circled X is vector, so the ball's stamp is identical at every size.
+  if (programId === 10) {
+    drawPinballMark(ctx, cx, cy, r * fontScale);
+    return;
+  }
   if (programId === 5 && !hasSymbolFont(symbolFamily ?? '')) {
     drawBombMark(ctx, cx, cy, r * fontScale);
     return;
@@ -495,7 +536,8 @@ export function drawGlyph(
 /**
  * Health outlines are a program silhouette, not a shared circle: Probe scans with a ring,
  * Wedge holds a hard diamond, Fisher carries a hex reel. Segments are equal perimeter
- * slices with a real gap, so a lost segment reads at a glance.
+ * slices with a real gap, so a lost segment reads at a glance. Pinball keeps its own
+ * circular ring, split into three arcs so the ball reads as the hull.
  */
 export function programHullSides(programId: number): number {
   if (programId === 1) return 4;
@@ -517,6 +559,8 @@ export function programHullSides(programId: number): number {
   if (programId === 8) return 0;
   // Compress's hull is six Z marks on a ring, one per health segment.
   if (programId === 9) return 0;
+  // Pinball is a circular chrome ring; the shared arc path gives it three clean segments.
+  if (programId === 10) return 0;
   return 0;
 }
 

@@ -16,6 +16,7 @@ export const PROGRAM_ID = {
   ATOMIZE: 7,
   GHOST: 8,
   COMPRESS: 9,
+  PINBALL: 10,
 } as const;
 
 export interface ProgramDef {
@@ -197,6 +198,21 @@ export const PROGRAMS: readonly ProgramDef[] = [
     coreScale: 0.8,
     healthSegments: 6,
     bugKind: 12,
+  },
+  {
+    id: PROGRAM_ID.PINBALL,
+    name: 'PINBALL.EXE',
+    role: 'RICOCHET',
+    note: 'BOUNCING BALL // PINBALL ARM // GIANT BALL',
+    color: PROGRAM_COLORS.pinball,
+    /**
+     * Circled X. The arena and the select portrait draw the vector mark, so the ball's
+     * stamp never depends on a symbol font resolving U+2297 as a colour glyph.
+     */
+    glyph: '⊗',
+    // A circular hull leaves the core plenty of air; the mark can use its full size.
+    coreScale: 1.0,
+    bugKind: 13,
   },
 ];
 

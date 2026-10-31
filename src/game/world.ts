@@ -22,6 +22,7 @@ import {
   FILE_PROP,
   MAX_EVENTS,
   MAX_PLAYERS,
+  PINBALL,
   PLAYER,
   POWERUP,
   ROUND,
@@ -280,6 +281,13 @@ export class World {
   private armShoveY = 0;
   /** Disc holes, returned as a rect so the existing fall pull can aim at one. */
   private discHoleScratch: Rect = { x: 0, y: 0, w: 0, h: 0 };
+  /** Scratch for the pinball arm: the nearest point on the paddle and a redirect target. */
+  private pinNearX = 0;
+  private pinNearY = 0;
+  private pinAimX = 0;
+  private pinAimY = 0;
+  private pinAimBest2 = 0;
+  private pinAimFound = false;
   /** Countdown to the next file box dropping into a compacted arena. */
   propDropT = FILE_PROP.dropEvery;
   /** Campaign score telemetry: crates authored, crates still standing, damage taken. */
@@ -439,6 +447,12 @@ export class World {
       // Atomize is the one program with a six-segment hull. Spawn and respawn both
       // read maxHp, so setting it with the program is enough to carry the larger pool.
       p.maxHp = def.healthSegments ?? PLAYER.hp;
+      // Pinball carries a third dodge charge and a wider, longer shield. These are
+      // stored on the body so respawn, the dock and the guard share one source.
+      p.dashMax = p.program === PROGRAM_ID.PINBALL ? PINBALL.dashCharges : PLAYER.dashCharges;
+      p.dashCharges = p.dashMax;
+      p.guardMax = PLAYER.guardDuration * (p.program === PROGRAM_ID.PINBALL ? PINBALL.guardDurationMult : 1);
+      p.guardReach = PLAYER.guardReach * (p.program === PROGRAM_ID.PINBALL ? PINBALL.guardReachMult : 1);
     }
 
     if (mode === 'training') {
@@ -1696,9 +1710,9 @@ export class World {
       if (p.dashT > 0) p.dashT = Math.max(0, p.dashT - dt);
       if (p.dashCd > 0) {
         p.dashCd = Math.max(0, p.dashCd - pdt);
-        if (p.dashCd === 0 && p.dashCharges < PLAYER.dashCharges) {
+        if (p.dashCd === 0 && p.dashCharges < p.dashMax) {
           p.dashCharges++;
-          if (p.dashCharges < PLAYER.dashCharges) p.dashCd = PLAYER.dashCooldown;
+          if (p.dashCharges < p.dashMax) p.dashCd = PLAYER.dashCooldown;
         }
       }
       if (p.guardCd > 0) p.guardCd = Math.max(0, p.guardCd - pdt);
@@ -1917,6 +1931,25 @@ export class World {
             p.chargeT = 0;
             p.chargeHeld = false;
           }
+        } else if (p.program === PROGRAM_ID.PINBALL) {
+          // The giant ball commits at full charge. It leaves along facing and then
+          // belongs to the walls; the player cannot steer it once it is rolling.
+          if (canAct && heavyHeld) {
+            p.laserChargeT += pdt;
+            if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+              p.facing = Math.atan2(input.my, input.mx);
+            }
+            p.laserFacing = p.facing;
+            if (p.laserChargeT >= PINBALL.powerChargeTime) this.firePinballSuper(p);
+          } else if (p.laserChargeT >= PINBALL.powerChargeTime) {
+            this.firePinballSuper(p);
+          } else {
+            if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            p.laserChargeHeld = false;
+            p.laserChargeT = 0;
+            p.chargeT = 0;
+            p.chargeHeld = false;
+          }
         } else if (p.program === PROGRAM_ID.BUFFER) {
           // The dilation commits itself at full charge, like the other heavies.
           if (canAct && heavyHeld) {
@@ -2017,7 +2050,7 @@ export class World {
         if (heldSwing) {
           p.chargeT += dt;
           if (p.guardT <= 0 && p.guardCd <= 0 && p.chargeT >= PLAYER.guardStartDelay) {
-            p.guardT = PLAYER.guardDuration;
+            p.guardT = p.guardMax;
           }
           if (p.guardT > 0) {
             p.guardT = Math.max(0, p.guardT - dt);
@@ -2199,6 +2232,9 @@ export class World {
     // movement and attack timers until the drill starts.
     if (this.campaign && this.campaignPhase === 'calibration') this.updateTrainingShapes(threatDt);
     this.updateProjectiles(dt);
+    // Flippers resolve after the shots move, so the paddle swats what is actually in
+    // front of it this frame instead of last frame's position.
+    this.updatePinballArms(dt);
     // Campaign threats stay parked until the breach warning hands the room over.
     if (this.mode === 'gauntlet' && (!this.campaign || this.campaignPhase === 'assault')) {
       this.updateGauntlet(threatDt);
@@ -3484,6 +3520,26 @@ export class World {
       return;
     }
 
+    if (p.program === PROGRAM_ID.PINBALL) {
+      // One long-lived ricochet ball. It starts at one damage and gets hotter with every
+      // body it strikes, so the first throw is a probe and the fifth is a finisher.
+      if (p.autoFireT > 0 || p.energy < PINBALL.shotCost) return;
+      if (!this.spawnProjectile(
+        p,
+        0,
+        PINBALL.shotTtl,
+        PINBALL.shotSpeed,
+        false,
+        PINBALL.shotRadius,
+        PINBALL.shotDamage,
+        14,
+      )) return;
+      p.energy -= PINBALL.shotCost;
+      p.autoFireT = PINBALL.attackCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
     if (p.program === PROGRAM_ID.FISHER) {
       if (p.autoFireT > 0 || p.energy < FISHER.spearCost) return;
       if (!this.spawnProjectile(
@@ -3522,6 +3578,7 @@ export class World {
     if (p.program === PROGRAM_ID.ATOMIZE) return ATOMIZE.powerCost;
     if (p.program === PROGRAM_ID.GHOST) return GHOST.scareCost;
     if (p.program === PROGRAM_ID.COMPRESS) return COMPRESS.powerCost;
+    if (p.program === PROGRAM_ID.PINBALL) return PINBALL.powerCost;
     return PLAYER.laserCost;
   }
 
@@ -4765,6 +4822,8 @@ export class World {
 
   /** Shots reflect off the nearest strand of the web, whatever shape it was drawn in. */
   private netBlocksProjectile(proj: Projectile): boolean {
+    // Only walls turn the super ball; a web is not a wall.
+    if (proj.type === 15) return false;
     for (let i = 0; i < this.nets.length; i++) {
       const net = this.nets[i];
       if (!net.active || proj.owner === net.owner || proj.type === 1 || proj.type === 2) continue;
@@ -4915,6 +4974,8 @@ export class World {
       this.startGhostCloak(p);
     } else if (p.bugKind === 12) {
       this.startCompressSprint(p);
+    } else if (p.bugKind === 13) {
+      this.startPinballArm(p);
     } else if (p.bugKind === 4) {
       // Wedge's signature bug: a static bracket wall behind him. Refuse a wall that
       // would land inside cover and hand the energy back rather than eat the button.
@@ -5071,6 +5132,323 @@ export class World {
     const add = want - Math.max(0, outward);
     body.kx += nx * add;
     body.ky += ny * add;
+  }
+
+  /**
+   * Pinball's skill: plant a flipper arm on the floor in front of him for a long window.
+   * The arm sweeps back and forth, punts hostile fire toward the nearest other enemy and
+   * swats bodies with a heavy knock. It stays where it was planted, so choosing the spot
+   * is the skill; walking away leaves it working the lane behind him.
+   */
+  private startPinballArm(p: Player): void {
+    p.armT = PINBALL.armLife;
+    p.armMax = PINBALL.armLife;
+    p.armX = p.x + Math.cos(p.facing) * PINBALL.armOffset;
+    p.armY = p.y + Math.sin(p.facing) * PINBALL.armOffset;
+    p.armBaseAngle = p.facing;
+    p.armAngle = p.facing;
+    p.armHitCd = 0;
+    p.swingPhase = 0;
+    p.swingT = 0;
+    p.swingPct = 0;
+    p.guardT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+  }
+
+  /**
+   * Pinball's heavy: one huge ball. It bounces off arena walls only, rolls through
+   * bodies and cover, and damages each body once with a heavy shove. It is not a
+   * projectile the player can steer; committing the line is the whole attack.
+   */
+  private firePinballSuper(p: Player): void {
+    if (p.laserCd > 0) {
+      p.laserChargeHeld = false;
+      p.laserChargeT = 0;
+      p.chargeT = 0;
+      p.chargeHeld = false;
+      return;
+    }
+    if (p.energy < PINBALL.powerCost) {
+      p.laserChargeHeld = false;
+      p.laserChargeT = 0;
+      p.chargeT = 0;
+      p.chargeHeld = false;
+      return;
+    }
+    if (!this.spawnProjectile(
+      p,
+      0,
+      PINBALL.powerTtl,
+      PINBALL.powerSpeed,
+      false,
+      PINBALL.powerRadius,
+      PINBALL.powerDamage,
+      15,
+    )) {
+      p.laserChargeHeld = false;
+      p.laserChargeT = 0;
+      p.chargeT = 0;
+      p.chargeHeld = false;
+      return;
+    }
+    p.energy -= PINBALL.powerCost;
+    p.laserCd = PINBALL.powerCooldown;
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    p.lockActive = false;
+    p.lockKind = 0;
+    p.lockId = -1;
+    this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
+  }
+
+  /** Advance every deployed pinball arm and resolve its swept paddle. */
+  private updatePinballArms(dt: number): void {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || p.armT <= 0) continue;
+      p.armT = Math.max(0, p.armT - dt);
+      if (!p.alive) {
+        p.armT = 0;
+        continue;
+      }
+      const age = p.armMax - p.armT;
+      p.armAngle = p.armBaseAngle + Math.sin(age * PINBALL.armSwingRate) * PINBALL.armArc;
+      if (p.armHitCd > 0) p.armHitCd = Math.max(0, p.armHitCd - dt);
+      this.resolvePinballArm(p);
+    }
+  }
+
+  /**
+   * The deployed flipper. It punts hostile fire toward the nearest other enemy and swats
+   * one body at a time on a short cooldown. Projectiles are the priority: the arm is a
+   * return-to-sender tool first, a body shove second.
+   */
+  private resolvePinballArm(p: Player): void {
+    const half = PINBALL.armWidth * 0.5;
+
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const proj = this.projectiles[i];
+      if (!proj.active || proj.orbOwner >= 0) continue;
+      if (proj.owner === p.slot || proj.type === 1 || proj.type === 2) continue;
+      if (proj.type === 15) continue;
+      if (!this.armTouches(p, proj.x, proj.y, proj.radius)) continue;
+
+      let angle: number;
+      if (this.setPinballAim(p, proj.x, proj.y, -1, -1, -1, -1, -1)) {
+        angle = Math.atan2(this.pinAimY - proj.y, this.pinAimX - proj.x);
+      } else {
+        angle = Math.atan2(proj.y - p.armY, proj.x - p.armX);
+      }
+      const speed = proj.type === 8 || proj.type === 9 ? 620 : PINBALL.armProjectileSpeed;
+      proj.vx = Math.cos(angle) * speed;
+      proj.vy = Math.sin(angle) * speed;
+      proj.owner = p.slot;
+      proj.deflects++;
+      proj.homing = false;
+      proj.bounces = 0;
+      proj.armed = false;
+      proj.grace = 0;
+      proj.hitPlayers = 0;
+      proj.hitWorms = 0;
+      proj.hitViruses = 0;
+      proj.hitErrors = 0;
+      proj.hitSentries = 0;
+      proj.hitDrone = false;
+      // Bombs keep their shell identity; every other shot returns as a plain bolt.
+      if (proj.type !== 8 && proj.type !== 9) {
+        proj.type = 0;
+        proj.damage = BOLT.damage + proj.deflects;
+        proj.fuse = Math.max(proj.fuse, BOLT.ttl * 2);
+      } else {
+        proj.damage = Math.max(1, proj.damage);
+      }
+      // Separate it from the paddle so the same shot cannot be caught every frame.
+      let nx = proj.x - this.pinNearX;
+      let ny = proj.y - this.pinNearY;
+      const nd = Math.hypot(nx, ny);
+      if (nd < 0.001) {
+        nx = Math.cos(angle);
+        ny = Math.sin(angle);
+      } else {
+        nx /= nd;
+        ny /= nd;
+      }
+      proj.x = this.pinNearX + nx * (half + proj.radius + 2);
+      proj.y = this.pinNearY + ny * (half + proj.radius + 2);
+      this.emit(EV.DEFLECT, p.slot, proj.x, proj.y, proj.deflects);
+    }
+
+    if (p.armHitCd > 0) return;
+    for (let i = 0; i < this.players.length; i++) {
+      const target = this.players[i];
+      if (target.slot === p.slot || !target.active || !target.alive) continue;
+      if (target.iframes > 0 || phased(target) || target.travelT > 0) continue;
+      if (!this.armTouches(p, target.x, target.y, PLAYER.radius * target.shrink)) continue;
+      const ux = this.pinballBodyAim(p, target.x, target.y, target.slot, -1, -1, -1, -1);
+      this.damagePlayer(
+        target,
+        PINBALL.armDamage,
+        p.slot,
+        ux,
+        this.pinAimY,
+        PINBALL.armKnockback,
+      );
+      this.swatPinballArm(p);
+      return;
+    }
+    if (this.mode === 'training' && this.drone.active) {
+      const d = this.drone;
+      if (this.armTouches(p, d.x, d.y, d.radius)) {
+        this.pinballBodyAim(p, d.x, d.y, -1, -1, -1, -1, -1);
+        this.damageDrone(PINBALL.armDamage, p.slot);
+        this.swatPinballArm(p);
+        return;
+      }
+    }
+    if (this.mode !== 'gauntlet' || p.slot === 1) return;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      if (!this.armTouches(p, s.x, s.y, s.radius)) continue;
+      const ux = this.pinballBodyAim(p, s.x, s.y, -1, -1, -1, i, -1);
+      this.damageSentry(s, PINBALL.armDamage, p.slot, ux, this.pinAimY, PINBALL.armKnockback);
+      this.swatPinballArm(p);
+      return;
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      if (!this.armTouches(p, w.x, w.y, WORM.headRadius)) continue;
+      const ux = this.pinballBodyAim(p, w.x, w.y, -1, i, -1, -1, -1);
+      this.damageWorm(w, PINBALL.armDamage, p.slot, ux, this.pinAimY, PINBALL.armKnockback);
+      this.swatPinballArm(p);
+      return;
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      if (!this.armTouches(p, v.x, v.y, v.radius)) continue;
+      const ux = this.pinballBodyAim(p, v.x, v.y, -1, -1, i, -1, -1);
+      this.damageVirus(v, PINBALL.armDamage, p.slot, ux, this.pinAimY, PINBALL.armKnockback);
+      this.swatPinballArm(p);
+      return;
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      if (!this.armTouches(p, e.x, e.y, CASCADING_ERROR.blockSize * 0.5)) continue;
+      const ux = this.pinballBodyAim(p, e.x, e.y, -1, -1, -1, -1, i);
+      this.damageError(e, PINBALL.armDamage, p.slot, ux, this.pinAimY);
+      this.swatPinballArm(p);
+      return;
+    }
+  }
+
+  /** Set the body-swat direction toward the nearest other enemy and return its x part. */
+  private pinballBodyAim(
+    p: Player,
+    x: number,
+    y: number,
+    skipSlot: number,
+    skipWorm: number,
+    skipVirus: number,
+    skipSentry: number,
+    skipError: number,
+  ): number {
+    if (this.setPinballAim(p, x, y, skipSlot, skipWorm, skipVirus, skipSentry, skipError)) {
+      const dx = this.pinAimX - x;
+      const dy = this.pinAimY - y;
+      const d = Math.hypot(dx, dy) || 1;
+      this.pinAimY = dy / d;
+      return dx / d;
+    }
+    // No other enemy: shove it straight away from the paddle base instead.
+    const dx = x - p.armX;
+    const dy = y - p.armY;
+    const d = Math.hypot(dx, dy) || 1;
+    this.pinAimY = dy / d;
+    return dx / d;
+  }
+
+  /** Finish one body swat: start the cooldown and stamp a deflect flash on the paddle. */
+  private swatPinballArm(p: Player): void {
+    p.armHitCd = PINBALL.armHitCooldown;
+    this.emit(EV.DEFLECT, p.slot, p.armX, p.armY, 1);
+  }
+
+  /** True when a circle overlaps the flipper blade; writes the nearest point to scratch. */
+  private armTouches(p: Player, x: number, y: number, radius: number): boolean {
+    const vx = Math.cos(p.armAngle) * PINBALL.armLength;
+    const vy = Math.sin(p.armAngle) * PINBALL.armLength;
+    const len2 = vx * vx + vy * vy;
+    const t = len2 > 0 ? Math.max(0, Math.min(1, ((x - p.armX) * vx + (y - p.armY) * vy) / len2)) : 0;
+    this.pinNearX = p.armX + vx * t;
+    this.pinNearY = p.armY + vy * t;
+    const dx = x - this.pinNearX;
+    const dy = y - this.pinNearY;
+    const rr = PINBALL.armWidth * 0.5 + radius;
+    return dx * dx + dy * dy <= rr * rr;
+  }
+
+  /**
+   * Nearest live enemy of the arm owner, written into the pinAim scratch. Bodies pass
+   * their own index so the swat looks at the *other* enemies, not at itself.
+   */
+  private setPinballAim(
+    owner: Player,
+    x: number,
+    y: number,
+    skipSlot: number,
+    skipWorm: number,
+    skipVirus: number,
+    skipSentry: number,
+    skipError: number,
+  ): boolean {
+    this.pinAimFound = false;
+    this.pinAimBest2 = Infinity;
+    const consider = (tx: number, ty: number): void => {
+      const dx = tx - x;
+      const dy = ty - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= this.pinAimBest2) return;
+      this.pinAimBest2 = d2;
+      this.pinAimX = tx;
+      this.pinAimY = ty;
+      this.pinAimFound = true;
+    };
+    for (let i = 0; i < this.players.length; i++) {
+      const target = this.players[i];
+      if (target.slot === owner.slot || target.slot === skipSlot) continue;
+      if (!target.active || !target.alive || phased(target)) continue;
+      consider(target.x, target.y);
+    }
+    if (this.mode === 'training' && this.drone.active) consider(this.drone.x, this.drone.y);
+    if (this.mode === 'gauntlet') {
+      for (let i = 0; i < this.sentries.length; i++) {
+        if (i === skipSentry) continue;
+        const s = this.sentries[i];
+        if (s.active) consider(s.x, s.y);
+      }
+      for (let i = 0; i < this.worms.length; i++) {
+        if (i === skipWorm) continue;
+        const w = this.worms[i];
+        if (w.active) consider(w.x, w.y);
+      }
+      for (let i = 0; i < this.viruses.length; i++) {
+        if (i === skipVirus) continue;
+        const v = this.viruses[i];
+        if (v.active) consider(v.x, v.y);
+      }
+      for (let i = 0; i < this.errors.length; i++) {
+        if (i === skipError) continue;
+        const e = this.errors[i];
+        if (e.active) consider(e.x, e.y);
+      }
+    }
+    return this.pinAimFound;
   }
 
   /**
@@ -6003,12 +6381,13 @@ export class World {
       if (!proj.active || proj.type === 1 || proj.type === 2 || proj.owner === p.slot) continue;
       // A shot held in an Atomize orbit is not in flight; it cannot be guarded.
       if (proj.orbOwner >= 0) continue;
-      // Bombs are shells, not shots: a guard cannot send one back.
-      if (proj.type === 8 || proj.type === 9) continue;
+      // Bombs are shells, not shots: a guard cannot send one back. The super ball is
+      // a rolling weight, too large and too committed to turn.
+      if (proj.type === 8 || proj.type === 9 || proj.type === 15) continue;
       const dx = proj.x - p.x;
       const dy = proj.y - p.y;
       const dist = Math.hypot(dx, dy);
-      if (dist > PLAYER.guardReach + proj.radius) continue;
+      if (dist > p.guardReach + proj.radius) continue;
       // Front half-plane only. A shot from behind still has to be dodged or turned into.
       if (dx * nx + dy * ny < -proj.radius) continue;
       const vn = proj.vx * nx + proj.vy * ny;
@@ -6034,8 +6413,8 @@ export class World {
         proj.vy = (proj.vy / mag) * speed;
       }
       if (dist > 0.001) {
-        proj.x = p.x + (dx / dist) * (PLAYER.guardReach + proj.radius + 1);
-        proj.y = p.y + (dy / dist) * (PLAYER.guardReach + proj.radius + 1);
+        proj.x = p.x + (dx / dist) * (p.guardReach + proj.radius + 1);
+        proj.y = p.y + (dy / dist) * (p.guardReach + proj.radius + 1);
       }
       proj.owner = p.slot;
       proj.deflects++;
@@ -6061,7 +6440,7 @@ export class World {
     for (let i = 0; i < this.projectiles.length; i++) {
       const proj = this.projectiles[i];
       if (!proj.active || proj.orbOwner >= 0) continue;
-      if (proj.type === 8 || proj.type === 9) continue;
+      if (proj.type === 8 || proj.type === 9 || proj.type === 15) continue;
       const dx = proj.x - p.x;
       const dy = proj.y - p.y;
       const distSq = dx * dx + dy * dy;
@@ -6252,7 +6631,9 @@ export class World {
         proj.y += proj.vy * sdt;
         this.bounceWalls(proj);
         if (!proj.active) break;
-        if (this.propHit(proj)) break;
+        // The super ball is a rolling weight: it smashes through debris instead of
+        // stopping on a file box like a bolt.
+        if (proj.type !== 15 && this.propHit(proj)) break;
         this.bouncePillars(proj);
         if (!proj.active) break;
         this.bounceBarriers(proj);
@@ -6393,6 +6774,31 @@ export class World {
     }
   }
 
+  /** Bounce count cap. Pinball's ball lives for many rails; the super ball never caps. */
+  private bounceCap(proj: Projectile): number {
+    if (proj.type === 15) return Infinity;
+    if (proj.type === 14) return PINBALL.maxBounces;
+    return BOLT.maxBounces;
+  }
+
+  /**
+   * Shared bounce bookkeeping. Every wall, pillar and barrier hit burns one bounce and
+   * raises the ball's speed a notch, so a long rally is visibly faster than the throw.
+   */
+  private noteBounce(proj: Projectile): void {
+    proj.bounces++;
+    if (proj.bounces > this.bounceCap(proj)) {
+      proj.active = false;
+      return;
+    }
+    if (proj.type !== 14) return;
+    const speed = Math.hypot(proj.vx, proj.vy);
+    if (speed <= 0.001) return;
+    const next = Math.min(PINBALL.shotSpeedMax, speed * PINBALL.shotBounceGain);
+    proj.vx = (proj.vx / speed) * next;
+    proj.vy = (proj.vy / speed) * next;
+  }
+
   private bounceWalls(proj: Projectile): void {
     if (this.openWalls) {
       const b = this.arena.bounds;
@@ -6449,14 +6855,14 @@ export class World {
     }
     this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 0);
     proj.armed = true;
-    proj.bounces++;
-    if (proj.bounces > BOLT.maxBounces) proj.active = false;
+    this.noteBounce(proj);
   }
 
   /** Deployed walls are real geometry: shots reflect off them like a pillar, and chip them. */
   private bounceBarriers(proj: Projectile): void {
-    // The lobbed shell is airborne until it lands, so it clears a waist-high wall.
-    if (proj.type === 9) return;
+    // The lobbed shell is airborne until it lands, so it clears a waist-high wall. The
+    // super ball is a rolling weight, not a shot: it passes through a planted wall.
+    if (proj.type === 9 || proj.type === 15) return;
     for (let i = 0; i < this.barriers.length; i++) {
       const wall = this.barriers[i];
       if (!wall.active) continue;
@@ -6496,13 +6902,14 @@ export class World {
       }
       this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 0);
       proj.armed = true;
-      proj.bounces++;
-      if (proj.bounces > BOLT.maxBounces) proj.active = false;
+      this.noteBounce(proj);
       return;
     }
   }
 
   private bouncePillars(proj: Projectile): void {
+    // Walls only: the super ball rolls through cover instead of ricocheting off it.
+    if (proj.type === 15) return;
     for (let i = 0; i < this.arena.pillars.length; i++) {
       if (!circleRect(proj.x, proj.y, proj.radius, this.arena.pillars[i], hitScratch)) continue;
       if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10 || proj.type === 12) {
@@ -6524,8 +6931,7 @@ export class World {
       }
       this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 0);
       proj.armed = true;
-      proj.bounces++;
-      if (proj.bounces > BOLT.maxBounces) proj.active = false;
+      this.noteBounce(proj);
       return;
     }
   }
@@ -6553,6 +6959,24 @@ export class World {
       const hitKind = proj.owner >= 0 ? SRC.PLAYER : proj.srcKind ?? SRC.NONE;
       const hitId = proj.owner >= 0 ? proj.owner : proj.srcId ?? -1;
       const speed = Math.hypot(proj.vx, proj.vy) || 1;
+      if (proj.type === 14) {
+        // Pinball: one pass per body. Damage is the current charge, then the ball gets
+        // hotter and faster for the next body; the fifth body is the last.
+        const bit = 1 << p.slot;
+        if ((proj.hitPlayers & bit) !== 0) continue;
+        proj.hitPlayers |= bit;
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, PINBALL.shotKnockback, hitKind, hitId);
+        if (this.pinballStruck(proj)) return true;
+        continue;
+      }
+      if (proj.type === 15) {
+        // The super ball rolls over bodies. One hit per body, no stop and no bounce.
+        const bit = 1 << p.slot;
+        if ((proj.hitPlayers & bit) !== 0) continue;
+        proj.hitPlayers |= bit;
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, PINBALL.powerKnockback, hitKind, hitId);
+        continue;
+      }
       if (proj.type === 5) {
         // Spear: damage each player once and keep travelling.
         const bit = 1 << p.slot;
@@ -6615,6 +7039,15 @@ export class World {
         if (proj.type === 1) {
           this.explodeMine(proj, proj.owner);
           return true;
+        } else if (proj.type === 14 || proj.type === 15) {
+          // Both ball types pass through the drone. Pinball heats up and keeps rolling;
+          // the super ball simply rolls on after its one hit.
+          if (!proj.hitDrone) {
+            proj.hitDrone = true;
+            this.damageDrone(proj.damage, proj.owner);
+            if (proj.type === 14) this.pinballStruck(proj);
+          }
+          return false;
         } else if (proj.type === 5) {
           if (!proj.hitDrone) {
             proj.hitDrone = true;
@@ -7025,6 +7458,7 @@ export class World {
 
   /** Frontal wall shields eat hostile projectiles. They do not stop players. */
   private wallBlocksProjectile(proj: Projectile): boolean {
+    if (proj.type === 15) return false;
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
       if (!p.active || !p.alive || p.wallT <= 0 || proj.owner === p.slot) continue;
@@ -8122,7 +8556,7 @@ export class World {
         const gx = cx - p.x;
         const gy = cy - p.y;
         const gd = Math.hypot(gx, gy);
-        const reach = PLAYER.guardReach + Math.max(b.w, b.h) * 0.5;
+        const reach = p.guardReach + Math.max(b.w, b.h) * 0.5;
         if (gd < reach && gx * Math.cos(p.facing) + gy * Math.sin(p.facing) > 0) {
           b.tx = Math.cos(p.facing) * FILE_PROP.guardPush;
           b.ty = Math.sin(p.facing) * FILE_PROP.guardPush;
@@ -9926,6 +10360,27 @@ export class World {
     }
   }
 
+  /**
+   * One body struck by a pinball: heat up the next hit, add speed, and retire the ball
+   * after the fifth body. Returns true when the ball is spent.
+   */
+  private pinballStruck(proj: Projectile): boolean {
+    proj.hits++;
+    const speed = Math.hypot(proj.vx, proj.vy);
+    if (speed > 0.001) {
+      const next = Math.min(PINBALL.shotSpeedMax, speed * PINBALL.shotHitGain);
+      proj.vx = (proj.vx / speed) * next;
+      proj.vy = (proj.vy / speed) * next;
+    }
+    this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 0);
+    if (proj.hits >= PINBALL.shotHits) {
+      proj.active = false;
+      return true;
+    }
+    proj.damage = Math.min(PINBALL.shotMaxDamage, proj.hits + 1);
+    return false;
+  }
+
   /** One body struck by an hourglass: flip the spin, spend a pass, report the death. */
   private hourglassStruck(proj: Projectile): boolean {
     proj.hits++;
@@ -10000,7 +10455,133 @@ export class World {
     return false;
   }
 
+  /**
+   * Pinball pass over the gauntlet roster. It uses the shared hit masks, so one ball
+   * damages each body once, heats up on every hit and retires after the fifth.
+   */
+  private pinballHitsGauntlet(proj: Projectile): boolean {
+    const speed = Math.hypot(proj.vx, proj.vy) || 1;
+    const ux = proj.vx / speed;
+    const uy = proj.vy / speed;
+
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitErrors & bit) !== 0) continue;
+      const rr = proj.radius + CASCADING_ERROR.blockSize * 0.5;
+      const dx = proj.x - e.x;
+      const dy = proj.y - e.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitErrors |= bit;
+      this.damageError(e, proj.damage, proj.owner, ux, uy);
+      if (this.pinballStruck(proj)) return true;
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitSentries & bit) !== 0) continue;
+      const rr = proj.radius + s.radius;
+      const dx = proj.x - s.x;
+      const dy = proj.y - s.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitSentries |= bit;
+      this.damageSentry(s, proj.damage, proj.owner, ux, uy, PINBALL.shotKnockback);
+      if (this.pinballStruck(proj)) return true;
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitViruses & bit) !== 0) continue;
+      const rr = proj.radius + v.radius;
+      const dx = proj.x - v.x;
+      const dy = proj.y - v.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitViruses |= bit;
+      this.damageVirus(v, proj.damage, proj.owner, ux, uy, PINBALL.shotKnockback);
+      if (this.pinballStruck(proj)) return true;
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitWorms & bit) !== 0) continue;
+      const hdx = proj.x - w.x;
+      const hdy = proj.y - w.y;
+      const hr = proj.radius + WORM.headRadius;
+      if (hdx * hdx + hdy * hdy > hr * hr) continue;
+      proj.hitWorms |= bit;
+      this.damageWorm(w, proj.damage, proj.owner, ux, uy, PINBALL.shotKnockback);
+      if (this.pinballStruck(proj)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Super ball pass over the gauntlet roster. One hit per body, no deactivation, no
+   * bounce; walls are the only thing that turns it.
+   */
+  private superHitsGauntlet(proj: Projectile): boolean {
+    const speed = Math.hypot(proj.vx, proj.vy) || 1;
+    const ux = proj.vx / speed;
+    const uy = proj.vy / speed;
+
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitErrors & bit) !== 0) continue;
+      const rr = proj.radius + CASCADING_ERROR.blockSize * 0.5;
+      const dx = proj.x - e.x;
+      const dy = proj.y - e.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitErrors |= bit;
+      this.damageError(e, proj.damage, proj.owner, ux, uy);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitSentries & bit) !== 0) continue;
+      const rr = proj.radius + s.radius;
+      const dx = proj.x - s.x;
+      const dy = proj.y - s.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitSentries |= bit;
+      this.damageSentry(s, proj.damage, proj.owner, ux, uy, PINBALL.powerKnockback);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitViruses & bit) !== 0) continue;
+      const rr = proj.radius + v.radius;
+      const dx = proj.x - v.x;
+      const dy = proj.y - v.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      proj.hitViruses |= bit;
+      this.damageVirus(v, proj.damage, proj.owner, ux, uy, PINBALL.powerKnockback);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const bit = 1 << i;
+      if ((proj.hitWorms & bit) !== 0) continue;
+      const hdx = proj.x - w.x;
+      const hdy = proj.y - w.y;
+      const hr = proj.radius + WORM.headRadius;
+      if (hdx * hdx + hdy * hdy > hr * hr) continue;
+      proj.hitWorms |= bit;
+      this.damageWorm(w, proj.damage, proj.owner, ux, uy, PINBALL.powerKnockback);
+    }
+    return false;
+  }
+
   private projectileHitsGauntlet(proj: Projectile): boolean {
+    if (proj.type === 14) return this.pinballHitsGauntlet(proj);
+    if (proj.type === 15) return this.superHitsGauntlet(proj);
     if (proj.type === 10) return this.hourglassHitsGauntlet(proj);
     if (proj.type === 5) {
       this.spearHitsGauntlet(proj);

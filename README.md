@@ -148,11 +148,11 @@ readiness telemetry yet.
 
 | Option | Input | Role |
 | --- | --- | --- |
-| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact, Toxic fires a venom needle, Kaboom lobs a slow bomb, Bad Lag throws a heavy hourglass, Atomize fires an alternating electron that curves toward a target, and Ghost throws a wide chomping mouth that hits for two and dazes, and Compress fires a slow pressure orb that shrinks the victim and permanently lowers their health cap. Holding keeps the fire coming at the program's cadence. |
+| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact, Toxic fires a venom needle, Kaboom lobs a slow bomb, Bad Lag throws a heavy hourglass, Atomize fires an alternating electron that curves toward a target, Ghost throws a wide chomping mouth that hits for two and dazes, Compress fires a slow pressure orb that shrinks the victim and permanently lowers their health cap, and Pinball throws a long-lived ricochet ball that gains speed on every bounce or body and climbs from 1 to 5 damage across five hits. Holding keeps the fire coming at the program's cadence. |
 | **MELEE ATTACK** | `B` / left mouse / `J` | **Tap** for a fast spiked lash across the 180° arc in front of you. It shoves what it hits sideways and reflects shots it catches. |
 | **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. Lock on to flatten caught shots toward the target. |
-| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, and Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear, and Compress fires a pressure burst that halves the size and health cap of everything in the ring, crushing anything on its last point. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
-| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises three orbiting shield balls, Ghost cloaks for a few seconds, and Compress folds small and runs fast for 3.5 seconds. Its mark in the readiness dock shows when it is ready. |
+| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear, Compress fires a pressure burst that halves the size and health cap of everything in the ring, crushing anything on its last point, and Pinball launches one giant ball that bounces off arena walls only and rolls over bodies for 3 damage. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
+| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises three orbiting shield balls, Ghost cloaks for a few seconds, Compress folds small and runs fast for 3.5 seconds, and Pinball plants a flipper arm for 16 seconds that punts hostile shots and swats bodies toward other enemies. Its mark in the readiness dock shows when it is ready. |
 | **DASH** | `A` / `Shift` / `Space` | Two charges. Tap to phase through enemies and cover in your last movement direction. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. |
 
 Ranged fire is the pressure tool. Melee is the answer to incoming fire: tap to lash, hold to guard. The
@@ -335,12 +335,12 @@ drop its lure, then step out of the way instead of standing on it.
 - Lock on with `LT` and hold the shield. Reflected shots should flatten toward the target instead of
   flying off at the incoming angle. The reticle should acquire pulse squares, triplexes, homing pods,
   flocks and cascading-error blocks as readily as worms.
-- Spend both dodge charges, then watch the two chevrons in the readiness dock refill one at a time.
+- Spend your dodge charges (three as Pinball), then watch the chevrons in the readiness dock refill one at a time.
 - Hold `Y` through the full charge. The two orbit dots should meet at your front and the beam should fire
   on its own, root you, sweep slowly, and pierce every target in the line while pillars cut it off.
 - Tap `Y` for the program's skill: Probe's proximity mine, Wedge's bracket wall, Fisher's lure beacon,
   Sweep's split brooms, Kaboom's lobbed shell, Bad Lag's fast-forward, Atomize's three blue shield balls,
-  or Ghost's cloak. The mark in the readiness dock should match the program and show readiness. Wedge's
+  Ghost's cloak, or Pinball's flipper arm. The mark in the readiness dock should match the program and show readiness. Wedge's
   wall should stop bodies and reflect shots; a lure should pull local bots off you; the split brooms should
   shove a body out of the lane in front of Sweep; an Atomize ball should eat one hit instead of a health
   segment; a cloaked Ghost should be ignored by bots and passed through by shots.
@@ -355,6 +355,11 @@ drop its lure, then step out of the way instead of standing on it.
   pressure burst: every body in the ring should halve in size and cap, and a one-health target should
   de-rez. Check a sentry: its drawn body and its hitbox should both get smaller. On a worm, the chain
   shrinks on screen; its bite reach does not.
+- As Pinball, bounce a ball off two walls and into a bot: the speed should rise and the damage should climb
+  1 → 2 → 3 across bodies. Throw a hostile shot into the flipper arm and it should come back at the nearest
+  enemy; a body caught by the paddle should take 1 and be shoved toward another enemy. Hold `Y` for the
+  giant ball: it should roll through pillars and bodies, hit each body once, and turn only at the arena
+  walls. Hold `B` at range: the shield should be visibly wider and last almost two seconds.
 - Reflect a `HARD` bolt back at it. Higher tiers try to dodge their own armed ricochets.
 - Leave endless training and return. The arena choice persists and a fresh session starts cleanly; there
   is no round or match overlay to clear.
