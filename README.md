@@ -141,18 +141,18 @@ thump.
 ## Attacks, skill, and health
 
 Your avatar has its health segments built into its rotating program outline: three for most programs,
-**six** for Atomize. A hit drops that segment to a dim ghost, so the silhouette always stays whole while
+**six** for Atomize and Compress. A hit drops that segment to a dim ghost, so the silhouette always stays whole while
 the damage still reads at a glance. There is no separate health bar or name plate: the outline, the inner
 energy arc, and the readiness dock are the local readout. Bots and remote players show no health or
 readiness telemetry yet.
 
 | Option | Input | Role |
 | --- | --- | --- |
-| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact, Toxic fires a venom needle, Kaboom lobs a slow bomb, Bad Lag throws a heavy hourglass, Atomize fires an alternating electron that curves toward a target, and Ghost throws a wide chomping mouth that hits for two and dazes. Holding keeps the fire coming at the program's cadence. |
+| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact, Toxic fires a venom needle, Kaboom lobs a slow bomb, Bad Lag throws a heavy hourglass, Atomize fires an alternating electron that curves toward a target, and Ghost throws a wide chomping mouth that hits for two and dazes, and Compress fires a slow pressure orb that shrinks the victim and permanently lowers their health cap. Holding keeps the fire coming at the program's cadence. |
 | **MELEE ATTACK** | `B` / left mouse / `J` | **Tap** for a fast spiked lash across the 180° arc in front of you. It shoves what it hits sideways and reflects shots it catches. |
 | **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. Lock on to flatten caught shots toward the target. |
-| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, and Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
-| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises three orbiting shield balls, and Ghost cloaks for a few seconds. Its mark in the readiness dock shows when it is ready. |
+| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, and Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear, and Compress fires a pressure burst that halves the size and health cap of everything in the ring, crushing anything on its last point. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
+| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises three orbiting shield balls, Ghost cloaks for a few seconds, and Compress folds small and runs fast for 3.5 seconds. Its mark in the readiness dock shows when it is ready. |
 | **DASH** | `A` / `Shift` / `Space` | Two charges. Tap to phase through enemies and cover in your last movement direction. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. |
 
 Ranged fire is the pressure tool. Melee is the answer to incoming fire: tap to lash, hold to guard. The
@@ -338,6 +338,12 @@ drop its lure, then step out of the way instead of standing on it.
   the ring out past its edge (error blocks stay rooted), and drop the cloak. Let the window expire
   and nothing should fire. Throw a mouth into cover: it should stop and die on the geometry; a clean hit
   should leave the target dazed and visibly slower for about 0.7 s.
+- As Compress, land two orbs on a bot: its six-Z hull should step down in size and one health segment
+  should disappear with the cap, not just the current pool. Tap `Y` to fold small and run; the body should
+  visibly shrink and cover ground almost twice as fast for 3.5 s. Hold `Y` at close range to pop the
+  pressure burst: every body in the ring should halve in size and cap, and a one-health target should
+  de-rez. Check a sentry: its drawn body and its hitbox should both get smaller. On a worm, the chain
+  shrinks on screen; its bite reach does not.
 - Reflect a `HARD` bolt back at it. Higher tiers try to dodge their own armed ricochets.
 - Leave endless training and return. The arena choice persists and a fresh session starts cleanly; there
   is no round or match overlay to clear.

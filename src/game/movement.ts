@@ -1,4 +1,4 @@
-import { BUG, GHOST, PLAYER, WEDGE, type Bounds, type Rect } from './config';
+import { BUG, COMPRESS, GHOST, PLAYER, WEDGE, type Bounds, type Rect } from './config';
 import type { ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
 import type { Player } from './types';
@@ -49,8 +49,11 @@ export function stepPlayerMotion(
     // Ghost's bite daze is a heavy-footed wobble, not a root: the victim can still
     // turn and answer, just late.
     const dazeFactor = p.dazeT > 0 ? GHOST.shotDazeSlow : 1;
-    const tx = held * mx * PLAYER.speed * slow * trapFactor * p.speedMult * dazeFactor;
-    const ty = held * my * PLAYER.speed * slow * trapFactor * p.speedMult * dazeFactor;
+    // Compress's skill folds the body small so it covers ground fast. It is a walking
+    // multiplier, not a dash: dashes and plows keep their own committed distances.
+    const compressFactor = p.shrinkT > 0 ? COMPRESS.skillSpeed : 1;
+    const tx = held * mx * PLAYER.speed * slow * trapFactor * p.speedMult * dazeFactor * compressFactor;
+    const ty = held * my * PLAYER.speed * slow * trapFactor * p.speedMult * dazeFactor * compressFactor;
     const k = 1 - Math.exp(-PLAYER.accel * dt);
     p.vx += (tx - p.vx) * k;
     p.vy += (ty - p.vy) * k;

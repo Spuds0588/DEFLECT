@@ -1,4 +1,4 @@
-import { ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
 import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourglassMark, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
@@ -2261,7 +2261,9 @@ export class Renderer {
         if (s >= builtSegments) continue;
         const x = lerp(w.segPrevX[s], w.segX[s], alpha);
         const y = lerp(w.segPrevY[s], w.segY[s], alpha);
-        const size = 10.5 - s * 0.22;
+        // Compress leaves the chain smaller, so every segment and the head share one
+        // body scale instead of only the jaw shrinking.
+        const size = (10.5 - s * 0.22) * w.shrink;
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(w.segAngle[s] + Math.PI * 0.25);
@@ -2292,14 +2294,14 @@ export class Renderer {
           ctx.strokeStyle = base;
           ctx.lineWidth = 1.2;
           ctx.beginPath();
-          ctx.arc(hx, hy, WORM.headRadius + 14 + k * 4, a, a + 0.5);
+          ctx.arc(hx, hy, (WORM.headRadius + 14 + k * 4) * w.shrink, a, a + 0.5);
           ctx.stroke();
         }
       }
       ctx.translate(hx, hy);
       ctx.rotate(w.angle + Math.PI * 0.25);
       ctx.scale(0.45 + 0.55 * build, 0.45 + 0.55 * build);
-      const r = WORM.headRadius;
+      const r = WORM.headRadius * w.shrink;
       ctx.globalAlpha = 0.12;
       ctx.fillStyle = base;
       ctx.fillRect(-r - 7, -r - 7, r * 2 + 14, r * 2 + 14);
@@ -3070,6 +3072,40 @@ export class Renderer {
           }
           continue;
         }
+        // Compress's heavy is a radial squeeze, so its wind-up is a contracting ring
+        // with ticks falling inward instead of a beam muzzle.
+        if (p.program === PROGRAM_ID.COMPRESS) {
+          const x = lerp(p.prevX, p.x, alpha);
+          const y = lerp(p.prevY, p.y, alpha);
+          const charge = Math.min(1, p.laserChargeT / COMPRESS.powerChargeTime);
+          const color = playerColor(state, p);
+          ctx.strokeStyle = color;
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.08 + charge * 0.12;
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([5, 9]);
+          ctx.beginPath();
+          ctx.arc(x, y, COMPRESS.powerRadius, 0, TWO_PI);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 0.3 + charge * 0.55;
+          ctx.lineWidth = 1.8 + charge * 1.4;
+          ctx.beginPath();
+          ctx.arc(x, y, PLAYER.radius + 34 - charge * 20, 0, TWO_PI);
+          ctx.stroke();
+          ctx.globalAlpha = 0.4 + charge * 0.5;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let k = 0; k < 8; k++) {
+            const a = t * 1.4 + (k * TWO_PI) / 8;
+            const near = PLAYER.radius + 12;
+            const far = near + 18 * (1 - charge) + 4;
+            ctx.moveTo(x + Math.cos(a) * far, y + Math.sin(a) * far);
+            ctx.lineTo(x + Math.cos(a) * near, y + Math.sin(a) * near);
+          }
+          ctx.stroke();
+          continue;
+        }
         // Wedge and Fisher have their own wind-up silhouettes; only Probe draws the
         // orbiting-dot beam charge. A live overcharge beam still renders.
         if (p.program !== PROGRAM_ID.PROBE && p.laserT <= 0) continue;
@@ -3580,7 +3616,7 @@ export class Renderer {
       // The thrown broom head, venom needle, bombs, the hourglass and Ghost's mouth
       // are solid objects, not bolts: no motion tail. Their bodies are drawn with the
       // rest of the shapes.
-      if (p.type === 6 || p.type === 7 || p.type === 8 || p.type === 9 || p.type === 10 || p.type === 12) continue;
+      if (p.type === 6 || p.type === 7 || p.type === 8 || p.type === 9 || p.type === 10 || p.type === 12 || p.type === 13) continue;
       this.pushTrail(p, lerp(p.prevX, p.x, alpha), lerp(p.prevY, p.y, alpha));
     }
   }
@@ -4026,6 +4062,33 @@ export class Renderer {
           ctx.closePath();
         }
         ctx.fill();
+        ctx.restore();
+      } else if (p.type === 13) {
+        // Compress's orb: a pressure sphere with a down-caret pressed into it. The
+        // caret is the "one size down" mark and stays legible at the orb's size; the
+        // orb is drawn as a solid object with no motion tail.
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.16;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius * 2.2, 0, TWO_PI);
+        ctx.fill();
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius, 0, TWO_PI);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = Math.max(1.6, p.radius * 0.26);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-p.radius * 0.42, -p.radius * 0.24);
+        ctx.lineTo(0, p.radius * 0.26);
+        ctx.lineTo(p.radius * 0.42, -p.radius * 0.24);
+        ctx.stroke();
         ctx.restore();
       } else if (p.type === 10) {
         // Heavy hourglass: the program's own mark, spinning on its axis inside a soft
@@ -4788,6 +4851,10 @@ export class Renderer {
       const facing = lerpAngle(p.prevFacing, p.facing, alpha);
       const color = playerColor(state, p);
       const isLocal = (localMask & (1 << p.slot)) !== 0;
+      // Compress folds the whole avatar: hull, segments, mark and heading arrow all
+      // read from one body radius, so a compressed body never draws a full-size hull
+      // around a tiny core. The skill adds its own fold on top of any hits taken.
+      const bodyR = PLAYER.radius * p.shrink * (p.shrinkT > 0 ? COMPRESS.skillScale : 1);
 
       // A dead body leaves no marker on the field. The death burst and the respawn
       // timer carry the state; a dashed ring with an X read as another interactable.
@@ -4817,7 +4884,7 @@ export class Renderer {
         ctx.globalAlpha = 0.1 * guardFade;
         ctx.beginPath();
         ctx.arc(x, y, radius, edge, end);
-        ctx.arc(x, y, PLAYER.radius + 4, end, edge, true);
+        ctx.arc(x, y, bodyR + 4, end, edge, true);
         ctx.closePath();
         ctx.fill();
         ctx.globalAlpha = (0.58 + 0.16 * Math.sin(t * 18)) * guardFade;
@@ -5049,6 +5116,35 @@ export class Renderer {
         ctx.stroke();
       }
 
+      // Compress's sprint: the folded body wears a squeeze ring with four inward
+      // chevrons, so the speed window reads even when the body is already small from
+      // hits. Drawn before the hull so the ring never covers the health segments.
+      if (p.shrinkT > 0) {
+        const fade = Math.min(1, p.shrinkT / 0.25);
+        const pulse = 0.5 + 0.5 * Math.sin(t * 16 + p.slot);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = (0.24 + 0.26 * pulse) * fade;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(x, y, bodyR + 8 + pulse * 3, 0, TWO_PI);
+        ctx.stroke();
+        ctx.globalAlpha = (0.35 + 0.35 * pulse) * fade;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let k = 0; k < 4; k++) {
+          const a = t * 3 + (k * Math.PI) / 2;
+          const rx = x + Math.cos(a) * (bodyR + 16);
+          const ry = y + Math.sin(a) * (bodyR + 16);
+          ctx.moveTo(rx + Math.cos(a + 1.25) * 6, ry + Math.sin(a + 1.25) * 6);
+          ctx.lineTo(rx, ry);
+          ctx.lineTo(rx + Math.cos(a - 1.25) * 6, ry + Math.sin(a - 1.25) * 6);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
       // Health outline is the program's silhouette (ring, diamond, hex), rotating slowly.
       // Local bots are player characters and carry the same hull and three segments.
       // Networked guests keep slot identity, and thralls are not player characters, so
@@ -5070,7 +5166,7 @@ export class Renderer {
         // readable behind the three health brackets without becoming a health segment.
         ctx.globalAlpha = 0.34;
         ctx.lineWidth = 1.4;
-        pathProgramFrame(ctx, p.program, x, y, PLAYER.radius, hullSpin);
+        pathProgramFrame(ctx, p.program, x, y, bodyR, hullSpin);
         ctx.stroke();
         ctx.globalAlpha = 1;
         // Lost segments remain as ghosts at a readable alpha, so the program silhouette
@@ -5079,11 +5175,11 @@ export class Renderer {
           ctx.globalAlpha = 0.42;
           ctx.strokeStyle = color;
           ctx.lineWidth = 2.6;
-          pathProgramHealth(ctx, p.program, x, y, PLAYER.radius, hullSpin, maxSegments, maxSegments);
+          pathProgramHealth(ctx, p.program, x, y, bodyR, hullSpin, maxSegments, maxSegments);
           ctx.stroke();
           ctx.strokeStyle = p.hitFlash > 0 ? '#ffffff' : color;
         }
-        pathProgramHealth(ctx, p.program, x, y, PLAYER.radius, hullSpin, freshSegments, maxSegments);
+        pathProgramHealth(ctx, p.program, x, y, bodyR, hullSpin, freshSegments, maxSegments);
         ctx.globalAlpha = 0.1;
         ctx.lineWidth = 12;
         ctx.stroke();
@@ -5101,7 +5197,7 @@ export class Renderer {
         if (isLocal) {
           const nx = Math.cos(facing);
           const ny = Math.sin(facing);
-          const tip = PLAYER.radius + 8;
+          const tip = bodyR + 8;
           ctx.globalAlpha = 0.95;
           ctx.fillStyle = color;
           ctx.beginPath();
@@ -5116,7 +5212,7 @@ export class Renderer {
       // Player characters show their own damage in the core; networked guests keep a
       // stable core until the snapshot carries programs and health.
       const coreHp = showHull ? hpFrac : 1;
-      const coreR = PLAYER.radius * (0.3 + 0.28 * coreHp) * (1 + 0.035 * Math.sin(t * 4 + p.slot));
+      const coreR = bodyR * (0.3 + 0.28 * coreHp) * (1 + 0.035 * Math.sin(t * 4 + p.slot));
       // Bad Lag has no dark core disc. His mark is a solid filled hourglass, so a disc
       // behind it reads as a black tile rather than as a nucleus: every other program
       // draws a stroked mark, where the disc is the negative space it sits in.
@@ -5174,10 +5270,10 @@ export class Renderer {
         ctx.stroke();
       } else if (state.online) {
         // Networked matches still identify by slot until programs travel in the snapshot.
-        drawGlyph(ctx, slotGlyph(p.slot), 0, 0, PLAYER.radius * 0.51);
+        drawGlyph(ctx, slotGlyph(p.slot), 0, 0, bodyR * 0.51);
       } else {
         const glyph = programDef(p.program);
-        drawProgramMark(ctx, p.program, glyph.glyph, glyph.symbolFont, 0, 0, PLAYER.radius * (glyph.glyphRadius ?? 0.51), glyph.coreScale);
+        drawProgramMark(ctx, p.program, glyph.glyph, glyph.symbolFont, 0, 0, bodyR * (glyph.glyphRadius ?? 0.51), glyph.coreScale);
       }
       ctx.restore();
 
@@ -5832,6 +5928,20 @@ export class Renderer {
         ctx.moveTo(lx, ly);
         ctx.lineTo(lx + Math.cos(a) * 2, ly + Math.sin(a) * 2);
       }
+    } else if (p.bugKind === 12) {
+      // Size dash: a small box with speed ticks behind it. The heavy beside it is an
+      // inward pressure ring, so the two Compress jobs never share one mark.
+      ctx.moveTo(-1.2, -4.2);
+      ctx.lineTo(4.6, -4.2);
+      ctx.lineTo(4.6, 4.2);
+      ctx.lineTo(-1.2, 4.2);
+      ctx.closePath();
+      ctx.moveTo(-6, -3);
+      ctx.lineTo(-2.8, -3);
+      ctx.moveTo(-6.4, 0);
+      ctx.lineTo(-2.4, 0);
+      ctx.moveTo(-6, 3);
+      ctx.lineTo(-2.8, 3);
     } else {
       // Lure beacon: a center pulse with two open arcs, no star. Probe's compass uses
       // a closed housing and a four-point rose, so the two marks stay distinct.
@@ -5873,7 +5983,9 @@ export class Renderer {
                 ? ATOMIZE.powerCooldown
                 : p.program === PROGRAM_ID.GHOST
                   ? GHOST.scareCooldown
-                  : PLAYER.laserCooldown;
+                  : p.program === PROGRAM_ID.COMPRESS
+                    ? COMPRESS.powerCooldown
+                    : PLAYER.laserCooldown;
     const heavyColor = p.program === PROGRAM_ID.WEDGE
       ? PROGRAM_COLORS.wedge
       : p.program === PROGRAM_ID.FISHER
@@ -5886,7 +5998,9 @@ export class Renderer {
               ? PROGRAM_COLORS.atomize
               : p.program === PROGRAM_ID.GHOST
                 ? PROGRAM_COLORS.ghost
-                : color;
+                : p.program === PROGRAM_ID.COMPRESS
+                  ? PROGRAM_COLORS.compress
+                  : color;
     const heavyLive =
       p.laserT > 0 ||
       p.wedgeT > 0 ||
@@ -5898,7 +6012,8 @@ export class Renderer {
         p.program === PROGRAM_ID.KABOOM ||
         p.program === PROGRAM_ID.BUFFER ||
         p.program === PROGRAM_ID.ATOMIZE ||
-        p.program === PROGRAM_ID.GHOST) &&
+        p.program === PROGRAM_ID.GHOST ||
+        p.program === PROGRAM_ID.COMPRESS) &&
         p.laserChargeHeld);
     ctx.save();
     ctx.translate(heavyX, cy);
@@ -5955,6 +6070,17 @@ export class Renderer {
       ctx.ellipse(0, 0, 6.4, 2.6, 0.62, 0, TWO_PI);
       ctx.moveTo(1.7, 0);
       ctx.arc(0, 0, 1.7, 0, TWO_PI);
+    } else if (p.program === PROGRAM_ID.COMPRESS) {
+      // Pressure burst: four inward arrows collapsing on the body. The skill beside it
+      // is a small body with speed ticks, so fold and squeeze never share a mark.
+      for (let k = 0; k < 4; k++) {
+        const a = k * (Math.PI / 2) + Math.PI / 4;
+        const c = Math.cos(a);
+        const s = Math.sin(a);
+        ctx.moveTo(c * 6.6 + s * 2.4, s * 6.6 - c * 2.4);
+        ctx.lineTo(c * 2.4, s * 2.4);
+        ctx.lineTo(c * 6.6 - s * 2.4, s * 6.6 + c * 2.4);
+      }
     } else if (p.program === PROGRAM_ID.GHOST) {
       // Jump-scare: a wide open maw with a zigzag of teeth. The skill beside it is the
       // closed eye, so cloak and scare never share a mark.

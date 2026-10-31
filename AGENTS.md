@@ -1033,6 +1033,55 @@ input only; no touch state enters `World`, `Snapshot` or a room.
   layout work, haptics or a local same-screen second player. Keep assist tuning in `AUTO_ATTACK` in
   `tuning/player.json`; do not scatter touch ranges through `main.ts`.
 
+### D29 — COMPRESS.EXE: pressure orbs, size dash, pressure burst (built 2026-10-30)
+
+`COMPRESS.EXE` is the roster's **pressure** program (id 9, `bugKind` 12). Identity:
+`PROGRAM_COLORS.compress` (`#c46bff`, archive orchid), a six-segment hull of six upright capital **Z**s on
+an orbiting ring, and a vector **press** at the core. The hull ring sits at `0.8r` with a `0.17r` half-height
+per letter, so the inner edge is `0.6r` and no Z crosses the full-health core disc. The letters stay
+**upright** while the ring turns: rotating each Z with its angle turned four of the six into Ns and
+sideways strokes, which broke the "six Zs" readout. `coreScale` is `0.8`. The core is `drawCompressMark`:
+a threaded screw drives a heavy jaw down onto a block on the base plate, drawn in vectors so the mark is
+monochrome on every host. `⊟` is only the text metadata glyph. Do not replace the press with the `⊟`
+codepoint in the arena or the portrait.
+
+- **Ranged**: one pressure orb (type `13`) at `COMPRESS.orbSpeed` 560, 1.05 s, radius 9, 1 damage and
+a 340 shove. It is a grouped shape with no motion tail, drawn as a ring with a downward caret (the
+"one size down" mark). A hit squeezes the victim: `shrink *= 1 - shrinkStep` (0.15, floored at
+`shrinkFloor` 0.35), and the health cap drops by `max(cap * hpCut 0.10, hpCutFloor 1)`, never below 1,
+with current health clamped to the new cap. The cap change is **permanent until the body respawns**, not
+a status timer; `clearPlayerForSpawn` restores the program's segment pool and `shrink = 1`.
+- **What shrink touches**: a player's `shrink` scales the drawn hull, segments, core mark and heading
+arrow, and the projectile and bomb hit radii, so the smaller body is genuinely harder to hit. Cover and
+arena-bound collision still use `PLAYER.radius`; do not read that as the body being full size. Sentries
+and viruses shrink their `radius` field directly, which moves both the draw and every hit test that reads
+it. Worms carry `shrink` for the drawn head/chain only; their contact, bite and collision radii stay at
+the `WORM` constants. Cascading-error blocks have no size field and only lose health.
+- **Skill**: `shrinkT` for `skillTime` 3.5 s. Walking speed is multiplied by `skillSpeed` 1.85 and the
+body draws at `skillScale` 0.62 on top of any persistent shrink, with a squeeze ring and four inward
+chevrons. It is a speed window, not a dodge: no iframes, no hitbox change, and shooting, swinging and
+dashing all still work. Costs the shared `BUG.cost`; its cooldown is the 13th entry in `BUG.cooldown`
+(7 s).
+- **Power**: hold the heavy for `powerChargeTime` 0.6 s to fire a radial **pressure burst** centred on the
+body (radius `powerRadius` 230, cooldown `powerCooldown` 8 s). Every body inside — players, local bots,
+sentries, viruses, worms, cascading errors and the training drone — loses half its size (`powerScale`
+0.5, floored) and half its health cap; a body already at **1 health** is crushed outright and de-rezzes
+through its normal damage path. Players round the new segment cap (`3 → 2`, `6 → 3`); everything else
+keeps the fractional cap the draw ratio already understands. Survivors take no direct damage: the shrink
+and the cap are the payload. Cover cuts the wave (`lineBlocked`), a pad/lift ride owns the body, a
+dormant calibration subject stays asleep, and the caster is skipped. Rooted cascading-error blocks cannot
+be pushed, but the burst can still crush or halve them.
+- **Bots**: hold the heavy when the target is inside `powerRadius - 30`, because the burst is centred on
+Compress and folding empty floor is a wasted cooldown; tap the skill to close or leave a 120–420 unit
+gap. They otherwise follow the shared heavy-hold and target-lock rules.
+- **Dock**: the skill mark is a small box with speed ticks behind it; the heavy is four inward arrows
+collapsing on the body. The heavy's charge draws a contracting ring with eight inward ticks plus a faint
+dashed `powerRadius` circle, not a beam muzzle. The `EV.COMPRESS` event (`power` = new scale, 0 for the
+burst) drives a purple squeeze pop or the wide burst ring; `P_COLOR_COMPRESS` is the palette entry.
+
+All numbers live in `tuning/programs.json` under `COMPRESS`. The kit is local-only like every other
+program: it adds no `Snapshot` fields, a guest does not see a shrunk body, and online still runs Probe.
+
 ---
 
 ## 3. Architecture

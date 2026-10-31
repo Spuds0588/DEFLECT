@@ -15,6 +15,7 @@ export const PROGRAM_ID = {
   BUFFER: 6,
   ATOMIZE: 7,
   GHOST: 8,
+  COMPRESS: 9,
 } as const;
 
 export interface ProgramDef {
@@ -178,6 +179,24 @@ export const PROGRAMS: readonly ProgramDef[] = [
     // The eye already fills most of its lid; keep clear air before the three arcs.
     coreScale: 0.82,
     bugKind: 11,
+  },
+  {
+    id: PROGRAM_ID.COMPRESS,
+    name: 'COMPRESS.EXE',
+    role: 'PRESSURE',
+    note: 'SHRINK ORB // SIZE DASH // PRESSURE BURST',
+    color: PROGRAM_COLORS.compress,
+    /**
+     * `⊟` is the text stand-in for the vice: a clamped, squashed box. The arena and the
+     * select portrait draw `drawCompressMark`, so the clamp itself is vector on every
+     * host and never depends on a symbol font.
+     */
+    glyph: '⊟',
+    // The six Zs orbit at 0.8r with a 0.17r body, so they start at 0.6r; the vice keeps
+    // a little more air inside that ring.
+    coreScale: 0.8,
+    healthSegments: 6,
+    bugKind: 12,
   },
 ];
 

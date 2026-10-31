@@ -1,6 +1,7 @@
 import {
   ParticleSystem,
   P_COLOR_BUFFER,
+  P_COLOR_COMPRESS,
   P_COLOR_DANGER,
   P_COLOR_DUST,
   P_COLOR_FIREWALL,
@@ -9,7 +10,7 @@ import {
   P_COLOR_WHITE,
   P_COLOR_WORM,
 } from './particles';
-import { MINE, PLAYER } from './config';
+import { COMPRESS, MINE, PLAYER } from './config';
 import { POWERUPS } from './powerups';
 import { EV, type GameEvent } from './types';
 
@@ -236,6 +237,24 @@ export class Fx {
         this.particles.burst(endX, endY, 6, color, 40, 170);
         this.particles.burst(endX, endY, 3, P_COLOR_WHITE, 30, 120);
         this.particles.ring(endX, endY, color, 3, 34, 0.2);
+        break;
+      }
+      case EV.COMPRESS: {
+        // `power` is the new body scale; 0 marks the heavy burst, which gets the wide
+        // ring. A hit gets a small squeeze pop on the victim instead.
+        if (ev.power <= 0) {
+          this.particles.ring(ev.x, ev.y, P_COLOR_COMPRESS, 14, COMPRESS.powerRadius * 0.92, 0.55);
+          this.particles.ring(ev.x, ev.y, P_COLOR_WHITE, 4, COMPRESS.powerRadius * 0.5, 0.32);
+          this.particles.burst(ev.x, ev.y, 14, P_COLOR_COMPRESS, 80, 380);
+          this.shake = Math.max(this.shake, 8);
+          this.flash = Math.max(this.flash, 0.16);
+          this.flashColor = '#e8ccff';
+        } else {
+          const size = Math.max(0.4, Math.min(1, ev.power));
+          this.particles.ring(ev.x, ev.y, P_COLOR_COMPRESS, 5, 18 + 26 * size, 0.24);
+          this.particles.burst(ev.x, ev.y, 5, P_COLOR_COMPRESS, 40, 180);
+          this.shake = Math.max(this.shake, 2);
+        }
         break;
       }
       case EV.ERROR_SPAWN: {

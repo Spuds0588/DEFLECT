@@ -46,6 +46,8 @@ export const PROGRAM_COLORS = {
   atomize: '#ffffff',
   /** Ghost: cool steel grey, distinct from Atomize's pure white and the floor tones. */
   ghost: '#b9c4d0',
+  /** Compress: archive orchid, clear of Buffer's pink and Fisher's indigo. */
+  compress: '#c46bff',
   lure: '#7dffd4',
 } as const;
 
@@ -369,6 +371,61 @@ export function drawGhostEye(
   ctx.restore();
 }
 
+/**
+ * Compress's core: a side-on press. A screw with threads drives a heavy jaw down onto
+ * a small block that sits on the base plate, which is the clearest "vice" that still
+ * reads at the 11px core mark. Drawn as vectors so the mark is monochrome on every
+ * host; the `⊟` glyph is only for text metadata.
+ */
+export function drawCompressMark(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  const ink = ctx.fillStyle as string;
+  ctx.save();
+  ctx.strokeStyle = ink;
+  ctx.fillStyle = ink;
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
+  // Base plate: the anvil the block is crushed against.
+  ctx.lineWidth = Math.max(1.3, r * 0.18);
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.56, cy + r * 0.56);
+  ctx.lineTo(cx + r * 0.56, cy + r * 0.56);
+  ctx.stroke();
+  // The block inside the press, filling most of the gap so the squeeze reads even at
+  // core size. It grows a little wider than it is tall, the shape of a squashed cube.
+  ctx.fillRect(cx - r * 0.26, cy + r * 0.04, r * 0.52, r * 0.42);
+  // Moving jaw: one thick plate coming down on the block.
+  ctx.lineWidth = Math.max(1.6, r * 0.22);
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.46, cy - r * 0.16);
+  ctx.lineTo(cx + r * 0.46, cy - r * 0.16);
+  ctx.stroke();
+  // Screw shaft above the jaw, with two thread ticks. A full handle was tried and
+  // turned into a second plate at this size; the threads are the readable part.
+  ctx.lineWidth = Math.max(1.1, r * 0.12);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r * 0.24);
+  ctx.lineTo(cx, cy - r * 0.9);
+  ctx.moveTo(cx - r * 0.15, cy - r * 0.44);
+  ctx.lineTo(cx + r * 0.15, cy - r * 0.44);
+  ctx.moveTo(cx - r * 0.15, cy - r * 0.64);
+  ctx.lineTo(cx + r * 0.15, cy - r * 0.64);
+  ctx.stroke();
+  // Two stress ticks beside the block: the block is being squeezed, not resting.
+  ctx.lineWidth = Math.max(1, r * 0.1);
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.44, cy + r * 0.24);
+  ctx.lineTo(cx - r * 0.34, cy + r * 0.24);
+  ctx.moveTo(cx + r * 0.34, cy + r * 0.24);
+  ctx.lineTo(cx + r * 0.44, cy + r * 0.24);
+  ctx.stroke();
+  ctx.restore();
+}
+
 /** Draws a program's core mark, including Kaboom's missing-font fallback. */
 export function drawProgramMark(
   ctx: CanvasRenderingContext2D,
@@ -402,6 +459,11 @@ export function drawProgramMark(
   // depend on a symbol font or a colour emoji.
   if (programId === 8) {
     drawGhostEye(ctx, cx, cy, r * fontScale);
+    return;
+  }
+  // Compress's vice is vector, so the frame, jaw and screw never depend on a font.
+  if (programId === 9) {
+    drawCompressMark(ctx, cx, cy, r * fontScale);
     return;
   }
   if (programId === 5 && !hasSymbolFont(symbolFamily ?? '')) {
@@ -453,6 +515,8 @@ export function programHullSides(programId: number): number {
   if (programId === 7) return 0;
   // Ghost's hull is three separate outward arcs, one per health segment.
   if (programId === 8) return 0;
+  // Compress's hull is six Z marks on a ring, one per health segment.
+  if (programId === 9) return 0;
   return 0;
 }
 
@@ -531,6 +595,30 @@ export function pathProgramHealth(
       const sb = Math.sin(a0);
       ctx.moveTo(cx + cosRot * sa * rx - sinRot * sb * ry, cy + sinRot * sa * rx + cosRot * sb * ry);
       ctx.ellipse(cx, cy, rx, ry, rot, a0, a1);
+    }
+    return;
+  }
+  // Compress's hull is six capital Zs on a ring, one per health segment. Each Z is a
+  // 3-stroke vector mark (top bar, diagonal, bottom bar) turned to follow the ring, so
+  // the health readout is literally a ring of archive marks. The inner edge sits at
+  // 0.6r, outside the full-health core disc, so no Z ever crosses the vice mark.
+  if (programId === 9) {
+    const orbit = r * 0.8;
+    const halfW = r * 0.155;
+    const halfH = r * 0.17;
+    for (let seg = 0; seg < freshSegments; seg++) {
+      const a = spin + seg * (twoPi / 6);
+      const px = cx + Math.cos(a) * orbit;
+      const py = cy + Math.sin(a) * orbit;
+      // The letters stay upright while the ring turns under them. Rotating each Z with
+      // the ring made four of the six read as Ns or sideways strokes, which broke the
+      // "six capital Zs" readout at a glance.
+      ctx.moveTo(px - halfW, py - halfH);
+      ctx.lineTo(px + halfW, py - halfH);
+      ctx.moveTo(px + halfW, py - halfH);
+      ctx.lineTo(px - halfW, py + halfH);
+      ctx.moveTo(px - halfW, py + halfH);
+      ctx.lineTo(px + halfW, py + halfH);
     }
     return;
   }

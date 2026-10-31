@@ -126,6 +126,8 @@ export const EV = {
   DISSOLVE: 40,
   /** Overcharge beam switched off: embers along the shaft and a puff at its stop. */
   BEAM_END: 41,
+  /** Compress pressure: `power` is the new body scale; a burst passes 0. */
+  COMPRESS: 42,
 } as const;
 
 /** Breakable file boxes. The renderer maps each to one glyph. */
@@ -305,6 +307,13 @@ export interface Player {
    * body. Local-only like every other program kit.
    */
   cloakT: number;
+  /**
+   * COMPRESS's pressure: the body scale left behind by shrink orbs and the burst,
+   * from `COMPRESS.shrinkFloor` to 1. Local-only like every other program kit.
+   */
+  shrink: number;
+  /** Remaining seconds of the small-and-fast skill. */
+  shrinkT: number;
   /** GHOST's jump-scare window: seconds left to press melee and detonate the AOE. */
   scareT: number;
   /** Jump-scare face visual: seconds left and the point where the burst fired. */
@@ -423,13 +432,14 @@ export interface Projectile {
   /**
    * 0 bolt, 1 mine, 2 trap, 3 hostile shot, 4 hostile homing missile, 5 Fisher spear,
    * 6 Sweep broom, 7 Toxic needle, 8 Kaboom bomb, 9 Kaboom lobbed bomb, 10 Bad Lag
-   * hourglass, 11 Atomize electron, 12 Ghost bite. Types 8/9 explode on contact and
-   * are never deflected, so every `type >= 3` deflect branch must exclude them
-   * explicitly. Type 10 is a player shot that passes through up to `BUFFER.shotHits`
-   * bodies; type 11 is a light seeking ball that leaves from alternating hands;
-   * type 12 is a wide, slow mouth that stops on the body and dazes it.
+   * hourglass, 11 Atomize electron, 12 Ghost bite, 13 Compress orb. Types 8/9 explode
+   * on contact and are never deflected, so every `type >= 3` deflect branch must
+   * exclude them explicitly. Type 10 is a player shot that passes through up to
+   * `BUFFER.shotHits` bodies; type 11 is a light seeking ball that leaves from
+   * alternating hands; type 12 is a wide, slow mouth that stops on the body and dazes
+   * it; type 13 is a pressure orb that shrinks and caps the victim's health.
    */
-  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;
@@ -557,6 +567,8 @@ export interface Worm {
   phase: number;
   /** Counts down while the chain assembles; movement is held until it reaches 0. */
   spawnT: number;
+  /** COMPRESS pressure: visual body scale, 0.35..1. Worms have no other size field. */
+  shrink: number;
   /** Fisher net snare: movement is held while this is above zero. */
   pinT: number;
   /** Telegraphed close bite: total timer, cooldown, committed direction and one-hit latch. */

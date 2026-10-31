@@ -1,4 +1,5 @@
 import { BOLT, FISHER, MINE, CASCADING_ERROR, MAX_PROJECTILES, PLAYER, POWERUP, SENTRY, TRAIL_LEN, TRAINING, VIRUS, WORM } from './config';
+import { programDef } from './programs';
 import {
   PF,
   type Barrier,
@@ -157,6 +158,8 @@ export function createPlayer(slot: number): Player {
     autoFireT: 0,
     ghostT: 0,
     cloakT: 0,
+    shrink: 1,
+    shrinkT: 0,
     scareT: 0,
     scareFaceT: 0,
     scareFaceX: 0,
@@ -354,6 +357,7 @@ export function createWorm(): Worm {
     infected: false,
     phase: 0,
     spawnT: 0,
+    shrink: 1,
     pinT: 0,
     biteT: 0,
     biteCd: 0,
@@ -501,8 +505,14 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.atomSide = 1;
   p.orbitT = 0;
   p.orbitDur = 0;
-  p.hp = p.maxHp;
   p.energy = PLAYER.energyMax;
+  // Compression is not a permanent character change: a fresh body is full size and
+  // back to its program's segment pool, or a lost round would leave a pasted avatar
+  // small for the rest of the match.
+  p.maxHp = programDef(p.program).healthSegments ?? PLAYER.hp;
+  p.hp = p.maxHp;
+  p.shrink = 1;
+  p.shrinkT = 0;
   p.poisonT = 0;
   p.poisonTickT = 0;
   p.poisonSrc = 0;

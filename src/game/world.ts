@@ -7,6 +7,7 @@ import {
   CAMERA_ZOOM,
   CAMPAIGN,
   CALIBRATION,
+  COMPRESS,
   CASCADING_ERROR,
   EMITTER,
   FISHER,
@@ -1709,6 +1710,7 @@ export class World {
       if (p.ghostT > 0) p.ghostT = Math.max(0, p.ghostT - dt);
       if (p.cloakT > 0) p.cloakT = Math.max(0, p.cloakT - dt);
       if (p.dazeT > 0) p.dazeT = Math.max(0, p.dazeT - dt);
+      if (p.shrinkT > 0) p.shrinkT = Math.max(0, p.shrinkT - dt);
       if (p.scareT > 0) p.scareT = Math.max(0, p.scareT - dt);
       if (p.scareFaceT > 0) p.scareFaceT = Math.max(0, p.scareFaceT - dt);
       if (p.wallT > 0) p.wallT = Math.max(0, p.wallT - dt);
@@ -1852,6 +1854,25 @@ export class World {
             if (p.laserChargeT >= GHOST.scareChargeTime) this.startJumpScare(p);
           } else if (p.laserChargeT >= GHOST.scareChargeTime) {
             this.startJumpScare(p);
+          } else {
+            if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            p.laserChargeHeld = false;
+            p.laserChargeT = 0;
+            p.chargeT = 0;
+            p.chargeHeld = false;
+          }
+        } else if (p.program === PROGRAM_ID.COMPRESS) {
+          // The pressure burst commits at full charge, like the other heavies. It is
+          // centred on the body, so the charge only sets the moment, not a direction.
+          if (canAct && heavyHeld) {
+            p.laserChargeT += pdt;
+            if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+              p.facing = Math.atan2(input.my, input.mx);
+            }
+            p.laserFacing = p.facing;
+            if (p.laserChargeT >= COMPRESS.powerChargeTime) this.fireCompressBurst(p);
+          } else if (p.laserChargeT >= COMPRESS.powerChargeTime) {
+            this.fireCompressBurst(p);
           } else {
             if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
             p.laserChargeHeld = false;
@@ -3403,6 +3424,26 @@ export class World {
       return;
     }
 
+    if (p.program === PROGRAM_ID.COMPRESS) {
+      // One pressure orb per throw. Slower than a bolt, and its payoff is the squeeze
+      // left on the victim, not a burst of direct damage.
+      if (p.autoFireT > 0 || p.energy < COMPRESS.orbCost) return;
+      if (!this.spawnProjectile(
+        p,
+        0,
+        COMPRESS.orbTtl,
+        COMPRESS.orbSpeed,
+        false,
+        COMPRESS.orbRadius,
+        COMPRESS.orbDamage,
+        13,
+      )) return;
+      p.energy -= COMPRESS.orbCost;
+      p.autoFireT = COMPRESS.attackCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
     if (p.program === PROGRAM_ID.FISHER) {
       if (p.autoFireT > 0 || p.energy < FISHER.spearCost) return;
       if (!this.spawnProjectile(
@@ -3440,6 +3481,7 @@ export class World {
     if (p.program === PROGRAM_ID.BUFFER) return BUFFER.slowCost;
     if (p.program === PROGRAM_ID.ATOMIZE) return ATOMIZE.powerCost;
     if (p.program === PROGRAM_ID.GHOST) return GHOST.scareCost;
+    if (p.program === PROGRAM_ID.COMPRESS) return COMPRESS.powerCost;
     return PLAYER.laserCost;
   }
 
@@ -4831,6 +4873,8 @@ export class World {
       this.startAtomBalls(p);
     } else if (p.bugKind === 11) {
       this.startGhostCloak(p);
+    } else if (p.bugKind === 12) {
+      this.startCompressSprint(p);
     } else if (p.bugKind === 4) {
       // Wedge's signature bug: a static bracket wall behind him. Refuse a wall that
       // would land inside cover and hand the energy back rather than eat the button.
@@ -4987,6 +5031,200 @@ export class World {
     const add = want - Math.max(0, outward);
     body.kx += nx * add;
     body.ky += ny * add;
+  }
+
+  /**
+   * Compress's skill: fold the body down and run. It is a speed window, not a dodge:
+   * the avatar still shoots, swings and dashes, and nothing about it grants iframes.
+   * The body keeps the persistent shrink it has been hit with, then folds further.
+   */
+  private startCompressSprint(p: Player): void {
+    p.shrinkT = Math.max(p.shrinkT, COMPRESS.skillTime);
+    p.swingPhase = 0;
+    p.swingT = 0;
+    p.swingPct = 0;
+    p.guardT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+  }
+
+  /** Health cap after one pressure step: 10% of the pool or one point, whichever is bigger. */
+  private compressedCap(maxHp: number): number {
+    return Math.max(1, maxHp - Math.max(maxHp * COMPRESS.hpCut, COMPRESS.hpCutFloor));
+  }
+
+  /** One pressure orb hit on a player: a step smaller and a lower segment cap. */
+  private compressPlayerHit(p: Player, sourceSlot: number): void {
+    if (!p.alive) return;
+    p.shrink = Math.max(COMPRESS.shrinkFloor, p.shrink * (1 - COMPRESS.shrinkStep));
+    p.maxHp = this.compressedCap(p.maxHp);
+    p.hp = Math.min(p.hp, p.maxHp);
+    this.emit(EV.COMPRESS, sourceSlot, p.x, p.y, p.shrink);
+  }
+
+  private compressSentryHit(s: Sentry, sourceSlot: number): void {
+    if (!s.active) return;
+    s.maxHp = this.compressedCap(s.maxHp);
+    s.hp = Math.min(s.hp, s.maxHp);
+    s.radius = Math.max(6, s.radius * (1 - COMPRESS.shrinkStep));
+    this.emit(EV.COMPRESS, sourceSlot, s.x, s.y, s.radius);
+  }
+
+  private compressVirusHit(v: Virus, sourceSlot: number): void {
+    if (!v.active) return;
+    v.maxHp = this.compressedCap(v.maxHp);
+    v.hp = Math.min(v.hp, v.maxHp);
+    v.radius = Math.max(5, v.radius * (1 - COMPRESS.shrinkStep));
+    this.emit(EV.COMPRESS, sourceSlot, v.x, v.y, v.radius);
+  }
+
+  private compressWormHit(w: Worm, sourceSlot: number): void {
+    if (!w.active) return;
+    w.maxHp = this.compressedCap(w.maxHp);
+    w.hp = Math.min(w.hp, w.maxHp);
+    w.shrink = Math.max(COMPRESS.shrinkFloor, w.shrink * (1 - COMPRESS.shrinkStep));
+    this.emit(EV.COMPRESS, sourceSlot, w.x, w.y, w.shrink);
+  }
+
+  private compressErrorHit(e: CascadingError, sourceSlot: number): void {
+    if (!e.active) return;
+    e.maxHp = this.compressedCap(e.maxHp);
+    e.hp = Math.min(e.hp, e.maxHp);
+    this.emit(EV.COMPRESS, sourceSlot, e.x, e.y, 0);
+  }
+
+  /**
+   * Compress's heavy: a radial pressure burst centred on the body. Every body inside
+   * the ring is folded to half its size and half its health cap; anything already down
+   * to its last point is crushed outright. Cover cuts the wave, a ride owns the body,
+   * and a dormant calibration subject is left asleep. There is no damage on survivors:
+   * the shrink and the capped pool are the whole payload.
+   */
+  private fireCompressBurst(p: Player): void {
+    p.energy = Math.max(0, p.energy - COMPRESS.powerCost);
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.laserCd = COMPRESS.powerCooldown;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    p.lockActive = false;
+    p.lockKind = 0;
+    p.lockId = -1;
+    p.swingPhase = 0;
+    p.swingT = 0;
+    p.swingPct = 0;
+    const radius = COMPRESS.powerRadius;
+    const half = COMPRESS.powerScale;
+    this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
+    this.emit(EV.COMPRESS, p.slot, p.x, p.y, 0);
+
+    for (let i = 0; i < this.players.length; i++) {
+      const t = this.players[i];
+      if (t === p || !t.active || !t.alive) continue;
+      if (t.iframes > 0 || phased(t) || t.travelT > 0) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      if (dx * dx + dy * dy > radius * radius) continue;
+      if (this.lineBlocked(p.x, p.y, t.x, t.y)) continue;
+      if (t.hp <= 1) {
+        const d = Math.hypot(dx, dy) || 1;
+        this.damagePlayer(t, t.hp + 1, p.slot, dx / d, dy / d, 0);
+        continue;
+      }
+      t.hp *= half;
+      t.maxHp = Math.max(1, Math.round(t.maxHp * half));
+      t.hp = Math.min(t.hp, t.maxHp);
+      t.shrink = Math.max(COMPRESS.shrinkFloor, t.shrink * half);
+      t.hitFlash = PLAYER.hitFlash;
+      this.emit(EV.COMPRESS, p.slot, t.x, t.y, t.shrink);
+    }
+
+    // The sparring drone is a training body, not a gauntlet one.
+    if (this.drone.active) {
+      const dx = this.drone.x - p.x;
+      const dy = this.drone.y - p.y;
+      if (dx * dx + dy * dy <= radius * radius && !this.lineBlocked(p.x, p.y, this.drone.x, this.drone.y)) {
+        this.drone.hp *= half;
+        this.drone.maxHp = Math.max(1, this.drone.maxHp * half);
+        this.drone.hp = Math.min(this.drone.hp, this.drone.maxHp);
+        this.drone.radius = Math.max(6, this.drone.radius * half);
+        this.emit(EV.COMPRESS, p.slot, this.drone.x, this.drone.y, this.drone.radius);
+      }
+    }
+
+    if (this.mode !== 'gauntlet') return;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      if (s.kind >= 4 && this.campaignPhase === 'calibration' && s.shapeState === 0) continue;
+      const dx = s.x - p.x;
+      const dy = s.y - p.y;
+      if (dx * dx + dy * dy > radius * radius) continue;
+      if (this.lineBlocked(p.x, p.y, s.x, s.y)) continue;
+      if (s.hp <= 1) {
+        const d = Math.hypot(dx, dy) || 1;
+        this.damageSentry(s, s.hp + 1, p.slot, dx / d, dy / d);
+        continue;
+      }
+      s.hp *= half;
+      s.maxHp = Math.max(1, s.maxHp * half);
+      s.hp = Math.min(s.hp, s.maxHp);
+      s.radius = Math.max(6, s.radius * half);
+      this.emit(EV.COMPRESS, p.slot, s.x, s.y, s.radius);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const dx = v.x - p.x;
+      const dy = v.y - p.y;
+      if (dx * dx + dy * dy > radius * radius) continue;
+      if (this.lineBlocked(p.x, p.y, v.x, v.y)) continue;
+      if (v.hp <= 1) {
+        const d = Math.hypot(dx, dy) || 1;
+        this.damageVirus(v, v.hp + 1, p.slot, dx / d, dy / d);
+        continue;
+      }
+      v.hp *= half;
+      v.maxHp = Math.max(1, v.maxHp * half);
+      v.hp = Math.min(v.hp, v.maxHp);
+      v.radius = Math.max(5, v.radius * half);
+      this.emit(EV.COMPRESS, p.slot, v.x, v.y, v.radius);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const dx = w.x - p.x;
+      const dy = w.y - p.y;
+      if (dx * dx + dy * dy > radius * radius) continue;
+      if (this.lineBlocked(p.x, p.y, w.x, w.y)) continue;
+      if (w.hp <= 1) {
+        const d = Math.hypot(dx, dy) || 1;
+        this.damageWorm(w, w.hp + 1, p.slot, dx / d, dy / d);
+        continue;
+      }
+      w.hp *= half;
+      w.maxHp = Math.max(1, w.maxHp * half);
+      w.hp = Math.min(w.hp, w.maxHp);
+      w.shrink = Math.max(COMPRESS.shrinkFloor, w.shrink * half);
+      this.emit(EV.COMPRESS, p.slot, w.x, w.y, w.shrink);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      if (dx * dx + dy * dy > radius * radius) continue;
+      if (this.lineBlocked(p.x, p.y, e.x, e.y)) continue;
+      if (e.hp <= 1) {
+        const d = Math.hypot(dx, dy) || 1;
+        this.damageError(e, e.hp + 1, p.slot, dx / d, dy / d);
+        continue;
+      }
+      e.hp *= half;
+      e.maxHp = Math.max(1, e.maxHp * half);
+      e.hp = Math.min(e.hp, e.maxHp);
+      this.emit(EV.COMPRESS, p.slot, e.x, e.y, 0);
+    }
   }
 
   /**
@@ -6256,7 +6494,9 @@ export class World {
       if (proj.type === 1 && proj.owner === p.slot && proj.grace > 0) continue;
       const dx = proj.x - p.x;
       const dy = proj.y - p.y;
-      const rr = proj.radius + PLAYER.radius;
+      // A compressed body is genuinely smaller: the hitbox follows the drawn hull, so
+      // the shrink is a real benefit and not only a visual.
+      const rr = proj.radius + PLAYER.radius * p.shrink;
       if (dx * dx + dy * dy > rr * rr) continue;
 
       if (proj.type === 1) {
@@ -6294,6 +6534,14 @@ export class World {
         // leaves a short daze that slows the victim's feet and wobbles their read.
         this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, GHOST.shotKnockback, hitKind, hitId);
         p.dazeT = Math.max(p.dazeT, GHOST.shotDaze);
+        proj.active = false;
+        return true;
+      }
+      if (proj.type === 13) {
+        // Compress's orb: a light hit that leaves the victim permanently smaller and
+        // shortens their health cap. It still stops on the body like a bolt.
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, COMPRESS.orbKnockback, hitKind, hitId);
+        this.compressPlayerHit(p, proj.owner);
         proj.active = false;
         return true;
       }
@@ -6335,6 +6583,12 @@ export class World {
           return true;
         } else {
           this.damageDrone(proj.damage, proj.owner);
+          if (proj.type === 13 && this.drone.active) {
+            this.drone.maxHp = this.compressedCap(this.drone.maxHp);
+            this.drone.hp = Math.min(this.drone.hp, this.drone.maxHp);
+            this.drone.radius = Math.max(6, this.drone.radius * (1 - COMPRESS.shrinkStep));
+            this.emit(EV.COMPRESS, proj.owner, this.drone.x, this.drone.y, this.drone.radius);
+          }
           proj.active = false;
           return true;
         }
@@ -6491,6 +6745,10 @@ export class World {
       p.atomBalls = 0;
       p.atomFlashT = 0;
       p.cloakT = 0;
+      p.shrinkT = 0;
+      p.laserT = 0;
+      p.ocChargeT = 0;
+      p.ocFadeT = 0;
       p.scareT = 0;
       p.swingKind = 0;
       p.stringLeft = 0;
@@ -6872,7 +7130,7 @@ export class World {
       if (!p.active || !p.alive || p.slot === proj.owner || p.iframes > 0 || phased(p)) continue;
       const dx = proj.x - p.x;
       const dy = proj.y - p.y;
-      const rr = proj.radius + PLAYER.radius;
+      const rr = proj.radius + PLAYER.radius * p.shrink;
       if (dx * dx + dy * dy <= rr * rr) return true;
     }
     if (this.mode === 'training' && this.drone.active) {
@@ -9536,6 +9794,7 @@ export class World {
       } else {
         const speed = Math.hypot(proj.vx, proj.vy) || 1;
         this.damageError(e, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed);
+        if (proj.type === 13) this.compressErrorHit(e, proj.owner);
         proj.active = false;
       }
       return true;
@@ -9554,6 +9813,7 @@ export class World {
       } else {
         const speed = Math.hypot(proj.vx, proj.vy) || 1;
         this.damageSentry(s, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed);
+        if (proj.type === 13) this.compressSentryHit(s, proj.owner);
         proj.active = false;
       }
       return true;
@@ -9573,6 +9833,7 @@ export class World {
       } else {
         const speed = Math.hypot(proj.vx, proj.vy) || 1;
         this.damageVirus(v, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed);
+        if (proj.type === 13) this.compressVirusHit(v, proj.owner);
         proj.active = false;
       }
       return true;
@@ -9589,6 +9850,7 @@ export class World {
         } else {
           const speed = Math.hypot(proj.vx, proj.vy) || 1;
           this.damageWorm(w, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed);
+          if (proj.type === 13) this.compressWormHit(w, proj.owner);
           proj.active = false;
         }
         return true;

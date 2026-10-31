@@ -2,7 +2,38 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.63 campaign calibration prologue and kiosk wordmark)
+Last updated: 2026-10-30 (v0.1.64 Compress.exe)
+
+---
+
+## v0.1.64 — COMPRESS.EXE: pressure orbs, size dash, pressure burst (2026-10-30)
+
+### Built
+- [x] Roster entry 9 (pressure): archive orchid `#c46bff`, six health segments drawn as six upright capital
+      Zs on an orbiting ring, a vector press (screw, jaw, squashed block, base plate) at the core, and
+      text glyph `⊟`. Letters stay upright while the ring turns; rotating them with the ring read as Ns
+- [x] Ranged: type 13 pressure orb, 560 u/s, 1.05 s, radius 9, 1 damage, 340 shove, no tail. A hit drops
+      the body scale 15% (floor 0.35) and the health cap by the larger of 10% or 1 point
+- [x] Cap loss is permanent until respawn for players; sentries and viruses shrink their `radius` directly,
+      so draw and hitbox agree; worms carry `shrink` for the drawn chain only; error blocks only lose health
+- [x] Skill: `shrinkT` 3.5 s, 1.85x walk speed and an extra 0.62 body fold with a squeeze ring. No iframes,
+      no hitbox change, attacks and dashes still work. Cooldown is `BUG.cooldown[12]` = 7 s
+- [x] Power: hold 0.6 s for a 230-radius pressure burst that halves size and health caps in the ring and
+      crushes anything at 1 health. Cover cuts it, rides and dormant calibration shapes are spared, the
+      caster is skipped, and survivors take no direct damage. 8 s cooldown
+- [x] Bots hold the burst inside `powerRadius - 30` and tap the sprint to close or leave a 120–420 gap
+- [x] Renderer: pressure-orb ring with a down-caret, contracting heavy charge ring with eight inward ticks
+      and a faint radius circle, sprint chevrons, dock marks, and a purple squeeze/burst event
+- [x] Respawn (`clearPlayerForSpawn`) restores the program segment pool and `shrink = 1`; death clears the
+      sprint timer. No snapshot fields; online still runs Probe
+- [x] Docs: AGENTS D29 and the D4/D10 roster notes, README controls and QA checks, this entry
+
+### Next
+- [ ] Play a full VS BOTS set as Compress and decide whether two orb hits (3 cap → 1) is the right ceiling
+      before a target dies from the next chip, or whether the cap cut should be smaller for players
+- [ ] Check the six-Z hull at one segment and at the 0.35 shrink floor on a wide arena; confirm the ring
+      still reads as a silhouette and not a cluster of loose letters
+- [ ] Watch a `?demo=true` rotation that includes Compress and confirm the burst reads at kiosk distance
 
 ---
 
@@ -2048,3 +2079,7 @@ arrive.
   or local match exists yet; the only local multi-body paths today are bots and the gauntlet thrall.
 - Story mode lists three local save slots, but nothing writes or reads a run: the first playable sector
   and the new-game/resume wiring do not exist. The slot format is already versioned in `saves.ts`.
+- Compress is local-only like every program kit: a guest does not see a shrunk body and online still runs
+  Probe. A compressed player's cover and arena-bound collision still use `PLAYER.radius` even though the
+  drawn hull and projectile/bomb hitboxes shrink. A shrunk worm's contact and bite reach stay at the
+  `WORM` constants. The burst's player cap uses rounding, so 3 segments become 2, not 1.5.

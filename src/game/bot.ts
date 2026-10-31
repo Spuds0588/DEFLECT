@@ -1,4 +1,4 @@
-import { ATOMIZE, BOLT, BUG, FISHER, GHOST, KABOOM, PLAYER, TOXIC, WEDGE, type Rect } from './config';
+import { ATOMIZE, BOLT, BUG, COMPRESS, FISHER, GHOST, KABOOM, PLAYER, TOXIC, WEDGE, type Rect } from './config';
 import { PROGRAM_ID } from './programs';
 import { POWERUP_KIND } from './powerups';
 import { arenaSolids, type ArenaDef } from './arenas';
@@ -381,6 +381,31 @@ export class BotBrain {
       return;
     }
 
+    // Compress's burst is centred on him, so hold the heavy when the target is already
+    // inside the ring. Firing it at arm's length is the point; firing at a distant
+    // target folds empty floor.
+    if (
+      me.program === PROGRAM_ID.COMPRESS &&
+      this.heavyCd <= 0 &&
+      me.laserCd <= 0 &&
+      me.energy >= COMPRESS.powerCost &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      !me.laserChargeHeld &&
+      !blocked &&
+      dist > 30 &&
+      dist < COMPRESS.powerRadius - 30
+    ) {
+      out.mx = Math.cos(aim) * 0.5;
+      out.my = Math.sin(aim) * 0.5;
+      out.pressed |= ACTION.CANDLE;
+      out.held |= ACTION.CANDLE;
+      this.heavyCount++;
+      this.heavyHold = COMPRESS.powerChargeTime + 0.2;
+      this.heavyCd = this.rng.range(10, 15);
+      return;
+    }
+
     // Heavy attack: commit to a held power button now and then. The program owns what
     // that does (beam, plow or web), so the bot only has to hold, aim and release.
     if (this.heavyHold > 0) {
@@ -552,6 +577,29 @@ export class BotBrain {
       out.my = Math.sin(aim) * 0.9;
       out.pressed |= ACTION.CANDLE;
       this.candleCd = this.rng.range(6, 8);
+      return;
+    }
+
+    // Compress folds small to close a gap or to leave one. Tap it while the target is
+    // still out of the spray range; the burst branch above handles the close fight.
+    if (
+      me.program === PROGRAM_ID.COMPRESS &&
+      this.candleCd <= 0 &&
+      me.bugCd <= 0 &&
+      me.energy >= BUG.cost &&
+      me.shrinkT <= 0 &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.laserT <= 0 &&
+      !me.laserChargeHeld &&
+      !blocked &&
+      dist > 120 &&
+      dist < 420
+    ) {
+      out.mx = Math.cos(aim) * 0.9;
+      out.my = Math.sin(aim) * 0.9;
+      out.pressed |= ACTION.CANDLE;
+      this.candleCd = this.rng.range(7, 9);
       return;
     }
 

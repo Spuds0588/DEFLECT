@@ -9,6 +9,7 @@ export const P_COLOR_FIREWALL = -6;
 export const P_COLOR_DUST = -7;
 export const P_COLOR_TOXIN = -8;
 export const P_COLOR_BUFFER = -9;
+export const P_COLOR_COMPRESS = -10;
 
 export interface Particle {
   active: boolean;
@@ -39,6 +40,7 @@ export function particleColor(color: number): string {
   if (color === P_COLOR_DUST) return '#8d979e';
   if (color === P_COLOR_TOXIN) return PROGRAM_COLORS.toxic;
   if (color === P_COLOR_BUFFER) return PROGRAM_COLORS.buffer;
+  if (color === P_COLOR_COMPRESS) return PROGRAM_COLORS.compress;
   return '#9fd7e8';
 }
 

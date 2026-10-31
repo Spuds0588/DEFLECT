@@ -198,6 +198,27 @@
     "slowScale": 0.3,
     "slowCooldown": 9
   },
+  "COMPRESS": {
+    "orbCost": 9,
+    "orbDamage": 1,
+    "orbSpeed": 560,
+    "orbTtl": 1.05,
+    "orbRadius": 9,
+    "orbKnockback": 340,
+    "attackCooldown": 0.42,
+    "shrinkStep": 0.15,
+    "shrinkFloor": 0.35,
+    "hpCut": 0.1,
+    "hpCutFloor": 1,
+    "skillTime": 3.5,
+    "skillScale": 0.62,
+    "skillSpeed": 1.85,
+    "powerCost": 55,
+    "powerChargeTime": 0.6,
+    "powerCooldown": 8,
+    "powerRadius": 230,
+    "powerScale": 0.5
+  },
   "GHOST": {
     "shotCost": 9,
     "shotDamage": 2,

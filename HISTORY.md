@@ -3008,3 +3008,41 @@ lines are updated.
 
 **Next:** play with the real pickup in the gauntlet and tune `overchargeSpinup`/`overchargeFade` if the
 wind-up eats quick taps or the afterglow lingers too long.
+
+## 2026-10-30 — COMPRESS.EXE: pressure orbs, size dash, pressure burst (v0.1.64)
+
+**Goal:** add the tenth program, Compress.exe: a vice mark, six Z health segments, a shrinking orb, a
+fast small skill and a room-wide pressure burst.
+
+**Changed:**
+- Roster entry 9 (`bugKind` 12), archive orchid `PROGRAM_COLORS.compress` `#c46bff`. The hull is six
+  upright capital Zs on an orbiting ring at `0.8r`; the core is `drawCompressMark`, a threaded screw
+  pressing a jaw onto a block on a base plate. `⊟` is the text stand-in only. Letters stay upright while
+  the ring turns: the first pass rotated each Z with its angle and four of six read as Ns.
+- Ranged type 13 pressure orb: 560 u/s, 1.05 s, radius 9, 1 damage, 340 shove, no trail. A hit multiplies
+  the target's body scale by 0.85 (floor 0.35) and cuts its health cap by `max(cap * 0.10, 1)`, clamped at
+  1. The cap loss is permanent until the body respawns; `clearPlayerForSpawn` restores the program pool and
+  `shrink = 1`. Sentries and viruses scale their `radius` so the hitbox follows; worms carry `shrink` for
+  the drawn head/chain only; error blocks only lose health. Player shrink also changes the projectile and
+  bomb hit radius, but cover/bounds still use `PLAYER.radius`.
+- Skill: `shrinkT` 3.5 s at `skillSpeed` 1.85 walking speed, with an extra `skillScale` 0.62 visual fold
+  and a squeeze ring. No iframes; attacks, dashes and guard still work. Cooldown is the new
+  `BUG.cooldown[12]` = 7 s.
+- Power: hold 0.6 s for a 230-radius pressure burst. Each body inside loses half its scale and health cap;
+  a body at 1 health is crushed through its normal damage path. Cover cuts the wave, pad/lift riders and
+  dormant calibration shapes are skipped, and the caster is exempt. Survivors take no direct damage.
+  `COMPRESS.powerCooldown` is 8 s. Bots hold it when the target is inside `powerRadius - 30` and tap the
+  sprint to close or leave a 120–420 unit gap.
+- Renderer: ring-and-caret orb, contracting heavy charge ring with eight inward ticks plus a faint radius
+  circle, sprint chevrons, skill/heavy dock marks, and `EV.COMPRESS` (purple squeeze pop / wide burst ring;
+  `P_COLOR_COMPRESS` is the new palette entry). Respawn and death clear the sprint and restore the pool.
+
+**Verification:** `npx tsc --noEmit` and `npm run build` clean. Headless checks: orb spawns as type 13 at
+560 u/s; first hit takes 3 hp to 2, cap to 2, shrink to 0.85; second hit caps at 1/1 and shrink to 0.7225;
+the sprint reports `shrinkT` 3.5 and covers 210 units where a walk covers 114; the burst halves a bot's
+scale/cap and de-rezzes a 1-hp body; a pulse sentry goes from radius 18 / hp 2 to radius 9 / hp 1. Static
+hull harness shows the six Zs upright at full and three-segment health with the press mark clear of the
+hull; the attract rotation already logs a 3P Compress squad with no console errors.
+
+**Next:** play a full VS BOTS set as Compress and decide whether two orbs (3 cap → 1) is too much of a
+cliff for a player target; check the Z ring at the 0.35 shrink floor and the burst at kiosk distance.

@@ -71,6 +71,7 @@ export const KABOOM = programsJson.KABOOM;
 export const BUFFER = programsJson.BUFFER;
 export const ATOMIZE = programsJson.ATOMIZE;
 export const GHOST = programsJson.GHOST;
+export const COMPRESS = programsJson.COMPRESS;
 
 // --- World, camera and session pacing -------------------------------------
 
