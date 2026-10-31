@@ -81,6 +81,10 @@ export const THREAT_COLORS = {
   sentry: '#ff7a3d',
   homing: '#ff4f6d',
   flock: '#ffb03a',
+  // Campaign calibration primaries. The eye is white when it opens.
+  shapeCircle: '#3f8cff',
+  shapeTriangle: '#ff4d57',
+  shapeRect: '#ffd23d',
 } as const;
 
 export const CALLSIGNS = [

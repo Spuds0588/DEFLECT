@@ -2894,3 +2894,41 @@ are guard catches (`EV.DEFLECT`), not merely shield idle time.
 
 **Next:** watch a full `?demo=true` loop and confirm the shield plus deflect spark reads at the demo
 camera zoom; then check the higher guard rate in VS BOTS so HARD bots do not turn into turtles.
+
+## 2026-10-30 — Campaign calibration and kiosk wordmark (v0.1.63)
+
+**Goal:** open `BUILD ROOT` with the authored calibration exercise (dormant shapes that wake, spin and
+attack), and make `?demo=true` a clean display loop showing only the game wordmark.
+
+**Changes:**
+- `World` now scripts six calibration subjects before the drill: blue circles, red triangles and yellow
+  rectangles, two of each. They are sentry kinds 4-6, so the existing player weapons, projectiles and
+  damage path already hit them. Kind 4 dashes and bounces, kind 5 floats around its anchor while a
+  sixteen-shard cloud churns (kind 7), and kind 6 bobs in place while cloning an axis-aligned row left
+  and right (kind 8), then the whole row dashes together. A parent takes its children with it.
+- Dormant subjects are hit-immune and wake the class instead. They wake on the 6 s timer, on proximity,
+  or on a hit. Awake subjects carry a small red eye and run their own attack timers until the drill.
+  `CALIBRATION` in `tuning/campaign.json` owns layout, wake, damage and cooldown numbers.
+- Calibration kills do not count toward the assault clear, drop pickups or score. Arena emitters stay
+  parked for the prologue so a stray beam cannot interrupt the lesson.
+- Renderer draws the three primaries, the circle/triangle spin, the wake ring and the red eye. This pack
+  deliberately has no lane, arrow or link lines: the switch from passive to attacking is the read.
+  Minimap marks use the shape silhouette. Campaign banners add `CALIBRATION` and `SUBJECTS AWAKE`.
+- Kiosk runs cycle one, two and three local BotBrain-driven pilots. Three-player runs filter to compact
+  solid arenas so the whole arena fits one pane and the split camera never fires. Squadmate deaths
+  respawn on the training timer and pay no kill credit.
+- `?demo=true` card is now only the `DEFLECT_` ASCII wordmark: no `GAUNTLET` or mode kicker, 60 s fade
+  cycle, pointer-events off. The README top has a demo link and clickable capture. Vite's watcher ignores
+  `screenshots/`, which was causing full-page reloads whenever a capture was saved during a kiosk run.
+
+**Verification:** `npx tsc --noEmit` and `npm run build` clean. Headless `World('gauntlet', campaign)`
+run: six dormant subjects, then wake and attack after the timer; the triangle cloud peaked at 27-28 live
+shards, the yellow row grew left/right and charged together, and the local body took circle/shard/echo
+damage; killing all six started the drill in the same tick and left `gauntletKills` at 0. Browser runs at
+1280x720 confirmed the red eyes, the floating triangle parent, the axis-aligned yellow row and the absence
+of lane/arrow/link lines; the emitter was absent during calibration. `?demo=true` showed the `DEFLECT_`
+wordmark over a live arena with no mode text. Console logs confirmed the cycle 1P → 2P → 3P, with the 3P
+runs selecting GRID ZERO / SWITCHBACK; a manual three-pilot seed stayed in one camera pane.
+
+**Next:** play the prologue with a pad and tune the wake radius/layout and attack cooldowns; watch a
+deployed kiosk loop through death and restart to confirm no mode text flashes.

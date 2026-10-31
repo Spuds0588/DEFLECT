@@ -6,7 +6,7 @@ export type GameMode = 'match' | 'training' | 'gauntlet';
  * Campaign script inside a gauntlet-mode world. `cleared` and `failed` set
  * `gauntletOver`, which freezes the arena under the DOM result overlay.
  */
-export type CampaignPhase = 'none' | 'drill' | 'breach' | 'assault' | 'cleared' | 'failed';
+export type CampaignPhase = 'none' | 'calibration' | 'drill' | 'breach' | 'assault' | 'cleared' | 'failed';
 
 export interface InputFrame {
   /** Movement / facing vector, magnitude <= 1. */
@@ -601,8 +601,12 @@ export interface Virus {
 
 export interface Sentry {
   active: boolean;
-  /** 0 pulse square, 1 nested triplex, 2 trapezoid homing pod, 3 flock dart. */
-  kind: 0 | 1 | 2 | 3;
+  /**
+   * 0 pulse square, 1 nested triplex, 2 trapezoid homing pod, 3 flock dart,
+   * 4 calibration circle, 5 calibration triangle, 6 calibration rectangle,
+   * 7 triangle shard, 8 rectangle echo.
+   */
+  kind: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
   x: number;
   y: number;
   prevX: number;
@@ -637,6 +641,23 @@ export interface Sentry {
   ramHit: boolean;
   ramDirX: number;
   ramDirY: number;
+  /**
+   * Campaign calibration shapes. 0 dormant, 1 waking, 2 active, 3 windup,
+   * 4 committed attack. Ordinary sentries leave this at 2.
+   */
+  shapeState: number;
+  /** Timer inside the current shape state: wake progress, windup or dash time. */
+  shapeT: number;
+  /** Seconds until the next shape attack. */
+  shapeAtkCd: number;
+  /** Parent pool index for a shard/echo, -1 for a parent shape. */
+  shapeParent: number;
+  /** Remaining lifetime of an ephemeral shard/echo. */
+  shapeLife: number;
+  /** Bounces left on a circle dash; unused by the other shapes. */
+  shapeBounces: number;
+  /** Attack wave latch for a parent shape. */
+  shapeCount: number;
 }
 
 export interface LaserEmitter {

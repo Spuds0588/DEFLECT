@@ -3218,61 +3218,48 @@ body.demo {
 }
 
 .demo-title.live {
-  animation: demo-title-cycle 30s ease-in-out infinite;
+  animation: demo-title-cycle 60s ease-in-out infinite;
 }
 
-.demo-title-kicker {
-  margin: 0 0 clamp(10px, 1.6vh, 18px);
-  color: rgba(155, 248, 255, 0.62);
-  font-family: var(--ui);
-  font-size: clamp(9px, 0.85vw, 16px);
-  letter-spacing: 0.34em;
-  text-indent: 0.34em;
+.demo-title-lockup {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
 }
 
-.demo-title-word {
+.demo-title .ascii-logo {
   margin: 0;
-  color: #d9fdff;
-  font-family: var(--ui);
-  font-size: clamp(44px, 10.5vw, 152px);
-  font-weight: 600;
-  line-height: 0.92;
-  letter-spacing: 0.14em;
-  text-indent: 0.14em;
+  font-size: clamp(5px, 2.4vw, 18px);
+  line-height: 1.06;
+  letter-spacing: 0;
   text-shadow:
-    0 0 42px rgba(46, 230, 255, 0.34),
-    0 0 2px rgba(255, 255, 255, 0.7);
+    0 0 12px rgba(46, 230, 255, 0.65),
+    0 0 42px rgba(46, 230, 255, 0.28);
 }
 
-.demo-title-rule {
-  display: block;
-  width: clamp(180px, 26vw, 420px);
-  height: 1px;
-  margin: clamp(16px, 2.2vh, 26px) auto clamp(12px, 1.6vh, 20px);
-  background: linear-gradient(90deg, transparent, rgba(46, 230, 255, 0.72), transparent);
-  box-shadow: 0 0 12px rgba(46, 230, 255, 0.28);
+.demo-title .caret {
+  margin-bottom: 0.08em;
+  color: #b9fbff;
+  font-family: var(--mono);
+  font-size: clamp(24px, 3vw, 44px);
+  line-height: 1;
+  text-shadow: 0 0 16px rgba(46, 230, 255, 0.7);
+  animation: blink 1.05s steps(2, start) infinite;
 }
 
-.demo-title-sub {
-  margin: 0;
-  color: rgba(165, 242, 255, 0.74);
-  font-family: var(--ui);
-  font-size: clamp(11px, 1.15vw, 19px);
-  letter-spacing: 0.42em;
-  text-indent: 0.42em;
-}
-
+/* The wordmark shows for a beat at the top of each minute, fades out, and
+   stays clear of the gameplay until the next cycle. */
 @keyframes demo-title-cycle {
   0% {
     opacity: 0;
     transform: translateY(7px);
   }
-  5%,
-  40% {
+  3%,
+  15% {
     opacity: 1;
     transform: translateY(0);
   }
-  46%,
+  21%,
   100% {
     opacity: 0;
     transform: translateY(-7px);

@@ -454,6 +454,13 @@ export function createSentry(): Sentry {
     ramHit: false,
     ramDirX: 1,
     ramDirY: 0,
+    shapeState: 2,
+    shapeT: 0,
+    shapeAtkCd: 0,
+    shapeParent: -1,
+    shapeLife: 0,
+    shapeBounces: 0,
+    shapeCount: 0,
   };
 }
 

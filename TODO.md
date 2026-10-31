@@ -2,7 +2,39 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-30 (v0.1.62 bot guard against sentry fire)
+Last updated: 2026-10-30 (v0.1.63 campaign calibration prologue and kiosk wordmark)
+
+---
+
+## v0.1.63 — Campaign calibration prologue and kiosk wordmark (2026-10-30)
+
+### Built
+- [x] `BUILD ROOT` opens on six dormant calibration subjects: two blue circles, two red triangles and two
+      yellow rectangles. They wake together on proximity, on the 6 s timer, or on the first hit; while
+      dormant they are invulnerable so the eye-open beat cannot be skipped
+- [x] Blue circle: committed dash with a 0.32 s tell, three bounces off walls and cover, one damage per
+      dash. Red triangle: floats in a slow watch loop while a churning cloud of sixteen tiny triangles
+      seeks the player. Yellow rectangle: no spin, light vertical float, clones directly left and right
+      into an axis-aligned row, then the whole row dashes together at high speed. All use the sentry pool
+      and the normal player weapon hits
+- [x] Waking shapes carry a small red eye; the pack deliberately shows no lane, arrow or link lines, so
+      the switch into an attack is the read. Clearing all six starts the sparring drill
+- [x] Calibration kills pay no score, pickups or assault progress; parents take their children with them;
+      arena emitters and the normal gauntlet spawner stay parked until the drill
+- [x] `?demo=true` now shows only the `DEFLECT_` wordmark in the title ASCII face, with no mode label or
+      subhead, fading on a 60 s cycle. README has a top-of-page demo link and clickable capture
+- [x] Kiosk runs rotate one, two and three local pilots (`ATTRACT.squadSizes`). Three-player runs filter
+      to compact solid arenas so the whole group stays on one shared pane; squad deaths respawn and do
+      not count as kills
+- [x] Vite ignores `screenshots/` while watching, so writing a capture into the repo no longer reloads a
+      running kiosk session
+- [x] README, AGENTS D17/D23 and the build stamp updated; v0.1.63
+
+### Next
+- [ ] Play the calibration prologue with a real controller and tune wake radius, layout spacing and the
+      circle/triangle/rect cooldowns if the lesson is too crowded or too slow
+- [ ] Watch a full kiosk loop through a death and restart on the deployed build and confirm no mode text
+      flashes between runs
 
 ---
 

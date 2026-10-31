@@ -166,6 +166,8 @@ let autoplayRestartAt = 0;
 let attract = false;
 let attractStartedAt = 0;
 let attractRestartAt = 0;
+/** Kiosk rotation: 1, 2, 3 local pilots, then back to 1. */
+let attractSquadIndex = 0;
 let lastUserInputAt = performance.now();
 /** `?demo=true`: the attract pilot runs forever and ignores every wake input. */
 let demo = false;
@@ -296,7 +298,7 @@ function boot(): void {
   const uiParam = params.get('ui');
   if (uiParam === '0' || uiParam === 'off' || uiParam === 'false') applyUi(false, false);
   // `?demo=true` is the kiosk/showfloor boot: the attract pilot, permanently,
-  // with every wake input ignored and a centered GAUNTLET title card. It owns
+  // with every wake input ignored and the centered DEFLECT_ wordmark. It owns
   // the page and takes precedence over the other boot hooks.
   const demoParam = params.get('demo');
   const demoMode = demoParam === '1' || demoParam === 'true';
@@ -346,7 +348,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.62 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.63 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -2057,8 +2059,8 @@ function noteIdleMovement(): void {
 /**
  * `?demo=true`: a permanent, non-interactive attract loop for a display or a
  * capture. It reuses the attract pilot, refill and restart path; the only
- * differences are that no wake input ends it and a GAUNTLET title card fades on
- * a 30 s cycle. This is a boot mode, not a pause or a menu state.
+ * differences are that no wake input ends it and the DEFLECT_ wordmark fades on
+ * a 60 s cycle. This is a boot mode, not a pause or a menu state.
  */
 function startDemo(): void {
   if (busy) return;
@@ -2094,25 +2096,56 @@ function startAttract(): void {
   mode = 'gauntlet';
   localSlot = 0;
   stress = false;
-  // The demo is unattended: the gauntlet step path reads `autoplay` to let slot 0 be
-  // driven by its BotBrain. The bots-mode rematch hook only fires in `mode === 'bots'`.
+  // The demo is unattended: the gauntlet step path reads `autoplay` to let every local
+  // slot be driven by its BotBrain. The bots-mode rematch hook only fires in `mode === 'bots'`.
   autoplay = true;
-  const program = PROGRAMS[Math.floor(Math.random() * PROGRAMS.length)].id;
-  const arena = ARENAS[Math.floor(Math.random() * ARENAS.length)];
-  world = new World('gauntlet', ['DEMO'], 0, arena, false, program);
+  // Cycle the squad size so a kiosk loop shows a solo run, a duo and a trio. Three is
+  // the crowded showcase, so it stays on compact solid arenas where the group fits one
+  // pane without the camera splitting.
+  const sizes = ATTRACT.squadSizes.length > 0 ? ATTRACT.squadSizes : [1];
+  const squad = Math.max(1, Math.min(3, sizes[attractSquadIndex % sizes.length]));
+  attractSquadIndex++;
+  const arenaPool =
+    squad >= 3
+      ? ARENAS.filter(
+          (a) => a.walls !== 'open' && a.bounds.right - a.bounds.left <= ATTRACT.wideSquadArenaMax,
+        )
+      : ARENAS;
+  const arena = arenaPool[Math.floor(Math.random() * arenaPool.length)];
+  const programPool = [...PROGRAMS];
+  for (let i = programPool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [programPool[i], programPool[j]] = [programPool[j], programPool[i]];
+  }
+  const programs = programPool.slice(0, squad).map((p) => p.id);
+  const names = ['DEMO', 'LINK', 'RELAY'].slice(0, squad);
+  world = new World('gauntlet', names, 0, arena, false, programs[0], 0, programs);
+  world.seedAttractSquad(squad);
   world.seedAttractRun(ATTRACT.wave);
-  trainingInputs = [localFrame];
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
+  trainingInputs = botInputs;
   botBrains = new Array(MAX_PLAYERS).fill(null);
-  botBrains[0] = new BotBrain(0, 'digital', 0, 0x51f15e + arena.id * 967 + 11);
+  for (let i = 0; i < squad; i++) {
+    botBrains[i] = new BotBrain(i, 'digital', i, 0x51f15e + arena.id * 967 + i * 131);
+  }
+  const localSlots: number[] = [];
+  for (let i = 0; i < squad; i++) localSlots.push(i);
+  renderer.setLocalSlots(localSlots);
   resetCounters();
   fx.reset();
   renderer.showUi = false;
   setScreen('game');
   audio.unlock();
   audio.startMusic();
-  console.log('[DEFLECT-ATTRACT]', programDef(program).name, arena.name, 'wave', ATTRACT.wave);
+  console.log(
+    '[DEFLECT-ATTRACT]',
+    `${squad}P`,
+    programs.map((p) => programDef(p).name).join(' / '),
+    arena.name,
+    'wave',
+    ATTRACT.wave,
+  );
 }
 
 function exitAttract(): void {
@@ -2120,6 +2153,7 @@ function exitAttract(): void {
   attract = false;
   attractRestartAt = 0;
   teardownSession();
+  renderer.setLocalSlots([0]);
   renderer.showUi = uiEnabled;
   showMenuStage('hub');
   setScreen('title');

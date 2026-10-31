@@ -22,5 +22,58 @@
     "scoreParTime": 95,
     "scoreTimeRate": 6,
     "scorePerDamage": 80
+  },
+  "CALIBRATION": {
+    "bannerTime": 3.8,
+    "wakeBannerTime": 2.6,
+    "wakeDelay": 6,
+    "wakeRadius": 175,
+    "wakeTime": 1.05,
+    "layoutRadius": 300,
+    "layoutLift": 58,
+    "layoutSpread": 0.36,
+    "spinSpeed": 1.55,
+    "circle": {
+      "radius": 24,
+      "hp": 3,
+      "windup": 0.32,
+      "dashSpeed": 540,
+      "dashTime": 0.85,
+      "bounces": 3,
+      "damage": 1,
+      "knockback": 520,
+      "cooldown": 2.4
+    },
+    "triangle": {
+      "radius": 26,
+      "hp": 3,
+      "spawnDelay": 0.8,
+      "shards": 16,
+      "shardRadius": 6,
+      "shardHp": 1,
+      "shardSpeed": 190,
+      "shardLife": 4.5,
+      "shardDamage": 1,
+      "shardKnockback": 260,
+      "floatSpeed": 34,
+      "floatRadius": 70
+    },
+    "rect": {
+      "radius": 27,
+      "hp": 5,
+      "echoes": 4,
+      "echoRadius": 15,
+      "echoHp": 1,
+      "echoOffset": 44,
+      "echoWindup": 0.55,
+      "echoSpeed": 760,
+      "echoLife": 0.55,
+      "echoDamage": 1,
+      "echoKnockback": 380,
+      "bobSpeed": 42,
+      "bobRate": 2.2,
+      "advanceSpeed": 38,
+      "cooldown": 3.6
+    }
   }
 }

@@ -133,7 +133,9 @@
     "idle": 24,
     "wave": 72,
     "refill": 5,
-    "restart": 4
+    "restart": 4,
+    "squadSizes": [1, 2, 3],
+    "wideSquadArenaMax": 2100
   },
   "HAPTICS": {
     "tap": {

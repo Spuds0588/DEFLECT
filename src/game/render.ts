@@ -1,4 +1,4 @@
-import { ATOMIZE, BOLT, BUFFER, BUG, CAMERA, CAMERA_ZOOM, CAMPAIGN, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { ArenaDef } from './arenas';
 import { Fx } from './fx';
 import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourglassMark, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
@@ -2485,7 +2485,18 @@ export class Renderer {
       if (!s.active) continue;
       const x = lerp(s.prevX, s.x, alpha);
       const y = lerp(s.prevY, s.y, alpha);
-      const color = s.kind === 2 ? THREAT_COLORS.homing : s.kind === 3 ? THREAT_COLORS.flock : THREAT_COLORS.sentry;
+      const color =
+        s.kind === 4
+          ? THREAT_COLORS.shapeCircle
+          : s.kind === 5 || s.kind === 7
+            ? THREAT_COLORS.shapeTriangle
+            : s.kind === 6 || s.kind === 8
+              ? THREAT_COLORS.shapeRect
+              : s.kind === 2
+                ? THREAT_COLORS.homing
+                : s.kind === 3
+                  ? THREAT_COLORS.flock
+                  : THREAT_COLORS.sentry;
       const angle = Math.atan2(s.vy, s.vx);
       const r = s.radius;
       const build = s.spawnT > 0 ? 1 - s.spawnT / SENTRY.spawnTime : 1;
@@ -2508,7 +2519,9 @@ export class Renderer {
       ctx.fillStyle = color;
       ctx.strokeStyle = color;
 
-      if (s.kind === 0) {
+      if (s.kind >= 4) {
+        this.drawCalibrationShape(s, t, sentries);
+      } else if (s.kind === 0) {
         ctx.rotate(t * 0.8 + s.phase);
         ctx.globalAlpha = 0.12;
         ctx.fillRect(-r - 5, -r - 5, (r + 5) * 2, (r + 5) * 2);
@@ -2616,6 +2629,170 @@ export class Renderer {
     }
     ctx.globalAlpha = 1;
     ctx.restore();
+  }
+
+  /**
+   * Campaign calibration subjects. Dormant shapes are plain geometry; the eye is the
+   * tell that the lesson is live. Parents spin to read as awake, children carry the
+   * attack (a seeker shard, or a telegraphed echo lane).
+   */
+  private drawCalibrationShape(s: Sentry, t: number, sentries: readonly Sentry[]): void {
+    const ctx = this.ctx;
+    const r = s.radius;
+    const awake = s.shapeState === 1 ? 1 - Math.max(0, s.shapeT) / CALIBRATION.wakeTime : s.shapeState === 0 ? 0 : 1;
+    const color =
+      s.kind === 4
+        ? THREAT_COLORS.shapeCircle
+        : s.kind === 5 || s.kind === 7
+          ? THREAT_COLORS.shapeTriangle
+          : THREAT_COLORS.shapeRect;
+
+    if (s.kind === 7) {
+      const a = Math.atan2(s.vy, s.vx);
+      ctx.save();
+      ctx.rotate(a);
+      // A filled mini triangle with no tail: it reads as a member of the cloud, not
+      // a homing missile. The jitter lives in the motion, not in a drawn trail.
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(r * 0.95, 0);
+      ctx.lineTo(-r * 0.7, -r * 0.8);
+      ctx.lineTo(-r * 0.35, 0);
+      ctx.lineTo(-r * 0.7, r * 0.8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    if (s.kind === 8) {
+      const leader = sentries[s.shapeParent];
+      const charging = leader?.active && leader.kind === 6 && leader.shapeState === 4;
+      const fx = leader?.active && leader.kind === 6 ? leader.ramDirX : 1;
+      const fy = leader?.active && leader.kind === 6 ? leader.ramDirY : 0;
+      ctx.save();
+      // No row line and no lane: the copies simply arrive, hover, then commit. Reading
+      // the switch is the player's job; this pack does not announce its attacks yet.
+      if (charging) {
+        ctx.save();
+        ctx.rotate(Math.atan2(fy, fx));
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = color;
+        ctx.fillRect(-r * 2.8, -r * 0.3, r * 2.4, r * 0.6);
+        ctx.restore();
+        ctx.globalAlpha = 0.9;
+      } else {
+        ctx.globalAlpha = 0.85;
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(-r * 0.8, -r * 0.55, r * 1.6, r * 1.1);
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(-r * 0.55, -r * 0.32, r * 1.1, r * 0.64);
+      // Every clone carries the same red eye: the row is a set of live bodies, not
+      // hollow afterimages.
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = '#ff2e2e';
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(1.1, r * 0.14), 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+    // Only the circle and triangle spin. The rectangle is a blocky row leader and
+    // stays axis-aligned; its life comes from the float and the clones.
+    const spin = awake <= 0 || s.kind === 6 ? 0 : (t * 1.9 + s.phase) * awake;
+    ctx.save();
+    ctx.rotate(spin);
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = s.shapeState === 0 ? 0.6 : 0.92;
+    ctx.lineWidth = 2;
+    if (s.kind === 4) {
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, TWO_PI);
+      ctx.stroke();
+      // A symmetric circle needs an inner mark to show that it is spinning.
+      ctx.globalAlpha = 0.32;
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([r * 0.5, r * 0.45]);
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.7, 0, TWO_PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (s.kind === 5) {
+      ctx.beginPath();
+      for (let k = 0; k < 3; k++) {
+        const a = -Math.PI / 2 + k * (TWO_PI / 3);
+        const px = Math.cos(a) * r;
+        const py = Math.sin(a) * r;
+        if (k === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.globalAlpha = 0.22;
+      ctx.fill();
+    } else {
+      ctx.strokeRect(-r * 0.88, -r * 0.62, r * 1.76, r * 1.24);
+      ctx.globalAlpha = 0.22;
+      ctx.fillRect(-r * 0.88, -r * 0.62, r * 1.76, r * 1.24);
+    }
+    ctx.restore();
+
+    if (s.shapeState === 0) {
+      // Dormant: a dashed ring and a dark center, no eye yet.
+      ctx.save();
+      ctx.globalAlpha = 0.34;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.1;
+      ctx.setLineDash([3, 5]);
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 7, 0, TWO_PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      return;
+    }
+
+    if (awake < 1) {
+      ctx.save();
+      ctx.globalAlpha = (1 - awake) * 0.55;
+      ctx.strokeStyle = '#e8ffff';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 6 + awake * 22, 0, TWO_PI);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // The eye opens upright even while the hull spins, so it stays a face, not a mark.
+    // It is deliberately small and red: the subject is still an enemy, not a friendly UI dot.
+    ctx.save();
+    // A dark socket keeps the red readable on the red triangle as well as on blue and yellow.
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#05080c';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.36, Math.max(0.7, r * 0.2 * awake), 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.globalAlpha = 0.55 + 0.42 * awake;
+    ctx.strokeStyle = '#ff2e2e';
+    ctx.fillStyle = '#ff2e2e';
+    ctx.lineWidth = Math.max(1.1, r * 0.075);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.38, Math.max(0.7, r * 0.22 * awake), 0, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.65 + 0.33 * awake;
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.max(1.1, r * 0.095), 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+
   }
 
   /** Cascading Error colony: yellow blocks with red warning glyphs that jitter as they take damage. */
@@ -6278,10 +6455,35 @@ export class Renderer {
       }
     }
     if (state.sentries) {
-      ctx.fillStyle = THREAT_COLORS.sentry;
       for (let i = 0; i < state.sentries.length; i++) {
         const e = state.sentries[i];
-        if (e.active) ctx.fillRect(x0 + (e.x - b.left) * sx - 2, y0 + (e.y - b.top) * sy - 2, 4, 4);
+        if (!e.active) continue;
+        const mx = x0 + (e.x - b.left) * sx;
+        const my = y0 + (e.y - b.top) * sy;
+        // Calibration subjects keep their primary shape on the map, so the arena
+        // preview and the minimap agree about what is in the room.
+        if (e.kind === 4) {
+          ctx.fillStyle = THREAT_COLORS.shapeCircle;
+          ctx.beginPath();
+          ctx.arc(mx, my, 2.8, 0, TWO_PI);
+          ctx.fill();
+        } else if (e.kind === 5 || e.kind === 7) {
+          ctx.fillStyle = THREAT_COLORS.shapeTriangle;
+          const rr = e.kind === 7 ? 1.4 : 2.9;
+          ctx.beginPath();
+          ctx.moveTo(mx, my - rr);
+          ctx.lineTo(mx + rr, my + rr * 0.8);
+          ctx.lineTo(mx - rr, my + rr * 0.8);
+          ctx.closePath();
+          ctx.fill();
+        } else if (e.kind === 6 || e.kind === 8) {
+          ctx.fillStyle = THREAT_COLORS.shapeRect;
+          const rr = e.kind === 8 ? 2 : 3.6;
+          ctx.fillRect(mx - rr * 0.5, my - rr * 0.5, rr, rr);
+        } else {
+          ctx.fillStyle = THREAT_COLORS.sentry;
+          ctx.fillRect(mx - 2, my - 2, 4, 4);
+        }
       }
     }
     if (state.errors) {
@@ -6376,6 +6578,18 @@ export class Renderer {
         ctx.font = FONT_TINY;
         ctx.fillStyle = 'rgba(255, 130, 140, 0.8)';
         ctx.fillText('RING BROKEN', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
+      } else if (kind === 4) {
+        ctx.fillStyle = THREAT_COLORS.shapeCircle;
+        ctx.fillText('CALIBRATION', VIEW_W * 0.5, VIEW_H * 0.34);
+        ctx.font = FONT_TINY;
+        ctx.fillStyle = 'rgba(190, 224, 255, 0.75)';
+        ctx.fillText('SUBJECTS // DORMANT', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
+      } else if (kind === 5) {
+        ctx.fillStyle = THREAT_COLORS.shapeTriangle;
+        ctx.fillText('SUBJECTS AWAKE', VIEW_W * 0.5, VIEW_H * 0.34);
+        ctx.font = FONT_TINY;
+        ctx.fillStyle = 'rgba(255, 190, 190, 0.78)';
+        ctx.fillText('CALIBRATION // LIVE FIRE', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
       } else {
         ctx.fillStyle = localColor;
         ctx.fillText('SPARRING DRILL', VIEW_W * 0.5, VIEW_H * 0.34);

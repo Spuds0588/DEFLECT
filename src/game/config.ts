@@ -97,6 +97,7 @@ export const TRAVEL = {
 // --- Campaign --------------------------------------------------------------
 
 export const CAMPAIGN = campaignJson.CAMPAIGN;
+export const CALIBRATION = campaignJson.CALIBRATION;
 
 // --- Threats ---------------------------------------------------------------
 

@@ -2,6 +2,14 @@
 
 **Play the current alpha:** <https://spuds0588.github.io/DEFLECT/>
 
+**Kiosk demo:** [launch the unattended demo](https://spuds0588.github.io/DEFLECT/?demo=true) — the
+`DEFLECT_` wordmark over a live bot-run gauntlet, fading away and returning on a 60-second loop. Runs
+rotate between one, two and three local pilots; the three-player runs stay on compact arenas so the whole
+fight remains one shared view. No input, no menus, no exit; leave it by closing the tab. For a display or
+capture, this is the URL to use.
+
+[![DEFLECT kiosk demo](screenshots/demo-kiosk.png)](https://spuds0588.github.io/DEFLECT/?demo=true)
+
 DEFLECT is an ultra-responsive, top-down geometric duelist game built for the web. It merges the
 accelerating volley tension of Lethal League with twitch-reflex arena combat. Everything in the arena is
 drawn from simple neon shapes and every sound is synthesized in the browser — no spritesheet or audio
@@ -19,8 +27,11 @@ one-life score chase with a local top-runs table.
 **Campaign (story mode):** `SINGLE PLAYER > CAMPAIGN` opens three local save slots first. An empty slot
 starts a new run: pick the bot count (none to three), then your program. A filled slot shows the level
 and player count and resumes the run, skipping both steps. Bots take the programs you leave unused. The
-first node, `BUILD ROOT`, opens with a sparring drill against that squad (a `NO BOTS` run still drills
-against one instructor), then a `SYSTEM BREACH` warning, then a live threat assault: delete 10 threats to
+first node, `BUILD ROOT`, opens with a calibration prologue: six dormant shapes wake, open a red eye and
+demonstrate one attack family each: a bouncing blue circle, a floating red mother with a shard cloud, and
+a yellow row of clones that charges together. Clear all six, then spar against the bot squad (a `NO BOTS` run
+still drills against one instructor), survive a `SYSTEM BREACH` warning, then face a live threat assault:
+delete 10 threats to
 clear it. The clear reports kills, time, damage taken, data crates preserved and a score; losing no crates
 is a clean sweep and pays a bonus, and the best score and sweep count stay in the slot. Clearing writes the
 slot and returns to the save list; a run is never saved mid-level. Only one node is authored, so a cleared
@@ -74,8 +85,9 @@ appear in a menu or a snapshot.
 Leave the title alone for 24 seconds and it starts an attract demo: a random program in a random arena,
 fighting a deep gauntlet wave with the canvas UI off. Any key, click, wheel or pad press brings the title
 back. If the pilot dies, the arena keeps simulating the death aftermath for four seconds before the next
-random run starts; it does not hold the last frame. For a showfloor or a capture, add `?demo=true`: the same run, but input cannot leave it and a
-centered `GAUNTLET` title card fades in and out on a 30-second cycle. `GAME UI` in Settings > Feedback
+random run starts; it does not hold the last frame. For a showfloor or a capture, add `?demo=true`: the same run, but input cannot leave it and the
+centered `DEFLECT_` wordmark fades in, clears the screen, and returns on a 60-second cycle; the next run
+alternates from one to two to three local pilots. `GAME UI` in Settings > Feedback
 hides the whole canvas UI layer for a clean capture. On a gamepad, `View` / `Select` toggles that layer
 for the current session without rewriting the saved choice; `Start` remains the in-game menu button.
 

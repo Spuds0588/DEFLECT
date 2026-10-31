@@ -6,6 +6,7 @@ import {
   BUG,
   CAMERA_ZOOM,
   CAMPAIGN,
+  CALIBRATION,
   CASCADING_ERROR,
   EMITTER,
   FISHER,
@@ -146,6 +147,8 @@ export class World {
    */
   readonly campaign: boolean;
   campaignPhase: CampaignPhase = 'none';
+  /** Calibration shapes have woken; they no longer accept a dormant hit. */
+  calibrationAwake = false;
   /** Seconds inside the current campaign phase. */
   campaignT = 0;
   campaignBannerT = 0;
@@ -186,6 +189,8 @@ export class World {
   private firewallSpawnT: number = GAUNTLET.firewallSpawnDelay;
   /** Shared clock for arena emitters. `offset` per emitter staggers the beams. */
   private emitterT = 0;
+  /** Kiosk only: how many local squad bodies the attract run opened (1-3). */
+  private attractSquad = 1;
   private sentrySpawnT: number = SENTRY.spawnDelay;
   private sentryPack = 0;
   /** Sentry packs land one silhouette at a time instead of all at once. */
@@ -297,7 +302,11 @@ export class World {
     for (let i = 0; i < this.firewalls.length; i++) this.firewalls[i] = createFirewall();
     this.errors = new Array(CASCADING_ERROR.maxBlocks);
     for (let i = 0; i < this.errors.length; i++) this.errors[i] = createCascadingError();
-    this.sentries = new Array(SENTRY.max);
+    // The sentry pool carries the gauntlet shooters and the campaign calibration
+    // shapes (parents, shards and echo copies). The live wave cap still uses SENTRY.max;
+    // the larger pool is only there so the tutorial can field its swarm without
+    // evicting the assault slots.
+    this.sentries = new Array(SENTRY.pool);
     for (let i = 0; i < this.sentries.length; i++) this.sentries[i] = createSentry();
     this.pickups = createPickupPool();
     this.nets = new Array(2);
@@ -482,24 +491,50 @@ export class World {
   }
 
   /**
-   * First campaign node. The same threat sandbox as the gauntlet, but it waits behind a
-   * sparring drill and a breach warning. Bots stay active for the drill; the breach
-   * de-rezzes them so the room belongs to the incoming hostiles.
+   * First campaign node. The level opens on a calibration prologue: six dormant
+   * geometric subjects that wake together, then the sparring drill, breach and assault.
+   * The subjects are local-only; the host/guest snapshot has no campaign state.
    */
   private setupCampaign(): void {
     this.setupGauntlet();
+    this.campaignPhase = 'calibration';
+    this.calibrationAwake = false;
+    this.campaignT = 0;
+    this.campaignBannerKind = 4;
+    this.campaignBannerT = CALIBRATION.bannerTime;
+    this.campaignBannerDur = CALIBRATION.bannerTime;
+    this.wave = CAMPAIGN.waveStart;
+    this.waveBannerT = 0;
+    // Bots stay parked until the calibration subjects are cleared. The drill squad
+    // then logs in on the existing ring with the player, before the breach removes it.
+    this.spawnCalibrationShapes();
+  }
+
+  /** Starts the sparring drill once the calibration subjects are gone. */
+  private beginDrill(): void {
     this.campaignPhase = 'drill';
+    this.calibrationAwake = false;
     this.campaignT = 0;
     this.campaignBannerKind = 0;
     this.campaignBannerT = CAMPAIGN.drillBannerTime;
     this.campaignBannerDur = CAMPAIGN.drillBannerTime;
-    this.wave = CAMPAIGN.waveStart;
-    this.waveBannerT = 0;
+    this.clearTrainingShapes();
+    for (let i = 0; i < this.projectiles.length; i++) this.projectiles[i].active = false;
+
+    const player = this.players[0];
+    // A calibration knockdown should not carry into the drill. This is a checkpoint,
+    // not a free respawn during the live fire that follows.
+    player.alive = true;
+    player.hp = player.maxHp;
+    player.energy = PLAYER.energyMax;
+    player.iframes = Math.max(player.iframes, 0.9);
+    player.respawnT = 0;
+    player.thrall = false;
+    this.infection = 0;
+
     let count = 0;
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      // setupGauntlet parks every slot but the local player. The drill squad logs back
-      // in here and takes the arena ring with the player.
       if (i > 0 && i <= this.botSlots && p.name) {
         p.active = true;
         p.connected = true;
@@ -507,11 +542,7 @@ export class World {
       }
       if (p.active) count++;
     }
-    // Keep a valid arena-ring respawn point for every active slot, then pull the squad
-    // into arm's reach so the drill is a spar, not a cross-map jog. Slot 0 keeps the
-    // gauntlet spawn it already holds, so a drill knockdown respawns inside the spar.
     computeSpawns(Math.max(1, count), this.arena, this.spawnX, this.spawnY);
-    const player = this.players[0];
     this.spawnX[0] = player.x;
     this.spawnY[0] = player.y;
     for (let i = 1; i <= this.botSlots; i++) {
@@ -522,6 +553,634 @@ export class World {
       const sy = this.spawnTmpY[i - 1];
       clearPlayerForSpawn(p, sx, sy, Math.atan2(player.y - sy, player.x - sx));
     }
+  }
+
+  /** Six calibration subjects, two of each primary, laid out in front of the player. */
+  private spawnCalibrationShapes(): void {
+    const player = this.players[0];
+    const base = Math.atan2(this.centerY - player.y, this.centerX - player.x);
+    const kinds = [4, 5, 6, 4, 5, 6] as const;
+    for (let i = 0; i < kinds.length; i++) {
+      const kind = kinds[i];
+      // A single arc of six, not two tight rows: adjacent bodies stay clear of each
+      // other at this spacing, so none falls back to a spawn point in the player's lap
+      // and wakes the class before the dormant beat has been read.
+      const angle = base + (i - (kinds.length - 1) * 0.5) * CALIBRATION.layoutSpread;
+      const baseDist = CALIBRATION.layoutRadius + (i % 2) * CALIBRATION.layoutLift;
+      let x = player.x + Math.cos(angle) * baseDist;
+      let y = player.y + Math.sin(angle) * baseDist;
+      let clear = false;
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const step = attempt === 0 ? 0 : (attempt % 2 === 0 ? -1 : 1) * Math.ceil(attempt / 2) * 38;
+        const spread = attempt === 0 ? 0 : ((attempt % 3) - 1) * 0.13;
+        const cx = player.x + Math.cos(angle + spread) * (baseDist + step);
+        const cy = player.y + Math.sin(angle + spread) * (baseDist + step);
+        if (!this.pointClearOfCover(cx, cy, this.calibrationRadius(kind) + 8)) continue;
+        let overlaps = false;
+        for (let j = 0; j < this.sentries.length; j++) {
+          const other = this.sentries[j];
+          if (!other.active || other.kind < 4 || other.kind > 6) continue;
+          if (Math.hypot(cx - other.x, cy - other.y) < this.calibrationRadius(kind) + other.radius + 24) {
+            overlaps = true;
+            break;
+          }
+        }
+        if (overlaps) continue;
+        x = cx;
+        y = cy;
+        clear = true;
+        break;
+      }
+      if (!clear) {
+        // A packed corner still gets the subject somewhere legal rather than dropping it.
+        for (let s = 0; s < this.arena.spawns.length; s++) {
+          const spot = this.arena.spawns[(s + i) % this.arena.spawns.length];
+          if (this.pointClearOfCover(spot.x, spot.y, this.calibrationRadius(kind) + 8)) {
+            x = spot.x;
+            y = spot.y;
+            break;
+          }
+        }
+      }
+      this.spawnCalibrationShape(kind, x, y);
+    }
+  }
+
+  private calibrationRadius(kind: 4 | 5 | 6): number {
+    return kind === 4 ? CALIBRATION.circle.radius : kind === 5 ? CALIBRATION.triangle.radius : CALIBRATION.rect.radius;
+  }
+
+  private calibrationHp(kind: 4 | 5 | 6): number {
+    return kind === 4 ? CALIBRATION.circle.hp : kind === 5 ? CALIBRATION.triangle.hp : CALIBRATION.rect.hp;
+  }
+
+  /** Puts one dormant subject into the sentry pool, so every player weapon can damage it. */
+  private spawnCalibrationShape(kind: 4 | 5 | 6, x: number, y: number): number {
+    const slot = this.freeSentrySlot();
+    if (slot < 0) return -1;
+    const s = this.sentries[slot];
+    const hp = this.calibrationHp(kind);
+    s.active = true;
+    s.kind = kind;
+    s.x = s.prevX = x;
+    s.y = s.prevY = y;
+    s.vx = 0;
+    s.vy = 0;
+    s.kx = 0;
+    s.ky = 0;
+    s.hp = s.maxHp = hp;
+    s.radius = this.calibrationRadius(kind);
+    s.fireT = 0;
+    s.phase = this.rng.range(0, Math.PI * 2);
+    s.hitFlash = 0;
+    s.orbitSign = 1;
+    s.anchorX = x;
+    s.anchorY = y;
+    s.leash = 0;
+    s.spawnT = 0;
+    s.pinT = 0;
+    s.orbitOwner = -1;
+    s.orbitA = 0;
+    s.orbitR = 0;
+    s.orbitDir = 1;
+    s.orbitHitCd = 0;
+    s.ramT = 0;
+    s.ramCd = 0;
+    s.ramHit = false;
+    s.ramDirX = 1;
+    s.ramDirY = 0;
+    s.shapeState = 0;
+    s.shapeT = 0;
+    s.shapeAtkCd = 0;
+    s.shapeParent = -1;
+    s.shapeLife = 0;
+    s.shapeBounces = 0;
+    s.shapeCount = 0;
+    return slot;
+  }
+
+  private freeSentrySlot(): number {
+    for (let i = 0; i < this.sentries.length; i++) if (!this.sentries[i].active) return i;
+    return -1;
+  }
+
+  private trainingParentsActive(): boolean {
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active && s.kind >= 4 && s.kind <= 6) return true;
+    }
+    return false;
+  }
+
+  private clearTrainingShapes(): void {
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active && s.kind >= 4) s.active = false;
+    }
+  }
+
+  private clearShapeChildren(parentIndex: number): void {
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active && s.shapeParent === parentIndex) s.active = false;
+    }
+  }
+
+  /** Opens every dormant eye together and starts the spin. */
+  private wakeCalibration(): void {
+    if (this.calibrationAwake) return;
+    this.calibrationAwake = true;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active || s.kind < 4 || s.kind > 6 || s.shapeState !== 0) continue;
+      s.shapeState = 1;
+      s.shapeT = CALIBRATION.wakeTime;
+      s.shapeAtkCd = 0;
+      s.ramT = 0;
+      s.ramDirX = 0;
+      s.ramDirY = 0;
+    }
+    this.campaignBannerKind = 5;
+    this.campaignBannerT = CALIBRATION.wakeBannerTime;
+    this.campaignBannerDur = CALIBRATION.wakeBannerTime;
+  }
+
+  /**
+   * One tick of the calibration subjects. They are ordinary sentry-pool bodies so every
+   * player weapon already hits them, but they run their own script: wake together, spin,
+   * then show one primary's attack. The gauntlet AI stays off until the drill.
+   */
+  private updateTrainingShapes(dt: number): void {
+    const p = this.players[0];
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      s.prevX = s.x;
+      s.prevY = s.y;
+      if (s.hitFlash > 0) s.hitFlash = Math.max(0, s.hitFlash - dt);
+      if (s.kind >= 7) {
+        this.updateShapeChild(s, dt, p);
+        continue;
+      }
+      if (s.shapeState === 0) continue;
+      if (s.shapeState === 1) {
+        s.shapeT -= dt;
+        if (s.shapeT <= 0) {
+          s.shapeState = 2;
+          s.shapeAtkCd = 0.55 + this.rng.range(0, 0.5);
+        }
+        continue;
+      }
+      if (s.kind === 4) this.updateCircleSubject(s, dt, p);
+      else if (s.kind === 5) this.updateTriangleSubject(s, dt, p);
+      else if (s.kind === 6) this.updateRectSubject(s, dt, p);
+    }
+  }
+
+  /** Blue circle: wind up, then a committed dash that bounces off walls and cover. */
+  private updateCircleSubject(s: Sentry, dt: number, p: Player): void {
+    const cfg = CALIBRATION.circle;
+    if (s.shapeState === 3) {
+      s.shapeT -= dt;
+      if (s.shapeT <= 0) {
+        s.shapeState = 4;
+        s.shapeT = cfg.dashTime;
+        s.shapeBounces = cfg.bounces;
+        s.shapeCount = 0;
+        s.vx = s.ramDirX * cfg.dashSpeed;
+        s.vy = s.ramDirY * cfg.dashSpeed;
+        this.emit(EV.SENTRY_SHOOT, -1, s.x, s.y, Math.atan2(s.ramDirY, s.ramDirX));
+      }
+      return;
+    }
+    if (s.shapeState === 4) {
+      s.shapeT -= dt;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      if (this.bounceShape(s)) {
+        s.shapeBounces--;
+        if (s.shapeBounces <= 0) {
+          s.shapeState = 2;
+          s.vx = 0;
+          s.vy = 0;
+          s.shapeAtkCd = cfg.cooldown;
+          return;
+        }
+      }
+      this.shapeTouchPlayer(s, p, cfg.damage, cfg.knockback);
+      if (s.shapeT <= 0) {
+        s.shapeState = 2;
+        s.vx = 0;
+        s.vy = 0;
+        s.shapeAtkCd = cfg.cooldown;
+      }
+      return;
+    }
+    // Idle: close to a comfortable dash range, then aim. It does not lead the target.
+    const dx = p.x - s.x;
+    const dy = p.y - s.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const wantX = p.alive && dist > 190 ? dx / dist : 0;
+    const wantY = p.alive && dist > 190 ? dy / dist : 0;
+    const k = 1 - Math.exp(-2.2 * dt);
+    s.vx += (wantX * 74 - s.vx) * k;
+    s.vy += (wantY * 74 - s.vy) * k;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    this.pushOutOfCover(s, s.radius);
+    s.shapeAtkCd -= dt;
+    if (s.shapeAtkCd > 0 || !p.alive || p.cloakT > 0 || dist > 540) return;
+    if (this.lineBlocked(s.x, s.y, p.x, p.y)) return;
+    s.shapeState = 3;
+    s.shapeT = cfg.windup;
+    s.ramDirX = dx / dist;
+    s.ramDirY = dy / dist;
+    s.vx = 0;
+    s.vy = 0;
+  }
+
+  /** Red triangle: the parent holds still and releases a wave of tiny seekers. */
+  private updateTriangleSubject(s: Sentry, dt: number, p: Player): void {
+    const cfg = CALIBRATION.triangle;
+    const self = this.sentries.indexOf(s);
+    // The parent drifts in a lazy loop around its anchor the whole time. It is watching
+    // the swarm, not standing still behind it.
+    s.phase += dt;
+    const floatA = s.phase * 0.55;
+    const tx = s.anchorX + Math.cos(floatA) * cfg.floatRadius;
+    const ty = s.anchorY + Math.sin(floatA * 0.8) * cfg.floatRadius * 0.62;
+    const fdx = tx - s.x;
+    const fdy = ty - s.y;
+    const fd = Math.hypot(fdx, fdy) || 1;
+    const fk = 1 - Math.exp(-1.8 * dt);
+    s.vx += ((fdx / fd) * cfg.floatSpeed - s.vx) * fk;
+    s.vy += ((fdy / fd) * cfg.floatSpeed - s.vy) * fk;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    this.pushOutOfCover(s, s.radius);
+    let live = 0;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const child = this.sentries[i];
+      if (child.active && child.shapeParent === self) live++;
+    }
+    if (live > 0) return;
+    s.shapeAtkCd -= dt;
+    if (s.shapeAtkCd > 0 || !p.alive) return;
+    s.shapeAtkCd = cfg.spawnDelay;
+    const around = Math.atan2(this.centerY - s.y, this.centerX - s.x);
+    for (let i = 0; i < cfg.shards; i++) {
+      const a = around + (i / cfg.shards) * Math.PI * 2;
+      const dist = s.radius + 16 + (i % 3) * 6;
+      const x = s.x + Math.cos(a) * dist;
+      const y = s.y + Math.sin(a) * dist;
+      if (!this.pointClearOfCover(x, y, cfg.shardRadius)) continue;
+      this.spawnShapeChild(self, 7, x, y, a, i);
+    }
+    this.emit(EV.SENTRY_SHOOT, -1, s.x, s.y, Math.atan2(p.y - s.y, p.x - s.x));
+  }
+
+  /**
+   * Yellow rectangle: a row leader. It sweeps side to side while advancing, grows a
+   * row of linked copies on alternating sides, then the whole row charges together.
+   * Copies are not independent attackers until that charge; they hold their slot.
+   */
+  private updateRectSubject(s: Sentry, dt: number, p: Player): void {
+    const cfg = CALIBRATION.rect;
+    const self = this.sentries.indexOf(s);
+    s.phase += dt;
+    if (s.shapeState === 4) {
+      s.shapeT -= dt;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      if (!this.openWalls) {
+        s.x = Math.max(this.arena.bounds.left + s.radius, Math.min(this.arena.bounds.right - s.radius, s.x));
+        s.y = Math.max(this.arena.bounds.top + s.radius, Math.min(this.arena.bounds.bottom - s.radius, s.y));
+      }
+      for (let i = 0; i < this.solids.length; i++) {
+        if (circleRect(s.x, s.y, s.radius, this.solids[i], hitScratch)) {
+          s.shapeState = 2;
+          s.shapeAtkCd = cfg.cooldown;
+          s.x = hitScratch.px;
+          s.y = hitScratch.py;
+          return;
+        }
+      }
+      this.shapeTouchPlayer(s, p, cfg.echoDamage, cfg.echoKnockback);
+      if (s.shapeT <= 0) {
+        s.shapeState = 2;
+        s.shapeAtkCd = cfg.cooldown;
+      }
+      return;
+    }
+    if (s.shapeState === 3) {
+      s.shapeT -= dt;
+      if (s.shapeT <= 0) {
+        const dx = p.x - s.x;
+        const dy = p.y - s.y;
+        const d = Math.hypot(dx, dy) || 1;
+        s.shapeState = 4;
+        s.shapeT = cfg.echoLife;
+        s.shapeCount = 0;
+        s.ramDirX = dx / d;
+        s.ramDirY = dy / d;
+        s.vx = s.ramDirX * cfg.echoSpeed;
+        s.vy = s.ramDirY * cfg.echoSpeed;
+        this.emit(EV.SENTRY_SHOOT, -1, s.x, s.y, Math.atan2(s.ramDirY, s.ramDirX));
+      }
+      return;
+    }
+
+    // Hover and close very slowly, with a light vertical float. No spin, no sweep:
+    // this silhouette is a block, and it should read as one before it clones.
+    const dx = p.x - s.x;
+    const dy = p.y - s.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const ux = dx / dist;
+    const uy = dy / dist;
+    const advance = p.alive && dist > 220 ? cfg.advanceSpeed : p.alive ? -cfg.advanceSpeed * 0.45 : 0;
+    const bob = Math.sin(s.phase * cfg.bobRate) * cfg.bobSpeed;
+    const k = 1 - Math.exp(-3.2 * dt);
+    s.vx += (ux * advance - s.vx) * k;
+    s.vy += (uy * advance + bob - s.vy) * k;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    this.pushOutOfCover(s, s.radius);
+    if (!this.openWalls) {
+      s.x = Math.max(this.arena.bounds.left + s.radius, Math.min(this.arena.bounds.right - s.radius, s.x));
+      s.y = Math.max(this.arena.bounds.top + s.radius, Math.min(this.arena.bounds.bottom - s.radius, s.y));
+    }
+    // Keep the row's forward axis on the player even while it sweeps sideways.
+    s.ramDirX = ux;
+    s.ramDirY = uy;
+
+    let live = 0;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const child = this.sentries[i];
+      if (child.active && child.shapeParent === self) live++;
+    }
+    s.shapeAtkCd -= dt;
+    if (s.shapeAtkCd > 0 || !p.alive) return;
+
+    if (live < cfg.echoes) {
+      // Alternate sides so the row grows outward from the leader, not one shoulder.
+      // Walk the slots in order and take the first clear one; a wall on one flank
+      // should not stall the whole row.
+      // Clones appear directly left and right of the block, not on a rotated axis.
+      const slots = [-1, 1, -2, 2];
+      let spawned = false;
+      for (let si = 0; si < slots.length && !spawned; si++) {
+        const slot = slots[si];
+        let used = false;
+        for (let j = 0; j < this.sentries.length; j++) {
+          const child = this.sentries[j];
+          if (child.active && child.shapeParent === self && child.shapeBounces === slot) {
+            used = true;
+            break;
+          }
+        }
+        if (used) continue;
+        const x = s.x + slot * cfg.echoOffset;
+        const y = s.y;
+        if (!this.pointClearOfCover(x, y, cfg.echoRadius)) continue;
+        this.spawnShapeChild(self, 8, x, y, Math.atan2(uy, ux), slot);
+        this.emit(EV.SENTRY_SHOOT, -1, x, y, Math.atan2(uy, ux));
+        spawned = true;
+      }
+      // The last copy gets a longer beat to ease into its slot before the charge tell.
+      s.shapeAtkCd = spawned && live + 1 >= cfg.echoes ? 0.55 : 0.3;
+      return;
+    }
+
+    // Row full and linked: settle it, then commit the whole formation forward.
+    s.shapeState = 3;
+    s.shapeT = cfg.echoWindup;
+    s.vx = 0;
+    s.vy = 0;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const child = this.sentries[i];
+      if (child.active && child.shapeParent === self) child.vx = child.vy = 0;
+    }
+  }
+
+  /** A shard or an echo. Shards seek; echoes commit to a straight lane. */
+  private updateShapeChild(s: Sentry, dt: number, p: Player): void {
+    if (s.kind === 7) {
+      const cfg = CALIBRATION.triangle;
+      s.shapeLife -= dt;
+      if (s.shapeLife <= 0) {
+        s.active = false;
+        return;
+      }
+      // A swarm, not a volley: each shard orbits the player on its own radius and
+      // phase, with a high-frequency jitter on the point it chases. The lag from that
+      // moving target is what makes the cloud churn instead of flying straight in.
+      s.phase += dt;
+      if (s.shapeAtkCd > 0) s.shapeAtkCd = Math.max(0, s.shapeAtkCd - dt);
+      const swirl = s.phase * 2.2 * s.orbitDir + s.orbitA;
+      const radius = s.orbitR + Math.sin(s.phase * 6.1 + s.orbitA * 3) * 9;
+      const jitterX = Math.sin(s.phase * 19 + s.orbitA * 5) * 12;
+      const jitterY = Math.cos(s.phase * 23 + s.orbitA * 7) * 12;
+      const tx = p.x + Math.cos(swirl) * radius + jitterX;
+      const ty = p.y + Math.sin(swirl) * radius + jitterY;
+      const dx = tx - s.x;
+      const dy = ty - s.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const k = 1 - Math.exp(-11 * dt);
+      s.vx += ((dx / d) * cfg.shardSpeed - s.vx) * k;
+      s.vy += ((dy / d) * cfg.shardSpeed - s.vy) * k;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      this.pushOutOfCover(s, s.radius);
+      const pdx = p.x - s.x;
+      const pdy = p.y - s.y;
+      if (s.shapeAtkCd <= 0 && p.alive && p.cloakT <= 0 && p.iframes <= 0) {
+        const rr = s.radius + PLAYER.radius + 2;
+        if (pdx * pdx + pdy * pdy <= rr * rr && !this.lineBlocked(s.x, s.y, p.x, p.y)) {
+          const pd = Math.hypot(pdx, pdy) || 1;
+          // A bite does not delete the swarm member: it recoils, keeps orbiting and
+          // can bite again after a beat. The cloud stays on screen for its full life.
+          s.shapeAtkCd = 1.15;
+          this.damagePlayer(p, cfg.shardDamage, -1, pdx / pd, pdy / pd, cfg.shardKnockback, SRC.SENTRY, this.sentries.indexOf(s));
+          s.x -= (pdx / pd) * 22;
+          s.y -= (pdy / pd) * 22;
+        }
+      }
+      return;
+    }
+
+    // Row copy (8): holds a slot beside the leader while it sweeps, then charges as
+    // one formation. It has no independent tell or path of its own.
+    const cfg = CALIBRATION.rect;
+    const leader = this.sentries[s.shapeParent];
+    if (!leader || !leader.active || leader.kind !== 6) {
+      s.active = false;
+      return;
+    }
+    if (leader.shapeState === 4) {
+      if (s.shapeState !== 4) {
+        s.shapeState = 4;
+        s.shapeLife = cfg.echoLife;
+        s.shapeCount = 0;
+      }
+      s.shapeLife -= dt;
+      if (s.shapeLife <= 0) {
+        s.active = false;
+        return;
+      }
+      s.vx = leader.ramDirX * cfg.echoSpeed;
+      s.vy = leader.ramDirY * cfg.echoSpeed;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      if (
+        !this.openWalls &&
+        (s.x < this.arena.bounds.left + s.radius ||
+          s.x > this.arena.bounds.right - s.radius ||
+          s.y < this.arena.bounds.top + s.radius ||
+          s.y > this.arena.bounds.bottom - s.radius)
+      ) {
+        s.active = false;
+        return;
+      }
+      for (let i = 0; i < this.solids.length; i++) {
+        if (circleRect(s.x, s.y, s.radius, this.solids[i], hitScratch)) {
+          s.active = false;
+          return;
+        }
+      }
+      if (s.shapeCount === 0 && p.alive && p.cloakT <= 0 && p.iframes <= 0) {
+        const dx = p.x - s.x;
+        const dy = p.y - s.y;
+        const rr = s.radius + PLAYER.radius + 2;
+        if (dx * dx + dy * dy <= rr * rr) {
+          const d = Math.hypot(dx, dy) || 1;
+          s.shapeCount = 1;
+          this.damagePlayer(p, cfg.echoDamage, -1, dx / d, dy / d, cfg.echoKnockback, SRC.SENTRY, this.sentries.indexOf(s));
+          s.active = false;
+        }
+      }
+      return;
+    }
+
+    // Linked row: hold a slot directly to the leader's left or right, floating on
+    // the same light bob. Copies never rotate and never hold a diagonal axis.
+    s.shapeState = 2;
+    s.phase += dt;
+    const tx = leader.x + s.shapeBounces * cfg.echoOffset;
+    const ty = leader.y + Math.sin(s.phase * cfg.bobRate + s.orbitA) * (cfg.bobSpeed * 0.32);
+    if (leader.shapeState === 3) {
+      s.vx = 0;
+      s.vy = 0;
+      return;
+    }
+    const dx = tx - s.x;
+    const dy = ty - s.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const k = 1 - Math.exp(-8 * dt);
+    s.vx += ((dx / d) * Math.min(310, d * 5) - s.vx) * k;
+    s.vy += ((dy / d) * Math.min(310, d * 5) - s.vy) * k;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    this.pushOutOfCover(s, s.radius);
+  }
+
+  /** Reflects a committed shape off the bounds and cover. Returns true on a bounce. */
+  private bounceShape(s: Sentry): boolean {
+    const b = this.arena.bounds;
+    let bounced = false;
+    if (!this.openWalls) {
+      if (s.x < b.left + s.radius && s.vx < 0) {
+        s.x = b.left + s.radius;
+        s.vx = -s.vx;
+        bounced = true;
+      } else if (s.x > b.right - s.radius && s.vx > 0) {
+        s.x = b.right - s.radius;
+        s.vx = -s.vx;
+        bounced = true;
+      }
+      if (s.y < b.top + s.radius && s.vy < 0) {
+        s.y = b.top + s.radius;
+        s.vy = -s.vy;
+        bounced = true;
+      } else if (s.y > b.bottom - s.radius && s.vy > 0) {
+        s.y = b.bottom - s.radius;
+        s.vy = -s.vy;
+        bounced = true;
+      }
+    }
+    for (let i = 0; i < this.solids.length; i++) {
+      if (!circleRect(s.x, s.y, s.radius, this.solids[i], hitScratch)) continue;
+      s.x = hitScratch.px;
+      s.y = hitScratch.py;
+      const vn = s.vx * hitScratch.nx + s.vy * hitScratch.ny;
+      if (vn < 0) {
+        s.vx -= 2 * vn * hitScratch.nx;
+        s.vy -= 2 * vn * hitScratch.ny;
+        bounced = true;
+      }
+    }
+    if (bounced) this.emit(EV.BOUNCE, -1, s.x, s.y, 1);
+    return bounced;
+  }
+
+  /** Damages the local player once per committed attack, never through cover. */
+  private shapeTouchPlayer(s: Sentry, p: Player, damage: number, knockback: number): void {
+    if (s.shapeCount > 0 || !p.alive || p.cloakT > 0 || p.iframes > 0) return;
+    const dx = p.x - s.x;
+    const dy = p.y - s.y;
+    const rr = s.radius + PLAYER.radius + 2;
+    if (dx * dx + dy * dy > rr * rr) return;
+    if (this.lineBlocked(s.x, s.y, p.x, p.y)) return;
+    const d = Math.hypot(dx, dy) || 1;
+    s.shapeCount = 1;
+    this.damagePlayer(p, damage, -1, dx / d, dy / d, knockback, SRC.SENTRY, this.sentries.indexOf(s));
+  }
+
+  private spawnShapeChild(parent: number, kind: 7 | 8, x: number, y: number, angle: number, seed = 0): number {
+    const slot = this.freeSentrySlot();
+    if (slot < 0) return -1;
+    const s = this.sentries[slot];
+    const tri = CALIBRATION.triangle;
+    const rect = CALIBRATION.rect;
+    s.active = true;
+    s.kind = kind;
+    s.x = s.prevX = x;
+    s.y = s.prevY = y;
+    s.vx = 0;
+    s.vy = 0;
+    s.kx = 0;
+    s.ky = 0;
+    s.hp = s.maxHp = kind === 7 ? tri.shardHp : rect.echoHp;
+    s.radius = kind === 7 ? tri.shardRadius : rect.echoRadius;
+    s.fireT = 0;
+    s.phase = this.rng.range(0, Math.PI * 2);
+    s.hitFlash = 0;
+    s.orbitSign = 1;
+    s.anchorX = x;
+    s.anchorY = y;
+    s.leash = 0;
+    s.spawnT = 0;
+    s.pinT = 0;
+    s.orbitOwner = -1;
+    // Shards use the orbit fields as their swarm slot; echoes leave them parked.
+    s.orbitA = kind === 7 ? (seed / Math.max(1, CALIBRATION.triangle.shards)) * Math.PI * 2 : seed * 1.7;
+    s.orbitR = kind === 7 ? 38 + (seed % 4) * 14 : 0;
+    s.orbitDir = seed % 2 === 0 ? 1 : -1;
+    s.orbitHitCd = 0;
+    s.ramT = 0;
+    s.ramCd = 0;
+    s.ramHit = false;
+    s.ramDirX = Math.cos(angle);
+    s.ramDirY = Math.sin(angle);
+    s.shapeParent = parent;
+    s.shapeState = 2;
+    s.shapeT = 0;
+    // Shards form the cloud before they are allowed to bite; row copies wait for the
+    // leader's charge and have no timer of their own.
+    s.shapeAtkCd = kind === 7 ? 0.55 : 0;
+    s.shapeLife = kind === 7 ? tri.shardLife : 0;
+    s.shapeBounces = kind === 8 ? seed : 0;
+    s.shapeCount = 0;
+    return slot;
   }
 
   /**
@@ -570,6 +1229,26 @@ export class World {
   /** Advances the campaign script. The threat simulation waits for the assault phase. */
   private updateCampaign(dt: number): void {
     if (this.campaignBannerT > 0) this.campaignBannerT = Math.max(0, this.campaignBannerT - dt);
+    if (this.campaignPhase === 'calibration') {
+      this.campaignT += dt;
+      if (!this.calibrationAwake) {
+        const player = this.players[0];
+        let nearSubject = false;
+        if (player.alive) {
+          for (let i = 0; i < this.sentries.length; i++) {
+            const s = this.sentries[i];
+            if (!s.active || s.kind < 4 || s.kind > 6 || s.shapeState !== 0) continue;
+            if (Math.hypot(s.x - player.x, s.y - player.y) <= CALIBRATION.wakeRadius) {
+              nearSubject = true;
+              break;
+            }
+          }
+        }
+        if (nearSubject || this.campaignT >= CALIBRATION.wakeDelay) this.wakeCalibration();
+      }
+      if (this.calibrationAwake && !this.trainingParentsActive()) this.beginDrill();
+      return;
+    }
     if (this.campaignPhase === 'drill') {
       this.campaignT += dt;
       if (this.campaignT >= CAMPAIGN.drillTime) this.beginBreach();
@@ -845,7 +1524,10 @@ export class World {
     const canAct = this.phase === 'live' || this.phase === 'practice';
     if (this.mode === 'gauntlet') this.driveThrall(dt);
     if (this.arena.pushers && canAct) this.tickPusher(dt);
-    if (this.emitters.length > 0 && canAct) this.updateEmitters(dt);
+    // The calibration prologue owns the room. Arena hazards wait for the drill, so a
+    // stray beam cannot delete a trainee before the subjects have even opened their eyes.
+    const calibrationHold = this.campaign && this.campaignPhase === 'calibration';
+    if (this.emitters.length > 0 && canAct && !calibrationHold) this.updateEmitters(dt);
 
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
@@ -858,6 +1540,13 @@ export class World {
           continue;
         }
         if (this.mode === 'gauntlet' && p.slot > 0) {
+          // Kiosk squadmates are local bodies, not enemy thralls: bring them back on
+          // the training timer so a three-player display keeps its group on screen.
+          if (this.attractMode && p.slot < this.attractSquad) {
+            p.respawnT -= dt;
+            if (p.respawnT <= 0) this.respawnTrainingPlayer(p);
+            continue;
+          }
           p.active = false;
           p.thrall = false;
           continue;
@@ -1376,6 +2065,10 @@ export class World {
     this.updateNets(dt);
     this.updateLures(dt);
     this.updateBarriers(dt);
+    // The calibration prologue runs before the normal gauntlet threat loop. Its
+    // shapes and their shards/echoes live in the sentry pool, but use their own
+    // movement and attack timers until the drill starts.
+    if (this.campaign && this.campaignPhase === 'calibration') this.updateTrainingShapes(threatDt);
     this.updateProjectiles(dt);
     // Campaign threats stay parked until the breach warning hands the room over.
     if (this.mode === 'gauntlet' && (!this.campaign || this.campaignPhase === 'assault')) {
@@ -5685,6 +6378,11 @@ export class World {
         return;
       }
       if (this.mode === 'gauntlet' && p.slot > 0) {
+        if (this.attractMode && p.slot < this.attractSquad) {
+          p.respawnT = TRAINING.playerRespawn;
+          this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
+          return;
+        }
         p.active = false;
         p.thrall = false;
         this.gauntletKills++;
@@ -6433,6 +7131,47 @@ export class World {
     this.wormSpawnT = GAUNTLET.wormInterval * 0.7;
     this.virusSpawnT = GAUNTLET.virusInterval * 0.7;
     this.errorSpawnT = CASCADING_ERROR.reseedDelay;
+  }
+
+  /**
+   * Kiosk only: open 1-3 local squad bodies on the same screen. `setupGauntlet` parks
+   * extra slots because a scored run is solo; the display loop reintroduces them here
+   * as a tight cluster around the leader so the camera does not split them. Their
+   * brains are ordinary local BotBrains, driven by main.ts.
+   */
+  seedAttractSquad(count: number): void {
+    if (this.mode !== 'gauntlet' || this.campaign) return;
+    const n = Math.max(1, Math.min(3, Math.floor(count)));
+    this.attractSquad = n;
+    if (n <= 1) return;
+    const leader = this.players[0];
+    const base = Math.atan2(this.centerY - leader.y, this.centerX - leader.x);
+    const px = -Math.sin(base);
+    const py = Math.cos(base);
+    const b = this.arena.bounds;
+    for (let i = 1; i < n; i++) {
+      const p = this.players[i];
+      p.active = true;
+      p.connected = true;
+      p.thrall = false;
+      const side = i % 2 === 0 ? -1 : 1;
+      const rank = Math.ceil(i / 2);
+      let sx = leader.x + px * side * rank * 62 + Math.cos(base) * 26;
+      let sy = leader.y + py * side * rank * 62 + Math.sin(base) * 26;
+      sx = Math.max(b.left + PLAYER.radius + 16, Math.min(b.right - PLAYER.radius - 16, sx));
+      sy = Math.max(b.top + 24, Math.min(b.bottom - 24, sy));
+      if (!this.pointClearOfCover(sx, sy, PLAYER.radius + 6)) {
+        sx = leader.x + Math.cos(base) * (34 + rank * 56);
+        sy = leader.y + Math.sin(base) * (34 + rank * 56);
+      }
+      if (!this.pointClearOfCover(sx, sy, PLAYER.radius + 6)) {
+        sx = leader.x;
+        sy = leader.y;
+      }
+      this.spawnX[i] = sx;
+      this.spawnY[i] = sy;
+      clearPlayerForSpawn(p, sx, sy, base);
+    }
   }
 
   /**
@@ -7402,6 +8141,14 @@ export class World {
 
   private damageSentry(s: Sentry, amount: number, sourceSlot: number, dirX: number, dirY: number, force = 0): void {
     if (!s.active) return;
+    // A dormant calibration subject absorbs the first hit and wakes the class. The
+    // prologue is a scripted reveal, so shooting one starts the test instead of
+    // deleting it before the eye opens.
+    if (s.kind >= 4 && this.campaignPhase === 'calibration' && s.shapeState === 0) {
+      s.hitFlash = 0.18;
+      this.wakeCalibration();
+      return;
+    }
     s.hp -= amount;
     s.hitFlash = 0.18;
     s.kx += dirX * force;
@@ -7410,7 +8157,10 @@ export class World {
     if (s.hp > 0) return;
     s.active = false;
     s.orbitOwner = -1;
-    if (sourceSlot === 0) {
+    // A parent takes its echoes and shards with it. They are affordances of the
+    // subject, not a second enemy that outlives it.
+    if (s.shapeParent < 0 && s.kind >= 4 && s.kind <= 6) this.clearShapeChildren(this.sentries.indexOf(s));
+    if (sourceSlot === 0 && !(this.campaignPhase === 'calibration' && s.kind >= 4)) {
       this.gauntletKills++;
       this.dropPickupFromKill(s.x, s.y, s.kind !== 0);
     }

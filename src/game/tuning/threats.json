@@ -115,6 +115,7 @@
   },
   "SENTRY": {
     "max": 5,
+    "pool": 48,
     "spawnTime": 0.7,
     "spawnDelay": 9,
     "interval": 30,

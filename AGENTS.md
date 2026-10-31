@@ -603,6 +603,19 @@ The campaign's first playable level is `BUILD ROOT` (`src/game/campaign.ts`) on 
 `World('gauntlet')` with `campaign = true`, so it reuses the threat simulation and stays local-only; the
 mode string stays `gauntlet` so no threat branch forks. The script lives in `World`, not in `main.ts`.
 
+- **Calibration**: the node opens on six dormant geometric subjects, two each of a blue circle, a red
+  triangle and a yellow rectangle. They wake together after `CALIBRATION.wakeDelay` (6 s), when the player
+  walks inside `CALIBRATION.wakeRadius`, or on the first hit; killing them while dormant is deliberately
+  not allowed, because the eye opening is the lesson. A dormant shape is plain geometry; awake, it
+  carries a small red eye and each primary owns one attack: the circle dashes and bounces off walls and
+  cover; the triangle floats in a slow watching loop around its anchor while its cloud of sixteen tiny
+  seeking triangles churns around the player and bites on contact; the rectangle does not spin, bobs
+  lightly, clones itself directly left and right into an axis-aligned row, then the whole row commits to
+  one very fast shared dash. This pack is deliberately **untelegraphed**: no lane, arrow or link lines,
+  because the switch from passive to attacking is the fear beat. Clear all six to start the drill. They
+  reuse sentry kinds 4-8 so every player weapon already hits them, but calibration kills pay no score or
+  pickups, no parents wake the assault counter, and arena emitters stay parked for the whole prologue.
+  Everything lives in `CALIBRATION` in `tuning/campaign.json`.
 - **Drill**: 18 s of sparring against the run's bot squad, using the same `BotBrain` inputs as training and
   VS BOTS. A `NO BOTS` run still gets one instructor so the drill has a partner. Death on either side
   respawns on the training timer. The squad forms an arc `CAMPAIGN.drillRing` in front of the player and
@@ -621,7 +634,7 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
 - **Bots are the drill squad, not allies.** `World` has no team model for bot companions yet, so do not
   fake allies by disabling friendly fire. Team ownership is the prerequisite for bots that fight beside
   the player after the breach.
-- Campaign numbers live in `tuning/campaign.json` under `CAMPAIGN`. The node identity, arena blockout and
+- Campaign numbers live in `tuning/campaign.json` under `CAMPAIGN` and `CALIBRATION`. The node identity, arena blockout and
   sector link live in `campaign.ts`; never put node geometry in a switch on level id.
 - Everything here is local, like the gauntlet. Nothing campaign-shaped enters `Snapshot`.
 
@@ -827,11 +840,19 @@ boots the kiosk variant described below.
   it exits; `uiEnabled` restores the saved choice.
 - **Kiosk boot (`?demo=true`, also `1`)** is the same pilot for a display or a capture: it ignores every
   wake input instead of returning to the hub, restarts the run after a wipe, and shows one centered
-  `GAUNTLET` title card. The card fades on a 30 s CSS cycle (about 12 s visible, then hidden) and is
-  `pointer-events: none`, so the page has no click target. The body hides the cursor in this mode.
+  `DEFLECT_` wordmark in the title/menu ASCII face. It is the logo and the blinking caret only: no mode
+  label, room line or subhead. The card fades in at the top of each 60 s cycle, holds long enough to read,
+  then clears the screen so the gameplay owns it until the next minute. It is `pointer-events: none`, so
+  the page has no click target. The body hides the cursor in this mode.
   There is no pause, menu or exit path; leave it by reloading without the parameter. It writes no record,
   opens no overlay and never persists the demo UI state. Keep the card DOM-only so a capture shows the
   same title without turning the canvas UI back on, and keep it out of `Snapshot`/`NetView`.
+- **Squad rotation**: consecutive attract/kiosk runs cycle through one, two and three local pilots
+  (`ATTRACT.squadSizes`). Each is an ordinary local slot with a `BotBrain` writing its `InputFrame`; do not
+  add a second demo-only control path. Three-player runs pick a compact solid arena
+  (`ATTRACT.wideSquadArenaMax`) so the whole arena fits one shared pane and the camera never splits the
+  showcase. Squadmates in an attract run are local bodies, not enemy thralls: they respawn on the training
+  timer and their deaths do not count as kills. A scored run still has one local slot.
 
 ### D24 — Tuning data lives in JSON (decided 2026-10-30)
 All feel, timing and damage numbers live in `src/game/tuning/*.json`, split by ownership:
