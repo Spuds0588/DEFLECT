@@ -13,6 +13,12 @@ const STORAGE_MUSIC_VOLUME = 'deflect.musicVolume';
 const STORAGE_SFX_VOLUME = 'deflect.sfxVolume';
 const STORAGE_MENU_VOLUME = 'deflect.menuVolume';
 const MASTER_LEVEL = 0.6;
+/**
+ * Music sits on its own bus so the soundtrack never fights the combat cues.
+ * The per-voice gains below are written against this level: at 0.24 the chord bed
+ * peaked near -59 dBFS and was inaudible on laptop speakers next to a -28 dB bolt.
+ */
+const MUSIC_BUS_LEVEL = 0.5;
 
 /** Chill lofi-house loop. Notes are MIDI numbers; the synth does the rest. */
 const MUSIC_BPM = 82;
@@ -131,7 +137,7 @@ export class AudioEngine {
   private applyBusLevels(): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    this.musicBus?.gain.setTargetAtTime(0.24 * this.musicVolume, now, 0.02);
+    this.musicBus?.gain.setTargetAtTime(MUSIC_BUS_LEVEL * this.musicVolume, now, 0.02);
     this.sfxBus?.gain.setTargetAtTime(0.9 * this.sfxVolume, now, 0.02);
     this.menuBus?.gain.setTargetAtTime(0.8 * this.menuVolume, now, 0.02);
   }
@@ -156,7 +162,7 @@ export class AudioEngine {
       this.master = master;
 
       const musicBus = ctx.createGain();
-      musicBus.gain.value = 0.24 * this.musicVolume;
+      musicBus.gain.value = MUSIC_BUS_LEVEL * this.musicVolume;
       // Warm the whole music bed. Combat cues keep their sharper digital edge.
       const musicFilter = ctx.createBiquadFilter();
       musicFilter.type = 'lowpass';
@@ -254,6 +260,29 @@ export class AudioEngine {
     osc.connect(env).connect(dest ?? this.sfxBus ?? this.master!);
     osc.start(t);
     osc.stop(t + dur + 0.02);
+  }
+
+  /**
+   * Sustained voice for the music bed. `tone()` decays exponentially across the whole
+   * note, which is right for cues but leaves the chords as half-second stabs: the loop
+   * then has no body for laptop speakers (they roll off below ~200 Hz) to carry.
+   * Quick attack, held level, short tail.
+   */
+  private pad(type: Wave, f: number, gain: number, hold: number, when = 0, dest: AudioNode | null = null): void {
+    const ctx = this.ctx;
+    if (!ctx || this.muted) return;
+    const t = ctx.currentTime + when;
+    const osc = ctx.createOscillator();
+    const env = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(Math.max(20, f), t);
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(Math.max(0.0002, gain), t + 0.03);
+    env.gain.setValueAtTime(Math.max(0.0002, gain), t + hold);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + hold + 0.38);
+    osc.connect(env).connect(dest ?? this.musicBus ?? this.master!);
+    osc.start(t);
+    osc.stop(t + hold + 0.42);
   }
 
   private noise(
@@ -412,7 +441,7 @@ export class AudioEngine {
     const gain = ctx.createGain();
     const now = ctx.currentTime;
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(0.045, now + 0.6);
+    gain.gain.linearRampToValueAtTime(0.09, now + 0.6);
     src.connect(filter).connect(gain).connect(this.musicBus);
     src.start();
     this.vinylSource = src;
@@ -463,20 +492,20 @@ export class AudioEngine {
         // Soft four-on-the-floor kick: strong on 1 and 3, lighter on 2 and 4.
         if (beat % 4 === 0) {
           const accent = beat === 0 || beat === 8 ? 1 : 0.8;
-          this.tone('sine', 115, 43, 0.28, 0.2 * accent, when, this.musicBus);
-          this.noise(0.02, 0.018 * accent, 700, 250, 'lowpass', when, this.musicBus);
+          this.tone('sine', 115, 43, 0.28, 0.3 * accent, when, this.musicBus);
+          this.noise(0.02, 0.03 * accent, 700, 250, 'lowpass', when, this.musicBus);
         }
         // Clap on 2 and 4.
         if (beat === 4 || beat === 12) {
-          this.noise(0.13, 0.05, 2100, 850, 'bandpass', when, this.musicBus);
-          this.tone('triangle', 185, 150, 0.07, 0.03, when, this.musicBus);
+          this.noise(0.13, 0.11, 2100, 850, 'bandpass', when, this.musicBus);
+          this.tone('triangle', 185, 150, 0.07, 0.055, when, this.musicBus);
         }
         // Swung closed hats, plus a longer open hat on the backbeat.
         if (s % 2 === 0) {
           const open = s % 8 === 6;
           this.noise(
             open ? 0.14 : 0.03,
-            open ? 0.011 : 0.007 + (beat === 0 ? 0.003 : 0),
+            open ? 0.07 : 0.05 + (beat === 0 ? 0.01 : 0),
             8500,
             open ? 6000 : 7000,
             'highpass',
@@ -487,23 +516,23 @@ export class AudioEngine {
         // Rhodes-style seventh chords: a long hit on the downbeat and a soft re-hit.
         if (beat === 0 || beat === 10) {
           const chord = MUSIC_CHORDS[bar];
-          const dur = beat === 0 ? 2.2 : 1.15;
-          const gain = beat === 0 ? 0.015 : 0.009;
+          const hold = beat === 0 ? 1.5 : 0.62;
+          const gain = beat === 0 ? 0.085 : 0.05;
           for (let i = 0; i < chord.length; i++) {
             const f = midiToHz(chord[i]);
-            this.tone('triangle', f, f * 0.999, dur, gain, when + 0.008, this.musicBus);
-            this.tone('sine', f * 2, f * 2, dur * 0.5, gain * 0.32, when + 0.012, this.musicBus);
+            this.pad('triangle', f, gain, hold, when + 0.008, this.musicBus);
+            this.pad('sine', f * 2, gain * 0.32, hold * 0.5, when + 0.012, this.musicBus);
           }
         }
         // Warm bass root, with a short octave lift late in the bar.
         const root = midiToHz(MUSIC_BASS[bar]);
         if (beat === 0) {
-          this.tone('sine', root, root, 1.2, 0.14, when, this.musicBus);
-          this.tone('triangle', root * 2, root * 2, 0.3, 0.03, when + 0.01, this.musicBus);
+          this.pad('sine', root, 0.26, 1.0, when, this.musicBus);
+          this.tone('triangle', root * 2, root * 2, 0.3, 0.055, when + 0.01, this.musicBus);
         } else if (beat === 8) {
-          this.tone('sine', root, root, 0.7, 0.11, when, this.musicBus);
+          this.pad('sine', root, 0.2, 0.5, when, this.musicBus);
         } else if (beat === 14) {
-          this.tone('triangle', root * 2, root * 2, 0.22, 0.024, when, this.musicBus);
+          this.tone('triangle', root * 2, root * 2, 0.22, 0.05, when, this.musicBus);
         }
       }
       this.nextNoteTime += MUSIC_STEP;

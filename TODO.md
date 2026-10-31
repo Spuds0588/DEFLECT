@@ -2,7 +2,25 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-31 (v0.1.66 PINBALL.EXE)
+Last updated: 2026-10-31 (v0.1.66 PINBALL.EXE + sound mix)
+
+---
+
+## Sound: music mix (2026-10-31)
+
+### Fixed
+- [x] Music bus 0.24 → 0.5 (`MUSIC_BUS_LEVEL`) with per-voice gains raised to match; the chord bed used to
+      sit near −59 dBFS, about 31 dB under a single bolt
+- [x] Sustained `pad()` envelope for the chords and bass roots, so the loop has body in the range laptop
+      speakers reproduce instead of half-second stabs
+- [x] Verified the program picker needed no change: 11 cards share one size and one outline, `.selected`
+      is a dot plus dim border, the cursor owns the bright ring
+
+### Next
+- [ ] Listen at the default 65 % soundtrack on the laptop's own speakers and confirm the hats survive;
+      lift 6–8 kHz instead of the whole bus if they vanish
+- [ ] Decide whether menus and the attract demo should carry music: today the loop starts with a match
+- [ ] Remember mute is persisted (`deflect.muted`): a stray `M` silences everything until it is toggled
 
 ---
 

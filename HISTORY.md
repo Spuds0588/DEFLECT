@@ -3186,3 +3186,39 @@ resolve on the repository page after push.
 
 **Next:** keep new kit and threat numbers in `GAME_GUIDE.md`; the README only gets architecture,
 performance or delivery changes.
+
+## 2026-10-31 — Music mix: an audible bed with sustained chords (audio fix)
+
+**Goal:** find out why the lofi-house soundtrack cannot be heard on a Linux laptop, and make it audible
+without touching the combat cues.
+
+- Ruled out MIDI: the soundtrack is synthesized. `MUSIC_CHORDS`/`MUSIC_BASS` are MIDI note numbers turned
+  into Hz and played by `OscillatorNode`s, nothing is loaded from disk, and no host MIDI device is used. A
+  laptop without MIDI support plays it exactly like any other machine.
+- Cause 1, level: the music bus was 0.24 while the chord voices peaked at 0.015, which puts the whole bed
+  near −59 dBFS, against roughly −28 dBFS for one bolt. Thirty-one dB under the cues is not a "quiet mix",
+  it is silence on laptop speakers.
+- Cause 2, envelope: `tone()` ramps its gain exponentially to 0.0001 across the note's own length, so a 2.2 s
+  chord was already at 4.6 % of peak one second in. The loop had no sustained body in the 250 Hz–2 kHz band
+  that laptop speakers actually reproduce, and the kick and bass sit below their rolloff.
+- Fix: named `MUSIC_BUS_LEVEL` at 0.5 (replacing the two 0.24 literals), raised every music voice gain to
+  match (chords 0.085/0.05, bass 0.26/0.2, kick 0.3, clap 0.11, hats 0.05/0.07), lifted the vinyl bed to
+  0.09, and added a `pad()` voice — quick attack, held level, 0.38 s tail — for the chord hits and bass
+  roots. Drums and cues keep `tone()`/`noise()`; the master, the compressor and the 7 kHz music low-pass are
+  unchanged.
+- Investigated and deliberately unchanged: the program picker. The 2-day-old 4-program screenshot showed a
+  wrapped fourth card and two bright boxes; HEAD already fixes both (`2f303a3` widened the grid, and
+  `.selected` is a dim border plus a dot while only the cursor carries the bright ring). Live DOM read at
+  the GAUNTLET stage: 11 cards at 163×209, canvases 145×145 inset 9 px on both sides, rows aligned at
+  y=253/y=474, exactly one `.selected` and no stray `.nav-focus`.
+- Noted for the player, not changed in code: mute is persisted in `deflect.muted`, so a stray `M` press
+  silences everything including the bed until it is toggled again, and the loop only starts with a match —
+  menus are intentionally silent.
+
+**Verification:** `npx tsc --noEmit` clean, `npm run build` passes (589.45 kB JS / 164.41 kB gzip,
+48.60 kB CSS). Measured in the dev page through the engine's master tap: with the gain pass but before the
+sustained envelope the loop read −21 dBFS peak / −41 dBFS RMS; after the pad it reads −18 dBFS peak /
+−32.7 dBFS RMS against a −21.8 dBFS bolt peak, so the bed sits about 11 dB under the cues.
+
+**Next:** listen on the laptop speakers at the default 65 % soundtrack; if the hats still disappear, lift
+the 6–8 kHz region rather than the whole bus. Decide whether the menus should get music.

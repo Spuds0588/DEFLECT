@@ -1337,7 +1337,14 @@ keeps it lower-left; a split view or more than one local player puts it top-cent
   round arpeggio, victory motif. The music bed is a four-bar, 82 BPM lofi-house loop: seventh chords and
   bass encoded as MIDI note numbers, soft four-on-the-floor kick, swung hats, claps, and a low vinyl
   crackle layer. The music bus is low-passed at 7 kHz for warmth; combat cues stay sharp. `M` mutes the whole
-  mix. Nothing loaded from disk.
+  mix.  Nothing loaded from disk.
+- Mix levels are part of the sound design, not free knobs. The music bus sits at `MUSIC_BUS_LEVEL` (0.5) and
+  every music voice gain is written against it; the chord and bass voices use a sustained `pad()` envelope
+  (quick attack, held level, short tail) instead of `tone()`'s full-length exponential decay, because the
+  bed has to keep body in the 250 Hz–2 kHz band that laptop speakers actually reproduce. Target: the loop
+  measures roughly −33 dBFS RMS with −18 dBFS peaks, about 8–12 dB under a combat cue peak (a bolt is
+  ≈ −22 dBFS) and starting with a match, never from the menus. Measure through the engine's master tap
+  before changing these numbers; the previous 0.24 bus left the chords near −59 dBFS and silent in practice.
 
 ---
 
