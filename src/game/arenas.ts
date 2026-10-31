@@ -543,7 +543,7 @@ export const ARENAS: readonly ArenaDef[] = [
         { a: 0.15, r: 380, radius: 48 },
         { a: 0.95, r: 505, radius: 38 },
         { a: 1.62, r: 300, radius: 56 },
-        { a: 2.55, r: 530, radius: 42 },
+        { a: 2.55, r: 500, radius: 42 },
         { a: 2.95, r: 395, radius: 50 },
         { a: 3.62, r: 520, radius: 38 },
         { a: 4.28, r: 310, radius: 54 },

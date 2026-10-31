@@ -1092,8 +1092,8 @@ the plate ends. Do not add a second circular-bound check in a family branch.
 - **Holes are disc-local.** Each `DiscHoleDef` is `{ a, r, radius }` in the platter's own frame. World
   angle is `a + discT * spin`, so the geometry is deterministic from one phase and needs no per-hole
   update. `voidAt` returns a bounding rect for the existing fall pull, which means the 0.6 s hang already
-  aims at the hole the body is over. Holes are 38–56 units and sit 300–530 from the spindle, clear of the
-  hub. Shots fly over them, like a trench.
+  aims at the hole the body is over. Holes are 38–56 units and sit 300–520 from the spindle, clear of the
+  hub and inside the 560 spawn ring. Shots fly over them, like a trench.
 - **The spin is local-only.** `World.discT` advances only outside `match`, because `Snapshot` carries no
   disc phase. A hosted room keeps the round plate and the static authored holes but parks the arm, so a
   guest cannot be killed by a hazard it cannot see. Do not add disc phase fields to a snapshot without a
@@ -1117,8 +1117,9 @@ the plate ends. Do not add a second circular-bound check in a family branch.
   the same helpers, so a thumbnail, the map and the arena cannot disagree.
 - **Numbers** live in `arenas.ts` on the arena record, not in `tuning/`: DISK PLATTER is radius 690,
   spin 0.075 rad/s, arm period 11.5 s, sweep 0.55 rad, thickness 44, push 360, reach 1.06. Spawns are an
-  inset ring at radius 560. Check the hole ring against every spawn at phase 0 before shipping a change;
-  spawn 5 once sat on a hole.
+  inset ring at radius 560. Check the hole ring against every spawn at phase 0 and keep every
+  hole's outer edge inside the spawn ring: spawn 5 once sat on a hole, and a hole that crossed 560
+  killed an idle start in under 10 s.
 
 ---
 

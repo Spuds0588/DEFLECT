@@ -3067,8 +3067,10 @@ that can shove bodies into them.
   The minimap and arena picker use the same hole/arm helpers.
 - Online rooms keep the plate and static holes but park the spin and arm: the snapshot carries no disc
   phase. Local training, gauntlet and campaign get the moving floor.
-- One spawn sat on a hole at phase 0; hole 3 moved to angle 2.55 so spawn 5 is clear. Future hole edits must
-  be checked against the spawn ring at t=0.
+- One spawn sat on a hole at phase 0; hole 3 moved to angle 2.55 and radius 500 so spawn 5 is clear and
+  no hole crosses the 560 spawn ring. An idle gauntlet start was dying to a drifting hole at ~8 s; with
+  hole 3 pulled in, an idle world survives 30 s (the arm merely shoves it near the rim). Future hole edits
+  must be checked against the spawn ring at t=0.
 
 **Verification:** `npx tsc --noEmit` clean; `npm run build` passes. Headless: after 2 s `discT` 2.00 and
 `armAngle` moved 3.492 → 3.980; a player placed on a moving hole gets `fallT` 0.60 and is dead after the
@@ -3076,7 +3078,8 @@ grace; six steps on the arm move the body (-8.9, 24.4) with a 118/-297 residual 
 starts a 0.60 hang. A 60 s training run with a HARD pilot recorded 2 deaths and 72 fall ticks, so the floor
 is dangerous but not constant. Live visual at `?gauntlet=1&arena=8&debug=1` shows the round plate, moving
 holes, moving arm and minimap. The first hands-off bot test walked into a hole at 1.7 s; the idle-drift hole
-steer fixed it, and the same pilot now skirts the holes.
+steer fixed it, and the same pilot now skirts the holes. An idle 30 s run after the hole-3 pull-in
+remained alive, so a player reading the intro is not dropped before the first pack arrives.
 
 **Next:** judge the arm's shove at couch distance, then watch a full bot round for repeated hole walks and
 decide whether online needs a disc phase.
