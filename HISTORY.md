@@ -3141,3 +3141,21 @@ confirmed the roster card, three-chevron dock, flipper bat and both ball silhoue
 
 **Next:** play a full VS BOTS set and decide whether 16 s of arm uptime is too much lane control; then watch
 the 24-bounce rally at couch distance. The kit is local-only, so no snapshot work follows.
+
+## 2026-10-31 — Wider program grid, smaller squares (layout)
+
+**Goal:** bring the player-character picker in line with the level/arena grid: use the whole stage width
+and more, smaller square cards instead of a narrow centered three-column block.
+
+- `.console-program-grid` now uses `repeat(auto-fit, minmax(148px, 1fr))` with no `max-width`, so it fills
+  the same 1040px stage as the arena picker: six squares per row at desktop width (6 + 5 for the current
+  eleven programs) instead of three 258px cards inside an 800px block. Narrow windows fall to five, four
+  or two columns automatically; the fixed three-column rule is gone.
+- Program name and role type step down with the cards (`13-17px` name, `10-13px` role) so the smaller
+  square never crowds its label. The short-viewport `max-width: 700px` override is removed, so 720p keeps
+  the same wide grid.
+- Menu navigation is geometric, not column-count based, so the d-pad and arrow cursor follow the new rows
+  without a code change. No HTML, tuning or version change; this is CSS only.
+
+**Verification:** dev at 1280x900 shows six columns in the first row and five in the second, all 167px
+squares spanning the stage width; at 1280x720 both rows still fit without scrolling.
