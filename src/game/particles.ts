@@ -10,6 +10,12 @@ export const P_COLOR_DUST = -7;
 export const P_COLOR_TOXIN = -8;
 export const P_COLOR_BUFFER = -9;
 export const P_COLOR_COMPRESS = -10;
+/**
+ * Blast palette. A detonation is always red and orange, never the shooter's colour and
+ * never white, so an explosion cannot be mistaken for a body's death shards.
+ */
+export const P_COLOR_BLAST_RED = -11;
+export const P_COLOR_BLAST_ORANGE = -12;
 
 export interface Particle {
   active: boolean;
@@ -41,6 +47,8 @@ export function particleColor(color: number): string {
   if (color === P_COLOR_TOXIN) return PROGRAM_COLORS.toxic;
   if (color === P_COLOR_BUFFER) return PROGRAM_COLORS.buffer;
   if (color === P_COLOR_COMPRESS) return PROGRAM_COLORS.compress;
+  if (color === P_COLOR_BLAST_RED) return '#ff2a18';
+  if (color === P_COLOR_BLAST_ORANGE) return '#ff9a1f';
   return '#9fd7e8';
 }
 

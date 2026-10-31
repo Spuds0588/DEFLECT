@@ -1,5 +1,7 @@
 import {
   ParticleSystem,
+  P_COLOR_BLAST_ORANGE,
+  P_COLOR_BLAST_RED,
   P_COLOR_BUFFER,
   P_COLOR_COMPRESS,
   P_COLOR_DANGER,
@@ -90,14 +92,20 @@ export class Fx {
         break;
       }
       case EV.EXPLODE: {
+        // Blasts are hot metal: strictly red and orange, no owner colour and no white, so
+        // a detonation never reads as another body's death shards.
         const scale = Math.max(0.8, Math.min(2.2, ev.power / 90));
-        this.particles.ring(ev.x, ev.y, P_COLOR_DANGER, 10, ev.power * 3.2, 0.36);
-        this.particles.ring(ev.x, ev.y, color, 4, ev.power * 1.8, 0.24);
-        this.particles.shards(ev.x, ev.y, Math.round(14 + 12 * scale), color, 120, 720 * scale);
-        this.particles.burst(ev.x, ev.y, Math.round(10 + 6 * scale), P_COLOR_WHITE, 180, 760 * scale);
+        const shards = Math.round(14 + 12 * scale);
+        const hot = Math.round(shards * 0.65);
+        this.particles.ring(ev.x, ev.y, P_COLOR_BLAST_ORANGE, 10, ev.power * 3.2, 0.36);
+        this.particles.ring(ev.x, ev.y, P_COLOR_BLAST_RED, 4, ev.power * 1.8, 0.24);
+        this.particles.shards(ev.x, ev.y, hot, P_COLOR_BLAST_ORANGE, 120, 720 * scale);
+        this.particles.shards(ev.x, ev.y, shards - hot, P_COLOR_BLAST_RED, 140, 780 * scale);
+        this.particles.burst(ev.x, ev.y, Math.round(10 + 6 * scale), P_COLOR_BLAST_ORANGE, 180, 760 * scale);
+        this.particles.burst(ev.x, ev.y, 5, P_COLOR_BLAST_RED, 100, 420);
         this.shake = Math.max(this.shake, 7 + 4 * scale);
         this.flash = Math.max(this.flash, 0.24 + 0.08 * scale);
-        this.flashColor = '#ffdfc4';
+        this.flashColor = '#ffb27a';
         break;
       }
       case EV.WORM_KILL: {

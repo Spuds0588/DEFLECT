@@ -3083,3 +3083,23 @@ remained alive, so a player reading the intro is not dropped before the first pa
 
 **Next:** judge the arm's shove at couch distance, then watch a full bot round for repeated hole walks and
 decide whether online needs a disc phase.
+
+## 2026-10-31 — Blasts are red and orange only (tuning)
+
+**Goal:** make a detonation read as an explosion first, not as another body de-rezzing, and stop a blast
+from borrowing the shooter's programme colour.
+
+- `EV.EXPLODE` now draws only `P_COLOR_BLAST_ORANGE` (`#ff9a1f`) and `P_COLOR_BLAST_RED` (`#ff2a18`):
+  orange outer ring and burst, red inner ring, a 65/35 split of orange and red triangle shards, and no
+  white. The impact flash tint moves from cream to `#ffb27a`. The shooter's slot colour is no longer read
+  by this event, so Kaboom's bombs, the mine and the drone burst all share one hot palette.
+- Body deaths are untouched: `EV.ELIMINATED`, `EV.WORM_KILL` and `EV.VIRUS_KILL` keep their threat tint
+  plus white shards, which is now the clear visual difference between a kill and a blast.
+- Docs: AGENTS D16 records the blast palette rule. No tuning JSON or protocol change; this is an FX-only fix.
+
+**Verification:** `npx tsc --noEmit` clean. A headless `Fx` check fed one `EV.EXPLODE` (slot 7, power 116)
+and found 54 active particles in exactly two colours: 38 orange and 16 red, with no owner colour and no
+white. The temporary script was removed.
+
+**Next:** judge a bomb carpet and a mine at couch distance; if the blast reads flat, lengthen the shard
+life rather than adding a third colour.

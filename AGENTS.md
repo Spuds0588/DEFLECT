@@ -592,6 +592,10 @@ reads as a letter. `document.fonts.check` alone reports true for missing system 
 - Bombs are **not deflectable**: every `proj.type >= 3` deflect/guard/net branch must exclude types 8 and
   9 explicitly, or a caught shell would turn into a bolt. A bomb that hits cover dies there and detonates
   on the same frame.
+- **Blast FX are only red and orange** (`P_COLOR_BLAST_RED` / `P_COLOR_BLAST_ORANGE` in `particles.ts`):
+  an `EV.EXPLODE` never uses the shooter's slot colour and never emits white, while a body death keeps its
+  threat tint and white shards. Do not put the owner colour or white back into the explosion, or a
+  detonation reads as another death burst.
 - **Hull**: three short fins start at `0.72r` with a 0.56 rad half-base and `coreScale` 0.76, so no health
   segment touches the core disc or the bomb mark. The clearance rule is in D4. Do not grow the fins back
   toward the core to make them read bigger; the silhouette, not the size of one blade, carries the identity.
