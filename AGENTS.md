@@ -8,13 +8,15 @@ intentionally diverge from that spec.
 
 ## 1. Documentation workflow (do not skip)
 
-Three files keep us from re-litigating decisions or rebuilding old work:
+These files keep us from re-litigating decisions or rebuilding old work:
 
 | File | Role | Rule |
 | --- | --- | --- |
 | `AGENTS.md` | Living architecture + decisions | Update when an invariant, system, or decision changes. |
 | `TODO.md` | Forward plan | Mark tasks as they land. Never delete a completed item without a HISTORY entry explaining it. |
 | `HISTORY.md` | Append-only session log | Add an entry at the end of every work session: date, goal, changes, verification, next. Newest at the bottom. |
+| `README.md` | Architecture, stack, performance, netcode | Keep it to how the game is built and run. Player-facing detail belongs in `GAME_GUIDE.md`. |
+| `GAME_GUIDE.md` | Player-facing rules, modes, controls, QA pass | Move gameplay specifics here; do not grow the README with kit or threat numbers. |
 
 Before starting: read `HISTORY.md` (last entry) and `TODO.md`. Do not start a phase that a newer
 HISTORY entry says was deliberately deferred without calling that out.
@@ -290,7 +292,7 @@ the network. It is a test bed for the eventual PvE direction, not a promise of o
 ### D10 — Four action jobs: ranged, melee, power, skill (revised 2026-10-29)
 Player-facing names are plain words, not internal verbs: **RANGED ATTACK** (`X`), **MELEE ATTACK**
 (tap `B`), **GUARD** (hold `B`), **POWER ATTACK** (hold `Y`), **SKILL** (tap `Y`), **DASH** (`A`). Use
-those names in the settings screen and README. Internals may keep `swing`, `bolt`, `laser` and `bugKind`
+those names in the settings screen and the game guide. Internals may keep `swing`, `bolt`, `laser` and `bugKind`
 (`bug` is the step-based sprite idea, not the action name). The buttons are jobs, not two versions of one
 bolt:
 
@@ -1208,6 +1210,7 @@ src/ui/touch.ts       DOM touch stick and action buttons; ordinary InputFrame bi
 scripts/gen-icons.mjs PWA icon generator (pure Node, zlib PNG encoder, no deps)
 scripts/bench.ts      headless simulation benchmark (ms per 60 Hz tick)
 CAMPAIGN.md           campaign topology, map handoff and open rules decisions
+GAME_GUIDE.md         player-facing modes, controls, kits, arenas and the QA checklist
 public/               manifest, generated icons, service worker
 ```
 

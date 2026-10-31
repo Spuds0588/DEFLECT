@@ -3159,3 +3159,30 @@ and more, smaller square cards instead of a narrow centered three-column block.
 
 **Verification:** dev at 1280x900 shows six columns in the first row and five in the second, all 167px
 squares spanning the stage width; at 1280x720 both rows still fit without scrolling.
+
+## 2026-10-31 — Docs split: README for builders, GAME_GUIDE for players (docs)
+
+**Goal:** stop the README from carrying the whole game manual. It should explain how DEFLECT is built,
+why it stays fast on weak hardware and how multiplayer works; gameplay specifics belong in their own file.
+
+- Added `GAME_GUIDE.md`: playable modes, the one-stick rule, controls and touch layout, the full
+  attack/skill/power table, pickups, all nine arenas plus traversal and laser emitters, training tiers,
+  gauntlet threats, the campaign node, the kiosk demo, QA hooks and the test checklist. Copy moved from
+  the old README, with the Pinball dash/shield notes folded into the shared tables.
+- Rewrote `README.md` around the build: stack table (TypeScript, Canvas 2D, Web Audio, Vite, PeerJS,
+  PWA), the fixed-step loop and simulation/render split, content-as-data, a code map, measured bench
+  results, the techniques that keep it fast, PeerJS topology and bandwidth, PWA trade-offs, gamepad and
+  touch input, then the roadmap (Tauri desktop, Android APK, cross-platform rooms, local mode, discovery,
+  more campaign nodes), development commands and docs links.
+- `AGENTS.md` §1 now lists `README.md` and `GAME_GUIDE.md` with their scopes, and the repo map includes
+  the guide. D10 points player-facing names at the guide instead of the README.
+- Measurements quoted in the README: today's `npm run bench` (0.035 ms avg 2P through 0.465 ms avg
+  gauntlet max) and a fresh 8P/48-projectile BinaryPack snapshot at 2506 bytes (2.45 KB, 73.4 KiB/s per
+  guest, ~0.50 MiB/s host upload at 30 Hz with 7 guests). Build size from the current Vite output:
+  589.03 KB JS / 164.31 KB gzip plus 48.65 KB CSS / 10.92 KB gzip.
+
+**Verification:** docs only; `npx tsc --noEmit` and `npm run build` still pass, and the README/GUIDE links
+resolve on the repository page after push.
+
+**Next:** keep new kit and threat numbers in `GAME_GUIDE.md`; the README only gets architecture,
+performance or delivery changes.

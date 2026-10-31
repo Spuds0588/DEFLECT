@@ -1,420 +1,233 @@
 # DEFLECT
 
-**Play the current alpha:** <https://spuds0588.github.io/DEFLECT/>
+A browser-native, top-down geometric arena duelist. One stick sets both movement and facing; you read a
+volley, lash or guard it back, and turn the rally on whoever fired first. Everything is drawn from vector
+shapes and every sound is synthesized at runtime: no sprites, no audio files, no game engine.
 
-**Kiosk demo:** [launch the unattended demo](https://spuds0588.github.io/DEFLECT/?demo=true) — the
-`DEFLECT_` wordmark over a live bot-run gauntlet, fading away and returning on a 60-second loop. Runs
-rotate between one, two and three local pilots; the three-player runs stay on compact arenas so the whole
-fight remains one shared view. No input, no menus, no exit; leave it by closing the tab. For a display or
-capture, this is the URL to use.
+**Play the alpha:** <https://spuds0588.github.io/DEFLECT/>
+**Kiosk demo:** <https://spuds0588.github.io/DEFLECT/?demo=true>
+**How to play:** [GAME_GUIDE.md](GAME_GUIDE.md)
 
 [![DEFLECT kiosk demo](screenshots/demo-kiosk.png)](https://spuds0588.github.io/DEFLECT/?demo=true)
 
-DEFLECT is an ultra-responsive, top-down geometric duelist game built for the web. It merges the
-accelerating volley tension of Lethal League with twitch-reflex arena combat. Everything in the arena is
-drawn from simple neon shapes and every sound is synthesized in the browser — no spritesheet or audio
-assets, only generated PWA icons. The soundtrack is an 82 BPM lofi-house loop built from MIDI note
-numbers, with a vinyl-crackle bed.
+Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, the
+first campaign node, and host/join rooms for up to eight players. Eleven programs, nine arenas. The alpha
+is deployed from `main` on every push.
 
-**Playable now:** solo training against a sparring drone or endless 1v1–1v3 bot practice, **VS BOTS**
-round matches against one to three local opponents, a scored local **GAUNTLET** against worms, viruses,
-cascading errors, shooters and infected thralls, the first **CAMPAIGN** node, or host/join a room for up
-to 8 players. Nine arenas are selectable from the title screen, including the multi-district
-`MAINFRAME`, the multi-deck `TRANSIT`, the wall-less `THE LEDGE`, the compaction-plate `RECYCLING BIN`
-and the spinning, hole-riddled `DISK PLATTER`. Match modes are first to 3 rounds; training is continuous practice, while gauntlet is a
-one-life score chase with a local top-runs table.
+## Tech stack
 
-**Campaign (story mode):** `SINGLE PLAYER > CAMPAIGN` opens three local save slots first. An empty slot
-starts a new run: pick the bot count (none to three), then your program. A filled slot shows the level
-and player count and resumes the run, skipping both steps. Bots take the programs you leave unused. The
-first node, `BUILD ROOT`, opens with a calibration prologue: six dormant shapes wake, open a red eye and
-demonstrate one attack family each: a bouncing blue circle, a floating red mother with a shard cloud, and
-a yellow row of clones that charges together. Clear all six, then spar against the bot squad (a `NO BOTS` run
-still drills against one instructor), survive a `SYSTEM BREACH` warning, then face a live threat assault:
-delete 10 threats to
-clear it. The clear reports kills, time, damage taken, data crates preserved and a score; losing no crates
-is a clean sweep and pays a bonus, and the best score and sweep count stay in the slot. Clearing writes the
-slot and returns to the save list; a run is never saved mid-level. Only one node is authored, so a cleared
-slot replays it for now. The layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
-
-**Multiplayer menu:** `MULTIPLAYER` offers `ONLINE` (host a room or join by code) and `LOCAL` (same-screen
-play, not built yet). Local lists its two modes, `ARENA` and `GAUNTLET`, as placeholders until the setup
-screen exists. Public room discovery is planned: it will search for game codes with a shared prefix,
-while private rooms keep an unprefixed code.
-
-## Play
-
-The latest main-branch build is deployed to GitHub Pages:
-
-<https://spuds0588.github.io/DEFLECT/>
-
-Run it locally:
-
-```bash
-npm install
-npm run dev
-```
-
-Open <http://127.0.0.1:5173>. Create a room and share the invite link / 4-character code; guests can
-join from another tab, browser, or machine that can reach the app.
-
-Production build and local preview:
-
-```bash
-npm run build
-npm run preview
-```
-
-The build is a static PWA in `dist/`; serve it over HTTPS to install it and to use the offline shell.
-
-## Controls
-
-Gamepad, keyboard/mouse and touch are supported. The most recently used device takes over; there is no
-on-screen input-mode badge. A phone or tablet gets the touch layout automatically, and `?touch=1` /
-`?touch=0` forces it on or off for testing.
-
-For unattended testing, add `?autoplay=2` to the local URL. Bots drive every slot, including the local
-one, and the match auto-rematches so it keeps running without input. This is a QA hook, not a menu mode.
-
-More QA hooks exist: `?split=N` lays out up to four local panes, `?gauntlet=1&arena=5&bot=1` boots a
-gauntlet with a bot driving the local player, `?attract=1` boots the title demo immediately, `?demo=true`
-runs that demo as a permanent, non-interactive display loop, `?ui=0` hides the canvas UI for one load,
-`?touch=1` forces the phone layout and `?debug=1` exposes a read-only inspection handle. None of them
-appear in a menu or a snapshot.
-
-Leave the title alone for 24 seconds and it starts an attract demo: a random program in a random arena,
-fighting a deep gauntlet wave with the canvas UI off. Any key, click, wheel or pad press brings the title
-back. If the pilot dies, the arena keeps simulating the death aftermath for four seconds before the next
-random run starts; it does not hold the last frame. For a showfloor or a capture, add `?demo=true`: the same run, but input cannot leave it and the
-centered `DEFLECT_` wordmark fades in, clears the screen, and returns on a 60-second cycle; the next run
-alternates from one to two to three local pilots. `GAME UI` in Settings > Feedback
-hides the whole canvas UI layer for a clean capture. On a gamepad, `View` / `Select` toggles that layer
-for the current session without rewriting the saved choice; `Start` remains the in-game menu button.
-
-The camera frames the local group. With several local players it stays on one screen and pulls back until
-the group no longer fits, then splits into the fewest panes: one far player adds one pane, not three. Each
-pane has a colored frame, the shared minimap moves to the top centre, and the sim briefly slows on a
-split or merge so nobody is shot while their screen is moving.
-
-| Action | Gamepad | Keyboard/mouse |
-| --- | --- | --- |
-| Move + face | Left stick | `WASD` / arrows |
-| Melee attack / guard | `B` | Left mouse / `J` |
-| Ranged attack | `X` | Right mouse / `K` |
-| Power attack (hold) / skill (tap) | `Y` | `E` or `L` / middle mouse |
-| Lock target | `LT` | `Q` |
-| Cycle lock target (hold `LT`) | `RB` / right stick left-right | — |
-| Dash / charged dash | `A` or `L3` | `Shift` / `Space` |
-| Confirm / menu | `A` / `Start`, D-pad | `Enter`, arrows, focused button + `Space` |
-| In-game menu | `Start` | `Escape` |
-| Hide/show UI | `View` / `Select` | — |
-| Mute | — | `M` |
-| Perf HUD | — | `F3` |
-
-There is no aim stick. **Movement is facing.** Melee attacks lock the direction you commit to. Dashing
-commits to the **last movement direction**, even while target lock is holding your facing, so strafing
-past an enemy and dashing goes sideways. Standing still keeps your last facing.
-
-**Touch layout:** a stick at the bottom left and `SHIELD`, `SKILL` and `DASH` buttons at the bottom
-right. The stick sets facing by movement, exactly like a pad: it is not a second aim stick. Tap `SHIELD`
-for the lash and hold it for guard/reflect. Tap `SKILL` for the program skill and hold it for the power
-attack. Tap `DASH` to dodge and hold for the charged dash. `AUTO LOCK` and `AUTO ATTACK` default on for
-touch and live in `SETTINGS > CONTROLS`: auto lock holds the nearest visible target, and auto attack
-fires the ranged attack on that target, switching to melee inside reach. Both can be turned off; with
-both off the touch layout has no manual ranged button. The touch layout hides the minimap and puts the
-readiness dock at the top centre. `GAME UI` hides the canvas readout but leaves the stick and buttons, since
-those are the phone's controls.
-
-The title is a console menu: arrows or the left stick move the `>` cursor, Enter or `A` confirms, and
-Escape or `B` backs out. `HOW TO PLAY` holds the control tables and a short rules and program rundown;
-it shows a gamepad, touch or keyboard/mouse layout based on the input device. `SETTINGS` is the fourth
-option. `SETTINGS > FEEDBACK` holds hit rotation, impact flash, scanlines, minimap, game UI, rumble and
-the hit-preview test; `SETTINGS > AUDIO` holds the volume controls; `SETTINGS > SYSTEM` holds the callsign
-and reset; `SETTINGS > CONTROLS` holds auto lock and auto attack.
-
-Controller rumble is on by default and can be switched off in `SETTINGS > FEEDBACK`. It uses the standard
-Gamepad `vibrationActuator` where the browser exposes it and falls back to the older `hapticActuators`
-pulse surface; a pad without either stays silent. Cues are short: a tap for a swing or dash, a light tick
-for a caught shot, a thump for a spent health segment, a boom for a nearby explosion, and a longer death
-thump.
-
-## Attacks, skill, and health
-
-Your avatar has its health segments built into its rotating program outline: three for most programs,
-**six** for Atomize and Compress. A hit drops that segment to a dim ghost, so the silhouette always stays whole while
-the damage still reads at a glance. There is no separate health bar or name plate: the outline, the inner
-energy arc, and the readiness dock are the local readout. Bots and remote players show no health or
-readiness telemetry yet.
-
-| Option | Input | Role |
-| --- | --- | --- |
-| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact, Toxic fires a venom needle, Kaboom lobs a slow bomb, Bad Lag throws a heavy hourglass, Atomize fires an alternating electron that curves toward a target, Ghost throws a wide chomping mouth that hits for two and dazes, Compress fires a slow pressure orb that shrinks the victim and permanently lowers their health cap, and Pinball throws a long-lived ricochet ball that gains speed on every bounce or body and climbs from 1 to 5 damage across five hits. Holding keeps the fire coming at the program's cadence. |
-| **MELEE ATTACK** | `B` / left mouse / `J` | **Tap** for a fast spiked lash across the 180° arc in front of you. It shoves what it hits sideways and reflects shots it catches. |
-| **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. Lock on to flatten caught shots toward the target. |
-| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear, Compress fires a pressure burst that halves the size and health cap of everything in the ring, crushing anything on its last point, and Pinball launches one giant ball that bounces off arena walls only and rolls over bodies for 3 damage. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
-| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises three orbiting shield balls, Ghost cloaks for a few seconds, Compress folds small and runs fast for 3.5 seconds, and Pinball plants a flipper arm for 16 seconds that punts hostile shots and swats bodies toward other enemies. Its mark in the readiness dock shows when it is ready. |
-| **DASH** | `A` / `Shift` / `Space` | Two charges. Tap to phase through enemies and cover in your last movement direction. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. |
-
-Ranged fire is the pressure tool. Melee is the answer to incoming fire: tap to lash, hold to guard. The
-power/skill button is the commitment button: tap for your program's skill, hold to charge and run the
-heavy. Most heavies plant your feet; Atomize's orbit field does not. Every option obeys the same facing
-rules. Energy still gates the heavies; basic fire is cheap enough to hold.
-
-## Pickups
-
-Most pickups are dropped by enemies you destroy. Small kills roll rarely, heavy silhouettes roll
-generously, and drops share a 5.5 s cooldown. At most two pickups sit on the field at once. A rare
-ambient pickup (first at 24 s, then every 42 s) keeps a dry run from stalling. Training and gauntlet only.
-`RESTORE_STATUS` refills health and clears negative status. Timed drops replace each other and last
-11–15 s. Their state is read from the effect itself; the readiness dock is reserved for dash, skill and
-power:
-
-- `MACHINE GUN`: held ranged fire becomes a low-damage spray.
-- `SCATTER`: short-range fan of pellets.
-- `OVERCHARGE`: held ranged fire winds up with a fast version of the heavy charge ring, then becomes a
-  beam that stays on while you hold it. Let go and the shaft cools with a spray of embers instead of
-  blinking out. Dodge distance triples, and the core becomes a lightning bolt.
-- `BARBED WHIP`: the melee lash and guard become a red lash with four times the reach and damage.
-- `PATHFIND`: ranged bolts seek by axis-aligned right turns.
-
-Pickups are local-only; they do not appear in competitive rooms or network snapshots.
-
-## Arenas
-
-Pick a card on the title screen; the host can also cycle the arena in the lobby before starting.
-
-| Arena | Shape / intent |
+| Layer | Choice |
 | --- | --- |
-| `CROSSROADS` | Four gate blocks around an open center. Symmetrical lanes and clean center duels. |
-| `GRID ZERO` | Corner pillars plus central cover. The classic, readable arena. |
-| `THE RING` | A hollow central box with a gate on each side. Close control fights and blind flanks. |
-| `SWITCHBACK` | Staggered bars form serpentine lanes. Long sightlines and heavy ricochets. |
-| `MAINFRAME` | A large multi-district map (four linked combat zones) with a camera that follows you. Cross lanes, pillar cover, a gate ring and a ricochet alley; fights move between districts. |
-| `TRANSIT` | Two decks over a service trench. Cross on the central bridge, ride the paired transporter pads, or take the lift on the east end. The trench blocks bodies but not shots; dashes phase it. |
-| `THE LEDGE` | No outer wall. The floor ends in a dashed lip over the void: a shove that carries a body over it kills, shots fall instead of ricocheting, and a pushed threat is a clear in the gauntlet. |
-| `RECYCLING BIN` | A trapezoid floor with no cover and a big hole in the bottom edge. A 130-unit compaction plate descends every 30 s, stops on the hole's rim and rides everything on the sides down to the ledges. Breakable file boxes are the only clutter, and they are light: shove them, launch them, bat them with a guard. |
-| `DISK PLATTER` | A round platter with no outer wall. Nine holes turn with the disc, and a read arm sweeps across the face every 11.5 s, shoving anything it catches toward those holes or the rim. No cover: the floor and the arm are the whole fight. |
+| Language | TypeScript, strict, ES2020 output |
+| Rendering | Canvas 2D, one canvas, no WebGL |
+| Audio | Web Audio synthesis; an 82 BPM lofi-house loop built from MIDI notes |
+| Menus | DOM/HTML over the arena canvas |
+| Build | Vite, static `dist/`, no SSR and no server runtime |
+| Multiplayer | PeerJS over WebRTC data channels, host-authoritative |
+| Delivery | PWA: manifest, generated icons, service worker |
+| Dependencies | `peerjs` at runtime; TypeScript, Vite and `tsx` in development |
 
-### Bridges, pads and lifts
+No game engine (Phaser, PixiJS, Godot) is used. The simulation, renderer and netcode are small enough to
+own directly, and the project avoids an engine's asset pipeline and scene model. The full reasoning is in
+[AGENTS.md](AGENTS.md) §2.
 
-Traversal is arena geometry, not a separate mode. A floor gap is solid to bodies, bots and gauntlet
-threats, while shots fly over it. The bridge is the only walking route across. Pads and lifts arm on a
-**standing** body, not on touch, so running through one does nothing; the ring around the avatar fills
-while the plate waits. A pad ride unloads the avatar layer by layer at the source, then rebuilds it at the
-mate, and the body cannot act or be hit while it is in transit. A lift ride is a longer screen transition
-built from deck outlines shrinking toward the centre. Both are ordinary arena data, so a match, a
-training session and the gauntlet share the same links.
+## Architecture
 
-Open edges are arena data, not a mode. On `THE LEDGE` the bounds are a lip rather than a wall, so Sweep's
-broom, Wedge's bash or a bomb can carry an opponent out, and a dash still commits you to whatever is on
-the other side of it. Bots steer away from the drop and refuse a dash that would end past it. A fall is not
-instant: for 0.6 s the body hangs over the drop with reduced steering, so a quick stick back can still save
-you. File boxes are light debris rather than cover, and Wedge's deployed wall is solid to shots with its own
-health: chip it and it cracks, then breaks.
+### One loop, two clocks
 
-`DISK PLATTER` makes the drop round. The plate turns slowly, so every hole travels with it; stand still and
-one can drift under your feet. The read arm pivots just outside the rim and sweeps the face, shoving
-players, bots and threats along its tangent without damaging them. A body caught between the arm and a
-hole is a fall. A dash clears a hole (it is airborne), but landing inside one starts the same 0.6 s hang.
-Hosted matches keep the plate and its holes but park the spin and the arm, because the snapshot carries no
-disc phase; local training, gauntlet and campaign runs get the full moving floor.
+`src/main.ts` owns the frame. Each `requestAnimationFrame`:
 
-### Laser emitters
+1. Clamps the frame delta to 100 ms.
+2. Adds it to a fixed-step accumulator and runs up to four 1/60 s `World.step` ticks.
+3. Renders with the leftover accumulator as an interpolation fraction.
 
-`CROSSROADS`, `THE RING` and `MAINFRAME` mount red laser fixtures in local training, gauntlet and
-campaign runs. Each one gathers for 2.4 s, with red dots falling inward toward the lens and a shrinking
-ring, then fires a short vertical or horizontal beam. The shaft stops on pillars, deployed walls, the
-compactor plate and a walled arena's bounds; cover is real. A player caught in it loses one segment and
-is shoved along the beam.
+So physics is always 60 Hz regardless of the display rate. A 144 Hz monitor renders smoother motion, a
+30 Hz device drops frames without changing the simulation, and a slow frame cannot trigger a spiral of
+death: the four-step clamp sheds time instead of falling further behind.
 
-Face the lens with the guard raised (`B`) to catch the shaft. The return leaves along your facing, so a
-held target lock sends it straight at the locked enemy; without a lock it goes back down the lane. The
-reflected beam hits harder than the direct one and can cut threats, the training drone or another
-player. It is the intended way to turn an arena emitter into a boss-fight weapon.
+### Simulation is the only truth
 
-A hosted match never arms the emitters: they are local content, like the compactor and file boxes, and
-nothing about them enters a snapshot.
+`World` owns players, projectiles, rounds, bots' inputs, pickups and local threats. The renderer never
+mutates it; it reads state and draws. Every entity is preallocated and reused through `active` flags, and
+`step()` and `draw()` avoid per-frame allocation: no object literals, arrays, closures or string building
+in the hot path. Particles and projectile trails are pooled ring buffers.
 
-## Training and bot practice
+Content is data, not branches:
 
-`SINGLE PLAYER → TRAINING → program` walks through the arena grid (navigate all four directions), bot count
-(`NO BOTS` for the sparring drone, or `1 V 1` through `1 V 3`), and difficulty. Difficulties stack
-vertically from `EASY` to `HARD`, with an `IMPOSSIBLE` tier reserved as the top of the ladder. Each choice
-advances immediately: pick an arena to choose the bot count, pick a count to choose difficulty, and pick a
-difficulty to start. There is no extra NEXT/RUN step. Training has **no rounds**: every dead body respawns
-and the session continues until you leave. Training and VS BOTS remember their difficulty separately.
+- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, wall style and floor signature.
+- `src/game/programs.ts` holds the roster identity and kit tuning; the four action jobs branch in `World`.
+- `src/game/tuning/*.json` holds all gameplay numbers, re-exported through the typed facade in
+  `src/game/config.ts`, so most balance changes are a JSON edit with no code change.
 
-`SINGLE PLAYER → VS BOTS` uses the same setup but runs the normal match flow: countdown, last-standing
-rounds, first to 3. Bots take the programs you leave unused, so a Wedge pick can face Probe, Fisher and Sweep.
-They use the same movement, facing, melee, dash, skill and heavy rules as you; they cannot aim
-independently of movement. Training keeps the endless respawn loop, while VS BOTS ends on the match
-overlay with a rematch option.
+Local bots are not part of the simulation. `BotBrain` reads public state and writes the same `InputFrame`
+a human writes, then `World.step` treats it identically. That keeps bots bound by facing locks, dash
+charges, energy and cooldowns, and it keeps AI cost out of the physics loop.
 
-- `EASY`: slow reactions, loose aim, forgiving fire cadence.
-- `MEDIUM`: reads projectiles, leads movement, uses skills, power attacks and dashes.
-- `HARD`: 55 ms reactions, near-perfect lead, aggressive deflects and spacing.
-- `IMPOSSIBLE`: the reserved ceiling. Faster fire, no aim error, full dodge; still being tuned.
+### Code map
 
-Three styles alternate across the three bots: `DUELIST` closes distance, `TRICKSTER` orbits and
-looks for deflections, and `SIEGE` holds range and charges beams. Wedge bots plant their bracket between
-themselves and incoming fire, and Fisher bots drop a lure before stepping away; a bot never chases its own
-beacon. Bots raise the guard against incoming shots outside melee reach, including sentry bolts and
-missiles in the gauntlet, and swat the ones that arrive close. Bots route around cover with a small
-per-arena grid path instead of hugging the nearest wall. They are local-only test opponents; they do not
-occupy multiplayer room slots.
+| Area | Files |
+| --- | --- |
+| Frame loop, input routing, sessions, UI wiring | `src/main.ts` |
+| Fixed-step simulation, rounds, kits, threats | `src/game/world.ts`, `entities.ts`, `movement.ts`, `collision.ts` |
+| Renderer, camera framing and split view | `src/game/render.ts`, `camera.ts` |
+| Program identity and vector marks | `src/game/identity.ts`, `programs.ts` |
+| Bots and pathfinding | `src/game/bot.ts`, `nav.ts` |
+| Local content | `powerups.ts`, `campaign.ts`, `saves.ts`, `gauntletRecords.ts` |
+| Networking | `src/net/net.ts` |
+| DOM and touch controls | `src/ui/dom.ts`, `src/ui/touch.ts` |
+| Tuning | `src/game/tuning/*.json` |
+| Build tooling | `scripts/bench.ts`, `scripts/gen-icons.mjs` |
 
-## Gauntlet
+## Performance on low-powered hardware
 
-`GAUNTLET` is a local threat sandbox, not ranked PvP and not networked. Pick an arena and begin a
-one-life run. Run setup has a `FRIENDLY FIRE` toggle, on by default: enemy shots can damage other threat
-families. Turn it off and hostile fire passes through worms, viruses and error blocks, so only you are at
-risk. The same saved rule applies to a campaign run. When your last health segment goes, the run ends and the results overlay records your callsign, arena,
-wave reached, survival time and kills. There is no in-run respawn; training is the practice space.
+The design targets are a **4 ms average 60 Hz sim tick** with 8 players and 48 live projectiles, and
+**144 FPS rendering** on integrated graphics. Both are guardrails, not hopes: the sim has a headless
+benchmark and the renderer follows hard rules.
 
-The setup screen shows the local top eight runs, ranked by wave, then survival time, then kills. The title
-menu shows your best wave beside the gauntlet option. Records live in `localStorage` and never enter a
-network snapshot. Waves are 30 s and the ramp is deliberately slow: worms arrive at wave 3, viruses at 6,
-triplex shooters at 9, cascading errors at 12, homing pods at 15 and flocks at 18. Spawn intervals tighten
-across roughly 120 waves, and live caps grow one step at a time. A wave never forces a synchronized burst
-of every threat; existing countdowns keep running. Each arena changes the zones the threats hold.
+### Measured simulation cost
 
-- **WORMS**: trailing chains of red squares. They patrol a territory anchor, eat bolts and viruses, and
-damage on touch. They only commit to you if you enter their patch or hit them, then lose interest after
-5.5 s and return. A player who closes inside 76 units draws a telegraphed **bite**: the head rears, then
-lunges 34 units into a 56-unit reach for 1 damage and a hard shove. Back off, dash through it, or break
-line of sight to waste it. Longer chains move slower. Cover blocks them. A virus that catches one turns it into a
-faster hunter.
-- **VIRUSES**: magenta diamonds that spread toward roam points instead of beelining across the map. They
-pursue a player only inside 310 units, or an uninfected worm inside 560 units. Touching you fills the
-infection meter; at full meter a **THRALL** copy of you spawns nearby and fights with your own single-stick
-rules. A virus that lines you up at 34–150 units winds up and **charges** in a straight line for 1 damage
-and a 540 shove; sidestep or dash to make it miss, then punish the recovery. They still infect worms and
-split on a timer.
-- **SENTRIES**: pulse squares, triplex shotguns, homing trapezoids and dart flocks. They land in a zone
-and hold it, with a 100–250 unit leash instead of following you across the arena. Heavy triplex and homing
-silhouettes are much slower than the pulse and flock. A pulse square or a flock that finds you inside 92
-units stops shooting and **rams** instead: a short wind-up, a 0.16 s dash, 1 damage and a 620 shove, then
-a recovery beat. Only one sentry commits at a time, so a dart flock cannot stack three hits on one frame.
-Packs arrive one at a time, low-tier shots are short-ranged and disperse on cover, and
-enemy fire damages other enemies too while `FRIENDLY FIRE` is on.
-- **CASCADING ERRORS**: yellow blocks stamped with red exclamation marks. They spread outward like a
-  plant, one block every 4.0 s early and 2.0 s at full pressure, hurt on contact, and take three hits to
-  delete a single block. The first colony starts at four blocks and the live cap grows over many waves.
-- **FIREWALLS**: orange beams that warn, then sweep across the arena burning players, worms and viruses.
-Pillars cut both the visible beam and the damage. Automatic firewalls are **off**; they are reserved for
-a future destructible switch on selected arenas.
-- **HEALTH**: enemy hit points are deliberately low so a crowded screen can be cleared. Worms, viruses,
-  errors and shooters all die faster than in v0.1.8; firewalls burn enemy factions harder.
+`npm run bench`, 1800 ticks after 400 warmup, on this development machine (milliseconds per 60 Hz tick):
 
-Everything is local. The mode does not occupy a room slot and no enemy data crosses the network. Hits
-push, throw a directional spray of rotating triangles, and tilt the view by the amount set in Settings.
+| Scenario | avg | p99 | max | Live projectiles / threats |
+| --- | --- | --- | --- | --- |
+| 2P duel | 0.035 | 0.157 | 2.890 | 0.6 |
+| 4P brawl | 0.050 | 0.167 | 1.002 | 1.6 |
+| 8P stress | 0.071 | 0.188 | 0.770 | 7.0 |
+| 8P max projectiles | 0.110 | 0.276 | 1.269 | 25.8 |
+| 8P bot swarm (AI + sim) | 0.162 | 0.700 | 4.825 | 5.9 |
+| Gauntlet max (all threat families) | 0.465 | 1.355 | 8.529 | 28.6 |
 
-## Things to test
+Average and p99 leave most of the 16.7 ms frame budget on the table. The occasional high `max` is a
+scheduler or garbage-collection outlier, not steady cost; the guardrail is the average.
 
-This build is a test rig as much as a game. A useful pass:
+### Why it stays fast
 
-- All nine arenas in training. Learn `THE RING`'s four side gates, `SWITCHBACK`'s ricochet lanes,
-  `MAINFRAME`'s linked districts, `THE LEDGE`'s open lip and `DISK PLATTER`'s moving holes.
-- On `THE LEDGE`, shove a bot over the edge with Sweep's thrown broom. It should de-rez at the lip and the
-  round should end; walk over the same edge yourself and you should fall too.
-- On `DISK PLATTER`, stand still and watch a hole drift under you; the 0.6 s hang should give you one beat
-  to walk out. Then stand in the read arm's path and let it shove you toward a hole. A dash should clear a
-  gap but landing inside one should still drop you.
-- Start training with `NO BOTS`. The sparring drone should drift, fire slow bolts and respawn.
-- 1v1, 1v2 and 1v3 at each tier. `EASY` is a moving target; `HARD` punishes slow attacks and bad dashes.
-  Training never ends on a round; bots respawn after each defeat.
-- Watch a Wedge bot under fire turn away and plant a wall between itself and the bolt. Watch a Fisher bot
-drop its lure, then step out of the way instead of standing on it.
-- Break line of sight behind cover. Bots should walk a route around the block, not scrape against it.
-- Fight inside `THE RING`'s center. Every entrance is a gate; a charged beam down a gate is a trap.
-- Bank bolts around `SWITCHBACK`'s bars. Deflected bolts gain speed and damage.
-- Hold ranged attack and feel the program's stream and short recharge. Losing health segments should be
-  readable from across the arena.
-- Hold `B` and walk into a sentry volley. The 180° shield should catch every shot in front, burn down as
-  it eats them, and force a quick cooldown when it breaks. Release early and it drops immediately.
-- Lock on with `LT` and hold the shield. Reflected shots should flatten toward the target instead of
-  flying off at the incoming angle. The reticle should acquire pulse squares, triplexes, homing pods,
-  flocks and cascading-error blocks as readily as worms.
-- Spend your dodge charges (three as Pinball), then watch the chevrons in the readiness dock refill one at a time.
-- Hold `Y` through the full charge. The two orbit dots should meet at your front and the beam should fire
-  on its own, root you, sweep slowly, and pierce every target in the line while pillars cut it off.
-- Tap `Y` for the program's skill: Probe's proximity mine, Wedge's bracket wall, Fisher's lure beacon,
-  Sweep's split brooms, Kaboom's lobbed shell, Bad Lag's fast-forward, Atomize's three blue shield balls,
-  Ghost's cloak, or Pinball's flipper arm. The mark in the readiness dock should match the program and show readiness. Wedge's
-  wall should stop bodies and reflect shots; a lure should pull local bots off you; the split brooms should
-  shove a body out of the lane in front of Sweep; an Atomize ball should eat one hit instead of a health
-  segment; a cloaked Ghost should be ignored by bots and passed through by shots.
-- As Ghost, hold `Y` to arm the jump-scare: the body should re-cloak and show a pulsing ring. Press any
-  action to pop the ASCII face, damage nearby bodies and throw every player, sentry, worm and virus inside
-  the ring out past its edge (error blocks stay rooted), and drop the cloak. Let the window expire
-  and nothing should fire. Throw a mouth into cover: it should stop and die on the geometry; a clean hit
-  should leave the target dazed and visibly slower for about 0.7 s.
-- As Compress, land two orbs on a bot: its six-Z hull should step down in size and one health segment
-  should disappear with the cap, not just the current pool. Tap `Y` to fold small and run; the body should
-  visibly shrink and cover ground almost twice as fast for 3.5 s. Hold `Y` at close range to pop the
-  pressure burst: every body in the ring should halve in size and cap, and a one-health target should
-  de-rez. Check a sentry: its drawn body and its hitbox should both get smaller. On a worm, the chain
-  shrinks on screen; its bite reach does not.
-- As Pinball, bounce a ball off two walls and into a bot: the speed should rise and the damage should climb
-  1 → 2 → 3 across bodies. Throw a hostile shot into the flipper arm and it should come back at the nearest
-  enemy; a body caught by the paddle should take 1 and be shoved toward another enemy. Hold `Y` for the
-  giant ball: it should roll through pillars and bodies, hit each body once, and turn only at the arena
-  walls. Hold `B` at range: the shield should be visibly wider and last almost two seconds.
-- Reflect a `HARD` bolt back at it. Higher tiers try to dodge their own armed ricochets.
-- Leave endless training and return. The arena choice persists and a fresh session starts cleanly; there
-  is no round or match overlay to clear.
-- Enter the gauntlet on each arena. Confirm the setup screen shows the arena, one-life note and local top
-  runs. On the large arenas the first 20 seconds should contain two slow pulse shooters that land inside
-  the camera window, not one distant shooter or a wave of threats. On `SWITCHBACK`, watch a worm route
-  around the bars instead of passing through them. Automatic firewalls should never appear.
-- Finish a gauntlet run. Losing the last segment should freeze the arena and open the result card with
-  wave, time and kills; the run should appear in the setup table and update the title menu's `BEST W` value.
-  There should be no respawn or practice choice in the gauntlet setup.
-- Let a sentry miss you and hit a worm, virus or error block. Enemy fire should damage other factions
-  instead of passing through them.
-- Watch a sentry pack arrive. The silhouettes should land one at a time over several seconds, not all at
-  once, and the opening minute should stay survivable.
-- Let a worm eat a few viruses. Its chain should grow and its health should recover; cut it down with
-  the beam before it reaches the cap.
-- Let viruses stack on you until the infection bar fills. A thrall should spawn nearby, chase you, swing
-  and shoot, and drop when eliminated.
-- Pick up each timed drop: machine gun, scatter, overcharge (fast charge ring, a held beam that leaves a
-  cooling afterglow and ember spray on release, triple dodge, lightning core), barbed whip (long red
-  lash), and pathfinding (right-angle seekers). `RESTORE_STATUS` should refill your health segments.
-- Stand in a firewall warning lane, then step behind a pillar. The beam should stop burning you behind
-  cover. Take a bolt and a beam tick and check the push and triangle spray direction.
-- Open Settings and step through Feedback, Audio and System. Change hit rotation, impact flash, volume,
-  scanlines, the minimap toggle, the game-UI toggle and rumble; test the hit preview with a connected
-  controller; then reset defaults. Cover should read as a bright solid object, not floor texture.
-- Host a room on a non-default arena, then join from a second tab. The guest must render the host's map.
-- Run a scored gauntlet long enough to trigger the new sentry pacing and pickups. The smaller minimap
-  should sit tight in the bottom-left corner and track the local player plus every live threat family:
-  worms, viruses, sentries, error blocks and firewalls. The training drone should appear there too.
-- Tap `B` three times. The lash should sweep left, right, left with no shield fill and no forward wave.
-  Hold `B` instead and the 180° shield should appear. Take a max-range own bolt, let it bounce, and confirm
-  it cannot damage you.
+- **No assets to load.** Art is paths and text glyphs drawn each frame. Audio is oscillators, noise and
+  filters. The only generated files are PWA icons. The production payload is about 175 KB gzipped
+  (589 KB JS, 49 KB CSS before compression), including PeerJS.
+- **Allocation discipline.** Preallocated entity pools, a pooled particle system, cached label strings,
+  preallocated A* scratch. The hot path is written to avoid triggering collections rather than to survive
+  them.
+- **Cheap glow.** Glow is a multi-pass stroke with `globalCompositeOperation = 'lighter'`. `shadowBlur`,
+  `filter` and per-frame gradients are banned; gradients are built on resize only.
+- **Bounded device pixels.** The backing store is capped at 2× device pixel ratio and letterboxed to 16:9,
+  so a high-DPI phone does not pay for 3× or 4× pixels it cannot resolve.
+- **Cheap AI.** Bots replan on a timer with a preallocated per-arena navigation grid and line-of-sight
+  shortcuts, never a full-grid search per tick.
+- **Local modes pay no network cost.** Training, bot matches, the gauntlet and the campaign never
+  serialize or send a packet; online is opt-in.
+- **Defensive catch-up.** The four-step clamp, a 100 ms delta cap and render interpolation keep a stalled
+  tab from snowballing.
+
+A phone that cannot hold 60 FPS still sees a correct simulation at the rate it can render, because
+rendering and physics are decoupled.
+
+## Multiplayer with PeerJS
+
+There is no game server. One player hosts, everyone else connects to that browser, and the host is the
+authority:
+
+```
+              host (slot 0)
+              authoritative sim @ 60 Hz
+             /      |       \
+       guest 1   guest 2   guest N      each sends inputs, receives snapshots
+```
+
+- **Room code, not an account.** A 4-character code from an unambiguous base-32 alphabet maps to the peer
+  id `defl-arena-v1-<CODE>` on the PeerJS public cloud broker. The broker only performs WebRTC signaling;
+  gameplay traffic flows peer-to-peer over data channels.
+- **Inputs up, snapshots down.** Guests send their `InputFrame` at 60 Hz. The host runs all physics, hit
+  detection, scoring and round flow, then broadcasts a 30 Hz snapshot as nested numeric arrays serialized
+  with BinaryPack. No JSON on the wire.
+- **Local feel.** A guest predicts only its own movement against the shared arena, and interpolates every
+  other body from a 65 ms snapshot buffer. The host never predicts; it owns the result.
+- **Bandwidth.** A full 8-player, 48-projectile snapshot measures **2.45 KB** packed (one event included),
+  or **73.4 KiB/s per guest** at 30 Hz. Two-way traffic for a typical guest stays well under 100 KiB/s;
+  with seven guests the host uploads about **0.50 MiB/s**. That is why the v1 cap is 8 players: it is the
+  host's upload that runs out first, not the protocol.
+- **Failure behavior.** If the host closes the tab the room ends; guests get a disconnect state. A guest
+  leaving frees its slot. There is no migration and no dedicated server.
+- **What is not networked yet.** Competitive rooms carry match state only: no programs, kits, gauntlet
+  threats, pickups or arena animation phase. Online opponents currently use slot identity and Probe's
+  kit, and local-only content stays local. Server hosting and richer snapshots are separate future work.
+
+The same 4-character room join path is the intended cross-platform layer for native builds (see the
+roadmap): a Tauri app and a browser both speak WebRTC.
+
+## PWA
+
+DEFLECT ships as an installable progressive web app:
+
+- `manifest.webmanifest` requests standalone, landscape, dark chrome. Installed, it launches without
+  browser UI, which matters for a kiosk or a handheld.
+- A service worker precaches the shell and caches hashed build assets on first fetch. Navigation is
+  network-first, so a deploy lands on the next reload without a version bump; the cached shell is the
+  fallback, and solo modes still open offline after the first visit.
+- Distribution is a URL, not a store: no install gate before the first match, no review cycle for a
+  balance patch, and one build for desktop and mobile browsers.
+- The installed shell and the kiosk demo URL make it practical to leave a station running unattended.
+
+The PWA also has a real cost: installability and caching differ per browser, and iOS still has its own
+quirks. The app is a normal web page first and an installable app second.
+
+## Input
+
+Keyboard/mouse, gamepad and touch all write the same `InputFrame`.
+
+- **Gamepad** uses the standard mapping, with an analog left stick and a 0.2 deadzone. Controller rumble
+  uses the Gamepad API's `vibrationActuator` where available, with the older `hapticActuators.pulse`
+  fallback; pads without either are simply silent.
+- **Keyboard** is 8-way; the mouse is buttons only and never sets facing.
+- **Touch** puts a stick at the bottom left and shield, skill and dash buttons at the bottom right. Auto
+  lock and auto attack are on by default for touch and can be turned off.
+- The most recently used device owns input; there is no on-screen input-mode switch. On a gamepad,
+  `View`/`Select` toggles the canvas UI and `Start` opens the in-game menu.
+
+Control tables and the full touch layout are in [GAME_GUIDE.md](GAME_GUIDE.md#controls).
+
+## Roadmap
+
+- **Tauri desktop builds (Windows, macOS, Linux).** Wrap the same static build in a Tauri shell to ship
+  signed executables with native window management, offline caching and no browser chrome. The web build
+  stays the source of truth; Tauri is a delivery shell, not a port.
+- **Android APK through Tauri.** Tauri's mobile target can package the same web runtime into an APK while
+  keeping touch controls. That makes a native Android build possible without a second engine or a second
+  renderer.
+- **Cross-platform play.** Browser and native clients would join the same 4-character rooms over PeerJS,
+  because the network layer is browser WebRTC. The native build adds packaging, not a parallel netcode.
+- **Local same-screen play.** The multiplayer menu already names `LOCAL`; it needs real local slots and a
+  second input owner rather than a placeholder.
+- **Public room discovery.** Planned around a shared prefix on the room code, with private rooms keeping
+  an unprefixed code.
+- **More campaign nodes and sectors.** Only `BUILD ROOT` is authored; the sector graph and layout handoff
+  live in [CAMPAIGN.md](CAMPAIGN.md).
+
+None of the Tauri work is built yet. It is listed because the current stack was chosen to make it a
+packaging step rather than a rewrite.
 
 ## Development
 
 ```bash
-npm run build   # strict typecheck + production PWA build
-npm run bench   # headless 60 Hz simulation, 8P bot AI, and gauntlet threat benchmark
-npm run icons   # regenerate PWA icons
+npm install
+npm run dev       # http://127.0.0.1:5173
+npm run build     # strict typecheck + production PWA build into dist/
+npm run preview   # serve the production build locally
+npm run bench     # headless 60 Hz sim benchmark
+npm run icons     # regenerate PWA icons
 ```
 
-Gameplay tuning lives in [src/game/tuning](src/game/tuning), split into player, program, threat, campaign
-and world JSON. `src/game/config.ts` is the typed facade every system imports from, so editing a number is
-a JSON change rather than a code change. A running dev server hot-reloads it; see the folder's README for
-units, the file map and the values that stay derived in code.
+The alpha is deployed to GitHub Pages by `.github/workflows/pages.yml` on every push to `main`
+(`npm ci`, `npm run build`, Pages artifact upload). The repository's Pages source must be **GitHub
+Actions**, not the raw branch. Serve `dist/` over HTTPS locally if you need to exercise the service
+worker, install flow or offline shell.
 
-Pushing to `main` builds `dist/` and deploys it to GitHub Pages through
-`.github/workflows/pages.yml`. The repository's Pages source must be set to **GitHub Actions**, not the
-raw branch.
-
-Architecture, invariants, network protocol, and measured performance live in [AGENTS.md](AGENTS.md).
-The forward plan and open design questions are in [TODO.md](TODO.md); session-by-session decisions and
-verification are in [HISTORY.md](HISTORY.md). The original specification is
-[PRD-Deflect_game.md](PRD-Deflect_game.md).
+- Gameplay numbers: [src/game/tuning](src/game/tuning), typed in `src/game/config.ts`.
+- Architecture, invariants, protocol and performance guardrails: [AGENTS.md](AGENTS.md).
+- Forward plan and open questions: [TODO.md](TODO.md).
+- Session log and measurements: [HISTORY.md](HISTORY.md).
+- Gameplay reference and QA checklist: [GAME_GUIDE.md](GAME_GUIDE.md).
+- Original design spec: [PRD-Deflect_game.md](PRD-Deflect_game.md).
 
 ## License
 
