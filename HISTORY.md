@@ -2955,3 +2955,27 @@ an anchor, stay inside 96-560 units of the player, and never pin against a wall.
 
 **Next:** play the prologue with a pad and tune `floatSpeed`/`floatRing` if the parent drifts out of the
 fight or crowds the player.
+
+## 2026-10-30 — Jump-scare throws the ring clear (v0.1.63 tuning)
+
+**Goal:** the Ghost jump-scare only nudged bodies. It should shove every enemy and player caught inside
+its 210-unit ring out of the ring when it fires.
+
+**Changed:**
+- `fireJumpScare` now runs `evictJumpScare` after the blast. It is a target displacement, not a flat
+  impulse: each survivor gets exactly the outward knock that covers the gap to `scareRadius` plus
+  `scareClearance` (30), using its own drag (`need * drag`, because a decaying knock travels `v0 / drag`),
+  and only tops up the outward speed the body already carries.
+- Covers players (drill bots and other local bodies), sentries, worms and viruses. Cover still cuts the
+  wave, a body riding a pad/lift is left alone, dormant calibration subjects stay asleep, and rooted
+  cascading-error blocks are unchanged by design.
+- `evictJumpScare` / `shoveClearOfBlast` live in `World`; `GHOST.scareClearance` is the only new number.
+  No snapshot or protocol fields; the kit stays local-only.
+
+**Verification:** `npx tsc --noEmit` clean, `npm run build` clean. Headless Ghost gauntlet: a sentry at
+40 units ended 234 out and a second player body at 60 units ended 251 out, both past `scareRadius` 210;
+the caster took no damage and the sentry's knock came only from the eviction (blast damage does not push
+threats). AGENTS D26 and the README control/QA text now describe the eviction.
+
+**Next:** play a Ghost gauntlet run on THE LEDGE and check that a scare can shove a threat over the lip;
+tune `scareClearance` if bodies settle back in too quickly.

@@ -4855,10 +4855,10 @@ export class World {
   }
 
   /**
-   * Jump-scare burst: the cloak drops, a radial blast shoves and damages everything
-   * around the body, and the ASCII face is stamped at the burst point for the renderer.
-   * ExplodeBlast already respects cover and skips the caster, so the scare cannot hit
-   * its own owner.
+   * Jump-scare burst: the cloak drops, a radial blast damages everything around the
+   * body, every survivor caught inside the ring is thrown out of it, and the ASCII face
+   * is stamped at the burst point for the renderer. ExplodeBlast already respects cover
+   * and skips the caster, so the scare cannot hit its own owner.
    */
   private fireJumpScare(p: Player): boolean {
     if (p.scareT <= 0) return false;
@@ -4878,7 +4878,77 @@ export class World {
       p.slot,
       GHOST.scareKnockback,
     );
+    this.evictJumpScare(p);
     return true;
+  }
+
+  /**
+   * The scare is an eviction, not just a hit: every body still standing inside the ring
+   * is thrown clear of its edge. A knock impulse travels `v0 / drag` units before it
+   * dies, so each family gets exactly the outward speed that covers the gap left plus
+   * `scareClearance`; a body already moving outward only gets the shortfall, and cover
+   * still cuts the wave. Rooted cascading-error blocks are the one family that does not
+   * move: the colony is floor geometry, not a body with a knock channel.
+   */
+  private evictJumpScare(p: Player): void {
+    const radius = GHOST.scareRadius;
+    const clear = GHOST.scareClearance;
+    for (let i = 0; i < this.players.length; i++) {
+      const target = this.players[i];
+      if (!target.active || !target.alive || target.slot === p.slot) continue;
+      // A ride owns the body; a shockwave does not get to unload a pad or lift.
+      if (target.travelT > 0) continue;
+      this.shoveClearOfBlast(target, p.x, p.y, radius, clear, PLAYER.knockDrag, PLAYER.radius);
+    }
+    if (this.mode !== 'gauntlet' || p.slot === 1) return;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      // A dormant calibration subject is a lesson, not a body: it wakes instead.
+      if (s.kind >= 4 && this.campaignPhase === 'calibration' && s.shapeState === 0) continue;
+      this.shoveClearOfBlast(s, p.x, p.y, radius, clear, SENTRY.knockDrag, s.radius);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      this.shoveClearOfBlast(w, p.x, p.y, radius, clear, WORM.knockDrag, WORM.headRadius);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      this.shoveClearOfBlast(v, p.x, p.y, radius, clear, VIRUS.knockDrag, v.radius);
+    }
+  }
+
+  /**
+   * Raises a body's outward knock velocity until it carries the body clear of a blast.
+   * `need` is the distance left to the ring edge plus the clearance; the impulse that
+   * covers it is `need * drag`, because a decaying knock travels `v0 / drag` in total.
+   */
+  private shoveClearOfBlast(
+    body: { x: number; y: number; kx: number; ky: number },
+    x: number,
+    y: number,
+    radius: number,
+    clearance: number,
+    drag: number,
+    bodyRadius: number,
+  ): void {
+    const dx = body.x - x;
+    const dy = body.y - y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > radius + bodyRadius) return;
+    if (this.lineBlocked(x, y, body.x, body.y)) return;
+    const need = radius + clearance - dist;
+    if (need <= 0) return;
+    const nx = dist > 0.001 ? dx / dist : 1;
+    const ny = dist > 0.001 ? dy / dist : 0;
+    const want = need * drag;
+    const outward = body.kx * nx + body.ky * ny;
+    if (outward >= want) return;
+    const add = want - Math.max(0, outward);
+    body.kx += nx * add;
+    body.ky += ny * add;
   }
 
   /**

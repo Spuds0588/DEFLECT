@@ -944,7 +944,12 @@ path never touches the core mark; `coreScale` is `0.82` so the lashes keep clear
   after which the press is consumed so the same button cannot also act; if the window expires it fires
   nothing. The burst is a cover-respecting `explodeBlast` at `scareRadius` 210, 2 damage and
   `scareKnockback` 1200, drops the cloak, and stamps `SCARE_FACE` at the burst point for `faceTime`
-  0.85 s. The charge costs `scareCost` and starts `scareCooldown` when it arms. A release inside
+  0.85 s. It is also an **eviction**: `evictJumpScare` throws every surviving player, sentry, worm and
+  virus still inside the ring out past the radius plus `scareClearance`, using each family's own
+  `knockDrag` (`need * drag`, because a decaying knock travels `v0 / drag`) and skipping the outward speed
+  a body already carries. Cover still cuts the wave, a body on a pad/lift is left riding, and a dormant
+  calibration subject is left asleep. Cascading-error blocks stay rooted; do not give them a knock channel.
+  The charge costs `scareCost` and starts `scareCooldown` when it arms. A release inside
   `heavyTapMax` is the cloak skill instead.
 - **Bots**: tap the cloak when a shot is in the air or after a hit, hold the heavy when closing to scare
   range, then chase and press melee once armed. Bots cannot see a cloaked target and re-pick.

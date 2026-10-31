@@ -214,6 +214,7 @@
     "scareCooldown": 9,
     "scareWindow": 3.2,
     "scareRadius": 210,
+    "scareClearance": 30,
     "scareDamage": 2,
     "scareKnockback": 1200,
     "faceTime": 0.85
