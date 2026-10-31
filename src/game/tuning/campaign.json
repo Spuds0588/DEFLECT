@@ -55,8 +55,11 @@
       "shardLife": 4.5,
       "shardDamage": 1,
       "shardKnockback": 260,
-      "floatSpeed": 34,
-      "floatRadius": 70
+      "floatSpeed": 44,
+      "floatRing": 250,
+      "floatMargin": 130,
+      "floatTurn": 0.32,
+      "floatTurnRate": 1.15
     },
     "rect": {
       "radius": 27,

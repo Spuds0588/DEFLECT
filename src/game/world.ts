@@ -640,9 +640,11 @@ export class World {
     s.spawnT = 0;
     s.pinT = 0;
     s.orbitOwner = -1;
-    s.orbitA = 0;
-    s.orbitR = 0;
-    s.orbitDir = 1;
+    // The calibration primaries park the orbit fields; the triangle reuses them as its
+    // wandering heading, standoff ring and turn direction.
+    s.orbitA = this.rng.range(0, Math.PI * 2);
+    s.orbitR = CALIBRATION.triangle.floatRing * this.rng.range(0.85, 1.18);
+    s.orbitDir = this.rng.range(0, 1) < 0.5 ? -1 : 1;
     s.orbitHitCd = 0;
     s.ramT = 0;
     s.ramCd = 0;
@@ -799,24 +801,56 @@ export class World {
     s.vy = 0;
   }
 
-  /** Red triangle: the parent holds still and releases a wave of tiny seekers. */
+  /**
+   * Red triangle: the parent drifts around the fight and releases waves of tiny seekers.
+   * It is the watchful mother behind the swarm, never a stationary turret.
+   */
   private updateTriangleSubject(s: Sentry, dt: number, p: Player): void {
     const cfg = CALIBRATION.triangle;
     const self = this.sentries.indexOf(s);
-    // The parent drifts in a lazy loop around its anchor the whole time. It is watching
-    // the swarm, not standing still behind it.
+    // The parent floats the whole time. Its heading wanders on a slow sine, it keeps a
+    // loose band around the player, and it turns off a wall before the clamp catches it,
+    // so it drifts around the room instead of orbiting one anchor or grinding an edge.
+    // A pinned float still reads as a stationary target once the fight moves away.
     s.phase += dt;
-    const floatA = s.phase * 0.55;
-    const tx = s.anchorX + Math.cos(floatA) * cfg.floatRadius;
-    const ty = s.anchorY + Math.sin(floatA * 0.8) * cfg.floatRadius * 0.62;
-    const fdx = tx - s.x;
-    const fdy = ty - s.y;
-    const fd = Math.hypot(fdx, fdy) || 1;
-    const fk = 1 - Math.exp(-1.8 * dt);
-    s.vx += ((fdx / fd) * cfg.floatSpeed - s.vx) * fk;
-    s.vy += ((fdy / fd) * cfg.floatSpeed - s.vy) * fk;
+    s.orbitA += Math.sin(s.phase * cfg.floatTurn + s.orbitDir * 1.3) * cfg.floatTurnRate * s.orbitDir * dt;
+    const b = this.arena.bounds;
+    const margin = cfg.floatMargin;
+    const cosA = Math.cos(s.orbitA);
+    const sinA = Math.sin(s.orbitA);
+    // Turn the heading inward near a lip. Reflecting the wander angle is smooth because
+    // the body's velocity eases toward the new direction, unlike a hard positional kick.
+    if (s.x < b.left + margin && cosA < 0) s.orbitA = Math.PI - s.orbitA;
+    else if (s.x > b.right - margin && cosA > 0) s.orbitA = Math.PI - s.orbitA;
+    if (s.y < b.top + margin && sinA < 0) s.orbitA = -s.orbitA;
+    else if (s.y > b.bottom - margin && sinA > 0) s.orbitA = -s.orbitA;
+    const dx = p.x - s.x;
+    const dy = p.y - s.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    // Keep a loose band around the fight by turning the heading itself, not by adding an
+    // opposing vector: two canceling vectors just park the body at the band edge. Too far
+    // eases back in, too close gives ground. The band is wide on purpose, because this
+    // body watches the attack, it does not lead it.
+    if (p.alive) {
+      let homeA = Number.NaN;
+      if (dist > s.orbitR * 1.35) homeA = Math.atan2(dy, dx);
+      else if (dist < s.orbitR * 0.6) homeA = Math.atan2(-dy, -dx);
+      if (!Number.isNaN(homeA)) {
+        const da = Math.atan2(Math.sin(homeA - s.orbitA), Math.cos(homeA - s.orbitA));
+        s.orbitA += da * (1 - Math.exp(-1.4 * dt));
+      }
+    }
+    const wantX = Math.cos(s.orbitA) * cfg.floatSpeed;
+    const wantY = Math.sin(s.orbitA) * cfg.floatSpeed;
+    const fk = 1 - Math.exp(-2 * dt);
+    s.vx += (wantX - s.vx) * fk;
+    s.vy += (wantY - s.vy) * fk;
     s.x += s.vx * dt;
     s.y += s.vy * dt;
+    if (!this.openWalls) {
+      s.x = Math.max(b.left + s.radius, Math.min(b.right - s.radius, s.x));
+      s.y = Math.max(b.top + s.radius, Math.min(b.bottom - s.radius, s.y));
+    }
     this.pushOutOfCover(s, s.radius);
     let live = 0;
     for (let i = 0; i < this.sentries.length; i++) {

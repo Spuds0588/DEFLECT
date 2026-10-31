@@ -13,8 +13,9 @@ Last updated: 2026-10-30 (v0.1.63 campaign calibration prologue and kiosk wordma
       yellow rectangles. They wake together on proximity, on the 6 s timer, or on the first hit; while
       dormant they are invulnerable so the eye-open beat cannot be skipped
 - [x] Blue circle: committed dash with a 0.32 s tell, three bounces off walls and cover, one damage per
-      dash. Red triangle: floats in a slow watch loop while a churning cloud of sixteen tiny triangles
-      seeks the player. Yellow rectangle: no spin, light vertical float, clones directly left and right
+      dash. Red triangle: never parks, drifting on a wandering heading while a churning cloud of sixteen
+      tiny triangles seeks the player (a loose band keeps it near the fight, and it turns off arena walls).
+      Yellow rectangle: no spin, light vertical float, clones directly left and right
       into an axis-aligned row, then the whole row dashes together at high speed. All use the sentry pool
       and the normal player weapon hits
 - [x] Waking shapes carry a small red eye; the pack deliberately shows no lane, arrow or link lines, so

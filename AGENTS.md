@@ -608,8 +608,11 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
   walks inside `CALIBRATION.wakeRadius`, or on the first hit; killing them while dormant is deliberately
   not allowed, because the eye opening is the lesson. A dormant shape is plain geometry; awake, it
   carries a small red eye and each primary owns one attack: the circle dashes and bounces off walls and
-  cover; the triangle floats in a slow watching loop around its anchor while its cloud of sixteen tiny
-  seeking triangles churns around the player and bites on contact; the rectangle does not spin, bobs
+  cover; the triangle never holds still, drifting on a wandering heading at `floatSpeed` while it keeps a
+  loose `floatRing` band around the player and turns off a wall before the clamp catches it, so it reads as
+  a watchful parent behind its cloud of sixteen tiny seeking triangles, which churn around the player and
+  bite on contact (do not anchor it to one loop: an anchored float becomes a stationary target as soon as
+  the fight moves); the rectangle does not spin, bobs
   lightly, clones itself directly left and right into an axis-aligned row, then the whole row commits to
   one very fast shared dash. This pack is deliberately **untelegraphed**: no lane, arrow or link lines,
   because the switch from passive to attacking is the fear beat. Clear all six to start the drill. They

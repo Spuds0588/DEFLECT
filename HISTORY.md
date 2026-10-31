@@ -2932,3 +2932,26 @@ runs selecting GRID ZERO / SWITCHBACK; a manual three-pilot seed stayed in one c
 
 **Next:** play the prologue with a pad and tune the wake radius/layout and attack cooldowns; watch a
 deployed kiosk loop through death and restart to confirm no mode text flashes.
+
+## 2026-10-30 — Calibration triangle drifts free (v0.1.63 tuning)
+
+**Goal:** the red calibration triangle read as a stationary target. It is meant to be the watchful parent
+behind the shard cloud, so it should float the whole time.
+
+**Changed:**
+- `updateTriangleSubject` drops the anchored orbit loop. The parent now drifts on a slowly wandering
+  heading (sine turn, `floatTurn`/`floatTurnRate`), holds a loose band around the player
+  (`floatRing` 250: re-aims the heading home past 1.35x, away inside 0.6x instead of adding a canceling
+  vector), and reflects its heading off an inset border (`floatMargin` 130) so it never grinds the arena
+  clamp. `floatSpeed` 34 → 44. Position is still eased, so direction changes read as floating, not snaps.
+- The triangle reuses the parked sentry `orbitA`/`orbitR`/`orbitDir` fields as heading, home radius and
+  turn sign; spawn seeds them per subject. No new snapshot or protocol fields; calibration stays local.
+- AGENTS D17 and the v0.1.63 TODO entry now describe the drift and warn against anchoring the parent.
+
+**Verification:** `npx tsc --noEmit` clean. Headless campaign run (`World('gauntlet', campaign)`) sampled
+both parents each second for 25 s: they move at 23-44 u/s continuously, cross the room instead of holding
+an anchor, stay inside 96-560 units of the player, and never pin against a wall. Browser run through
+`SINGLE PLAYER > CAMPAIGN > SLOT 1 > NO BOTS > PROBE` confirmed the same drift live in the prologue.
+
+**Next:** play the prologue with a pad and tune `floatSpeed`/`floatRing` if the parent drifts out of the
+fight or crowds the player.
