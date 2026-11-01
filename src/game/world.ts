@@ -70,10 +70,15 @@ import {
   usbExtensionAt,
   usbFloorAt,
   usbFlowAt,
+  swipeDirectionAt,
+  swipeIndexAt,
+  swipePhaseAt,
+  swipePopupActiveAt,
   type ArenaBrowserDef,
   type ArenaDef,
   type ArenaKeypadDef,
   type ArenaScannerDef,
+  type ArenaSwipeDef,
   type ArenaUsbDef,
   type DiscDef,
 } from './arenas';
@@ -452,6 +457,14 @@ export class World {
   private readonly usbDX = new Float32Array(4);
   private readonly usbDY = new Float32Array(4);
   private readonly usbFlowVec = { x: 0, y: 0 };
+  /** SWIPE RIGHT layout. Both clocks travel in SnapshotHazards online. */
+  readonly swipe: ArenaSwipeDef | null;
+  /** Time since the opening card. The swipe beat index is derived from this. */
+  swipeT = 0;
+  /** Independent match-popup cycle clock. */
+  swipePopupT = 0;
+  /** Raised match-popup collision while it is up. Public for tests and bot safety. */
+  swipePopupSolid: Rect | null = null;
   /** Current world angle of the read arm, from its pivot. Public for the renderer. */
   armAngle = 0;
   /** Read-arm pivot, fixed for the life of the arena. Public for the renderer. */
@@ -538,6 +551,7 @@ export class World {
       for (let i = 0; i < this.usb.drives.length; i++) this.usbRects.push({ x: 0, y: 0, w: 0, h: 0 });
       this.refreshUsb(0);
     }
+    this.swipe = arena.swipe ?? null;
     this.gauntletPractice = gauntletPractice;
     this.localSlot = localSlot;
     this.selectedProgram = clampProgram(program);
@@ -762,6 +776,7 @@ export class World {
     this.firewallSwitchDwell = 0;
     this.firewallSwitchFlash = 0;
     if (this.usb) this.resetUsb();
+    if (this.swipe) this.resetSwipe();
     for (let i = 0; i < this.pipes.length; i++) {
       const pipe = this.pipes[i];
       pipe.active = true;
@@ -2329,6 +2344,7 @@ export class World {
     if (this.scanner) this.resetScanner();
     if (this.browser) this.resetBrowser();
     if (this.usb) this.resetUsb();
+    if (this.swipe) this.resetSwipe();
     const active = this.activeCount();
     if (active === 0) return;
     computeSpawns(active, this.arena, this.spawnTmpX, this.spawnTmpY);
@@ -2423,6 +2439,7 @@ export class World {
     // could not agree with the host about which hole is underfoot. Local modes spin.
     if (this.arena.disc && canAct && this.mode !== 'match') this.tickDisc(dt);
     if (this.usb && canAct) this.tickUsb(dt);
+    if (this.swipe && canAct) this.tickSwipe(dt);
     for (let i = 0; i < this.bumperFlash.length; i++) {
       if (this.bumperFlash[i] > 0) this.bumperFlash[i] = Math.max(0, this.bumperFlash[i] - dt);
     }
@@ -8130,29 +8147,37 @@ export class World {
     // Walls only: the super ball rolls through cover instead of ricocheting off it.
     if (proj.type === 15) return;
     for (let i = 0; i < this.arena.pillars.length; i++) {
-      if (!circleRect(proj.x, proj.y, proj.radius, this.arena.pillars[i], hitScratch)) continue;
-      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10 || proj.type === 12 || proj.type === 17) {
-        proj.active = false;
-        this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
-        return;
-      }
-      if (proj.owner < 0 && proj.type >= 3 && proj.type !== 14) {
-        proj.active = false;
-        this.emit(EV.SENTRY_HIT, -1, proj.x, proj.y, 0, hitScratch.nx, hitScratch.ny);
-        return;
-      }
-      proj.x = hitScratch.px;
-      proj.y = hitScratch.py;
-      const vn = proj.vx * hitScratch.nx + proj.vy * hitScratch.ny;
-      if (vn < 0) {
-        proj.vx -= 2 * vn * hitScratch.nx;
-        proj.vy -= 2 * vn * hitScratch.ny;
-      }
-      this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 0);
-      proj.armed = true;
-      this.noteBounce(proj);
-      return;
+      if (this.bounceCoverRect(proj, this.arena.pillars[i])) return;
     }
+    // A raised match popup is temporary cover, not arena geometry. Shots still see it
+    // while it stands, so the card cannot be used as a free firing slit.
+    if (this.swipePopupSolid && this.bounceCoverRect(proj, this.swipePopupSolid)) return;
+  }
+
+  /** Shared shot/cover response for static pillars and the temporary swipe popup. */
+  private bounceCoverRect(proj: Projectile, rect: Rect): boolean {
+    if (!circleRect(proj.x, proj.y, proj.radius, rect, hitScratch)) return false;
+    if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10 || proj.type === 12 || proj.type === 17) {
+      proj.active = false;
+      this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
+      return true;
+    }
+    if (proj.owner < 0 && proj.type >= 3 && proj.type !== 14) {
+      proj.active = false;
+      this.emit(EV.SENTRY_HIT, -1, proj.x, proj.y, 0, hitScratch.nx, hitScratch.ny);
+      return true;
+    }
+    proj.x = hitScratch.px;
+    proj.y = hitScratch.py;
+    const vn = proj.vx * hitScratch.nx + proj.vy * hitScratch.ny;
+    if (vn < 0) {
+      proj.vx -= 2 * vn * hitScratch.nx;
+      proj.vy -= 2 * vn * hitScratch.ny;
+    }
+    this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 0);
+    proj.armed = true;
+    this.noteBounce(proj);
+    return true;
   }
 
   private projectileHits(proj: Projectile): boolean {
@@ -8409,6 +8434,164 @@ export class World {
       if (e.active) this.shiftUsbBody(e, dt, true);
     }
     if (this.drone.active) this.shiftUsbBody(this.drone, dt, true);
+  }
+
+  /** Clear both swipe clocks and drop any raised popup at the start of a round. */
+  private resetSwipe(): void {
+    this.swipeT = 0;
+    this.swipePopupT = 0;
+    this.syncSwipePopup();
+  }
+
+  /**
+   * Advance the card deck and the popup cycle. The host applies the floor carry here;
+   * guests derive the card, popup pose and warning from the synced clocks and receive
+   * the resulting body positions in the snapshot.
+   */
+  private tickSwipe(dt: number): void {
+    const swipe = this.swipe;
+    if (!swipe) return;
+    this.swipeT += dt;
+    this.swipePopupT += dt;
+    const index = swipeIndexAt(swipe, this.swipeT);
+    const phase = swipePhaseAt(swipe, this.swipeT);
+    if (index > 0 && phase < swipe.travel) {
+      const dir = swipeDirectionAt(swipe, this.swipeT);
+      const amount = dir * swipe.shift * Math.min(1, dt / Math.max(0.001, swipe.travel));
+      this.shiftSwipeBodies(amount);
+    }
+    this.syncSwipePopup();
+  }
+
+  /** Carry every live body and shot with the phone floor. */
+  private shiftSwipeBodies(dx: number): void {
+    if (!this.swipe) return;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.travelT > 0 || p.fallT > 0) continue;
+      this.shiftSwipeBody(p, dx, PLAYER.radius * p.shrink);
+    }
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const proj = this.projectiles[i];
+      if (!proj.active) continue;
+      proj.x += dx;
+      proj.prevX += dx;
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active || w.held) continue;
+      const beforeX = w.x;
+      const beforeY = w.y;
+      this.shiftSwipeBody(w, dx, WORM.segmentRadius);
+      const moveX = w.x - beforeX;
+      const moveY = w.y - beforeY;
+      for (let s = 0; s < w.segCount; s++) {
+        w.segX[s] += moveX;
+        w.segY[s] += moveY;
+      }
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (v.active && !v.held && v.spawnT <= 0) this.shiftSwipeBody(v, dx, v.radius);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active) this.shiftSwipeBody(s, dx, s.radius);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (e.active) e.x += dx;
+    }
+    if (this.drone.active) this.shiftSwipeBody(this.drone, dx, this.drone.radius);
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (b.active) b.x += dx;
+    }
+  }
+
+  /** Move one body with the floor, then keep it inside the phone/solid edges. */
+  private shiftSwipeBody(body: { x: number; y: number; prevX?: number }, dx: number, radius: number): void {
+    body.x += dx;
+    if (body.prevX !== undefined) body.prevX += dx;
+    const b = this.arena.bounds;
+    body.x = Math.max(b.left + radius, Math.min(b.right - radius, body.x));
+    for (let i = 0; i < this.solids.length; i++) {
+      if (!circleRect(body.x, body.y, radius, this.solids[i], hitScratch)) continue;
+      body.x = hitScratch.px;
+      body.y = hitScratch.py;
+    }
+  }
+
+  /** Add or remove the raised match platform from body and shot collision. */
+  private syncSwipePopup(): void {
+    const swipe = this.swipe;
+    if (!swipe) return;
+    const active = swipePopupActiveAt(swipe, this.swipePopupT);
+    if (active && !this.swipePopupSolid) {
+      const solid = { ...swipe.popup };
+      this.swipePopupSolid = solid;
+      this.solids = [...this.solids, solid];
+      this.dashSolids = [...this.dashSolids, solid];
+      this.pushBodiesOutOfSwipePopup(solid);
+    } else if (!active && this.swipePopupSolid) {
+      const solid = this.swipePopupSolid;
+      this.swipePopupSolid = null;
+      this.solids = this.solids.filter((r) => r !== solid);
+      this.dashSolids = this.dashSolids.filter((r) => r !== solid);
+    }
+  }
+
+  /** A popup that rises under a body displaces it instead of trapping it in cover. */
+  private pushBodiesOutOfSwipePopup(solid: Rect): void {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive) continue;
+      if (!circleRect(p.x, p.y, PLAYER.radius * p.shrink, solid, hitScratch)) continue;
+      p.x = hitScratch.px;
+      p.y = hitScratch.py;
+      p.vx = 0;
+      p.vy = 0;
+      p.kx = 0;
+      p.ky = 0;
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      if (!circleRect(w.x, w.y, WORM.segmentRadius, solid, hitScratch)) continue;
+      const mx = hitScratch.px - w.x;
+      const my = hitScratch.py - w.y;
+      w.x = hitScratch.px;
+      w.y = hitScratch.py;
+      for (let s = 0; s < w.segCount; s++) {
+        w.segX[s] += mx;
+        w.segY[s] += my;
+      }
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      if (!circleRect(v.x, v.y, v.radius, solid, hitScratch)) continue;
+      v.x = hitScratch.px;
+      v.y = hitScratch.py;
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      if (!circleRect(s.x, s.y, s.radius, solid, hitScratch)) continue;
+      s.x = hitScratch.px;
+      s.y = hitScratch.py;
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      if (!circleRect(e.x, e.y, CASCADING_ERROR.blockSize * 0.5, solid, hitScratch)) continue;
+      e.x = hitScratch.px;
+      e.y = hitScratch.py;
+    }
+    if (this.drone.active && circleRect(this.drone.x, this.drone.y, this.drone.radius, solid, hitScratch)) {
+      this.drone.x = hitScratch.px;
+      this.drone.y = hitScratch.py;
+    }
   }
 
   /**

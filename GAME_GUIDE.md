@@ -18,7 +18,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
   infected thralls, with a local top-eight table.
 - **CAMPAIGN:** `BUILD ROOT`, the first playable story level, with three local save slots. More levels are coming soon.
 - **Online:** host or join a room for up to 8 players.
-- Thirteen programs, sixteen arenas.
+- Thirteen programs, seventeen arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
@@ -311,6 +311,7 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `BROWSER` | A browser window showing a forum. A giant cursor travels to the page link, hovers, and click-slams the floor before the forum navigates deeper and the cover layout changes. Online: the page/clock is synced and the host resolves the click. |
 | `QUARANTINE` | The campaign tutorial route: a round intake office, a square holding office with three jail cells, a mainboard rectangle and a larger router rectangle linked by three bridge decks. The six calibration subjects wait in holding; the router ends at a network port. Local-only tutorial staging. |
 | `USB HUB` | A round hub with four thumb-drive islands pushing out on a shared cycle. Only the hub and drives are floor; the gap grows to 230 units, so a dash can cross while the drives are travelling but not at full extension. While a drive extends, its current pushes outward; while it retracts, the current pulls inward, carrying players and threats off or onto the islands. Online: the drive clock is synced and the host resolves the ride. |
+| `SWIPE RIGHT` | A tall phone touchscreen showing a dating deck. Every 4.6 s the card swipes left or right and the whole floor slides 108 units that way, carrying every fighter and live shot toward the wall. A `YOU GOT A MATCH` popup rises from the center of the screen for a few seconds as real cover: it blocks bodies and shots, displaces anyone caught under it, then drops back into the floor. Online: the swipe and popup clocks are synced and the host owns the carry and collision. |
 
 ### Ordinary programs
 
@@ -436,6 +437,10 @@ This build is a test rig as much as a game. A useful pass:
 
 - Every arena in training. Learn `THE RING`'s four side gates, `SWITCHBACK`'s ricochet lanes,
   `MAINFRAME`'s linked districts, `THE LEDGE`'s open lip and `DISK PLATTER`'s moving holes.
+- On `SWIPE RIGHT`, wait for the first card swipe and watch every body and live shot carry toward
+  the same wall. Stand under the center as `MATCH INCOMING` warns, then confirm the popup lifts you
+  out and blocks shots until it drops back into the floor. Host a room and check that a guest sees
+  the same card, swipe and popup clock.
 - On `THE LEDGE`, shove a bot over the edge with Sweep's thrown broom. It should de-rez at the lip and the
   round should end; walk over the same edge yourself and you should fall too.
 - On `DISK PLATTER`, stand still and watch a hole drift under you; the 0.6 s hang should give you one beat

@@ -1974,6 +1974,28 @@ new playable hull and not a threat family.
   grid cannot represent a gap that opens and closes, so it is not a complete route model; keep the
   direct edge check in the movement layer instead of baking a fake all-floor grid.
 
+### D44 — SWIPE RIGHT moves the floor with the card deck (built 2026-11-01)
+
+`SWIPE RIGHT` (arena id 16) is a 1000×1800 phone-screen arena. It is an ordinary `ArenaDef` with a
+`swipe` record, not a second movement system.
+
+- The deck is presentation data: eight emoji profiles with names, details and accents. A swipe beat
+  arrives every 4.6 s, slides for 0.36 s, and carries every live body, projectile, gauntlet threat, drone
+  and prop 108 units toward the wall in the beat's direction. The directions alternate. `World` clamps
+  the carried bodies to the arena bounds and existing solids; do not add a separate swipe body type.
+- `World.swipeT` is the card/slide clock and `World.swipePopupT` is the independent match-popup clock.
+  The popup starts warning at 2.8 s, rises over 0.55 s, holds 4.6 s and falls over 0.6 s in a 20 s cycle.
+  Its authored rect is solid only while raised; `World.syncSwipePopup` adds and removes it from
+  `solids`/`dashSolids`, and `bounceCoverRect` gives shots the same cover response. A body caught under it
+  is displaced out, not trapped.
+- `SnapshotHazards` carries `swipeT` at index 7 and `swipePopupT` at index 8; props move to 9. The parser
+  still accepts the current USB shape (props at 7) and the pre-USB shape (props at 6). Guests derive the
+  card, popup pose, warning and floor from those clocks. They never simulate the carry; the host owns it.
+  `NetView` exposes both clocks and `LocalPredictor` treats the raised popup as dynamic cover.
+- The arena is online-safe (`isOnlineArena` accepts it): the popup and carry clocks are in the snapshot.
+  The card and popup are local presentation only and never enter `Snapshot` as extra objects. No health,
+  damage or balance numbers were changed for this arena.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

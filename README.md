@@ -14,7 +14,7 @@ files, no game engine.
 Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, a
 timed infection clear, the first campaign node, and host/join rooms for up to eight players. VS BOTS and
 online versus can run a 1, 3 or 5 game series with random map rotation by default or a fixed custom arena.
-Thirteen programs, sixteen arenas. The alpha is deployed from `main` on every push.
+Thirteen programs, seventeen arenas. The alpha is deployed from `main` on every push.
 
 ## Tech stack
 

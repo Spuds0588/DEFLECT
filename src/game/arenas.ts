@@ -246,6 +246,40 @@ export interface UsbFlowVector {
   y: number;
 }
 
+/** One dating-app profile shown on the SWIPE RIGHT card stack. */
+export interface ArenaSwipeProfileDef {
+  emoji: string;
+  name: string;
+  detail: string;
+  color: string;
+}
+
+/**
+ * SWIPE RIGHT: a tall phone screen whose card stack swipes left and right. Each
+ * swipe carries every body toward that wall. The match popup is a real raised
+ * platform, so its rect is solid while it is up; one shared pair of clocks drives
+ * both the swipe and the popup on every peer.
+ */
+export interface ArenaSwipeDef {
+  profiles: ArenaSwipeProfileDef[];
+  /** Seconds between swipe beats. */
+  interval: number;
+  /** Seconds the card and floor take to slide on each beat. */
+  travel: number;
+  /** Units every body and live shot is carried toward the wall. */
+  shift: number;
+  /** Signed horizontal direction for each successive beat. */
+  directions: readonly number[];
+  /** The match popup's collision footprint while raised. */
+  popup: Rect;
+  popupPeriod: number;
+  /** Warning lead-in before the platform rises. */
+  popupWarn: number;
+  popupRise: number;
+  popupHold: number;
+  popupFall: number;
+}
+
 /**
  * A breakable file box. Bodies step over it; shots and lashes delete it in one or two
  * hits. Kind is a `PROP` id, which picks the mark on the box.
@@ -542,8 +576,10 @@ export interface ArenaDef {
   scanner?: ArenaScannerDef;
   /** Browser-window presentation. Its solid pieces are listed in `pillars`. */
   browser?: ArenaBrowserDef;
-  /** Four retracting USB-drive floor plates. Local-only; no snapshot phase. */
+  /** Four retracting USB-drive floor plates. The shared phase travels in SnapshotHazards. */
   usb?: ArenaUsbDef;
+  /** Swipe-card phone floor and its match-popup platform. */
+  swipe?: ArenaSwipeDef;
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
   /** Tutorial room floors and labels. Presentation only; never collision. */
@@ -1381,6 +1417,55 @@ export const ARENAS: readonly ArenaDef[] = [
       flowWidth: 48,
     },
   },
+  {
+    id: 16,
+    name: 'SWIPE RIGHT',
+    tagline: 'Swipe. Shift. Match.',
+    hudLabel: 'ARENA // SWIPE RIGHT',
+    accent: '#ff4f8b',
+    accentSoft: 'rgba(255, 79, 139, 0.32)',
+    accentFaint: 'rgba(255, 79, 139, 0.032)',
+    signature: 0,
+    // A phone screen, not a room: one tall runway with the dating app painted over it.
+    bounds: { left: 240, top: 48, right: 1240, bottom: 1848 },
+    pillars: [],
+    spawns: [
+      { x: 740, y: 220 },
+      { x: 1110, y: 420 },
+      { x: 1130, y: 880 },
+      { x: 1080, y: 1380 },
+      { x: 740, y: 1640 },
+      { x: 400, y: 1380 },
+      { x: 350, y: 880 },
+      { x: 390, y: 420 },
+    ],
+    swipe: {
+      profiles: [
+        { emoji: '🧑‍🚀', name: 'NOVA', detail: 'ORBITAL MECHANIC // 27', color: '#ffcf6a' },
+        { emoji: '🧑‍🎤', name: 'RIOT', detail: 'LOUD ROOM // 24', color: '#ff7ac8' },
+        { emoji: '🧑‍🍳', name: 'BASIL', detail: 'NIGHT KITCHEN // 31', color: '#8dffb0' },
+        { emoji: '🧑‍💻', name: 'PATCH', detail: 'BUILD BREAKER // 29', color: '#67e8ff' },
+        { emoji: '🧙', name: 'HEX', detail: 'SMALL SPELLS // 33', color: '#c39bff' },
+        { emoji: '🧛', name: 'VELVET', detail: 'LATE SHIFT // 26', color: '#ff6b73' },
+        { emoji: '🕵️', name: 'MOSS', detail: 'OPEN SECRETS // 30', color: '#b8ff3a' },
+        { emoji: '🧜', name: 'CORAL', detail: 'DEEP END // 28', color: '#5aa8ff' },
+      ],
+      // Four seconds of card, then a fast floor swipe. The directions alternate so the
+      // wall the room is compressed against changes instead of parking on one side.
+      interval: 4.6,
+      travel: 0.36,
+      shift: 108,
+      directions: [1, -1, 1, -1, 1, -1],
+      // A central popup, inset from every spawn. Its side faces read as a raised slab;
+      // the rect is the solid footprint while it is up.
+      popup: { x: 400, y: 690, w: 680, h: 360 },
+      popupPeriod: 20,
+      popupWarn: 2.8,
+      popupRise: 0.55,
+      popupHold: 4.6,
+      popupFall: 0.6,
+    },
+  },
 ];
 
 export function discCenterX(arena: ArenaDef): number {
@@ -1610,6 +1695,76 @@ export function usbFlowAt(
   return false;
 }
 
+/** Which swipe beat is current. Beat 0 is the opening card. */
+export function swipeIndexAt(swipe: ArenaSwipeDef, t: number): number {
+  return Math.max(0, Math.floor(t / Math.max(0.001, swipe.interval)));
+}
+
+/** Seconds into the current swipe interval. */
+export function swipePhaseAt(swipe: ArenaSwipeDef, t: number): number {
+  const index = swipeIndexAt(swipe, t);
+  return Math.max(0, t - index * swipe.interval);
+}
+
+/** 0..1 while a swipe is sliding, 0 when parked. */
+export function swipeMoveProgressAt(swipe: ArenaSwipeDef, t: number): number {
+  const index = swipeIndexAt(swipe, t);
+  if (index <= 0) return 0;
+  const phase = swipePhaseAt(swipe, t);
+  return phase < swipe.travel ? Math.max(0, phase / Math.max(0.001, swipe.travel)) : 0;
+}
+
+/** Signed direction of the current swipe beat. Beat 0 is the parked opening card. */
+export function swipeDirectionAt(swipe: ArenaSwipeDef, t: number): number {
+  const dirs = swipe.directions;
+  if (dirs.length === 0) return 1;
+  // Beat 1 is the first physical swipe, so it reads the first authored direction.
+  const beat = Math.max(0, swipeIndexAt(swipe, t) - 1);
+  return dirs[beat % dirs.length] < 0 ? -1 : 1;
+}
+
+/** Current profile index, wrapping the authored deck. */
+export function swipeProfileIndexAt(swipe: ArenaSwipeDef, t: number): number {
+  const n = swipe.profiles.length;
+  if (n === 0) return 0;
+  return swipeIndexAt(swipe, t) % n;
+}
+
+/** Seconds into the popup's independent cycle. */
+export function swipePopupPhaseAt(swipe: ArenaSwipeDef, t: number): number {
+  return ((t % swipe.popupPeriod) + swipe.popupPeriod) % swipe.popupPeriod;
+}
+
+/** Warning strength (1 at the start of the warning, 0 once the platform moves). */
+export function swipePopupWarnAt(swipe: ArenaSwipeDef, t: number): number {
+  const phase = swipePopupPhaseAt(swipe, t);
+  return phase < swipe.popupWarn ? 1 - phase / Math.max(0.001, swipe.popupWarn) : 0;
+}
+
+/** 0..1 raised height of the match popup. */
+export function swipePopupHeightAt(swipe: ArenaSwipeDef, t: number): number {
+  const phase = swipePopupPhaseAt(swipe, t);
+  const riseStart = swipe.popupWarn;
+  const riseEnd = riseStart + swipe.popupRise;
+  const fallStart = riseEnd + swipe.popupHold;
+  const fallEnd = fallStart + swipe.popupFall;
+  if (phase < riseStart) return 0;
+  if (phase < riseEnd) {
+    const k = (phase - riseStart) / Math.max(0.001, swipe.popupRise);
+    return k * k * (3 - 2 * k);
+  }
+  if (phase < fallStart) return 1;
+  if (phase < fallEnd) {
+    const k = (phase - fallStart) / Math.max(0.001, swipe.popupFall);
+    return 1 - k * k * (3 - 2 * k);
+  }
+  return 0;
+}
+
+export function swipePopupActiveAt(swipe: ArenaSwipeDef, t: number): boolean {
+  return swipePopupHeightAt(swipe, t) > 0.01;
+}
+
 export function getArena(index: number): ArenaDef {
   const n = ARENAS.length;
   return ARENAS[((index % n) + n) % n];
@@ -1710,6 +1865,41 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     ctx.beginPath();
     ctx.arc(cx, cy, 3, 0, Math.PI * 2);
     ctx.fill();
+    return;
+  }
+
+  if (arena.swipe) {
+    const swipe = arena.swipe;
+    const cardX = mapX(bounds.left + (bounds.right - bounds.left) * 0.08);
+    const cardY = mapY(bounds.top + (bounds.bottom - bounds.top) * 0.18);
+    const cardW = Math.max(18, previewW * 0.84);
+    const cardH = Math.max(28, previewH * 0.58);
+    ctx.fillStyle = '#070910';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.strokeStyle = swipe.profiles[0]?.color ?? arena.accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(mapX(bounds.left) + 1, mapY(bounds.top) + 1, previewW - 2, previewH - 2);
+    ctx.fillStyle = '#151a24';
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cardX + 0.5, cardY + 0.5, cardW - 1, cardH - 1);
+    ctx.font = '700 22px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#f7e9f2';
+    ctx.fillText(swipe.profiles[0]?.emoji ?? '♥', cardX + cardW * 0.5, cardY + cardH * 0.42);
+    ctx.fillStyle = arena.accent;
+    ctx.fillRect(cardX + 8, cardY + cardH - 10, cardW - 16, 2);
+    const pop = swipe.popup;
+    ctx.fillStyle = 'rgba(255, 79, 139, 0.22)';
+    ctx.fillRect(mapX(pop.x), mapY(pop.y), pop.w * sx, pop.h * sy);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(mapX(pop.x) + 0.5, mapY(pop.y) + 0.5, pop.w * sx - 1, pop.h * sy - 1);
+    ctx.fillStyle = '#f7e9f2';
+    ctx.font = '700 8px ui-monospace, monospace';
+    ctx.fillText("IT'S A MATCH", mapX(pop.x + pop.w * 0.5), mapY(pop.y + pop.h * 0.5));
     return;
   }
 

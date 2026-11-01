@@ -4571,3 +4571,36 @@ across a gap before the host correction.
 
 **Next:** run a two-tab host/join USB HUB match on a non-default arena, check drive sync through a round
 and rematch, and deliberately dash into the full-out gap as a guest.
+
+## 2026-11-01 — SWIPE RIGHT arena (v0.1.109)
+
+**Goal:** add the dating-phone arena from the brief, with a card deck that shifts the whole fight and a
+periodic match popup that becomes real floor cover, including online state.
+
+- Added arena id 16, `SWIPE RIGHT`: a 1000×1800 phone screen with eight emoji profiles, an app header, a
+  profile card and a central match popup. The picker preview uses the same profile/popup data.
+- Added `ArenaSwipeDef` and shared helpers for the swipe index, direction, travel, profile index and
+  popup warning/height. The cycle is 4.6 s per card, 0.36 s of travel and a 108-unit carry; directions
+  alternate, with the first physical swipe going right.
+- `World.tickSwipe` carries players, bots, projectiles, worms and segments, viruses, sentries, errors,
+  the drone and props. Carried bodies clamp to the phone bounds and existing solids. The popup is added
+  to `solids`/`dashSolids` while raised, displaces bodies caught underneath, and is removed when it
+  falls. Shots use the shared `bounceCoverRect` path, so the popup is temporary cover rather than a
+  decoration. Round resets clear both clocks and the solid.
+- `SnapshotHazards` now carries `swipeT` at 7 and `swipePopupT` at 8, with props at 9. `parseHazards`
+  still accepts the USB shape (props at 7) and the older props-at-6 shape. `NetView` exposes both clocks;
+  `LocalPredictor.setHazards` adds the raised popup as dynamic cover. `isOnlineArena` accepts the map.
+- Added AGENTS D44, the GAME_GUIDE arena row/test note, README and GAME_GUIDE arena counts, the TODO
+  section, and bumped the build/service-worker stamp to 0.1.109.
+
+**Verification:** `.tmp/swipe-right-check.ts` passes: id 16, 17 arenas, first swipe carries a parked
+body +105 units, popup solid/displacement/removal, snapshot indices 7/8 and props at 9, guest `NetView`
+clocks, and legacy USB parsing. `npm run build` passes. `npm run bench` passes (gauntlet max avg 0.173 ms,
+p99 0.605 ms, 28.4 live threats; 8P max projectiles avg 0.065 ms). `git diff --check` is clean.
+
+**Limitations:** no headed camera/framing pass and no live two-client PeerJS match. Guests receive host
+body positions and clocks, but the guest predictor does not locally replay the swipe carry, so a guest can
+briefly predict against the moving floor before the next host correction.
+
+**Next:** play the card/popup pass at camera zoom on a desktop and phone viewport, then run a two-tab
+host/join check for swipe/popup sync and a rematch.

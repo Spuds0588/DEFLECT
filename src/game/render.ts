@@ -15,6 +15,12 @@ import {
   scannerLaserY,
   scannerPhaseAt,
   SCANNER_STATE,
+  swipeDirectionAt,
+  swipeIndexAt,
+  swipeMoveProgressAt,
+  swipePhaseAt,
+  swipePopupHeightAt,
+  swipePopupWarnAt,
   usbCenterX,
   usbCenterY,
   usbDriveRect,
@@ -107,6 +113,9 @@ export interface RenderState {
   discT?: number;
   /** USB drive cycle phase. The host clock is synced in SnapshotHazards. */
   usbT?: number;
+  /** SWIPE RIGHT card clock and independent match-popup clock. */
+  swipeT?: number;
+  swipePopupT?: number;
   /** Phone-pad phase and per-key state. The shared clock travels in Snapshot. */
   keypadT?: number;
   keypadStates?: ArrayLike<number>;
@@ -554,7 +563,7 @@ export class Renderer {
         ctx.translate(-pivotX, -pivotY);
       }
 
-      this.drawArena(t, state.arena, intro, state.discT ?? 0, state.usbT ?? 0);
+      this.drawArena(t, state.arena, intro, state.discT ?? 0, state.usbT ?? 0, state.swipeT ?? 0, state.swipePopupT ?? 0);
       this.drawFeedRun(state.arena, t);
       this.drawBumpers(state.arena, t, state.bumperFlash);
       if (state.arena.keypad) this.drawKeypad(state, t);
@@ -2515,6 +2524,241 @@ export class Renderer {
   }
 
   /**
+   * SWIPE RIGHT: a phone screen as a floor. The deck is presentation only; the world
+   * has already carried every body when a swipe beat lands. The match popup is drawn
+   * as a raised slab, and its footprint is the same rect the host makes solid.
+   */
+  private drawSwipeArena(
+    arena: ArenaDef,
+    groundA: number,
+    frameA: number,
+    t: number,
+    swipeT: number,
+    popupT: number,
+  ): void {
+    const swipe = arena.swipe;
+    if (!swipe) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const cx = (b.left + b.right) * 0.5;
+
+    // The dark desk around the phone; the arena is the glass, not the whole desk.
+    ctx.save();
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#03050a';
+    ctx.fillRect(b.left - 240, b.top - 240, b.right - b.left + 480, b.bottom - b.top + 480);
+    ctx.fillStyle = arena.accentFaint;
+    ctx.fillRect(b.left - 240, b.top - 240, b.right - b.left + 480, b.bottom - b.top + 480);
+    ctx.restore();
+
+    // Glass, bezel and the faint scroll grid under the app card.
+    ctx.save();
+    ctx.globalAlpha = groundA;
+    roundRect(ctx, b.left, b.top, b.right - b.left, b.bottom - b.top, 38);
+    ctx.fillStyle = this.floorGradient ?? '#080b12';
+    ctx.fill();
+    ctx.fillStyle = arena.accentFaint;
+    ctx.fill();
+    ctx.globalAlpha = groundA * 0.34;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    for (let y = b.top + 84; y < b.bottom; y += 44) {
+      ctx.beginPath();
+      ctx.moveTo(b.left + 30, y + 0.5);
+      ctx.lineTo(b.right - 30, y + 0.5);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // A narrow header and the two edge controls make the screen read as an app.
+    ctx.save();
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#070b12';
+    ctx.fillRect(b.left + 22, b.top + 20, b.right - b.left - 44, 66);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(b.left + 22.5, b.top + 20.5, b.right - b.left - 45, 65);
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 22px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('DEFLECT // MATCH', cx, b.top + 45);
+    ctx.fillStyle = 'rgba(247, 233, 242, 0.5)';
+    ctx.font = '600 10px ui-monospace, monospace';
+    ctx.fillText('SWIPE TO SHIFT THE FLOOR', cx, b.top + 65);
+    ctx.restore();
+
+    const n = swipe.profiles.length;
+    const beat = swipeIndexAt(swipe, swipeT);
+    const phase = swipePhaseAt(swipe, swipeT);
+    const moving = beat > 0 && phase < swipe.travel;
+    const dir = swipeDirectionAt(swipe, swipeT);
+    const move = swipeMoveProgressAt(swipe, swipeT);
+    const ease = move * move * (3 - 2 * move);
+    const profileIndex = n > 0 ? (((moving ? beat - 1 : beat) % n) + n) % n : 0;
+    const nextIndex = n > 0 ? (((moving ? beat : beat + 1) % n) + n) % n : 0;
+    const profile = swipe.profiles[profileIndex];
+    const next = swipe.profiles[nextIndex];
+
+    const cardW = Math.min(640, b.right - b.left - 190);
+    const cardH = Math.min(780, b.bottom - b.top - 410);
+    const cardY = b.top + 238;
+    const cardX = cx - cardW * 0.5 + (moving ? dir * 360 * ease : 0);
+    const cardRot = moving ? dir * 0.1 * ease : 0;
+
+    const drawCard = (x: number, y: number, rot: number, p: typeof profile, alpha: number): void => {
+      if (!p) return;
+      ctx.save();
+      ctx.globalAlpha = alpha * groundA;
+      ctx.translate(x + cardW * 0.5, y + cardH * 0.5);
+      ctx.rotate(rot);
+      ctx.translate(-cardW * 0.5, -cardH * 0.5);
+      roundRect(ctx, 0, 0, cardW, cardH, 18);
+      ctx.fillStyle = '#0b111b';
+      ctx.fill();
+      ctx.strokeStyle = p.color;
+      ctx.globalAlpha = alpha * 0.72 * groundA;
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      // Portrait field. The emoji is the person; no asset pipeline and no bitmap.
+      ctx.globalAlpha = alpha * groundA;
+      ctx.fillStyle = `${p.color}18`;
+      ctx.fillRect(18, 18, cardW - 36, cardH - 178);
+      ctx.strokeStyle = `${p.color}55`;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(18.5, 18.5, cardW - 37, cardH - 179);
+      ctx.font = '700 236px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff7fb';
+      ctx.fillText(p.emoji, cardW * 0.5, cardH * 0.42);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(38, cardH - 158, 42, 3);
+      ctx.fillStyle = '#fff7fb';
+      ctx.font = '800 35px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(p.name, 38, cardH - 115);
+      ctx.fillStyle = 'rgba(247, 233, 242, 0.56)';
+      ctx.font = '600 12px ui-monospace, monospace';
+      ctx.fillText(p.detail, 38, cardH - 82);
+      ctx.fillStyle = 'rgba(247, 233, 242, 0.28)';
+      ctx.textAlign = 'right';
+      ctx.fillText('SWIPE', cardW - 38, cardH - 82);
+      ctx.restore();
+    };
+
+    // The next card peeks underneath, so a swiped card has somewhere to reveal.
+    const behind = moving ? 0.3 : 0.2;
+    drawCard(cx - cardW * 0.5 - dir * 42 * (moving ? 1 - ease : 0), cardY + 24, dir * 0.02, next, behind);
+    drawCard(cardX, cardY, cardRot, profile, 1);
+
+    if (moving) {
+      ctx.save();
+      ctx.globalAlpha = groundA * (0.35 + 0.65 * ease);
+      ctx.translate(cx, cardY + cardH * 0.5);
+      ctx.rotate(-dir * 0.16);
+      ctx.strokeStyle = dir > 0 ? '#8dffb0' : '#ff5a73';
+      ctx.lineWidth = 5;
+      ctx.strokeRect(-108, -38, 216, 76);
+      ctx.fillStyle = dir > 0 ? '#8dffb0' : '#ff5a73';
+      ctx.font = '800 28px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(dir > 0 ? 'LIKE' : 'NOPE', 0, 2);
+      ctx.restore();
+    }
+
+    // The floor is moving with the card: bright arrows on the edge it is heading for.
+    if (moving && ease > 0.05) {
+      ctx.save();
+      ctx.globalAlpha = groundA * (0.22 + ease * 0.7);
+      ctx.fillStyle = dir > 0 ? '#8dffb0' : '#ff5a73';
+      const edgeX = dir > 0 ? b.right - 28 : b.left + 28;
+      for (let k = 0; k < 4; k++) {
+        const y = b.top + 380 + k * 150 + ((t * 80) % 40);
+        ctx.beginPath();
+        ctx.moveTo(edgeX - dir * 10, y - 14);
+        ctx.lineTo(edgeX + dir * 13, y);
+        ctx.lineTo(edgeX - dir * 10, y + 14);
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Match popup. The warning outline is drawn even while the slab is down; the slab
+    // itself grows from the floor rect that is already solid in the host simulation.
+    const pop = swipe.popup;
+    const warn = swipePopupWarnAt(swipe, popupT);
+    if (warn > 0) {
+      ctx.save();
+      ctx.globalAlpha = groundA * (0.25 + 0.5 * warn);
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([14, 10]);
+      ctx.strokeRect(pop.x + 0.5, pop.y + 0.5, pop.w - 1, pop.h - 1);
+      ctx.setLineDash([]);
+      ctx.fillStyle = arena.accent;
+      ctx.font = '800 13px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('MATCH INCOMING', pop.x + pop.w * 0.5, pop.y - 16);
+      ctx.restore();
+    }
+    const popH = swipePopupHeightAt(swipe, popupT);
+    if (popH > 0.01) {
+      const lift = 14 * (1 - popH);
+      ctx.save();
+      ctx.globalAlpha = groundA;
+      // Side faces make the rect read as a raised slab, not a floor decal.
+      ctx.fillStyle = '#240914';
+      ctx.fillRect(pop.x, pop.y + pop.h - lift, pop.w, lift + 18);
+      ctx.fillStyle = '#160810';
+      ctx.fillRect(pop.x + 12, pop.y + pop.h - lift - 16, pop.w - 24, 24);
+      ctx.fillStyle = '#0b0710';
+      roundRect(ctx, pop.x, pop.y - lift, pop.w, pop.h + lift, 16);
+      ctx.fill();
+      ctx.fillStyle = `${arena.accent}26`;
+      roundRect(ctx, pop.x + 4, pop.y - lift + 4, pop.w - 8, pop.h + lift - 8, 13);
+      ctx.fill();
+      ctx.strokeStyle = arena.accent;
+      ctx.globalAlpha = groundA * (0.7 + 0.3 * popH);
+      ctx.lineWidth = 2.5;
+      roundRect(ctx, pop.x + 1, pop.y - lift + 1, pop.w - 2, pop.h + lift - 2, 15);
+      ctx.stroke();
+      ctx.globalAlpha = groundA;
+      ctx.fillStyle = '#fff7fb';
+      ctx.font = '800 46px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('💞', pop.x + pop.w * 0.5, pop.y + pop.h * 0.3 - lift);
+      ctx.fillStyle = arena.accent;
+      ctx.font = '800 34px ui-monospace, monospace';
+      ctx.fillText("IT'S A MATCH", pop.x + pop.w * 0.5, pop.y + pop.h * 0.56 - lift);
+      ctx.fillStyle = 'rgba(247, 233, 242, 0.56)';
+      ctx.font = '600 11px ui-monospace, monospace';
+      ctx.fillText('THIS ONE HAS A FLOOR PLAN', pop.x + pop.w * 0.5, pop.y + pop.h * 0.7 - lift);
+      ctx.restore();
+    }
+
+    // Phone bezel and edge rails, drawn after the screen furniture so it masks the floor
+    // at the lip. The open floor still ends here, so the rails are visual only.
+    ctx.save();
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 10;
+    roundRect(ctx, b.left, b.top, b.right - b.left, b.bottom - b.top, 38);
+    ctx.stroke();
+    ctx.strokeStyle = '#dffbff';
+    ctx.globalAlpha = frameA * 0.5;
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, b.left + 8, b.top + 8, b.right - b.left - 16, b.bottom - b.top - 16, 30);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
    * The USB hub: a round board with four thumb drives that pull out along the cardinals.
    * The hub and the drives are the only floor; the dark ring between them is the drop.
    * Flow arrows show the current that runs while a drive is moving.
@@ -3057,7 +3301,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawArena(t: number, arena: ArenaDef, intro = INTRO_LEN, discT = 0, usbT = 0): void {
+  private drawArena(t: number, arena: ArenaDef, intro = INTRO_LEN, discT = 0, usbT = 0, swipeT = 0, swipePopupT = 0): void {
     const ctx = this.ctx;
     const b = arena.bounds;
     this.ensureFloorPattern(arena);
@@ -3073,6 +3317,10 @@ export class Renderer {
     }
     if (arena.usb) {
       this.drawUsbArena(arena, groundA, frameA, usbT);
+      return;
+    }
+    if (arena.swipe) {
+      this.drawSwipeArena(arena, groundA, frameA, t, swipeT, swipePopupT);
       return;
     }
     if (this.dustArena !== arena.id) {

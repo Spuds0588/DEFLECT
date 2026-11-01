@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-01 (USB HUB online state + longer reach)
+Last updated: 2026-11-01 (SWIPE RIGHT arena)
 
 ---
 
@@ -24,6 +24,20 @@ Last updated: 2026-11-01 (USB HUB online state + longer reach)
 - [x] Headless guest check: `parseSnapshot` carries `usbT` through to `NetView`
 - [ ] Headed gauntlet/infection pass: threat ride/push readability and bot island use
 - [ ] Two-client playtest: verify drive sync, reconnect/rematch and a guest dash into the open gap
+
+---
+
+## SWIPE RIGHT arena (2026-11-01)
+
+- [x] Tall phone-screen arena id 16 with eight emoji profiles, alternating swipe beats and a raised match popup
+- [x] Host-side carry of players, projectiles, bots, gauntlet threats, drone and props; wall/solid clamping
+- [x] Periodic popup added to body/projectile collision and removed when it falls; caught bodies displaced out
+- [x] `SnapshotHazards` carries `swipeT`/`swipePopupT`; guest `NetView` and predictor consume them; legacy wire shape kept readable
+- [x] Phone renderer, warning state, app card deck and picker preview
+- [x] Headless probe (`.tmp/swipe-right-check.ts`): swipe carry, popup activation/displacement/removal, snapshot and guest clocks
+- [x] `npm run build`, `npm run bench` and `git diff --check` clean
+- [ ] Headed pass: card framing, swipe readability and popup warning at camera zoom
+- [ ] Two-client playtest: verify guests see the same swipe/popup and cannot predict through the raised popup
 
 ---
 

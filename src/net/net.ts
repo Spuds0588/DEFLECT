@@ -12,6 +12,7 @@ import {
   KEYPAD_STATE,
   pusherPhaseAt,
   scannerPhaseAt,
+  swipePopupActiveAt,
   type ArenaDef,
   type PusherPhase,
 } from '../game/arenas';
@@ -548,17 +549,20 @@ export interface SnapshotHazards {
   browserPage: number;
   /** USB drive cycle clock, seconds. Drive positions carry no authority. */
   usbT: number;
+  /** SWIPE RIGHT card-swipe clock and independent match-popup clock. */
+  swipeT: number;
+  swipePopupT: number;
   /** [index, kind, x, y, w, h, hp, hitFlash, dropT] for each live file box. */
   props: number[][];
 }
 
 /**
- * Compact hazard block for the snapshot: seven clocks/indices then live props. Empty
+ * Compact hazard block for the snapshot: nine clocks/indices then live props. Empty
  * fixtures are omitted entirely, so a quiet arena pays only one null.
  */
 export function buildSnapshotHazards(world: World): unknown[] | null {
   const arena = world.arena;
-  if (!arena.pushers && !arena.keypad && !arena.scanner && !arena.browser && !arena.usb && world.props.length === 0) return null;
+  if (!arena.pushers && !arena.keypad && !arena.scanner && !arena.browser && !arena.usb && !arena.swipe && world.props.length === 0) return null;
   const props: number[][] = [];
   for (let i = 0; i < world.props.length; i++) {
     const b = world.props[i];
@@ -583,6 +587,8 @@ export function buildSnapshotHazards(world: World): unknown[] | null {
     round2(world.browserT),
     world.browserPage,
     round2(world.usbT),
+    round2(world.swipeT),
+    round2(world.swipePopupT),
     props,
   ];
 }
@@ -801,10 +807,13 @@ export function parseSnapshot(data: unknown[]): Snapshot | null {
 function parseHazards(raw: unknown): SnapshotHazards | null {
   if (!Array.isArray(raw)) return null;
   const props: number[][] = [];
-  // The pre-USB wire shape kept props at index 6. Accept that shape during a rolling
-  // reload, but new hosts always send the USB clock at 6 and props at 7.
-  const legacyProps = Array.isArray(raw[6]);
-  const propRaw = legacyProps ? raw[6] : raw[7];
+  // Three wire generations are accepted during a rolling reload: the pre-USB shape
+  // (props at 6), the USB shape (USB at 6, props at 7), and this shape (swipe clocks
+  // at 7/8, props at 9). New hosts always emit the last one.
+  const hasSwipe = Array.isArray(raw[9]);
+  const hasUsb = Array.isArray(raw[7]);
+  const legacyProps = !hasUsb && !hasSwipe && Array.isArray(raw[6]);
+  const propRaw = hasSwipe ? raw[9] : hasUsb ? raw[7] : legacyProps ? raw[6] : null;
   if (Array.isArray(propRaw)) {
     for (const p of propRaw as unknown[]) if (Array.isArray(p)) props.push(p as number[]);
   }
@@ -815,7 +824,9 @@ function parseHazards(raw: unknown): SnapshotHazards | null {
     scannerPage: Number(raw[3]) | 0,
     browserT: Number(raw[4]) || 0,
     browserPage: Number(raw[5]) | 0,
-    usbT: legacyProps ? 0 : Number(raw[6]) || 0,
+    usbT: hasUsb || hasSwipe ? Number(raw[6]) || 0 : 0,
+    swipeT: hasSwipe ? Number(raw[7]) || 0 : 0,
+    swipePopupT: hasSwipe ? Number(raw[8]) || 0 : 0,
     props,
   };
 }
@@ -867,6 +878,8 @@ export class NetView {
   browserCursorX = 0;
   browserCursorY = 0;
   usbT = 0;
+  swipeT = 0;
+  swipePopupT = 0;
   browserClickT = 0;
   private readonly pusherPhase: PusherPhase = { warnT: 0, y: 0, active: false, flashT: 0 };
   private readonly browserCursorPoint = { x: 0, y: 0 };
@@ -977,6 +990,8 @@ export class NetView {
     this.browserCursorY = 0;
     this.browserClickT = 0;
     this.usbT = 0;
+    this.swipeT = 0;
+    this.swipePopupT = 0;
     for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
     this.snapCount = 0;
     this.snapWrite = 0;
@@ -1217,8 +1232,10 @@ export class NetView {
       this.browserCursorY = 0;
       this.browserClickT = 0;
       this.usbT = 0;
+      this.swipeT = 0;
+      this.swipePopupT = 0;
       for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
-      this.predictor.setHazards(0, 0, 0);
+      this.predictor.setHazards(0, 0, 0, 0);
       return;
     }
 
@@ -1267,6 +1284,8 @@ export class NetView {
     }
     this.browserClickT = browserClickAt(browserT);
     this.usbT = h.usbT + age;
+    this.swipeT = h.swipeT + age;
+    this.swipePopupT = h.swipePopupT + age;
 
     for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
     for (let i = 0; i < h.props.length; i++) {
@@ -1285,7 +1304,7 @@ export class NetView {
       b.dropT = raw[8] ?? 0;
     }
 
-    this.predictor.setHazards(pusherT, keypadT, h.browserPage);
+    this.predictor.setHazards(pusherT, keypadT, h.browserPage, this.swipePopupT);
   }
 
   predictStep(input: InputFrame, dt: number): void {
@@ -1360,14 +1379,14 @@ export class LocalPredictor {
     this.p = createPlayer(slot);
     this.p.active = true;
     this.p.connected = true;
-    this.setHazards(0, 0, 0);
+    this.setHazards(0, 0, 0, 0);
   }
 
   /**
    * Rebuild the body-collision list. Static cover is shared by reference; hazard
    * rectangles are reused from a fixed pool, so this is safe to call every render frame.
    */
-  setHazards(pusherT: number, keypadT: number, browserPage: number): void {
+  setHazards(pusherT: number, keypadT: number, browserPage: number, swipePopupT = 0): void {
     this.solids.length = 0;
     this.dashSolids.length = 0;
     const statics = arenaSolids(this.arena);
@@ -1389,6 +1408,18 @@ export class LocalPredictor {
         this.solids.push(r);
         this.dashSolids.push(r);
       }
+    }
+
+    const swipe = this.arena.swipe;
+    if (swipe && swipePopupActiveAt(swipe, swipePopupT) && d < this.dynamicRects.length) {
+      const src = swipe.popup;
+      const r = this.dynamicRects[d++];
+      r.x = src.x;
+      r.y = src.y;
+      r.w = src.w;
+      r.h = src.h;
+      this.solids.push(r);
+      this.dashSolids.push(r);
     }
 
     const browser = this.arena.browser;
