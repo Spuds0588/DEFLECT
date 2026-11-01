@@ -3390,3 +3390,28 @@ Browser smoke on `NETWORK SWITCH`: four live pipes, three hostile files active a
 
 **Next:** browser smoke the picker and a live wave, then tune pipe cadence, file speed and catch radius from
 play; the arena is intentionally excluded from online rooms until fixture state has a protocol decision.
+
+## 2026-11-01 — COPY PASTA dash afterimage (v0.1.73)
+
+**Goal:** give Copy Pasta's dash a short-lived inert double that can pull enemy attention without adding a
+second fighting summon.
+
+- Real Copy Pasta bodies leave an afterimage at the dash takeoff point. It uses a free summon slot below
+the fighting copy's reserved last slot, lives 1.5 s, has one health, and writes an empty input frame, so it
+never moves, shoots, swings or spends energy.
+- Sentries, worms, viruses, the training drone and campaign calibration subjects now choose the nearest
+visible body instead of always reading slot 0. An afterimage can therefore take their attention and absorb
+one hit. The fighting skill copy is not included in that picker.
+- Copy deaths now de-rez without entering the gauntlet kill, pickup or round flow. A summon is not a player
+body. Player target lock skips copy bodies so an afterimage cannot steal the lock.
+- The afterimage is drawn with the existing copy hull and a fainter, sparser dashed ring. `copyDecoy` is
+local-only; no snapshot fields were added.
+- Build stamp 0.1.73.
+
+**Verification:** `.tmp/check-copy-dash-decoy.ts` passes 12/12: spawn point, 1.5 s life, one health, inert
+input, separate slot from the fighting copy, aggro selection, one-hit removal, no kill credit, a second
+afterimage and timed expiry. `npm run build` clean: 624.52 kB JS / 173.01 kB gzip, 48.60 kB CSS /
+10.90 kB gzip.
+
+**Next:** browser smoke the dash trail in a live gauntlet, then tune the 1.5 s window and one-hit health
+from play. Online matches still run Probe, so nothing enters `Snapshot`.

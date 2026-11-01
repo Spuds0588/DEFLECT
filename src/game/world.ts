@@ -277,6 +277,8 @@ export class World {
   private thrallDashT = 0;
   /** COPYPASTA's summon writes the same frame a human or bot does. */
   private copyFrame: InputFrame = { mx: 0, my: 0, held: 0, pressed: 0 };
+  /** A dash afterimage takes no actions; its shared frame stays empty. */
+  private copyDecoyFrame: InputFrame = { mx: 0, my: 0, held: 0, pressed: 0 };
   private copyShootT = 0;
   private copySwingT = 0;
   private copyDashT = 0;
@@ -927,7 +929,6 @@ export class World {
    * then show one primary's attack. The gauntlet AI stays off until the drill.
    */
   private updateTrainingShapes(dt: number): void {
-    const p = this.players[0];
     for (let i = 0; i < this.sentries.length; i++) {
       const s = this.sentries[i];
       if (!s.active) continue;
@@ -935,7 +936,7 @@ export class World {
       s.prevY = s.y;
       if (s.hitFlash > 0) s.hitFlash = Math.max(0, s.hitFlash - dt);
       if (s.kind >= 7) {
-        this.updateShapeChild(s, dt, p);
+        this.updateShapeChild(s, dt, this.threatTarget(s.x, s.y));
         continue;
       }
       if (s.shapeState === 0) continue;
@@ -947,9 +948,9 @@ export class World {
         }
         continue;
       }
-      if (s.kind === 4) this.updateCircleSubject(s, dt, p);
-      else if (s.kind === 5) this.updateTriangleSubject(s, dt, p);
-      else if (s.kind === 6) this.updateRectSubject(s, dt, p);
+      if (s.kind === 4) this.updateCircleSubject(s, dt, this.threatTarget(s.x, s.y));
+      else if (s.kind === 5) this.updateTriangleSubject(s, dt, this.threatTarget(s.x, s.y));
+      else if (s.kind === 6) this.updateRectSubject(s, dt, this.threatTarget(s.x, s.y));
     }
   }
 
@@ -1978,9 +1979,11 @@ export class World {
 
       const input = this.mode === 'gauntlet' && p.thrall
         ? this.thrallFrame
-        : p.copyClone
-          ? this.copyFrame
-          : (inputs[p.slot] ?? null);
+        : p.copyDecoy
+          ? this.copyDecoyFrame
+          : p.copyClone
+            ? this.copyFrame
+            : (inputs[p.slot] ?? null);
       // Remember the last real stick direction. A dash commits to it even when lock is
       // holding facing on a target, so strafing past an enemy and dashing goes sideways.
       if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
@@ -2708,6 +2711,7 @@ export class World {
     p.dashDirX = Math.cos(dir);
     p.dashDirY = Math.sin(dir);
     p.iframes = Math.max(p.iframes, PLAYER.dashIframes);
+    if (p.program === PROGRAM_ID.COPYPASTA && !p.copyClone) this.spawnDashDecoy(p);
     if (p.program === PROGRAM_ID.WEDGE) {
       // The bracket is both shield and shove: it snaps open in front, then the
       // recoil kicks Wedge the other way instead of letting him drift.
@@ -3301,7 +3305,7 @@ export class World {
       let best = maxD2;
       for (let i = 0; i < this.players.length; i++) {
         const target = this.players[i];
-        if (target === p || !target.active || !target.alive) continue;
+        if (target === p || target.copyClone || !target.active || !target.alive) continue;
         const dx = target.x - p.x;
         const dy = target.y - p.y;
         const d2 = dx * dx + dy * dy;
@@ -3478,7 +3482,7 @@ export class World {
 
     for (let i = 0; i < this.players.length; i++) {
       const t = this.players[i];
-      if (t === p || !t.active || !t.alive) continue;
+      if (t === p || t.copyClone || !t.active || !t.alive) continue;
       this.offerCycle(1, i, t.x, t.y);
     }
     for (let i = 0; i < this.worms.length; i++) {
@@ -7689,6 +7693,12 @@ export class World {
     if (p.hp <= 0) {
       p.hp = 0;
       p.alive = false;
+      // A summon is not a gauntlet kill, a pickup source, or a round body. It simply
+      // de-rezzes, including when a dash afterimage absorbs its one hit.
+      if (p.copyClone) {
+        this.despawnCopyClone(p);
+        return;
+      }
       p.swingPhase = 0;
       p.swingT = 0;
       p.swingPct = 0;
@@ -8255,7 +8265,7 @@ export class World {
 
     d.fireTimer -= dt;
     if (d.fireTimer <= 0) {
-      const target = this.players[0];
+      const target = this.threatTarget(d.x, d.y);
       if (target && target.alive && target.cloakT <= 0) {
         const angle = Math.atan2(target.y - d.y, target.x - d.x) + this.rng.range(-0.05, 0.05);
         this.spawnDroneBolt(d.x + Math.cos(angle) * (d.radius + 12), d.y + Math.sin(angle) * (d.radius + 12), angle);
@@ -8440,6 +8450,7 @@ export class World {
     p.connected = false;
     p.alive = false;
     p.copyClone = false;
+    p.copyDecoy = false;
     p.copyOwner = -1;
     p.copyT = 0;
   }
@@ -8462,6 +8473,7 @@ export class World {
     clone.connected = true;
     clone.alive = true;
     clone.copyClone = true;
+    clone.copyDecoy = false;
     clone.copyOwner = p.slot;
     clone.copyT = COPYPASTA.cloneLife;
     clone.program = p.program;
@@ -8480,11 +8492,60 @@ export class World {
   }
 
   /**
+   * A dash leaves an inert copy at the takeoff point. It occupies a free summon slot
+   * below the skill copy's reserved last slot, takes one hit, and never writes input.
+   */
+  private spawnDashDecoy(p: Player): boolean {
+    if (!p.alive) return false;
+    let slot = -1;
+    for (let i = 1; i < MAX_PLAYERS - 1; i++) {
+      if (!this.players[i].active) {
+        slot = i;
+        break;
+      }
+    }
+    if (slot < 0) return false;
+    const decoy = this.players[slot];
+    clearPlayerForSpawn(decoy, p.x, p.y, p.facing);
+    decoy.active = true;
+    decoy.connected = false;
+    decoy.alive = true;
+    decoy.copyClone = true;
+    decoy.copyDecoy = true;
+    decoy.copyOwner = p.slot;
+    decoy.copyT = COPYPASTA.dashDecoyLife;
+    decoy.program = p.program;
+    decoy.bugKind = p.bugKind;
+    decoy.name = 'COPY';
+    decoy.maxHp = p.maxHp;
+    decoy.hp = Math.min(COPYPASTA.dashDecoyHp, p.maxHp);
+    decoy.dashMax = 0;
+    decoy.dashCharges = 0;
+    decoy.energy = 0;
+    decoy.iframes = 0.12;
+    return true;
+  }
+
+  /**
    * The copy's pilot. It hunts the nearest hostile threat in gauntlet modes and the
    * nearest other program in bot matches, then holds a ranged band and closes for the
    * shared lash. With nothing to fight it trails its owner instead of standing still.
    */
   private updateCopyClone(dt: number): void {
+    for (let i = 0; i < this.players.length; i++) {
+      const decoy = this.players[i];
+      if (!decoy.active || !decoy.copyClone || !decoy.copyDecoy) continue;
+      if (!decoy.alive) {
+        this.despawnCopyClone(decoy);
+        continue;
+      }
+      decoy.copyT -= dt;
+      const owner = this.players[decoy.copyOwner];
+      if (decoy.copyT <= 0 || !owner || !owner.active || !owner.alive) {
+        this.despawnCopyClone(decoy);
+      }
+    }
+
     const f = this.copyFrame;
     f.mx = 0;
     f.my = 0;
@@ -8492,7 +8553,7 @@ export class World {
     f.pressed = 0;
     let clone: Player | null = null;
     for (let i = 0; i < this.players.length; i++) {
-      if (this.players[i].active && this.players[i].copyClone) {
+      if (this.players[i].active && this.players[i].copyClone && !this.players[i].copyDecoy) {
         clone = this.players[i];
         break;
       }
@@ -9853,6 +9914,28 @@ export class World {
     return true;
   }
 
+  /**
+   * Nearest body a gauntlet threat will attack. An afterimage is a valid target; the
+   * fighting copy is not, so a summon cannot pull the room off the player.
+   */
+  private threatTarget(x: number, y: number): Player {
+    let best = this.players[0];
+    let bestD2 = Infinity;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.cloakT > 0 || p.thrall || p.travelT > 0) continue;
+      if (p.copyClone && !p.copyDecoy) continue;
+      const dx = p.x - x;
+      const dy = p.y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = p;
+      }
+    }
+    return best;
+  }
+
   /** Fly, keep a range band, and fire. Cover blocks both shots and movement. */
   private updateSentry(s: Sentry, dt: number): void {
     s.prevX = s.x;
@@ -9880,7 +9963,7 @@ export class World {
       return;
     }
 
-    const p = this.players[0];
+    const p = this.threatTarget(s.x, s.y);
     if (s.ramT > 0) {
       this.updateSentryRam(s, dt, p);
       return;
@@ -10523,7 +10606,7 @@ export class World {
       return;
     }
 
-    const p = this.players[0];
+    const p = this.threatTarget(w.x, w.y);
     const lureIndex = this.nearestLureIndex(w.x, w.y);
     const lure = lureIndex >= 0 ? this.lures[lureIndex] : null;
     const pdx = p.x - w.x;
@@ -10930,23 +11013,9 @@ export class World {
       v.vy = 0;
       return;
     }
-    // Infection hunts the nearest live runner, not slot 0. Versus virus behaviour is
-    // unchanged because a normal match only ever has one local body here.
-    let p = this.players[0];
-    if (this.infectionMode) {
-      let pScore = Infinity;
-      for (let i = 0; i < this.players.length; i++) {
-        const other = this.players[i];
-        if (!other.active || !other.alive || other.cloakT > 0) continue;
-        const sdx = other.x - v.x;
-        const sdy = other.y - v.y;
-        const sd2 = sdx * sdx + sdy * sdy;
-        if (sd2 < pScore) {
-          pScore = sd2;
-          p = other;
-        }
-      }
-    }
+    // Infection hunts the nearest visible runner. Every other threat family uses the
+    // same ranking, so a dash afterimage can pull the colony away for its short life.
+    const p = this.threatTarget(v.x, v.y);
     let targetWorm = -1;
     let targetPlayer = false;
     let lureTarget = false;

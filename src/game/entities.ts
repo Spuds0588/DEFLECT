@@ -57,6 +57,7 @@ export function createPlayer(slot: number): Player {
     alive: false,
     thrall: false,
     copyClone: false,
+    copyDecoy: false,
     copyOwner: -1,
     copyT: 0,
     dashT: 0,

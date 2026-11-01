@@ -243,6 +243,8 @@ export interface Player {
    * It is never a room slot, never networked, and never counted for round survival.
    */
   copyClone: boolean;
+  /** Dash afterimage: an inert, targetable copy with a short life. */
+  copyDecoy: boolean;
   /** Slot that cast the copy. -1 when this body is not a clone. */
   copyOwner: number;
   /** Seconds left on the copy's life. */

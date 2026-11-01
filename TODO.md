@@ -2,7 +2,26 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-01 (v0.1.72 Network Switch arena)
+Last updated: 2026-11-01 (v0.1.73 Copy Pasta dash afterimage)
+
+---
+
+## v0.1.73 — Copy Pasta dash afterimage (2026-11-01)
+
+### Built
+- [x] Every real Copy Pasta dash leaves an inert copy at the takeoff point for 1.5 s
+- [x] The afterimage takes one hit, never moves or attacks, and uses a free summon slot below the
+      fighting skill copy's reserved slot
+- [x] Sentries, worms, viruses, the training drone and calibration subjects can target it; its death
+      gives no gauntlet kill credit or pickup
+- [x] Player target lock skips copies; no snapshot fields were added
+- [x] Build stamp 0.1.73 and docs (AGENTS D33, GAME_GUIDE)
+
+### Verification
+- [x] `.tmp/check-copy-dash-decoy.ts`: 12/12 (spawn point, 1.5 s life, one health, inert input, separate
+      slot from the fighting copy, aggro selection, one-hit removal, no kill credit, second afterimage and
+      timed expiry)
+- [x] `npm run build` clean
 
 ---
 

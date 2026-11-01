@@ -1525,6 +1525,13 @@ are the health readout, and the copy stamp is the only other copy symbol.
   threats in gauntlet mode and the nearest other program in bot matches, trails its owner when there is
   nothing to fight, and presses only ranged, melee and dash (no nested copy and no heavy). A refused cast
   hands the skill energy back. `clearCopyClones()` runs on every round start; a copy never respawns.
+- **Dash afterimage**: every dash by a real Copy Pasta body leaves an inert copy at the takeoff point.
+  It lives `dashDecoyLife` (1.5 s), has `dashDecoyHp` (1) health, writes an empty input frame, and never
+  moves, attacks or spends energy. It uses a free body slot below the skill copy's reserved last slot, so
+  a fighting copy and an afterimage can exist together. Sentries, worms, viruses, the training drone and
+  calibration subjects pick the nearest valid body, so the afterimage can pull their attention and absorb
+  one hit. It is excluded from player target lock, round counts and gauntlet kill credit; its death must
+  not drop a pickup. Bots may target it. `copyDecoy` is local-only and absent from `Snapshot`.
 - **Power**: a 280-unit redaction ring at the caster. Every enemy with line of sight gets a growing stack
   of red file icons over 1.6 s (1 to 6 icons), then 2 damage to players or 3 to threats. Cover blocks the
   cast; once marked, the stack follows the body and detonates even if it steps behind cover. Marks are a

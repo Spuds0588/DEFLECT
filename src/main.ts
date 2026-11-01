@@ -370,7 +370,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.72 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.73 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {

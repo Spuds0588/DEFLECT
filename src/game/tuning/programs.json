@@ -296,6 +296,8 @@
     "cloneMelee": 62,
     "cloneSpeed": 0.9,
     "cloneOrbit": 0.7,
+    "dashDecoyLife": 1.5,
+    "dashDecoyHp": 1,
     "markRadius": 280,
     "markTime": 1.6,
     "markIcons": 6,

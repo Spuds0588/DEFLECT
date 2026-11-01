@@ -5958,8 +5958,9 @@ export class Renderer {
         // so the shared hull is kept and only the outline says it is temporary.
         if (p.copyClone) {
           ctx.save();
-          ctx.setLineDash([4, 5]);
-          ctx.globalAlpha = 0.55;
+          // The afterimage uses a sparser, fainter ring than the fighting copy.
+          ctx.setLineDash(p.copyDecoy ? [2, 6] : [4, 5]);
+          ctx.globalAlpha = p.copyDecoy ? 0.35 : 0.55;
           ctx.strokeStyle = color;
           ctx.lineWidth = 1.2;
           ctx.beginPath();
