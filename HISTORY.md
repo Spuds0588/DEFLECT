@@ -4640,3 +4640,32 @@ was taken on the new effects.
 
 **Next:** play SATELLITE headed in training and a gauntlet run, then adjust only the warning windows and
 mast timing that read badly at camera zoom.
+
+## 2026-11-01 — Opt-in session feedback (v0.1.111)
+
+**Goal:** add an end-of-session feedback action that shares the balancing, performance and setup data
+normal play already produces, without adding automatic upload, a client credential or a backend.
+
+- Added `src/game/sessionReport.ts`: a session-scoped `SessionTracker` with anonymized player rows, round
+deltas, deflect-source counts, result fields, environment, FPS/frame/sim samples, summary and compact share
+text.
+- Wired capture into normal play rather than only the QA tour: every mode starts a tracker, `handleGameEvent`
+records actions/hits/kills/deaths, `syncSessionRound` closes match rounds, and the loop samples performance
+once per second while live.
+- Added **`SHARE FEEDBACK`** to match, series, gauntlet, infection, campaign and leave overlays. It uses the
+Web Share API with a `deflect-session-*.json` file when supported; otherwise it downloads the JSON and
+copies a compact summary. No names, room codes, IPs or raw inputs are included.
+- Kept the existing `?playtest=1` arena-tour log separate. Neither path enters `Snapshot`; only the player
+pressing share produces a file. The build stamp was corrected from the stale 0.1.109 value to 0.1.111.
+- Updated AGENTS D46, PLAYTEST, GAME_GUIDE, README, TODO and the version/service-worker stamps.
+
+**Verification:** `.tmp/session-report-check.ts` passes round/action/deflect/performance assertions and the
+share-text privacy check. `npx tsc --noEmit`, `npm run build`, `npm run bench` and `git diff --check` pass.
+Build: 787.54 kB JS / 220.26 kB gzip, 50.09 kB CSS / 11.20 kB gzip, with the existing chunk-size warning.
+Bench: 8P max projectiles 0.064 ms avg; gauntlet max 0.153 ms avg, 0.520 ms p99, 28.4 live threats.
+
+**Limitations:** no headed native-share or download/copy fallback check yet. The report is kept in memory and
+is lost if the tab closes before the player shares it. No remote ingest exists by design.
+
+**Next:** test the share sheet on a phone and the download/copy fallback on desktop; only add a server-side
+ingest endpoint if real feedback volume justifies it.

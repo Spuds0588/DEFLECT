@@ -3,7 +3,8 @@
 Two separate things live here:
 
 1. `?playtest=1` — the local QA tour that records a machine-readable session log. **Built in v0.1.90.**
-2. A no-backend way for outside players to send run data back. **Evaluated only; nothing is built.**
+2. Player-facing session feedback — an opt-in, local report shared from the result or leave overlay. **Built in
+   v0.1.111.**
 
 ---
 
@@ -53,7 +54,32 @@ current log object.
 
 ---
 
-## 2. Player feedback without a backend — evaluation
+## 2. Player session feedback (built v0.1.111)
+
+Normal play now keeps a `SessionTracker` (`src/game/sessionReport.ts`) and exposes **`SHARE FEEDBACK`** on
+the result and leave overlays. The report is created only when the button is pressed; nothing is uploaded
+while playing.
+
+Each JSON report (`schema: 1`, `kind: "session"`) contains:
+
+| Field | Contents |
+| --- | --- |
+| setup | mode, arena, local program, human/bot counts, bot tier, assist/touch/friendly-fire settings, series or campaign identity |
+| `rounds[]` | match round number, arena, duration, winner, per-player action deltas, deflect sources, FPS and sim ms |
+| players | slot label, program, human/bot flag, score, shots, dashes, swings, deflects, skills, heavies, hits, damage, kills, deaths |
+| result | match/series/run outcome, winner, wave/time/kills/score where relevant |
+| perf | average and minimum FPS, average/max frame time, average/max sim time, sample count |
+| environment | viewport, DPR, hardware concurrency, touch, reduced-motion |
+
+The report deliberately omits callsigns, room codes, IP addresses and raw input. It is not persisted; the
+player chooses **`SHARE FEEDBACK`** from a result or leave overlay. Browsers with file sharing get a native
+share sheet containing `deflect-session-*.json`; other browsers download the JSON and copy a compact
+summary for a post or message. The file is the payload, so no developer token or backend is involved.
+
+This is separate from the QA tour log in section 1. The tour remains the full arena rotation; the player
+report follows the session the player actually played.
+
+## 3. Player feedback without a backend — evaluation
 
 **Proposal:** put a cipher-coded GitHub personal access token in a URL parameter; the game decodes it and
 opens repository issues containing the session data.
@@ -84,16 +110,18 @@ If automated issue creation ever becomes mandatory, the token must live **server
 endpoint receives the JSON, validates size and shape, rate-limits by IP/session, and calls the GitHub API.
 That is a backend, just a tiny one. Keep credentials out of the client in every version of this design.
 
-### Recommended path (no backend, no secret)
+### No-backend fallback (built without a client credential)
 
-1. The tour log above is already the payload. Keep `schema` versioned so old files stay readable.
-2. Add **`REPORT`** beside `DOWNLOAD LOG` on the completion overlay: it opens a prefilled GitHub issue URL
-   (`title=[playtest] <build> <program> <arena>`, body = the summary block plus “attach the downloaded
-   JSON”). A repository issue form (`.github/ISSUE_TEMPLATE/playtest.yml`) can carry the same fields.
-3. The player downloads the JSON and drags it into the issue. No token, no backend, no third party; the
-   repository owner moderates, and uploads stay in the issue thread with the report.
-4. Keep `COPY LOG` for players who would rather post a condensed summary on Discord or a forum than use
-   GitHub.
+The token design below is still rejected. The built alternative is the opt-in `SHARE FEEDBACK` report in
+section 2; it uses the platform share sheet or a downloaded JSON, not GitHub issues.
+
+1. The session report in section 2 is the player-facing payload; the tour log above stays a QA artifact.
+   Keep the schema versioned so old files stay readable.
+2. `SHARE FEEDBACK` opens the platform share sheet with the JSON file when file sharing is available.
+   Otherwise it downloads the JSON and copies a compact summary. No token, backend or third party is
+   involved.
+3. Keep the QA tour's `COPY LOG` for developers who would rather post a condensed summary on Discord or a
+   forum than attach a file.
 
 Costs: one manual attach step, and GitHub's attachment limits. A 14-arena tour is small (well under a
 megabyte), so that is not a constraint.

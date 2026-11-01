@@ -14,7 +14,10 @@ files, no game engine.
 Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, a
 timed infection clear, the first campaign node, and host/join rooms for up to eight players. VS BOTS and
 online versus can run a 1, 3 or 5 game series with random map rotation by default or a fixed custom arena.
-Thirteen programs, eighteen arenas. The alpha is deployed from `main` on every push.
+Thirteen programs, eighteen arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
+session JSON with setup, player action totals, round results, deflect sources and FPS/sim samples, shared
+through the platform sheet or downloaded with a copied summary. Callsigns, room codes, IPs and raw inputs
+are omitted, and nothing is uploaded automatically. The alpha is deployed from `main` on every push.
 
 ## Tech stack
 
@@ -152,6 +155,7 @@ in the hot path. Particles and projectile trails are pooled ring buffers.
 Content is data, not branches:
 
 - `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), bridges, breakable props, pipe fixtures, moving keypad caps, USB drive geometry, satellite floor/solar/telescope/meteor/reentry data, wall style and floor signature.
+- `src/game/sessionReport.ts` owns the opt-in session tracker and share text; `World` and `Snapshot` do not carry its state.
 - `src/game/programs.ts` holds the roster identity and kit tuning; the four action jobs branch in `World`.
 - `src/game/tuning/*.json` holds all gameplay numbers, re-exported through the typed facade in
   `src/game/config.ts`, so most balance changes are a JSON edit with no code change.
@@ -328,7 +332,8 @@ worker, install flow or offline shell.
 
 - Gameplay numbers: [src/game/tuning](src/game/tuning), typed in `src/game/config.ts`.
 - QA boot hooks (`?playtest=1` arena tour and log export, `?autoplay=N`, `?gauntlet=1&arena=N&bot=1`) and
-  the player-feedback pipeline decision: [PLAYTEST.md](PLAYTEST.md).
+  the player-feedback pipeline decision: [PLAYTEST.md](PLAYTEST.md). Normal-play `SHARE FEEDBACK` is
+  documented there and in `src/game/sessionReport.ts`.
 - Architecture, invariants, protocol and performance guardrails: [AGENTS.md](AGENTS.md).
 - Forward plan and open questions: [TODO.md](TODO.md).
 - Session log and measurements: [HISTORY.md](HISTORY.md).

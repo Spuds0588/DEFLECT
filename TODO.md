@@ -2,7 +2,21 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-01 (SATELLITE arena)
+Last updated: 2026-11-01 (session feedback)
+
+---
+
+## Session feedback (2026-11-01)
+
+- [x] `SessionTracker` in `src/game/sessionReport.ts`: setup, per-player actions, round deltas, deflect sources, result and environment
+- [x] Automatic in-memory capture for training, VS BOTS, local, gauntlet, infection, campaign and online games
+- [x] FPS / frame-time / sim-time sampling every second while play is live
+- [x] Opt-in `SHARE FEEDBACK` on result and leave overlays; Web Share JSON file with download/copy fallback
+- [x] Callsigns, room codes, IPs and raw inputs omitted; no backend, token or automatic upload
+- [x] Headless probe (`.tmp/session-report-check.ts`) for action counts, round deltas, summary, perf and share text
+- [x] `npx tsc --noEmit`, `npm run build` and `git diff --check` clean
+- [ ] Headed pass: native share sheet on a phone, and the download/copy fallback on desktop
+- [ ] Optional future ingest endpoint behind a server-side service; never a client token
 
 ---
 

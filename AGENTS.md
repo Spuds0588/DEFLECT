@@ -2020,6 +2020,25 @@ lift, not a new traversal kind. Bots bake the five plates into their nav grid.
   `SnapshotHazards`, and `isOnlineArena` excludes it. Do not add the map to hosted room selection until
   a protocol decision carries that state. No health or damage budget was changed for the arena.
 
+### D46 — Session feedback is opt-in, local and anonymized (built 2026-11-01)
+
+Normal play feeds a `SessionTracker` in `src/game/sessionReport.ts`. A new game or run creates one tracker;
+`handleGameEvent` adds action, hit, kill and death counts; `syncSessionRound` closes match rounds; the frame
+loop samples FPS, frame time and sim time every second while play is live. The tracker stays in memory until
+the player shares it.
+
+- `SHARE FEEDBACK` is on the result and leave overlays. It builds a `schema: 1, kind: 'session'` report with
+  mode, arena, program, human/bot setup, assist/touch/friendly-fire settings, per-player action totals,
+  per-round deltas and deflect sources, result fields, environment and perf samples.
+- Sharing is explicit: Web Share with a `deflect-session-*.json` file when the browser supports file
+  sharing, otherwise a downloaded JSON plus a copied compact summary. There is no backend, token,
+  localStorage upload or automatic network call.
+- Callsigns, room codes, IP addresses and raw inputs are absent; player rows use slot labels and program
+  names. The report carries the build stamp so old files stay attributable.
+- The QA tour's `?playtest=1` log remains a separate developer artifact. Do not merge it into the player
+  report or add automatic upload. If remote ingest is later required, put it behind a server endpoint, not
+  a client-held key.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

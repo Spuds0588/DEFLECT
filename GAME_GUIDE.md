@@ -18,6 +18,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
   infected thralls, with a local top-eight table.
 - **CAMPAIGN:** `BUILD ROOT`, the first playable story level, with three local save slots. More levels are coming soon.
 - **Online:** host or join a room for up to 8 players.
+- **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
 - Thirteen programs, eighteen arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
@@ -446,6 +447,9 @@ This build is a test rig as much as a game. A useful pass:
   Ride the bottom mast up and down, then dash into its barrel to confirm it still stops you. Destroy all
   three top capacitors and watch the heat front climb from the bottom; do not stop until it has passed
   the top and the pods return.
+- Finish a training session or a gauntlet run, then select `SHARE FEEDBACK` and confirm the report opens
+  your share sheet or downloads a JSON file with a copied summary. Check that the report contains the
+  arena, mode, program and round/action counts but no callsign or room code.
 - On `THE LEDGE`, shove a bot over the edge with Sweep's thrown broom. It should de-rez at the lip and the
   round should end; walk over the same edge yourself and you should fall too.
 - On `DISK PLATTER`, stand still and watch a hole drift under you; the 0.6 s hang should give you one beat

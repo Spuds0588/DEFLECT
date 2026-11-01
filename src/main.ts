@@ -36,6 +36,16 @@ import {
 } from './game/series';
 import { SECTORS } from './game/sectors';
 import { ACTION, EV, type GameEvent, type InputFrame, type LobbyPlayer, type LobbyState, type Phase } from './game/types';
+import {
+  SessionTracker,
+  emptyDeflect,
+  sessionShareText,
+  type SessionEnvironment,
+  type SessionOutcome,
+  type SessionPlayerSeed,
+  type SessionReport,
+  type SessionResult,
+} from './game/sessionReport';
 import { World } from './game/world';
 import { GuestNet, HostNet, NetView, type Snapshot } from './net/net';
 import { clearChildren, drawAvatar, el, toast } from './ui/dom';
@@ -48,7 +58,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.109';
+const BUILD = '0.1.111';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -408,6 +418,9 @@ let playtestFinishedAt: string | null = null;
 let playtestProgramId: number = PROGRAM_ID.PROBE;
 let playtestBotTier: BotTier = 'veteran';
 let playtestBotCount = 3;
+/** Normal-play session capture behind the opt-in SHARE FEEDBACK action. */
+let sessionLog: SessionTracker | null = null;
+let sessionPerfAt = 0;
 
 let acc = 0;
 let snapTimer = 0;
@@ -1585,6 +1598,7 @@ function startCampaignLevel(): void {
   beginLoadSequence(`${level.name} // ${level.code}`);
   audio.unlock();
   audio.startMusic();
+  beginSessionLog();
   console.log('[DEFLECT-STATE] Campaign node', level.name, 'drill bots', drill, 'friendly fire', friendlyFire ? 'on' : 'off');
 }
 
@@ -2044,6 +2058,7 @@ function loop(now: number): void {
   }
 
   updatePlaytestAdvance(now);
+  sampleSessionPerformance(now);
 
   updatePerf(dt);
 }
@@ -2240,6 +2255,7 @@ function processWorldEvents(w: World): void {
 }
 
 function handleGameEvent(e: GameEvent, remote: boolean): void {
+  if (sessionLog) sessionLog.recordEvent(e);
   if (playtestActive && playtestRound && !remote) recordPlaytestEvent(e);
   fx.handle(e);
   const own = e.slot === localSlot || (mode === 'local' && localSeats.slots().includes(e.slot));
@@ -2395,6 +2411,261 @@ function botProgramList(count: number): number[] {
   return list;
 }
 
+// Session feedback ---------------------------------------------------------------------------
+
+function sessionMode(): 'training' | 'bots' | 'local' | 'gauntlet' | 'infection' | 'campaign' | 'host' | 'guest' {
+  if (mode === 'none') return 'training';
+  if (mode === 'gauntlet') return infectionRun ? 'infection' : 'gauntlet';
+  return mode;
+}
+
+/** Slots occupied by a human. Online rooms are all human; local runs use the couch seats. */
+function sessionHumanSlots(): number[] {
+  if (mode === 'local') return localSeats.slots();
+  if (mode === 'host') {
+    const slots: number[] = [];
+    if (lobbyState) {
+      for (let i = 0; i < lobbyState.players.length; i++) {
+        const p = lobbyState.players[i];
+        if (p.connected) slots.push(p.slot);
+      }
+    }
+    return slots.length > 0 ? slots : [0];
+  }
+  if (mode === 'guest') {
+    const slots: number[] = [];
+    if (guestView) {
+      for (let i = 0; i < guestView.names.length; i++) if (guestView.names[i]) slots.push(i);
+    }
+    return slots.length > 0 ? slots : [localSlot];
+  }
+  return [localSlot];
+}
+
+function sessionBotCount(): number {
+  if (!world) return 0;
+  const humans = sessionHumanSlots();
+  let bots = 0;
+  for (let i = 0; i < world.players.length; i++) {
+    const p = world.players[i];
+    if (p.active && !humans.includes(p.slot)) bots++;
+  }
+  return bots;
+}
+
+function sessionSeeds(): SessionPlayerSeed[] {
+  const humans = sessionHumanSlots();
+  const seen = new Set<number>();
+  const seeds: SessionPlayerSeed[] = [];
+  const add = (slot: number, program: string, human: boolean): void => {
+    if (slot < 0 || slot >= MAX_PLAYERS || seen.has(slot)) return;
+    seen.add(slot);
+    seeds.push({ slot, program, human });
+  };
+  const state = guestView ?? world;
+  if (state) {
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      if (p.active) add(p.slot, programDef(p.program).name, humans.includes(p.slot));
+    }
+  }
+  // A guest starts with an empty view until the first snapshot. Seed the lobby roster now;
+  // the next sync fills in the real slot/program data.
+  for (let i = 0; i < humans.length; i++) add(humans[i], programDef(selectedProgram).name, true);
+  return seeds;
+}
+
+function sessionProgramName(): string {
+  const state = guestView ?? world;
+  const local = state?.players[localSlot];
+  return programDef(local?.program ?? selectedProgram).name;
+}
+
+/** Start a normal-play report. QA stress/demo runs never create one. */
+function beginSessionLog(): void {
+  const state = guestView ?? world;
+  if (!state || attract || demo || stress) {
+    sessionLog = null;
+    return;
+  }
+  const humanPlayers = sessionHumanSlots().length;
+  const bots = sessionBotCount();
+  const series =
+    mode === 'bots' || mode === 'host'
+      ? seriesRun
+        ? { game: seriesGame, total: seriesGames, mapRule: seriesMapRule }
+        : null
+      : mode === 'guest' && guestSeriesTotal > 1
+        ? { game: guestSeriesGame, total: guestSeriesTotal, mapRule: 'host' }
+        : null;
+  const campaign = mode === 'campaign' ? PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex] : null;
+  sessionLog = new SessionTracker(
+    BUILD,
+    {
+      mode: sessionMode(),
+      arenaId: state.arena.id,
+      arenaName: state.arena.name,
+      program: sessionProgramName(),
+      localSlot,
+      humanPlayers,
+      bots,
+      botTier: bots > 0 ? BOT_TIER_LABELS[mode === 'campaign' ? botTierPrefs.training : botTier] : null,
+      friendlyFire: mode === 'gauntlet' || mode === 'campaign' ? (infectionRun ? false : friendlyFire) : infectionRun ? false : null,
+      autoLock,
+      autoAttack,
+      touch: touchMode,
+      online: mode === 'host' || mode === 'guest',
+      infection: infectionRun,
+      series,
+      campaign: campaign
+        ? { slot: campaignSlot, level: campaignLevelIndex + 1, node: campaign.name }
+        : null,
+    },
+    sessionSeeds(),
+  );
+  sessionLog.sample(fps, frameMs, simMs);
+  sessionPerfAt = performance.now() + 1000;
+}
+
+function sessionResult(outcome: SessionOutcome, details: Partial<SessionResult> = {}): SessionResult {
+  return {
+    outcome,
+    winnerSlot: null,
+    matchWinner: null,
+    seriesGame: null,
+    seriesTotal: null,
+    wave: null,
+    kills: null,
+    seconds: null,
+    score: null,
+    cleared: null,
+    ...details,
+  };
+}
+
+function sessionEnvironment(): SessionEnvironment {
+  return {
+    viewportW: window.innerWidth,
+    viewportH: window.innerHeight,
+    dpr: Number((window.devicePixelRatio || 1).toFixed(2)),
+    hardwareConcurrency: navigator.hardwareConcurrency || 0,
+    touch: touchMode,
+    reducedMotion:
+      typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  };
+}
+
+function syncSessionPlayers(state: RenderState): void {
+  if (!sessionLog) return;
+  const rows: { slot: number; active: boolean; program: string; score: number }[] = [];
+  for (let i = 0; i < state.players.length; i++) {
+    const p = state.players[i];
+    if (p.active) rows.push({ slot: p.slot, active: true, program: programDef(p.program).name, score: p.score });
+  }
+  sessionLog.syncPlayers(rows);
+}
+
+function buildSessionReport(result: SessionResult): SessionReport | null {
+  if (!sessionLog) return null;
+  const state = guestView ?? world;
+  if (state) syncSessionPlayers(state);
+  return sessionLog.build(result, sessionEnvironment());
+}
+
+function downloadSessionReport(text: string, fileName: string): void {
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function shareSessionFeedback(result: SessionResult): Promise<void> {
+  const report = buildSessionReport(result);
+  if (!report) {
+    toast('NO SESSION DATA TO SHARE', 'warn');
+    return;
+  }
+  const json = JSON.stringify(report, null, 2);
+  const text = sessionShareText(report);
+  const fileName = `deflect-session-${report.build}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+
+  let file: File | null = null;
+  try {
+    file = new File([json], fileName, { type: 'application/json' });
+  } catch {
+    // File/Web Share is not available in every browser; fall through to a download.
+  }
+  if (file && typeof navigator.share === 'function' && typeof navigator.canShare === 'function') {
+    try {
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ title: 'DEFLECT session feedback', text, files: [file] });
+        toast('SESSION FEEDBACK SHARED');
+        return;
+      }
+    } catch (err) {
+      if ((err as DOMException)?.name === 'AbortError') return;
+    }
+  }
+
+  downloadSessionReport(json, fileName);
+  let copied = false;
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch {
+      // A blocked clipboard still leaves the downloaded JSON.
+    }
+  }
+  toast(copied ? 'REPORT DOWNLOADED // SUMMARY COPIED' : 'SESSION REPORT DOWNLOADED', 'warn');
+}
+
+function sessionShareAction(result: SessionResult): OverlayAction | null {
+  if (!sessionLog) return null;
+  return { label: 'SHARE FEEDBACK', onClick: () => void shareSessionFeedback(result) };
+}
+
+function withSessionShare(actions: OverlayAction[], result: SessionResult): OverlayAction[] {
+  const share = sessionShareAction(result);
+  if (share) actions.push(share);
+  return actions;
+}
+
+/** Record one match round. Runs only on a render frame; training/gauntlet runs use summary totals. */
+function syncSessionRound(state: RenderState): void {
+  if (!sessionLog || state.mode !== 'match') return;
+  syncSessionPlayers(state);
+  if (state.phase === 'live') {
+    sessionLog.beginRound(
+      state.arena.id,
+      state.arena.name,
+      state.round,
+      world ? readPlaytestDeflect(world) : emptyDeflect(),
+    );
+  } else if (state.phase === 'roundover') {
+    sessionLog.finishRound(
+      Math.max(0, ROUND.timeLimit - state.roundTimer),
+      state.roundWinner,
+      state.matchWinner,
+      world ? readPlaytestDeflect(world) : emptyDeflect(),
+      fps,
+      simMs,
+    );
+  }
+}
+
+function sampleSessionPerformance(now: number): void {
+  if (!sessionLog || screen !== 'game' || loading || overlayKind !== 'none') return;
+  if (now < sessionPerfAt) return;
+  sessionPerfAt = now + 1000;
+  sessionLog.sample(fps, frameMs, simMs);
+}
+
 /** Local couch setup: reset the seats and adopt whatever is already plugged in. */
 function openLocalSetup(): void {
   localSeats.reset();
@@ -2523,6 +2794,7 @@ function startLocalMatch(): void {
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
+  beginSessionLog();
   console.log(
     '[DEFLECT-STATE] Local match',
     localSeats.activeCount(),
@@ -2547,6 +2819,7 @@ function startTraining(): void {
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
+  beginSessionLog();
   console.log('[DEFLECT-STATE] Training start', arena.name);
 }
 
@@ -2576,6 +2849,7 @@ function startTrainingBots(): void {
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
+  beginSessionLog();
   console.log('[DEFLECT-STATE] Training bots', botCount, botTier, arena.name);
 }
 
@@ -2604,6 +2878,7 @@ function startGauntlet(aiLocal = false): void {
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
+  beginSessionLog();
   console.log('[DEFLECT-STATE] Gauntlet start', arena.name, 'one life', aiLocal ? 'AUTOPILOT' : '', 'friendly fire', friendlyFire ? 'on' : 'off');
 }
 
@@ -2637,6 +2912,7 @@ function startInfection(aiLocal = false): void {
   beginLoadSequence(`INFECTION // ${arena.name}`);
   audio.unlock();
   audio.startMusic();
+  beginSessionLog();
   console.log('[DEFLECT-STATE] Infection start', arena.name, aiLocal ? 'AUTOPILOT' : '');
 }
 
@@ -3195,6 +3471,7 @@ function startBotMatch(aiLocal = false, useSeriesRules = false): void {
   beginLoadSequence(arena.name);
   audio.unlock();
   audio.startMusic();
+  beginSessionLog();
   console.log('[DEFLECT-STATE] Bot match', botCount, botTier, arena.name, aiLocal ? 'AUTOPLAY' : '');
 }
 
@@ -3344,6 +3621,7 @@ function startGuestGame(arenaId: number, gameMode = 0, seriesTotal = 1, gameNumb
   beginLoadSequence(infectionRun ? `INFECTION // ${arena.name}` : arena.name);
   audio.unlock();
   audio.startMusic();
+  beginSessionLog();
   console.log('[DEFLECT-STATE] Guest', infectionRun ? 'infection' : 'match', 'start, slot', localSlot, arena.name);
 }
 
@@ -3384,6 +3662,7 @@ function startHostMatch(): void {
   beginLoadSequence(infection ? `INFECTION // ${arena.name}` : arena.name);
   audio.unlock();
   audio.startMusic();
+  beginSessionLog();
   console.log('[DEFLECT-STATE] Host', infection ? 'infection' : 'match', 'start with', connected.length, 'operators');
 }
 
@@ -3410,6 +3689,7 @@ function hostNextSeriesGame(): void {
   setScreen('game');
   beginLoadSequence(arena.name);
   audio.startMusic();
+  beginSessionLog();
   toast(`GAME ${seriesGame}/${seriesGames} // ${arena.name}`);
 }
 
@@ -3599,6 +3879,8 @@ function teardownSession(): void {
   guestView = null;
   lobbyState = null;
   mode = 'none';
+  sessionLog = null;
+  sessionPerfAt = 0;
   infectionRun = false;
   stress = false;
   botBrains = [];
@@ -3779,6 +4061,7 @@ function syncPhaseUi(state: RenderState): void {
     if (overlayKind !== 'leave') hideOverlayInternal();
     return;
   }
+  if (sessionLog) syncSessionRound(state);
   if (playtestActive) {
     if (playtestComplete) return;
     if (state.phase === 'live' && !playtestRound) beginPlaytestRound();
@@ -3902,7 +4185,7 @@ function showGauntletOverOverlay(state: RenderState): void {
     'GAUNTLET // RING BROKEN',
     `WAVE ${wave} // ${formatGauntletTime(seconds)}`,
     `${kills} KILLS // ${resultLine} // ${state.arena.name}`,
-    actions,
+    withSessionShare(actions, sessionResult('ring-broken', { wave, seconds, kills })),
   );
 }
 
@@ -3944,13 +4227,7 @@ function showInfectionOverOverlay(state: RenderState): void {
     }
   }
 
-  setOverlay(
-    'runover',
-    cleared ? 'INFECTION // SYSTEM CLEAN' : 'INFECTION // SIGNAL LOST',
-    cleared ? `CLEARED // ${formatInfectionTime(seconds)}` : 'RING BROKEN',
-    cleared
-      ? `${kills} VIRUSES // ${pct}% CLEARED${bestLine} // ${state.arena.name}`
-      : `${pct}% CLEARED // ${kills} VIRUSES // ${state.arena.name}`,
+  const actions =
     mode === 'host'
       ? [
           { label: 'RETRY', primary: true, onClick: hostInfectionRetry },
@@ -3963,7 +4240,18 @@ function showInfectionOverOverlay(state: RenderState): void {
             { label: 'RETRY', primary: true, onClick: () => startInfection() },
             { label: 'ARENA', onClick: returnToInfectionSetup },
             { label: 'TITLE', onClick: leaveToTitle },
-          ],
+          ];
+  setOverlay(
+    'runover',
+    cleared ? 'INFECTION // SYSTEM CLEAN' : 'INFECTION // SIGNAL LOST',
+    cleared ? `CLEARED // ${formatInfectionTime(seconds)}` : 'RING BROKEN',
+    cleared
+      ? `${kills} VIRUSES // ${pct}% CLEARED${bestLine} // ${state.arena.name}`
+      : `${pct}% CLEARED // ${kills} VIRUSES // ${state.arena.name}`,
+    withSessionShare(
+      actions,
+      sessionResult(cleared ? 'infection-clear' : 'infection-failed', { cleared, seconds, kills }),
+    ),
   );
 }
 
@@ -4049,7 +4337,10 @@ function showCampaignClearOverlay(w: World): void {
     `${cleared.name} SECURED // ${w.gauntletKills} KILLS // ${formatGauntletTime(campaignPlaySeconds)} // ${w.campaignDamage} DAMAGE TAKEN // ${dataLine}${
       clean ? ' // CLEAN SWEEP' : ''
     } // SCORE ${score}${bestLine}${complete ? ' // PROGRESS SAVED' : ''}`,
-    actions,
+    withSessionShare(
+      actions,
+      sessionResult('campaign-clear', { cleared: true, score, seconds: campaignPlaySeconds, kills: w.gauntletKills }),
+    ),
   );
 }
 
@@ -4062,10 +4353,13 @@ function showCampaignFailOverlay(w: World): void {
     `${w.gauntletKills} / ${w.campaignKillsToClear} THREATS DELETED // ${
       (PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex] ?? FIRST_CAMPAIGN_LEVEL).name
     }`,
-    [
-      { label: 'RETRY', primary: true, onClick: startCampaignLevel },
-      { label: 'SLOTS', onClick: returnToStory },
-    ],
+    withSessionShare(
+      [
+        { label: 'RETRY', primary: true, onClick: startCampaignLevel },
+        { label: 'SLOTS', onClick: returnToStory },
+      ],
+      sessionResult('campaign-failed', { cleared: false, seconds: campaignPlaySeconds, kills: w.gauntletKills }),
+    ),
   );
 }
 
@@ -4081,7 +4375,15 @@ function showMatchOverlay(state: RenderState): void {
       final ? 'SERIES COMPLETE' : 'GAME COMPLETE',
       final ? 'WAITING FOR HOST' : `GAME ${guestSeriesGame}/${guestSeriesTotal} COMPLETE`,
       final ? 'THE HOST HAS FINISHED THE SERIES // RETURN TO THE LOBBY' : 'THE HOST WILL START THE NEXT GAME',
-      [{ label: 'LEAVE ROOM', onClick: leaveToTitle }],
+      withSessionShare(
+        [{ label: 'LEAVE ROOM', onClick: leaveToTitle }],
+        sessionResult(final ? 'series-complete' : 'game-complete', {
+          winnerSlot: winner,
+          matchWinner: winner,
+          seriesGame: guestSeriesGame,
+          seriesTotal: guestSeriesTotal,
+        }),
+      ),
     );
     return;
   }
@@ -4115,7 +4417,21 @@ function showMatchOverlay(state: RenderState): void {
         actions.push({ label: 'CHANGE SETUP', onClick: returnToSeriesSetup });
       }
     }
-    setOverlay('match', final ? 'SERIES COMPLETE' : 'GAME COMPLETE', title, sub, actions);
+    setOverlay(
+      'match',
+      final ? 'SERIES COMPLETE' : 'GAME COMPLETE',
+      title,
+      sub,
+      withSessionShare(
+        actions,
+        sessionResult(final ? 'series-complete' : 'game-complete', {
+          winnerSlot: final ? seriesWinner(seriesWins) : winner,
+          matchWinner: winner,
+          seriesGame,
+          seriesTotal: seriesGames,
+        }),
+      ),
+    );
     return;
   }
 
@@ -4133,7 +4449,13 @@ function showMatchOverlay(state: RenderState): void {
     actions.push({ label: 'REMATCH', primary: true, onClick: localRematch });
     actions.push({ label: 'RETURN TO TITLE', onClick: leaveToTitle });
   }
-  setOverlay('match', 'MATCH COMPLETE', title, sub, actions);
+  setOverlay(
+    'match',
+    'MATCH COMPLETE',
+    title,
+    sub,
+    withSessionShare(actions, sessionResult('match-complete', { winnerSlot: winner, matchWinner: winner })),
+  );
 }
 
 interface OverlayAction {
@@ -4207,10 +4529,13 @@ function openLeave(): void {
       : local
         ? 'The simulation will be destroyed. Nothing is saved.'
         : 'The match continues while this panel is open. Your operator will stand still.',
-    [
-      { label: 'STAY', onClick: closeLeave },
-      { label: 'LEAVE', primary: true, onClick: campaignRun ? returnToStory : leaveToTitle },
-    ],
+    withSessionShare(
+      [
+        { label: 'STAY', onClick: closeLeave },
+        { label: 'LEAVE', primary: true, onClick: campaignRun ? returnToStory : leaveToTitle },
+      ],
+      sessionResult('left'),
+    ),
   );
 }
 
