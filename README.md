@@ -11,8 +11,8 @@ shapes and every sound is synthesized at runtime: no sprites, no audio files, no
 [![DEFLECT kiosk demo](screenshots/demo-kiosk.png)](https://spuds0588.github.io/DEFLECT/?demo=true)
 
 Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, a
-timed infection clear, the first campaign node, and host/join rooms for up to eight players. Eleven
-programs, ten arenas. The alpha
+timed infection clear, the first campaign node, and host/join rooms for up to eight players. Thirteen
+programs, eleven arenas. The alpha
 is deployed from `main` on every push.
 
 ## Tech stack

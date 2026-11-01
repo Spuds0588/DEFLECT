@@ -300,7 +300,7 @@ export class HostNet {
       for (let i = 0; i < world.viruses.length; i++) {
         const v = world.viruses[i];
         if (!v.active) continue;
-        viruses.push([i, round1(v.x), round1(v.y), round3(v.phase), round1(v.radius), round2(v.spawnT), round2(v.hitFlash)]);
+        viruses.push([i, round1(v.x), round1(v.y), round3(v.phase), round1(v.radius), round2(v.spawnT), round2(v.hitFlash), v.swarm]);
       }
     }
 
@@ -467,7 +467,7 @@ export interface Snapshot {
   events: GameEvent[];
   /** [progress, clock, kills, cleared, failed, over] or null outside infection. */
   infection: number[] | null;
-  /** [id, x, y, phase, radius, spawnT, hitFlash]. Guest renders these only. */
+  /** [id, x, y, phase, radius, spawnT, hitFlash, swarm]. Guest renders these only. */
   viruses: number[][];
   time: number;
 }
@@ -979,6 +979,7 @@ export class NetView {
         view.radius = raw[4] ?? 7;
         view.spawnT = raw[5] ?? 0;
         view.hitFlash = raw[6] ?? 0;
+        view.swarm = raw[7] ?? 0;
       }
     }
   }

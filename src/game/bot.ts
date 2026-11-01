@@ -1,4 +1,4 @@
-import { ATOMIZE, BOLT, BUG, COMPRESS, COPYPASTA, FISHER, GHOST, KABOOM, PINBALL, PLAYER, TOXIC, WEDGE, type Rect } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BUG, COMPRESS, COPYPASTA, FISHER, GHOST, KABOOM, PINBALL, PLAYER, TOXIC, WEDGE, type Rect } from './config';
 import { PROGRAM_ID } from './programs';
 import { POWERUP_KIND } from './powerups';
 import { arenaSolids, discCenterX, discCenterY, discHoleX, discHoleY, type ArenaDef } from './arenas';
@@ -662,12 +662,16 @@ export class BotBrain {
       ? PINBALL.shotSpeed
       : me.program === PROGRAM_ID.COPYPASTA
         ? COPYPASTA.shotSpeed
-        : BOLT.speed) * BOLT.enemySpeedMult;
+        : me.program === PROGRAM_ID.AIMBOT
+          ? AIMBOT.shotSpeed
+          : BOLT.speed) * BOLT.enemySpeedMult;
     const boltRange = me.program === PROGRAM_ID.PINBALL
       ? boltSpeed * PINBALL.shotTtl
       : me.program === PROGRAM_ID.COPYPASTA
         ? boltSpeed * COPYPASTA.shotTtl
-        : boltSpeed * BOLT.ttl;
+        : me.program === PROGRAM_ID.AIMBOT
+          ? AIMBOT.volleyRange
+          : boltSpeed * BOLT.ttl;
     // Keep every style inside the distance its slowed shot can actually reach.
     // The siege style used to hold at 355 while its bolt died at ~310.
     // Wedge wants to be closer for the bracket and plow; Fisher's spear reaches farther.
@@ -678,7 +682,9 @@ export class BotBrain {
           ? 1.12
           : me.program === PROGRAM_ID.PINBALL
             ? 1.35
-            : 1;
+            : me.program === PROGRAM_ID.AIMBOT
+              ? 2.4
+              : 1;
     const engageRange = Math.min(this.rule.range * rangeScale, boltRange - 24);
     if (
       !blocked &&
@@ -985,7 +991,7 @@ export class BotBrain {
         return true;
       }
     }
-    if (dist < PLAYER.swingReach + 6 && me.swingPhase === 0 && this.swingCd <= 0) {
+    if (dist < PLAYER.swingReach * me.meleeReachMult + 6 && me.swingPhase === 0 && this.swingCd <= 0) {
       out.mx = ux;
       out.my = uy;
       out.pressed |= ACTION.SWING;
@@ -1188,7 +1194,7 @@ export class BotBrain {
       this.guardCd <= 0 &&
       me.swingPhase === 0 &&
       me.dashT <= 0 &&
-      dist > PLAYER.swingReach + 10 &&
+      dist > PLAYER.swingReach * me.meleeReachMult + 10 &&
       this.threatTime > 0.12 &&
       this.threatTime < 0.62 &&
       this.rng.next() < 0.85
@@ -1211,7 +1217,7 @@ export class BotBrain {
     if (
       !this.threatOwn &&
       canDeflectShot(this.threatType) &&
-      dist < PLAYER.swingReach + 14 &&
+      dist < PLAYER.swingReach * me.meleeReachMult + 14 &&
       me.swingPhase === 0 &&
       this.swingCd <= 0
     ) {
@@ -1355,7 +1361,11 @@ export class BotBrain {
   ): number {
     // Match the lead to the bot's actual bolt speed. Using the human BOLT.speed
     // here made every slowed bot shot trail a moving target.
-    const shotSpeed = me.program === PROGRAM_ID.PINBALL ? PINBALL.shotSpeed : BOLT.speed;
+    const shotSpeed = me.program === PROGRAM_ID.PINBALL
+      ? PINBALL.shotSpeed
+      : me.program === PROGRAM_ID.AIMBOT
+        ? AIMBOT.shotSpeed
+        : BOLT.speed;
     const boltSpeed = shotSpeed * BOLT.enemySpeedMult;
     const lead = Math.min(0.45, dist / boltSpeed) * this.tune.lead;
     const px = tx + tvx * lead;
@@ -1479,6 +1489,22 @@ export class BotBrain {
         if (d >= reach) continue;
         sx += (dx / d) * ((reach - d) / 22);
         sy += (dy / d) * ((reach - d) / 22);
+      }
+    }
+
+    // Round furniture is not in the grid, so add a soft radial steer. A kicker gets a
+    // wider berth than a passive post because its launch is stronger than a wall slide.
+    if (arena.bumpers) {
+      for (let i = 0; i < arena.bumpers.length; i++) {
+        const b = arena.bumpers[i];
+        const dx = me.x - b.x;
+        const dy = me.y - b.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const reach = b.radius + PLAYER.radius + (b.kind === 1 ? 76 : 48);
+        if (d >= reach) continue;
+        const push = (reach - d) / 20;
+        sx += (dx / d) * push;
+        sy += (dy / d) * push;
       }
     }
 

@@ -96,14 +96,16 @@ an amber diamond with `▣`, Fisher an indigo hex reel with `≈`, Sweep a lime 
 with `☠`, Kaboom a red-orange triangle built from three outward triangles with a bomb at the center,
 Bad Lag six clock faces on a ring with a pinched hourglass, Atomize three overlapping white
 ellipse orbits with an atom at the center, Ghost three outward steel-grey arcs with a closed eye at the
-core, Compress six upright Z marks on a ring, and Pinball a cabinet-blue circular ring with a vector
-circled X at the core. Probe's mark is a vector compass rose (`drawCompassMark`): a thin housing ring around a four-point
+core, Compress six upright Z marks on a ring, Pinball a cabinet-blue circular ring with a vector
+circled X at the core, and Aim Bot a signal-red scope ring split into three brackets with one inward
+tick per health segment. Probe's mark is a vector compass rose (`drawCompassMark`): a thin housing ring around a four-point
 star, not the old concentric target. Its four tips are symmetric, so the compass never reads as a facing
 arrow. The select screen and the arena share that shape and glyph, so a
 program reads the same in the roster, intro and fight. A program's `glyph` may be a single character, a multi-character text combo, Unicode dingbats/wingdings, or a multi-line ASCII picture; `drawSymbol` scales it to the core and portrait, strips common indentation, and measures the real advance against the symbol font stack (`ui-monospace` first, then `Segoe UI Symbol`, `Noto Sans Symbols 2`, `Apple Symbols`, Wingdings, Webdings) so a wide mark shrinks instead of spilling through the hull. Prefer direction-neutral marks: a pointing glyph at the core reads as facing. Each program also owns `coreScale` so a tight hull keeps clearance from its
 rotating health segments: Probe `1.12`, Wedge `0.88` (the diamond's sides are the tightest core), Fisher
 `1.10`, Sweep `1.06`, Toxic `1.0`, Kaboom `0.76`, Bad Lag `0.72`, Atomize `0.72`, Ghost `0.82`,
-Compress `0.8` and Pinball `1.0` (its circular hull leaves the core clear air). The select portrait applies `coreScale` too, at its own poster radius; do not draw the poster mark at full size or the vector centers overlap their hulls. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
+Compress `0.8`, Pinball `1.0` (its circular hull leaves the core clear air), Copy Pasta `0.8` and
+Aim Bot `1.0`. The select portrait applies `coreScale` too, at its own poster radius; do not draw the poster mark at full size or the vector centers overlap their hulls. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
 uses the empty space between the core disc and the hull, with tighter row spacing and a narrower width
 budget; a single glyph keeps the default 0.51. The low-health core keeps a scale floor
 (`0.78 + 0.22 * coreHp`) so the mark stays visible while the hull ghosts carry the damage read. Check a
@@ -320,8 +322,9 @@ bolt:
   hard. Toxic fires a needle, Kaboom a slow bomb, Bad Lag a heavy hourglass, Atomize an alternating
   electron that leaves one hand and seeks a target in front of it (see D25), Ghost throws a wide
   chomping mouth that is slower than a bolt but hits for two and dazes (see D26), and Pinball throws a
-  long-lived ricochet ball whose damage climbs 1-5 across five bodies (see D31). Do not restore the old
-  long TTL without reworking the kit.
+  long-lived ricochet ball whose damage climbs 1-5 across five bodies (see D31). Aim Bot fires a
+  2000-speed rail round for 8 damage that dies on the first body or solid and never bounces (see D34).
+  Do not restore the old long TTL without reworking the kit.
 - **Melee attack (`B` tap)**: the cone is **180°**. Every quick press is a fast spiked lash that sweeps
   the arc left, right, left. It reflects incoming fire and shoves players and hostiles sideways in the
   sweep direction; there is no third-tap shield wave. Facing locks for the lash. The active window is
@@ -351,7 +354,8 @@ bolt:
   blocks one full hit or damages the first hostile it touches, and they never expire on their own. Ghost's
   skill cloaks the body for a few seconds: enemies lose the target, shots pass through, and damage is
   skipped (see D26). Pinball plants a flipper arm for 16 s that punts hostile fire and swats bodies at
-  other enemies (see D31).
+  other enemies (see D31). Aim Bot raises a visible laser sight for 7 s and loads a three-shot clip that
+  bypasses the normal reload (see D34).
 - **Power attack (`Y` hold)**: program-specific heavy. Probe charges for 0.63 s, then **auto-fires**
   without waiting for release for 3 s, rooted, sweeping at `PLAYER.laserTurnRate` (0.55 rad/s), piercing
   every enemy in the line. The shaft stops on the first solid surface (see D22), and a raised guard
@@ -359,9 +363,10 @@ bolt:
   **freeform web**; Sweep materializes a giant broom head by sweeping the lane from the side he faces,
   shoving bodies out of the way before the stroke starts, then damages every body the stroke crosses;
   Bad Lag dilates time; Atomize opens a moving orbit field instead of a beam; Ghost arms a jump-scare,
-  then fires it on any action press inside the window or lets it expire. Cooldown starts when the heavy
-  ends. Releasing before the charge completes cancels; a release inside `heavyTapMax` uses the skill
-  instead.
+  then fires it on any action press inside the window or lets it expire. Aim Bot paints up to six red
+  crosshairs in a forward cone and fires a 12-damage shot at each in a quick sequence; no volley
+  projectile is spawned (see D34). Cooldown starts when the heavy ends. Releasing before the charge
+  completes cancels; a release inside `heavyTapMax` uses the skill instead.
 - **Dash**: two stored charges (`PLAYER.dashCharges`), one shared 1.8 s recharge. Tap phases through
   geometry and enemies; hold after the tap for the charged triangle dash that damages what it crosses.
 
@@ -514,9 +519,17 @@ link is a `bridge`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   reattach it to the campaign stage without a decision.
 - The first playable node is **BUILD ROOT** (`src/game/campaign.ts`) on `CROSSROADS`; see D17. It is a
   scripted gauntlet-mode world, saves the slot on clear, and returns to the slot stage. Only one node is
-  authored, so a cleared slot replays it until the next node lands.
-- The campaign route plate (`road.ts`) belongs to the between-level transition, not to the archive. Do not
-  mount it in a menu.
+  authored, so a cleared slot replays it until the next node lands.- The campaign route plate (`road.ts`) belongs to the between-level transition, not to the archive. Do not mount it in a menu.
+- **Narrative framing (decided 2026-11-01, not built)**: the run opens in the quarantine section of a dev
+  system. Every roster program is a "bad" program pulled by antivirus and sent to be retrained; the pick is
+  choosing which inmate to run. Story arrives in bottom-screen text boxes whose speaker head is a floating
+  emoji/Unicode/Wingdings mark: 👮 THE WARDEN (the LOCALHOST sector boss, not a separate character), 🐱 a
+  friendly program who gets the players out when the infection breaks, and the User/Users AI antagonist at
+  ROOT. Narration is **live over play** (never pauses `World`), reveals near-instantly, and is skippable per
+  line and per beat; campaign setup carries a persisted `STORY BEATS` skip toggle beside `FRIENDLY FIRE`.
+  Beats are cosmetic and must not gate gameplay, or a skipped replay would diverge. Cast, presentation rules
+  and open questions live in `CAMPAIGN.md`. Narration is local presentation only: no new `PROGRAMS` entries,
+  hulls, hitboxes, `World` bodies or `Snapshot` fields.
 
 ### D14 — Sweep.exe: broom push kit, clean core mark (built 2026-10-29)
 `SWEEP.EXE` is the fourth program and the roster's **shove** specialist. Identity: lime accent, an
@@ -1204,8 +1217,18 @@ last body is gone or every runner's ring breaks.
   The renderer draws one top-centred bar with `VIRUS CLEARED`, the percentage and the run clock; the
   gauntlet's bottom possession strip is suppressed. `gauntletTime` is the run clock. Do not replace the
   derived meter with a fixed kill quota: the colony's growth is the pressure.
-- **Flood and growth.** `INFECTION.startViruses` (24) land on rings around the runners at run start, the
-  pool is `INFECTION.maxViruses` (44) rather than the gauntlet's 10, and one split lands every
+- **The tide enters from the right.** Operators spawn on one left-side line (`leftSpawnFrac`), not on
+  rings. `INFECTION.startViruses` (24) queue in a vertical column just beyond the right lip, and every
+  infection spawn (opening and split) reuses an inactive pooled body at that edge. Do not place opening
+  viruses around the players; the right-to-left crossing is the mode's read.
+- **Entry is a recycled glide.** `spawnVirus` overrides infection spawns to `bounds.right + radius + 8`,
+  gives the body negative `vx` (`entrySpeedMult`) and uses the existing `spawnT` window to glide it in.
+  `updateVirus` must move while `spawnT` is above zero, and `cullVoidThreats` / `containDiscThreats` must
+  skip entering bodies until they are inside the floor. This is a moved pool entry, not a new entity.
+- **Fake density.** `Virus.swarm` adds zero to two drawn satellite diamonds around the one hitbox. They
+  are animation only: never collision, health, kills or extra pool slots. The field travels to guests as
+  the eighth virus snapshot value, so co-op renders the same colony. `swarmChance` is the tuning knob.
+- The pool is `INFECTION.maxViruses` (44) rather than the gauntlet's 10, and one split lands every
   `growInterval` (1.6 s) while under the cap. Viruses use `INFECTION.huntRadius` (whole arena) and
   `speedMult`, not the gauntlet's 310-unit interest radius. Do not reuse the gauntlet's wave ramp here.
 - **The swarm bites, it does not joust.** The single-target charge is disabled in this mode: the whole
@@ -1222,7 +1245,7 @@ last body is gone or every runner's ring breaks.
   `infectionCleared`, a wipe sets `infectionFailed`, and both set `gauntletOver` through the existing
   freeze path. `infectionOver` is the single test for the results hook in `main.ts`.
 - **Co-op wire format.** The host owns the colony, clock, kills and clear meter. `Snapshot` carries an
-  optional `infection` row and compact virus rows; `NetView` mirrors the readout and interpolates the
+  optional `infection` row and compact virus rows (`swarm` included); `NetView` mirrors the readout and interpolates the
   swarm for rendering only. Dead guests keep receiving snapshots. The host records the clear; a guest's
   overlay offers `LEAVE ROOM`. Host `RETRY` rebuilds the world and broadcasts `REMATCH`. Nothing else
   from the gauntlet enters the packet.
@@ -1539,6 +1562,58 @@ are the health readout, and the copy stamp is the only other copy symbol.
 - Bots cast the copy at 120–380 units and the generic heavy hold builds the redaction. Their engagement
   range uses the file's 620/1.15 s flight. All numbers live in `tuning/programs.json` under `COPYPASTA`;
   the skill cooldown is the 15th entry in `player.json` `BUG.cooldown`.
+
+### D34 — AIM_BOT.EXE: scope, rail round, sight clip, six-target volley (built 2026-11-01)
+
+`AIM_BOT.EXE` is the roster's **sniper** (id 12, `bugKind` 15). Identity: `PROGRAM_COLORS.aimbot`
+(`#ff3355`), an outer scope circle split into three thick brackets (one health segment each, each with an
+inward tick), and a vector twin-ring reticle at the core (`drawAimBotMark`). The bracket ring sits at
+0.96r and its tick reaches only 0.72r, so the hull never crosses the core disc. The mark is direction
+neutral; do not replace it with a pointing arrow.
+
+- **Ranged** (type 17): one rail round, `shotDamage` 8, `shotSpeed` 2000, `shotRadius` 5,
+  `shotTtl` 1.6 s, `attackCooldown` 2.0 s, `shotCost` 18. It does not bounce and dies on the first body
+  or solid surface. The 1.6 s life covers 3200 units of travel, enough for the sight line in these arenas.
+  Speed 2000 keeps the one-shot but restores travel time: at 3200 the round was effectively hitscan and a
+  perfect-aim bot never missed, which measured 24-0 across the roster. The projectile is
+  drawn as a dark bullet with a white tip and a long fading red speed tail, not as a bolt. It is a normal
+  player projectile for guard/deflect purposes; do not add it to the heavy splash lists.
+- **Lock and camera**: `playerLockRange` raises Aim Bot's lock to `AIMBOT.lockRange` 2400; every other
+  program stays on `PLAYER.lockRange`. `lockTX/lockTY` expose the target for the renderer. A local Aim
+  Bot's camera floor is `CAMERA_ZOOM * AIMBOT.cameraZoom` (0.4), and `addAimLockFocus` pulls toward the
+  lock without the normal `CAMERA.focusRange` cap. Do not route that pull through `addCameraFocus`; a
+  2400-unit target is deliberately outside the normal group pull and would fall off screen.
+- **Skill**: `sightTime` 7 s of visible dashed sight plus `clipSize` 3. Clip shots fire at
+  `clipInterval` 0.16 s, skip the 2.0 s reload, and still pay 18 energy each. The clip expires when the
+  sight does; it is not a permanent second magazine.
+- **Power**: builds up to six targets inside a 0.44 rad half-angle forward cone within 2400 units and
+  line of sight (`players`, worms, viruses, the training drone, sentries and cascading errors). Each gets
+  a red crosshair for `volleyTelegraph` 0.65 s plus a 0.06 s stagger, then a 12-damage shot
+  (`volleyKnockback` 1700) with no projectile entity. Cover is checked again when each mark fires, so a
+  target that steps behind a block is spared. Marks live in the local `World.aimMarks` pool and
+  `RenderState.aimMarks`; nothing enters `Snapshot`.
+- **Melee**: the rail has no crowd clear, so the knife is the sniper's answer. `AIMBOT.meleeReachMult`
+  1.5, `meleeArcMult` 1.22 and `meleeKnockMult` 1.75 set the per-body caps `Player.meleeReachMult`,
+  `meleeHalfAngle` and `meleeKnock` at program bind, like Pinball's guard reach: 78 reflect / 108 body
+  reach, a 219.6 degree sweep and 980 shove. Those caps own the projectile catch in `resolveSwing` and
+  the body cone in `resolveSwingContact`; bot melee spacing reads the same reach. The renderer draws the
+  sweep as a bowie blade (grip, cross guard, clipped spine, curved belly, fuller) instead of the spiked
+  lash. Do not give the knife a second hitbox or a damage bump: the trade is area and shove, not more
+  damage.
+- Bots use the rail speed and a 2.4x engagement range, and the generic heavy hold builds the volley.
+  The program is local-only like the rest of the roster; online still runs Probe.
+
+### D35 — SPACE CADET: pinball cabinet furniture and feed (built 2026-11-01)
+
+`SPACE CADET` (arena id 10) is a tall cabinet. `ArenaDef.bumpers` owns round furniture:
+`kind: 0` posts reflect shots and shove bodies (`SPACE_CADET.postPush`), `kind: 1` kickers launch bodies
+(`bumperLaunch`) and speed shots up (`bumperShotGain`, capped by `shotSpeedMax`). Body collision is shared by
+players, worms, viruses and sentries through `World.bumpBody`; shots use `bounceBumpers`. Committed shapes
+(including Aim Bot type 17) die on a bumper rather than bounce. The bottom drain is a normal `voids` rect,
+so the existing fall path owns the kill. The right-side `ArenaPipeDef` uses `feed: 'pinball'`: a four-beat
+file, hostile type-14 ball, virus, sentry loop. The ball is ownerless, bounces off walls/pillars/bumpers and
+can hurt any body. This is local-only content; the arena carries pipes, so hosted rooms skip it. All feel
+values live in `world.json` under `SPACE_CADET`.
 
 ## 8. Performance guardrails
 

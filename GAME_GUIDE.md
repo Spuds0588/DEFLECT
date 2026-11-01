@@ -18,7 +18,8 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
   infected thralls, with a local top-eight table.
 - **CAMPAIGN:** the first story node, `BUILD ROOT`, with three local save slots.
 - **Online:** host or join a room for up to 8 players.
-- Eleven programs, ten arenas.
+- Thirteen programs, eleven arenas.
+- **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
 
@@ -122,12 +123,13 @@ spray of rotating triangles, and tilt the view by the amount set in Settings.
 
 ### Infection
 
-`SINGLE PLAYER > INFECTION` is a timed clear, not a survival run. Pick a program and an arena and the
-floor opens flooded with twenty-four viruses; the colony buds a new body roughly every second and a half
-until the live cap, and every virus hunts you across the whole arena instead of holding a patch. The top of
-the screen carries the only number that matters: **VIRUS CLEARED**, rising from 0% to 100%, with the run
-clock underneath. Clear the last body to stop the clock; the fastest clean sweep per arena is kept on
-the title menu as `BEST`.
+`SINGLE PLAYER > INFECTION` is a timed clear, not a survival run. Pick a program and an arena: every
+operator starts on the **left** in one launch line, while twenty-four viruses queue just beyond the
+**right** lip. The colony enters as a tide, crosses the middle and hunts you across the whole arena. New
+bodies reuse the virus pool and glide in from the right rather than appearing in place, so the pressure
+reads as an endless feed even while you are clearing it. The top of the screen carries the only number
+that matters: **VIRUS CLEARED**, rising from 0% to 100%, with the run clock underneath. Clear the last
+body to stop the clock; the fastest clean sweep per arena is kept on the title menu as `BEST`.
 
 Online, host a room and set the lobby's `MODE` to `INFECTION`. Up to eight operators share the same
 colony, clock and clear meter. The host owns every hit and the virus movement; other players render the
@@ -137,6 +139,9 @@ room from the result screen; guests can leave. The host records the clear time l
 
 - The meter is live, not a quota: `kills / (kills + living)`. A fresh split pushes it back. It only
   reaches 100% when nothing is left alive.
+- Some arrivals are visually doubled or tripled by a fake swarm cloud. The satellites are only drawn;
+  the whole group still has one hitbox, one health point and one kill. The extra bodies are there to
+  make the right side of the arena read as a colony, not a row of single targets.
 - Viruses **bite on contact** for one segment and shove you clear; eight tenths of a second of grace keeps
   a packed screen from deleting you on one frame. They do not wind up or charge in this mode, so the
   swarm is a wall to kite, not a line of jousters.
@@ -223,11 +228,11 @@ no health or readiness telemetry yet.
 
 | Option | Input | Role |
 | --- | --- | --- |
-| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact, Toxic fires a venom needle, Kaboom lobs a slow bomb, Bad Lag throws a heavy hourglass, Atomize fires an alternating electron that curves toward a target, Ghost throws a wide chomping mouth that hits for two and dazes, Compress fires a slow pressure orb that shrinks the victim and permanently lowers their health cap, Pinball throws a long-lived ricochet ball that gains speed on every bounce or body and climbs from 1 to 5 damage across five hits, and Copy Pasta throws a file that tears into two smaller files when it hits a body. Holding keeps the fire coming at the program's cadence. |
-| **MELEE ATTACK** | `B` / left mouse / `J` | **Tap** for a fast spiked lash across the 180° arc in front of you. It shoves what it hits sideways and reflects shots it catches. |
+| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact, Toxic fires a venom needle, Kaboom lobs a slow bomb, Bad Lag throws a heavy hourglass, Atomize fires an alternating electron that curves toward a target, Ghost throws a wide chomping mouth that hits for two and dazes, Compress fires a slow pressure orb that shrinks the victim and permanently lowers their health cap, Pinball throws a long-lived ricochet ball that gains speed on every bounce or body and climbs from 1 to 5 damage across five hits, Copy Pasta throws a file that tears into two smaller files when it hits a body, and Aim Bot fires a 2000-speed rail round for 8 damage that never bounces and reloads slowly. Holding keeps the fire coming at the program's cadence. |
+| **MELEE ATTACK** | `B` / left mouse / `J` | **Tap** for a fast spiked lash across the 180° arc in front of you. It shoves what it hits sideways and reflects shots it catches. Aim Bot carries a combat knife instead: a longer, wider sweep with a much harder shove. |
 | **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. Lock on to flatten caught shots toward the target. Pinball's shield is wider and lasts longer. |
-| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear, Compress fires a pressure burst that halves the size and health cap of everything in the ring, crushing anything on its last point, Pinball launches one giant ball that bounces off arena walls only and rolls over bodies for 3 damage, and Copy Pasta seeds every enemy in a ring with a growing stack of red file icons that detonates after a beat. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
-| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises three orbiting shield balls, Ghost cloaks for a few seconds, Compress folds small and runs fast for 3.5 seconds, Pinball plants a flipper arm for 16 seconds that punts hostile shots and swats bodies toward other enemies, and Copy Pasta summons a bot-driven copy of itself that fights for eight seconds. Every Copy Pasta dash also leaves a one-hit, 1.5-second afterimage that pulls enemy attention. Its mark in the readiness dock shows when the skill is ready. |
+| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear, Compress fires a pressure burst that halves the size and health cap of everything in the ring, crushing anything on its last point, Pinball launches one giant ball that bounces off arena walls only and rolls over bodies for 3 damage, and Copy Pasta seeds every enemy in a ring with a growing stack of red file icons that detonates after a beat. Aim Bot paints up to six red crosshairs in front of himself and fires a 12-damage shot at each in a quick sequence. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
+| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises three orbiting shield balls, Ghost cloaks for a few seconds, Compress folds small and runs fast for 3.5 seconds, Pinball plants a flipper arm for 16 seconds that punts hostile shots and swats bodies toward other enemies, Copy Pasta summons a bot-driven copy of itself that fights for eight seconds, and Aim Bot raises a visible laser sight for 7 seconds and loads a three-shot clip that ignores his normal reload. Every Copy Pasta dash also leaves a one-hit, 1.5-second afterimage that pulls enemy attention. Its mark in the readiness dock shows when the skill is ready. |
 | **DASH** | `A` / `Shift` / `Space` | Two charges, one shared recharge. Tap to phase through enemies and cover in your last movement direction. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. Pinball carries three charges. |
 
 Ranged fire is the pressure tool. Melee is the answer to incoming fire: tap to lash, hold to guard. The
@@ -392,6 +397,12 @@ This build is a test rig as much as a game. A useful pass:
   nearest enemy; a body caught by the paddle should take 1 and be shoved toward another enemy. Hold `Y`
   for the giant ball: it should roll through pillars and bodies, hit each body once, and turn only at the
   arena walls. Hold `B` at range: the shield should be visibly wider and last almost two seconds.
+- As Aim Bot, hold lock at the far end of the arena: the camera should pull back far enough to keep both
+  bodies in frame. Fire once into open floor: the rail round should cross the room with a long speed tail
+  and die on the wall without bouncing. Tap `Y` for the sight, fire three shots without the normal reload,
+  then wait out the 7-second window and confirm the clip is gone. Hold `Y` in a crowd: six red crosshairs
+  should appear, then six hits should land in a quick row for 12 each; a target that steps behind cover
+  before its turn should not be hit.
 - Reflect a `HARD` bolt back at it. Higher tiers try to dodge their own armed ricochets.
 - Leave endless training and return. The arena choice persists and a fresh session starts cleanly; there
   is no round or match overlay to clear.

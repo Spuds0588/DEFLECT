@@ -370,7 +370,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.73 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.78 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -2095,9 +2095,9 @@ function startGauntlet(aiLocal = false): void {
 }
 
 /**
- * INFECTION: a timed clean sweep on the gauntlet simulation. The colony starts deep and
- * keeps budding; the clear meter and the clock are the whole read. Friendly fire is off
- * so the swarm cannot thin itself out and hand the player a cheap best time.
+ * INFECTION: a timed clean sweep on the gauntlet simulation. Operators launch from the
+ * left while the colony streams in from the right; the clear meter and clock are the
+ * whole read. Friendly fire is off so the swarm cannot thin itself out for a cheap time.
  */
 function startInfection(aiLocal = false): void {
   if (busy) return;

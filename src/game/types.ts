@@ -180,6 +180,8 @@ export interface Pipe {
   fireT: number;
   /** Number of emissions so far; alternates file and threat. */
   shots: number;
+  /** 0 standard feed, 1 pinball feed. */
+  feed: number;
   hitFlash: number;
   /** Short glow after an intake swallow. */
   catchFlash: number;
@@ -338,6 +340,14 @@ export interface Player {
   guardReach: number;
   /** Short lockout after the guard breaks or is released. */
   guardCd: number;
+  /**
+   * Melee shape. Aim Bot's combat knife is longer, sweeps a wider arc and shoves
+   * harder than the shared lash. Stored per body, like `guardReach`, so respawn,
+   * the renderer and bot range checks all read one source.
+   */
+  meleeReachMult: number;
+  meleeHalfAngle: number;
+  meleeKnock: number;
 
   /**
    * Pinball's deployed flipper arm. The base is a fixed world point captured at cast,
@@ -480,6 +490,12 @@ export interface Player {
   lockT: number;
   lockActive: boolean;
   lockFacing: number;
+  /** Aim Bot's visible sight and temporary clip. Local-only. */
+  aimSightT: number;
+  aimClip: number;
+  /** Current lock position, used by the local sight and camera. Local-only. */
+  lockTX: number;
+  lockTY: number;
 
   hitFlash: number;
   respawnT: number;
@@ -498,6 +514,19 @@ export interface CopyMark {
   y: number;
 }
 
+/** One red crosshair in Aim Bot's six-target volley. Local-only. */
+export interface AimMark {
+  active: boolean;
+  /** 1 player, 2 worm, 3 virus, 4 drone, 5 sentry, 6 cascading error. */
+  kind: number;
+  id: number;
+  owner: number;
+  /** Seconds until this mark fires. */
+  t: number;
+  x: number;
+  y: number;
+}
+
 export interface Projectile {
   active: boolean;
   serial: number;
@@ -512,10 +541,11 @@ export interface Projectile {
    * on the body and dazes it; type 13 is a pressure orb that shrinks and caps the
    * victim's health. Type 14 ricochets, speeds up per bounce or body, and escalates
    * 1-5 damage over five bodies. Type 15 is the huge super ball: walls bounce it,
-   * bodies do not, and it rolls through cover.
+   * bodies do not, and it rolls through cover. Type 17 is Aim Bot's rail round: no
+   * practical flight limit, no bounce, and it dies on the first body or cover hit.
    */
   /** 16 is Copy Pasta's file; its `variant` is 0 for the parent and 1 for the child. */
-  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;
@@ -694,6 +724,8 @@ export interface Virus {
   chargeHit: boolean;
   chargeDirX: number;
   chargeDirY: number;
+  /** Extra drawn diamonds in this virus's swarm group. They add no hitboxes. */
+  swarm: number;
 }
 
 export interface Sentry {

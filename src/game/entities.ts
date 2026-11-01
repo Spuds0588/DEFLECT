@@ -156,6 +156,9 @@ export function createPlayer(slot: number): Player {
     guardMax: PLAYER.guardDuration,
     guardReach: PLAYER.guardReach,
     guardCd: 0,
+    meleeReachMult: 1,
+    meleeHalfAngle: PLAYER.swingHalfAngle,
+    meleeKnock: PLAYER.punchKnockback,
     armT: 0,
     armMax: 0,
     armX: 0,
@@ -200,6 +203,10 @@ export function createPlayer(slot: number): Player {
     lockT: 0,
     lockActive: false,
     lockFacing: 0,
+    aimSightT: 0,
+    aimClip: 0,
+    lockTX: 0,
+    lockTY: 0,
     hitFlash: 0,
     respawnT: 0,
   };
@@ -416,6 +423,7 @@ export function createVirus(): Virus {
     chargeHit: false,
     chargeDirX: 1,
     chargeDirY: 0,
+    swarm: 0,
   };
 }
 
@@ -655,6 +663,10 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.lockT = 0;
   p.lockActive = false;
   p.lockFacing = facing;
+  p.aimSightT = 0;
+  p.aimClip = 0;
+  p.lockTX = x;
+  p.lockTY = y;
   p.hitFlash = 0;
   p.respawnT = 0;
 }

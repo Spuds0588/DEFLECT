@@ -1,4 +1,5 @@
 import {
+  AIMBOT,
   ATTRACT,
   ATOMIZE,
   BOLT,
@@ -16,6 +17,7 @@ import {
   INFECTION,
   MINE,
   NETWORK,
+  SPACE_CADET,
   SWEEP,
   FIREWALL,
   FALL,
@@ -78,6 +80,7 @@ import {
   ACTION,
   EV,
   SRC,
+  type AimMark,
   type Barrier,
   type CampaignPhase,
   type CascadingError,
@@ -101,7 +104,6 @@ import {
   type Worm,
 } from './types';
 
-const SWING_COS = Math.cos(PLAYER.swingHalfAngle);
 const EVENT_CAPACITY = MAX_EVENTS * 2;
 /** Any of the four action buttons fires an armed jump-scare instead of its normal job. */
 const SCARE_TRIGGER_ACTIONS = ACTION.BOLT | ACTION.SWING | ACTION.CANDLE | ACTION.DASH;
@@ -129,6 +131,8 @@ export class World {
   readonly props: Prop[];
   /** Destructible feed pipes. Local-only, like the floor fixtures they sit beside. */
   readonly pipes: Pipe[];
+  /** Flash timers for round kickers. Local-only, read by the renderer. */
+  readonly bumperFlash: Float32Array;
   /** Rearm clock for the Network Switch firewall starter. */
   firewallSwitchT = 0;
   firewallSwitchDwell = 0;
@@ -294,6 +298,16 @@ export class World {
     x: 0,
     y: 0,
   }));
+  /** Aim Bot's red crosshairs. Local-only, never in a snapshot. */
+  readonly aimMarks: AimMark[] = Array.from({ length: AIMBOT.volleyTargets }, () => ({
+    active: false,
+    kind: 0,
+    id: -1,
+    owner: -1,
+    t: 0,
+    x: 0,
+    y: 0,
+  }));
   /** Open-wall arena: the bounds are a lip, not a wall. Anything past it de-rezzes. */
   private readonly openWalls: boolean;
   /** Compactor cycle time, in seconds since this cycle began. Public for the renderer. */
@@ -368,6 +382,7 @@ export class World {
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
     this.solids = arenaSolids(arena);
+    this.bumperFlash = new Float32Array(arena.bumpers?.length ?? 0);
     this.openWalls = arena.walls === 'open';
     this.pusherY = arena.bounds.top;
     if (arena.disc) {
@@ -483,8 +498,9 @@ export class World {
           radius: NETWORK.pipeRadius,
           hp: NETWORK.pipeHp,
           maxHp: NETWORK.pipeHp,
-          fireT: NETWORK.pipeFirst + (d.offset ?? 0),
+          fireT: (d.feed === 'pinball' ? SPACE_CADET.pipeFirst : NETWORK.pipeFirst) + (d.offset ?? 0),
           shots: 0,
+          feed: d.feed === 'pinball' ? 1 : 0,
           hitFlash: 0,
           catchFlash: 0,
           catchT: 0,
@@ -541,6 +557,13 @@ export class World {
       p.dashCharges = p.dashMax;
       p.guardMax = PLAYER.guardDuration * (p.program === PROGRAM_ID.PINBALL ? PINBALL.guardDurationMult : 1);
       p.guardReach = PLAYER.guardReach * (p.program === PROGRAM_ID.PINBALL ? PINBALL.guardReachMult : 1);
+      // Aim Bot has no crowd clear, so the sniper's melee is a combat knife: a longer,
+      // wider and harder-shoving sweep than the shared lash. The renderer and every
+      // body cone check read these caps, so respawn keeps the same blade.
+      const aimBlade = p.program === PROGRAM_ID.AIMBOT;
+      p.meleeReachMult = aimBlade ? AIMBOT.meleeReachMult : 1;
+      p.meleeHalfAngle = PLAYER.swingHalfAngle * (aimBlade ? AIMBOT.meleeArcMult : 1);
+      p.meleeKnock = PLAYER.punchKnockback * (aimBlade ? AIMBOT.meleeKnockMult : 1);
     }
 
     if (mode === 'training') {
@@ -595,7 +618,8 @@ export class World {
       pipe.active = true;
       pipe.hp = pipe.maxHp;
       pipe.shots = 0;
-      pipe.fireT = NETWORK.pipeFirst + (this.arena.pipes?.[i]?.offset ?? 0);
+      pipe.feed = this.arena.pipes?.[i]?.feed === 'pinball' ? 1 : 0;
+      pipe.fireT = (pipe.feed === 1 ? SPACE_CADET.pipeFirst : NETWORK.pipeFirst) + (this.arena.pipes?.[i]?.offset ?? 0);
       pipe.hitFlash = 0;
       pipe.catchFlash = 0;
       pipe.catchT = 0;
@@ -667,14 +691,17 @@ export class World {
 
     const active: Player[] = [];
     for (let i = 0; i < this.players.length; i++) if (this.players[i].active) active.push(this.players[i]);
-    computeSpawns(Math.max(1, active.length), this.arena, this.spawnX, this.spawnY);
+    // A single left-side launch line. Everyone enters together, facing the colony;
+    // no operator starts behind the swarm or on the far side of the room.
+    const b = this.arena.bounds;
+    const leftX = b.left + Math.max(64, (b.right - b.left) * INFECTION.leftSpawnFrac);
+    const rowSpan = Math.min((b.bottom - b.top) * 0.54, Math.max(0, active.length - 1) * 78);
     for (let i = 0; i < active.length; i++) {
       const p = active[i];
-      const sx = this.spawnX[i];
-      const sy = this.spawnY[i];
-      this.spawnX[p.slot] = sx;
+      const sy = this.centerY - rowSpan * 0.5 + (active.length === 1 ? 0 : (rowSpan * i) / (active.length - 1));
+      this.spawnX[p.slot] = leftX;
       this.spawnY[p.slot] = sy;
-      clearPlayerForSpawn(p, sx, sy, Math.atan2(this.centerY - sy, this.centerX - sx));
+      clearPlayerForSpawn(p, leftX, sy, Math.atan2(this.centerY - sy, this.centerX - leftX));
     }
 
     this.infectionKills = 0;
@@ -686,20 +713,13 @@ export class World {
     this.wave = 1;
     this.waveBannerT = 0;
 
-    // A shared flood: each body gets a slice of the opening colony in a complete ring
-    // around its own spawn, so a split-up squad starts the clear from both sides.
+    // The colony enters from the right edge in a vertical queue. The players see the
+    // tide arrive from one side instead of a ring closing around them.
     let spawned = 0;
-    const squad = Math.max(1, active.length);
-    for (let pi = 0; pi < squad; pi++) {
-      const p = active.length > 0 ? active[pi] : this.players[0];
-      const from = Math.floor((INFECTION.startViruses * pi) / squad);
-      const to = Math.floor((INFECTION.startViruses * (pi + 1)) / squad);
-      const count = Math.max(1, to - from);
-      for (let j = 0; j < count; j++) {
-        const angle = (j / count) * Math.PI * 2 + this.rng.range(-0.18, 0.18);
-        const dist = this.rng.range(INFECTION.startRadiusMin, INFECTION.startRadiusMax);
-        if (this.spawnVirus(p.x + Math.cos(angle) * dist, p.y + Math.sin(angle) * dist)) spawned++;
-      }
+    const rows = Math.max(1, INFECTION.startViruses);
+    for (let i = 0; i < rows; i++) {
+      const y = b.top + 80 + ((i + 0.5) / rows) * (b.bottom - b.top - 160);
+      if (this.spawnVirus(b.right - 120, y)) spawned++;
     }
     // A failed spawn is only possible on a degenerate arena; the run still starts and
     // the first growth beat seeds the colony.
@@ -1722,6 +1742,7 @@ export class World {
 
   beginRound(): void {
     this.clearCopyClones();
+    this.clearAimMarks();
     const active = this.activeCount();
     if (active === 0) return;
     computeSpawns(active, this.arena, this.spawnTmpX, this.spawnTmpY);
@@ -1808,6 +1829,9 @@ export class World {
     // A hosted match keeps the plate still: the snapshot has no disc phase, so a guest
     // could not agree with the host about which hole is underfoot. Local modes spin.
     if (this.arena.disc && canAct && this.mode !== 'match') this.tickDisc(dt);
+    for (let i = 0; i < this.bumperFlash.length; i++) {
+      if (this.bumperFlash[i] > 0) this.bumperFlash[i] = Math.max(0, this.bumperFlash[i] - dt);
+    }
     // The calibration prologue owns the room. Arena hazards wait for the drill, so a
     // stray beam cannot delete a trainee before the subjects have even opened their eyes.
     const calibrationHold = this.campaign && this.campaignPhase === 'calibration';
@@ -1964,6 +1988,11 @@ export class World {
       }
       if (p.ghostT > 0) p.ghostT = Math.max(0, p.ghostT - dt);
       if (p.cloakT > 0) p.cloakT = Math.max(0, p.cloakT - dt);
+      if (p.aimSightT > 0) {
+        p.aimSightT = Math.max(0, p.aimSightT - dt);
+        // The clip belongs to the sight window, not to the slot forever.
+        if (p.aimSightT === 0) p.aimClip = 0;
+      }
       if (p.dazeT > 0) p.dazeT = Math.max(0, p.dazeT - dt);
       if (p.shrinkT > 0) p.shrinkT = Math.max(0, p.shrinkT - dt);
       if (p.scareT > 0) p.scareT = Math.max(0, p.scareT - dt);
@@ -2153,6 +2182,24 @@ export class World {
             if (p.laserChargeT >= PINBALL.powerChargeTime) this.firePinballSuper(p);
           } else if (p.laserChargeT >= PINBALL.powerChargeTime) {
             this.firePinballSuper(p);
+          } else {
+            if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            p.laserChargeHeld = false;
+            p.laserChargeT = 0;
+            p.chargeT = 0;
+            p.chargeHeld = false;
+          }
+        } else if (p.program === PROGRAM_ID.AIMBOT) {
+          // The volley paints up to six crosshairs, then fires them in one quick row.
+          if (canAct && heavyHeld) {
+            p.laserChargeT += pdt;
+            if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+              p.facing = Math.atan2(input.my, input.mx);
+            }
+            p.laserFacing = p.facing;
+            if (p.laserChargeT >= AIMBOT.volleyChargeTime) this.fireAimVolley(p);
+          } else if (p.laserChargeT >= AIMBOT.volleyChargeTime) {
+            this.fireAimVolley(p);
           } else {
             if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
             p.laserChargeHeld = false;
@@ -2432,6 +2479,7 @@ export class World {
         this.checkFall(p);
         if (!p.alive) continue;
       }
+      this.bumpBody(p, PLAYER.radius * p.shrink);
       this.resolveBarrier(p);
       this.resolveNets(p);
       if (p.dashT > 0 && p.dashKind === 1) this.resolveChargeDash(p);
@@ -2462,6 +2510,7 @@ export class World {
     if (this.campaign && this.campaignPhase === 'calibration') this.updateTrainingShapes(threatDt);
     this.updateProjectiles(dt);
     this.updateCopyMarks(dt);
+    this.updateAimMarks(dt);
     // Flippers resolve after the shots move, so the paddle swats what is actually in
     // front of it this frame instead of last frame's position.
     this.updatePinballArms(dt);
@@ -2469,6 +2518,7 @@ export class World {
     if (this.mode === 'gauntlet' && (!this.campaign || this.campaignPhase === 'assault')) {
       this.updateGauntlet(threatDt);
     }
+    this.bumpThreats();
     // Keep the roaming families on the plate without saving them from the arm: this
     // clamps the rim only, so a hole still takes them. Run after every family update.
     if (this.arena.disc) this.containDiscThreats();
@@ -3282,6 +3332,8 @@ export class World {
       p.lockId = -1;
       p.lockT = 0;
       p.lockActive = false;
+      p.lockTX = p.x;
+      p.lockTY = p.y;
       return;
     }
     p.lockT += dt;
@@ -3292,7 +3344,8 @@ export class World {
       tx = this.lockTX;
       ty = this.lockTY;
     }
-    const maxD2 = PLAYER.lockRange * PLAYER.lockRange;
+    const lockRange = this.playerLockRange(p);
+    const maxD2 = lockRange * lockRange;
     if (valid) {
       const dx = tx - p.x;
       const dy = ty - p.y;
@@ -3398,9 +3451,19 @@ export class World {
 
     p.lockActive = p.lockKind !== 0 && p.lockT >= PLAYER.lockAcquire;
     if (p.lockActive) {
+      p.lockTX = tx;
+      p.lockTY = ty;
       p.lockFacing = Math.atan2(ty - p.y, tx - p.x);
       p.facing = p.lockFacing;
+    } else {
+      p.lockTX = p.x;
+      p.lockTY = p.y;
     }
+  }
+
+  /** Aim Bot can hold a lock far beyond the standard single-screen range. */
+  private playerLockRange(p: Player): number {
+    return p.program === PROGRAM_ID.AIMBOT ? AIMBOT.lockRange : PLAYER.lockRange;
   }
 
   /**
@@ -3517,7 +3580,8 @@ export class World {
     if (kind === p.lockKind && id === p.lockId) return;
     const dx = x - p.x;
     const dy = y - p.y;
-    const maxD2 = PLAYER.lockRange * PLAYER.lockRange;
+    const lockRange = this.playerLockRange(p);
+    const maxD2 = lockRange * lockRange;
     if (dx * dx + dy * dy > maxD2) return;
     if (this.lineBlocked(p.x, p.y, x, y)) return;
     let delta = Math.atan2(dy, dx) - this.cycleBase;
@@ -3747,6 +3811,33 @@ export class World {
       )) return;
       p.energy -= COMPRESS.orbCost;
       p.autoFireT = COMPRESS.attackCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
+    if (p.program === PROGRAM_ID.AIMBOT) {
+      // One rail round. The clip bypasses the normal long reload for three shots, but
+      // the round itself is the whole commitment: extreme speed, 8 damage, no bounce.
+      const clip = p.aimSightT > 0 && p.aimClip > 0;
+      if (!clip && p.autoFireT > 0) return;
+      if (p.energy < AIMBOT.shotCost) return;
+      if (!this.spawnProjectile(
+        p,
+        0,
+        AIMBOT.shotTtl,
+        AIMBOT.shotSpeed,
+        false,
+        AIMBOT.shotRadius,
+        AIMBOT.shotDamage,
+        17,
+      )) return;
+      p.energy -= AIMBOT.shotCost;
+      if (clip) {
+        p.aimClip--;
+        p.autoFireT = AIMBOT.clipInterval;
+      } else {
+        p.autoFireT = AIMBOT.attackCooldown;
+      }
       this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
       return;
     }
@@ -5236,6 +5327,8 @@ export class World {
         p.energy = Math.min(PLAYER.energyMax, p.energy + BUG.cost);
         return;
       }
+    } else if (p.bugKind === 15) {
+      this.startAimSight(p);
     } else if (p.bugKind === 4) {
       // Wedge's signature bug: a static bracket wall behind him. Refuse a wall that
       // would land inside cover and hand the energy back rather than eat the button.
@@ -5462,6 +5555,192 @@ export class World {
     p.lockKind = 0;
     p.lockId = -1;
     this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
+  }
+
+  /**
+   * Aim Bot's skill: paint the long sight line and load a three-round clip. The clip
+   * bypasses the normal slow reload; each round still pays energy and fires a real
+   * projectile, so cover and range matter until the shot lands.
+   */
+  private startAimSight(p: Player): void {
+    p.aimSightT = AIMBOT.sightTime;
+    p.aimClip = AIMBOT.clipSize;
+    p.autoFireT = 0;
+  }
+
+  /**
+   * Aim Bot's heavy: mark up to six visible bodies in a forward cone, then fire one
+   * 12-point shot at each in a rapid sequence. The crosshairs are the tell and the
+   * damage is direct; no projectile is spawned for the volley.
+   */
+  private fireAimVolley(p: Player): void {
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    if (!p.alive || p.laserCd > 0) return;
+    if (p.energy < AIMBOT.volleyCost) return;
+    const dirX = Math.cos(p.facing);
+    const dirY = Math.sin(p.facing);
+    const cosHalf = Math.cos(AIMBOT.volleyHalfAngle);
+    const range2 = AIMBOT.volleyRange * AIMBOT.volleyRange;
+    const picks: { kind: number; id: number; x: number; y: number; d2: number }[] = [];
+    const consider = (kind: number, id: number, x: number, y: number): void => {
+      const dx = x - p.x;
+      const dy = y - p.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > range2 || d2 < 1) return;
+      const dist = Math.sqrt(d2);
+      if ((dx * dirX + dy * dirY) / dist < cosHalf) return;
+      if (this.lineBlocked(p.x, p.y, x, y)) return;
+      picks.push({ kind, id, x, y, d2 });
+    };
+    for (let i = 0; i < this.players.length; i++) {
+      const t = this.players[i];
+      if (t === p || t.copyClone || t.thrall || !t.active || !t.alive || t.cloakT > 0) continue;
+      consider(1, i, t.x, t.y);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      if (this.worms[i].active) consider(2, i, this.worms[i].x, this.worms[i].y);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      if (this.viruses[i].active) consider(3, i, this.viruses[i].x, this.viruses[i].y);
+    }
+    if (this.mode === 'training' && this.drone.active) consider(4, 0, this.drone.x, this.drone.y);
+    if (this.mode === 'gauntlet') {
+      for (let i = 0; i < this.sentries.length; i++) {
+        if (this.sentries[i].active) consider(5, i, this.sentries[i].x, this.sentries[i].y);
+      }
+      for (let i = 0; i < this.errors.length; i++) {
+        if (this.errors[i].active) consider(6, i, this.errors[i].x, this.errors[i].y);
+      }
+    }
+    if (picks.length === 0) return;
+    picks.sort((a, b) => a.d2 - b.d2);
+    const count = Math.min(AIMBOT.volleyTargets, picks.length, this.aimMarks.length);
+    for (let i = 0; i < this.aimMarks.length; i++) this.aimMarks[i].active = false;
+    for (let i = 0; i < count; i++) {
+      const mark = this.aimMarks[i];
+      const pick = picks[i];
+      mark.active = true;
+      mark.kind = pick.kind;
+      mark.id = pick.id;
+      mark.owner = p.slot;
+      mark.t = AIMBOT.volleyTelegraph + i * AIMBOT.volleyStagger;
+      mark.x = pick.x;
+      mark.y = pick.y;
+    }
+    p.energy = Math.max(0, p.energy - AIMBOT.volleyCost);
+    p.laserCd = AIMBOT.volleyCooldown;
+    p.lockActive = false;
+    p.lockKind = 0;
+    p.lockId = -1;
+    this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
+  }
+
+  private clearAimMarks(): void {
+    for (let i = 0; i < this.aimMarks.length; i++) this.aimMarks[i].active = false;
+  }
+
+  /** Advance the crosshair beat and resolve each marked shot once. */
+  private updateAimMarks(dt: number): void {
+    for (let i = 0; i < this.aimMarks.length; i++) {
+      const mark = this.aimMarks[i];
+      if (!mark.active) continue;
+      let tx = mark.x;
+      let ty = mark.y;
+      let live = true;
+      if (mark.kind === 1) {
+        const t = this.players[mark.id];
+        live = !!t && t.active && t.alive;
+        if (live) {
+          tx = t.x;
+          ty = t.y;
+        }
+      } else if (mark.kind === 2) {
+        const t = this.worms[mark.id];
+        live = !!t && t.active;
+        if (live) {
+          tx = t.x;
+          ty = t.y;
+        }
+      } else if (mark.kind === 3) {
+        const t = this.viruses[mark.id];
+        live = !!t && t.active;
+        if (live) {
+          tx = t.x;
+          ty = t.y;
+        }
+      } else if (mark.kind === 4) {
+        live = this.drone.active;
+        if (live) {
+          tx = this.drone.x;
+          ty = this.drone.y;
+        }
+      } else if (mark.kind === 5) {
+        const t = this.sentries[mark.id];
+        live = !!t && t.active;
+        if (live) {
+          tx = t.x;
+          ty = t.y;
+        }
+      } else {
+        const t = this.errors[mark.id];
+        live = !!t && t.active;
+        if (live) {
+          tx = t.x;
+          ty = t.y;
+        }
+      }
+      if (!live) {
+        mark.active = false;
+        continue;
+      }
+      mark.x = tx;
+      mark.y = ty;
+      mark.t -= dt;
+      if (mark.t > 0) continue;
+      const owner = this.players[mark.owner];
+      if (!owner || !owner.active || !owner.alive) {
+        mark.active = false;
+        continue;
+      }
+      if (this.lineBlocked(owner.x, owner.y, tx, ty)) {
+        mark.active = false;
+        continue;
+      }
+      this.fireAimMark(mark, owner);
+      mark.active = false;
+      this.emit(EV.SHOOT, owner.slot, owner.x, owner.y, Math.atan2(ty - owner.y, tx - owner.x));
+    }
+  }
+
+  /** Apply one instant volley hit to the marked body. */
+  private fireAimMark(mark: AimMark, owner: Player): void {
+    const dx = mark.x - owner.x;
+    const dy = mark.y - owner.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const ux = dx / d;
+    const uy = dy / d;
+    if (mark.kind === 1) {
+      const t = this.players[mark.id];
+      if (!t || !t.active || !t.alive || t === owner) return;
+      this.damagePlayer(t, AIMBOT.volleyDamage, owner.slot, ux, uy, AIMBOT.volleyKnockback);
+    } else if (mark.kind === 2) {
+      const t = this.worms[mark.id];
+      if (t && t.active) this.damageWorm(t, AIMBOT.volleyDamage, owner.slot, ux, uy, AIMBOT.volleyKnockback);
+    } else if (mark.kind === 3) {
+      const t = this.viruses[mark.id];
+      if (t && t.active) this.damageVirus(t, AIMBOT.volleyDamage, owner.slot, ux, uy, AIMBOT.volleyKnockback);
+    } else if (mark.kind === 4) {
+      if (this.drone.active) this.damageDrone(AIMBOT.volleyDamage, owner.slot);
+    } else if (mark.kind === 5) {
+      const t = this.sentries[mark.id];
+      if (t && t.active) this.damageSentry(t, AIMBOT.volleyDamage, owner.slot, ux, uy, AIMBOT.volleyKnockback);
+    } else {
+      const t = this.errors[mark.id];
+      if (t && t.active) this.damageError(t, AIMBOT.volleyDamage, owner.slot, ux, uy);
+    }
   }
 
   /** Advance every deployed pinball arm and resolve its swept paddle. */
@@ -6694,7 +6973,9 @@ export class World {
     const whip = p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP;
     const whipMult = whip ? POWERUP.whipMultiplier : 1;
     // The big third broom hit is a slab: it deflects along its whole drawn shaft.
-    const reach = (p.program === PROGRAM_ID.SWEEP && p.swingKind === 3 ? SWEEP.bigReach : PLAYER.swingReach) * whipMult;
+    const reach =
+      (p.program === PROGRAM_ID.SWEEP && p.swingKind === 3 ? SWEEP.bigReach : PLAYER.swingReach * p.meleeReachMult) * whipMult;
+    const arcCos = Math.cos(p.meleeHalfAngle);
     const cos = Math.cos(p.swingFacing);
     const sin = Math.sin(p.swingFacing);
     for (let i = 0; i < this.projectiles.length; i++) {
@@ -6708,7 +6989,7 @@ export class World {
       if (distSq > maxDist * maxDist || distSq < 1e-4) continue;
       const dist = Math.sqrt(distSq);
       const dot = (dx / dist) * cos + (dy / dist) * sin;
-      if (dot < SWING_COS) continue;
+      if (dot < arcCos) continue;
       if (proj.type === 1) {
         this.explodeMine(proj, proj.owner);
         this.markSwingHit(p);
@@ -6838,6 +7119,8 @@ export class World {
             this.bouncePillars(proj);
             if (!proj.active) break;
           }
+          this.bounceBumpers(proj);
+          if (!proj.active) break;
           this.bounceBarriers(proj);
           if (!proj.active) break;
           this.netBlocksProjectile(proj);
@@ -6897,6 +7180,8 @@ export class World {
         if (proj.type !== 15 && this.propHit(proj)) break;
         if (this.pipeHit(proj)) break;
         this.bouncePillars(proj);
+        if (!proj.active) break;
+        this.bounceBumpers(proj);
         if (!proj.active) break;
         this.bounceBarriers(proj);
         if (!proj.active) break;
@@ -7074,7 +7359,7 @@ export class World {
       // There is no wall to hit, so nothing ricochets: the shot falls into the void. A
       // committed shape keeps its geometry death, which is what makes a bomb detonate
       // at the lip instead of disappearing.
-      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9 || proj.type === 10 || proj.type === 12) {
+      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9 || proj.type === 10 || proj.type === 12 || proj.type === 17) {
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
       }
       proj.active = false;
@@ -7101,7 +7386,7 @@ export class World {
       bounced = true;
     }
     if (!bounced) return;
-    if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9 || proj.type === 10 || proj.type === 12) {
+    if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 9 || proj.type === 10 || proj.type === 12 || proj.type === 17) {
       // Spear, thrown broom, hourglass, Ghost's mouth and every bomb are committed
       // lines, not ricochets. They die on geometry; the bomb branch turns that into a
       // detonation.
@@ -7109,8 +7394,9 @@ export class World {
       this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
       return;
     }
-    if (proj.owner < 0 && proj.type >= 3) {
-      // Low-tier hostile fire disperses on geometry. Bouncing is a stronger-enemy trait.
+    if (proj.owner < 0 && proj.type >= 3 && proj.type !== 14) {
+      // Low-tier hostile fire disperses on geometry. Bouncing is a stronger-enemy trait;
+      // the arcade feed's live ball is allowed to keep its rally.
       proj.active = false;
       this.emit(EV.SENTRY_HIT, -1, proj.x, proj.y, 0, -proj.vx, -proj.vy);
       return;
@@ -7139,7 +7425,7 @@ export class World {
       const rr = WEDGE.wallThickness * 0.5 + proj.radius;
       if (dx * dx + dy * dy > rr * rr) continue;
 
-      const heavy = proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10 || proj.type === 12;
+      const heavy = proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10 || proj.type === 12 || proj.type === 17;
       this.damageBarrier(wall, heavy ? 2 : 1);
 
       const side = (dx * wall.nx + dy * wall.ny) >= 0 ? 1 : -1;
@@ -7152,7 +7438,7 @@ export class World {
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
         return;
       }
-      if (proj.owner < 0 && proj.type >= 3) {
+      if (proj.owner < 0 && proj.type >= 3 && proj.type !== 14) {
         proj.active = false;
         this.emit(EV.SENTRY_HIT, -1, proj.x, proj.y, 0, nx, ny);
         return;
@@ -7174,12 +7460,12 @@ export class World {
     if (proj.type === 15) return;
     for (let i = 0; i < this.arena.pillars.length; i++) {
       if (!circleRect(proj.x, proj.y, proj.radius, this.arena.pillars[i], hitScratch)) continue;
-      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10 || proj.type === 12) {
+      if (proj.type === 5 || proj.type === 6 || proj.type === 8 || proj.type === 10 || proj.type === 12 || proj.type === 17) {
         proj.active = false;
         this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
         return;
       }
-      if (proj.owner < 0 && proj.type >= 3) {
+      if (proj.owner < 0 && proj.type >= 3 && proj.type !== 14) {
         proj.active = false;
         this.emit(EV.SENTRY_HIT, -1, proj.x, proj.y, 0, hitScratch.nx, hitScratch.ny);
         return;
@@ -7221,6 +7507,12 @@ export class World {
       const hitKind = proj.owner >= 0 ? SRC.PLAYER : proj.srcKind ?? SRC.NONE;
       const hitId = proj.owner >= 0 ? proj.owner : proj.srcId ?? -1;
       const speed = Math.hypot(proj.vx, proj.vy) || 1;
+      if (proj.type === 17) {
+        // Aim Bot's rail round: one body, one heavy hit, no pass-through and no bounce.
+        this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, AIMBOT.shotKnockback, hitKind, hitId);
+        proj.active = false;
+        return true;
+      }
       if (proj.type === 14) {
         // Pinball: one pass per body. Damage is the current charge, then the ball gets
         // hotter and faster for the next body; the fifth body is the last.
@@ -7478,7 +7770,7 @@ export class World {
       if (!pipe.active) continue;
       pipe.fireT -= dt;
       if (pipe.fireT <= 0) {
-        pipe.fireT = NETWORK.pipeInterval;
+        pipe.fireT = pipe.feed === 1 ? SPACE_CADET.pipeInterval : NETWORK.pipeInterval;
         this.firePipe(pipe);
       }
       this.catchAtPipe(pipe, dt);
@@ -7490,6 +7782,24 @@ export class World {
     const dx = Math.cos(pipe.angle);
     const dy = Math.sin(pipe.angle);
     pipe.shots++;
+    // The arcade feed is a four-beat loop: a file, a live ball, a virus, then a sentry.
+    // It is still one pipe fixture; only the payload schedule changes.
+    if (pipe.feed === 1) {
+      const x = pipe.x + dx * 48;
+      const y = pipe.y + dy * 48;
+      if (pipe.shots % 4 === 1) {
+        this.spawnPipeFile(pipe, dx, dy);
+      } else if (pipe.shots % 4 === 2) {
+        this.spawnPipeBall(pipe, dx, dy);
+      } else if (pipe.shots % 4 === 3) {
+        this.spawnVirus(x, y);
+      } else if (!this.spawnSentry(0, x, y)) {
+        this.spawnVirus(x, y);
+      }
+      pipe.catchT = 1.4;
+      pipe.catchFlash = 0.3;
+      return;
+    }
     // The first beat is always a file; the next is an enemy. That makes the pipe's
     // job readable before the room gets busy.
     if (pipe.shots % 2 === 1) {
@@ -7534,6 +7844,61 @@ export class World {
     slot.ty = slot.vy;
     slot.hazard = true;
     slot.hurtCd = 0;
+  }
+
+  /** A live ball from the arcade feed. It belongs to the pipe, so it can hurt anyone. */
+  private spawnPipeBall(pipe: Pipe, dx: number, dy: number): void {
+    let proj: Projectile | null = null;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      if (!this.projectiles[i].active) {
+        proj = this.projectiles[i];
+        break;
+      }
+    }
+    if (!proj) return;
+    const angle = pipe.angle + this.rng.range(-0.28, 0.28);
+    const x = pipe.x + dx * 48;
+    const y = pipe.y + dy * 48;
+    proj.active = true;
+    proj.serial = ++this.serial;
+    proj.type = 14;
+    proj.owner = -1;
+    proj.srcKind = SRC.PIPE;
+    proj.srcId = 0;
+    proj.x = x;
+    proj.y = y;
+    proj.prevX = x;
+    proj.prevY = y;
+    proj.vx = Math.cos(angle) * SPACE_CADET.pipeBallSpeed;
+    proj.vy = Math.sin(angle) * SPACE_CADET.pipeBallSpeed;
+    proj.radius = SPACE_CADET.pipeBallRadius;
+    proj.damage = SPACE_CADET.pipeBallDamage;
+    proj.deflects = 0;
+    proj.bounces = 0;
+    proj.fuse = SPACE_CADET.pipeBallTtl;
+    proj.grace = 0;
+    proj.armed = true;
+    proj.homing = false;
+    proj.pathAxis = 0;
+    proj.hitPlayers = 0;
+    proj.hitWorms = 0;
+    proj.hitViruses = 0;
+    proj.hitErrors = 0;
+    proj.hitSentries = 0;
+    proj.hitDrone = false;
+    proj.blastRadius = 0;
+    proj.blastKnockback = 0;
+    proj.arcDur = 0;
+    proj.hits = 0;
+    proj.spin = this.rng.range(0, Math.PI * 2);
+    proj.spinDir = 1;
+    proj.variant = 0;
+    proj.orbOwner = -1;
+    proj.orbA = 0;
+    proj.orbR = 0;
+    proj.orbDir = 1;
+    proj.trailHead = 0;
+    proj.trailCount = 0;
   }
 
   private catchAtPipe(pipe: Pipe, dt: number): void {
@@ -7627,6 +7992,128 @@ export class World {
     if (pipe.hp > 0) return;
     pipe.active = false;
     this.emit(EV.PROP_BREAK, 0, pipe.x, pipe.y, pipe.radius * 2.6);
+  }
+
+  /** Round posts and kickers. Shared body response; projectiles use `bounceBumpers`. */
+  private bumpBody(
+    body: { x: number; y: number; vx: number; vy: number; kx: number; ky: number },
+    radius: number,
+  ): void {
+    const bumpers = this.arena.bumpers;
+    if (!bumpers) return;
+    for (let i = 0; i < bumpers.length; i++) {
+      const b = bumpers[i];
+      const dx = body.x - b.x;
+      const dy = body.y - b.y;
+      const min = b.radius + radius;
+      if (dx * dx + dy * dy >= min * min) continue;
+      const d = Math.hypot(dx, dy);
+      // A body spawned exactly on the hub has no normal. Use its motion, or push up.
+      let nx = 0;
+      let ny = -1;
+      if (d > 0.0001) {
+        nx = dx / d;
+        ny = dy / d;
+      } else if (Math.hypot(body.vx, body.vy) > 0.0001) {
+        const vd = Math.hypot(body.vx, body.vy);
+        nx = -body.vx / vd;
+        ny = -body.vy / vd;
+      }
+      body.x = b.x + nx * (min + 0.5);
+      body.y = b.y + ny * (min + 0.5);
+      if (b.kind === 1) {
+        body.kx += nx * SPACE_CADET.bumperLaunch;
+        body.ky += ny * SPACE_CADET.bumperLaunch;
+      } else {
+        const vn = body.vx * nx + body.vy * ny;
+        if (vn < 0) {
+          body.vx -= 2 * vn * nx;
+          body.vy -= 2 * vn * ny;
+        }
+        body.kx += nx * SPACE_CADET.postPush;
+        body.ky += ny * SPACE_CADET.postPush;
+      }
+      this.bumperFlash[i] = SPACE_CADET.bumperFlash;
+    }
+  }
+
+  /** Apply the same round furniture to every local threat that can be shoved. */
+  private bumpThreats(): void {
+    if (!this.arena.bumpers) return;
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (w.active) this.bumpBody(w, WORM.headRadius);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (v.active) this.bumpBody(v, v.radius);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active) this.bumpBody(s, s.radius);
+    }
+  }
+
+  /** Bumper hit for a shot. Posts deflect; kickers add speed. Committed shapes die. */
+  private bounceBumpers(proj: Projectile): void {
+    const bumpers = this.arena.bumpers;
+    if (!bumpers) return;
+    for (let i = 0; i < bumpers.length; i++) {
+      const b = bumpers[i];
+      const dx = proj.x - b.x;
+      const dy = proj.y - b.y;
+      const min = b.radius + proj.radius;
+      if (dx * dx + dy * dy >= min * min) continue;
+      if (
+        proj.type === 5 ||
+        proj.type === 6 ||
+        proj.type === 8 ||
+        proj.type === 9 ||
+        proj.type === 10 ||
+        proj.type === 12 ||
+        proj.type === 17
+      ) {
+        proj.active = false;
+        this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
+        return;
+      }
+      if (proj.owner < 0 && proj.type >= 3 && proj.type !== 14) {
+        proj.active = false;
+        this.emit(EV.SENTRY_HIT, -1, proj.x, proj.y, 0, -proj.vx, -proj.vy);
+        return;
+      }
+      const d = Math.hypot(dx, dy);
+      let nx = 0;
+      let ny = -1;
+      if (d > 0.0001) {
+        nx = dx / d;
+        ny = dy / d;
+      } else if (Math.hypot(proj.vx, proj.vy) > 0.0001) {
+        const vd = Math.hypot(proj.vx, proj.vy);
+        nx = -proj.vx / vd;
+        ny = -proj.vy / vd;
+      }
+      proj.x = b.x + nx * (min + 0.5);
+      proj.y = b.y + ny * (min + 0.5);
+      const vn = proj.vx * nx + proj.vy * ny;
+      if (vn < 0) {
+        proj.vx -= 2 * vn * nx;
+        proj.vy -= 2 * vn * ny;
+      }
+      if (b.kind === 1) {
+        const speed = Math.hypot(proj.vx, proj.vy);
+        if (speed > 0.001) {
+          const next = Math.min(SPACE_CADET.shotSpeedMax, speed * SPACE_CADET.bumperShotGain);
+          proj.vx = (proj.vx / speed) * next;
+          proj.vy = (proj.vy / speed) * next;
+        }
+      }
+      this.bumperFlash[i] = SPACE_CADET.bumperFlash;
+      this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 0);
+      proj.armed = true;
+      this.noteBounce(proj);
+      return;
+    }
   }
 
   /** Player shots stop on a live pipe and chip it; hostile fire passes over it. */
@@ -9308,7 +9795,8 @@ export class World {
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
-      if (v.active) this.clampToDisc(v, v.radius, cx, cy, disc.radius);
+      // A pooled arrival is still outside the rim while it glides in.
+      if (v.active && v.spawnT <= 0) this.clampToDisc(v, v.radius, cx, cy, disc.radius);
     }
     for (let i = 0; i < this.sentries.length; i++) {
       const s = this.sentries[i];
@@ -9348,7 +9836,7 @@ export class World {
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
-      if (!v.active) continue;
+      if (!v.active || v.spawnT > 0) continue;
       if (this.offFloor(v.x, v.y)) this.damageVirus(v, 9999, 0, 0, 0);
     }
     for (let i = 0; i < this.sentries.length; i++) {
@@ -10918,6 +11406,17 @@ export class World {
     v.chargeHit = false;
     v.chargeDirX = 1;
     v.chargeDirY = 0;
+    v.swarm = 0;
+    if (this.infectionMode) {
+      // Reuse the pooled slot as a one-way arrival. It starts just past the right lip
+      // and glides in while the ordinary spawn build plays; no new entity is created.
+      v.x = this.arena.bounds.right + v.radius + 8;
+      v.prevX = v.x;
+      v.vx = -VIRUS.speed * INFECTION.entrySpeedMult;
+      v.vy = this.rng.range(-INFECTION.entryJitter, INFECTION.entryJitter);
+      v.spawnT = VIRUS.spawnTime;
+      v.swarm = this.rng.next() < INFECTION.swarmChance ? 2 : 0;
+    }
     this.nudgeVirusFromCover(v);
     this.pickVirusRoam(v);
     return v;
@@ -11001,9 +11500,10 @@ export class World {
     }
     if (v.spawnT > 0) {
       v.spawnT = Math.max(0, v.spawnT - dt);
+      // The pooled arrival glide. Generic spawns leave vx/vy at zero and still hold.
+      v.x += v.vx * dt;
+      v.y += v.vy * dt;
       v.chargeT = 0;
-      v.vx = 0;
-      v.vy = 0;
       return;
     }
     if (v.pinT > 0) {
@@ -11904,9 +12404,10 @@ export class World {
     const whipMult = whip ? POWERUP.whipMultiplier : 1;
     const broomBig = p.program === PROGRAM_ID.SWEEP && p.swingKind === 3;
     const broomDiag = p.program === PROGRAM_ID.SWEEP && p.swingKind !== 0 && !broomBig;
-    const reach = (broomBig ? SWEEP.bigReach : PLAYER.punchReach) * whipMult;
+    const reach = (broomBig ? SWEEP.bigReach : PLAYER.punchReach * p.meleeReachMult) * whipMult;
+    const arcCos = Math.cos(p.meleeHalfAngle);
     const damage = (broomBig ? SWEEP.bigDamage : PLAYER.punchDamage) * whipMult;
-    const baseForce = broomBig ? SWEEP.bigKnockback : broomDiag ? SWEEP.comboKnockback : PLAYER.punchKnockback;
+    const baseForce = broomBig ? SWEEP.bigKnockback : broomDiag ? SWEEP.comboKnockback : p.meleeKnock;
     const force = (p.thrall ? PLAYER.thrallSwingKnockback : baseForce) * (whip ? 1.8 : 1);
     // A sweep shoves sideways, not straight away. The two tap directions throw
     // targets opposite ways, so the lash reads as a physical arc rather than a shove.
@@ -11938,7 +12439,7 @@ export class World {
       const wdy = wall.y1 + vy * wt - p.y;
       const wd = Math.hypot(wdx, wdy);
       if (wd > reach + WEDGE.wallThickness * 0.5 || wd < 0.001) continue;
-      if ((wdx / wd) * cos + (wdy / wd) * sin < SWING_COS) continue;
+      if ((wdx / wd) * cos + (wdy / wd) * sin < arcCos) continue;
       this.damageBarrier(wall, 1);
       this.markSwingHit(p);
       return;
@@ -11953,7 +12454,7 @@ export class World {
       const dy = b.y + b.h * 0.5 - p.y;
       const d = Math.hypot(dx, dy);
       if (d > reach + Math.max(b.w, b.h) * 0.5 || d < 0.001) continue;
-      if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
+      if ((dx / d) * cos + (dy / d) * sin < arcCos) continue;
       // A lash launches the box first; the damage is a chip, so one hit never deletes it.
       this.launchProp(b, shoveX, shoveY, FILE_PROP.launchSpeed);
       this.damageProp(b, damage, b.x + b.w * 0.5, b.y + b.h * 0.5);
@@ -11968,7 +12469,7 @@ export class World {
       const dy = target.y - p.y;
       const d = Math.hypot(dx, dy);
       if (d > reach + PLAYER.radius || d < 0.001) continue;
-      if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
+      if ((dx / d) * cos + (dy / d) * sin < arcCos) continue;
       this.damagePlayer(target, damage, p.slot, shoveX, shoveY, force);
       this.markSwingHit(p);
       return;
@@ -11978,7 +12479,7 @@ export class World {
       const dx = this.drone.x - p.x;
       const dy = this.drone.y - p.y;
       const d = Math.hypot(dx, dy);
-      if (d <= reach + this.drone.radius && d > 0.001 && (dx / d) * cos + (dy / d) * sin >= SWING_COS) {
+      if (d <= reach + this.drone.radius && d > 0.001 && (dx / d) * cos + (dy / d) * sin >= arcCos) {
         this.damageDrone(damage, p.slot);
         this.markSwingHit(p);
         return;
@@ -11993,7 +12494,7 @@ export class World {
       const dy = s.y - p.y;
       const d = Math.hypot(dx, dy);
       if (d > reach + s.radius || d < 0.001) continue;
-      if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
+      if ((dx / d) * cos + (dy / d) * sin < arcCos) continue;
       this.damageSentry(s, damage, p.slot, shoveX, shoveY, force);
       this.markSwingHit(p);
       return;
@@ -12005,7 +12506,7 @@ export class World {
       const dy = v.y - p.y;
       const d = Math.hypot(dx, dy);
       if (d > reach + v.radius || d < 0.001) continue;
-      if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
+      if ((dx / d) * cos + (dy / d) * sin < arcCos) continue;
       this.damageVirus(v, damage, p.slot, shoveX, shoveY, force);
       this.markSwingHit(p);
       return;
@@ -12017,7 +12518,7 @@ export class World {
       const dy = w.y - p.y;
       const d = Math.hypot(dx, dy);
       if (d > reach + WORM.headRadius || d < 0.001) continue;
-      if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
+      if ((dx / d) * cos + (dy / d) * sin < arcCos) continue;
       this.damageWorm(w, damage, p.slot, shoveX, shoveY, force);
       this.markSwingHit(p);
       return;
@@ -12030,7 +12531,7 @@ export class World {
       const dy = e.y - p.y;
       const d = Math.hypot(dx, dy);
       if (d > reach + radius || d < 0.001) continue;
-      if ((dx / d) * cos + (dy / d) * sin < SWING_COS) continue;
+      if ((dx / d) * cos + (dy / d) * sin < arcCos) continue;
       this.damageError(e, damage, p.slot, shoveX, shoveY);
       this.markSwingHit(p);
       return;

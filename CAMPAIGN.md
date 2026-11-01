@@ -7,6 +7,80 @@ count and player select. The run is meant to save after every completed level vi
 Neither surface enters `World`, `Snapshot`, rooms, or the network. Any networked PvPvE run still needs its
 own protocol work.
 
+## Narrative spine (decided 2026-11-01, not built)
+
+**Opening.** The campaign starts in the **quarantine section of a dev system**. Every player program — the
+whole roster, including the ones that read as utilities — was pulled by antivirus and sent here to be
+"retrained". The player is not picking a hero; they are picking which flagged program to run. That
+retraining is the tutorial: it is where the run teaches movement, the four action jobs, guard/reflect and
+dashing. The existing BUILD ROOT beats (calibration subjects, drill squad, breach, assault) are the
+mechanics of the session; its fiction becomes the quarantine stop rather than a neutral sandbox.
+
+**Inciting incident.** The infection breaks out of quarantine and spreads through the dev system. The
+friendly program gets the players out, and that escape carries the route through LOCALHOST and onto the
+open web.
+
+**Narration.** Story is delivered in **text boxes anchored to the bottom of the screen**, not in-world
+bubbles or a separate dialogue stage. The speaker's head is a symbol (emoji, Unicode pictograph or
+Wingdings glyph) that floats gently up and down while it is on screen, so a static mark reads alive. No
+painted portraits, no voice-over, no lip flaps.
+
+### Cast
+
+| Role | Mark | Notes |
+| --- | --- | --- |
+| Quarantine officer (THE WARDEN) | 👮 | Runs the quarantine and the retraining. Authority voice: procedural, certain the flagged programs are malicious. **Decided 2026-11-01: this is THE WARDEN**, the same character as the LOCALHOST sector boss, not a separate program. He speaks through the opening, then the sector gate is his fight. |
+| Friendly program | 🐱 | Helps the players out of quarantine and out of the dev system when the infection hits. Guide voice and the first ally; recurs along the route. |
+| The User / Users (final level) | 🧑‍💼 / 👥 | The AI bot(s) at ROOT. The antagonist and the cause of the infections and their spread. Decide whether the reveal is one User or a group: the singular reads as one owner, the plural as the system's operators. |
+
+The mark is the character's **head**, not a menu icon: draw it at portrait size beside the text box with a
+small bob and at most a degree or two of tilt. Do not add these characters to `PROGRAMS`, give them hulls,
+health, hitboxes or `InputFrame`s, or put them in `World`.
+
+### Presentation constraints
+
+- The bottom of the screen already carries the campaign objective strip (one pip per delete) and the match
+  strip. The text box must sit above that strip or temporarily replace it while a line is open. Pick one
+  before the first beat is built; two bottom layers will collide at 720p.
+- The readiness dock owns the corners (top-left for a solo local, one per corner with more players). A text
+  box must not grow into them.
+- Emoji are usually **colour bitmaps**: `fillStyle` does not tint them, unlike the ASCII and Wingdings marks
+  in `identity.ts`. Treat the emoji face as fixed art and carry the character's colour in the frame, name
+  plate or line accent. Wingdings and most monochrome pictographs can be tinted; test the chosen marks on
+  Windows, macOS, Linux and Android before committing.
+- Reuse the existing symbol stack and the `hasSymbolFont` fallback check from D16. A missing family must
+  fall back to a plain Unicode mark, never a blank box.
+- Keep lines short: two lines at 1080p, three at most, with a clear advance prompt. A box that has to scroll
+  is a cutscene, not a beat inside a fight.
+- Narration is local-only like the rest of the campaign. It never enters `Snapshot`, `NetView` or a room
+  packet, and it yields to the Esc menu, the level intro and the death overlay rather than stacking on
+  them.
+
+### Narration rules (decided 2026-11-01)
+
+- **Live, never blocking.** Lines play over the running simulation. The box never pauses `World`, never
+  dims the arena, and never takes movement or action input. A fight that starts mid-line keeps going.
+- **Near-instant reveal.** Text appears in a very fast reveal, not a slow typewriter. Readability comes
+  from short lines, not from watching characters land, and there is no per-character audio tick.
+- **Skippable.** A line can be skipped, and a whole beat can be skipped. Skipping is the player's exit from
+  the read, never a fail state.
+- **A replay option, not a hidden key.** Campaign setup carries a persisted `STORY BEATS` toggle beside
+  `FRIENDLY FIRE`, default play. Set to skip, it bypasses the beats entirely for that run, so a replay goes
+  straight to play without dismissing each box. Persist it like `deflect.friendlyFire`; a resumed slot keeps
+  the setting.
+- **Narration is cosmetic.** A beat must never gate a spawn, unlock a door, or set a flag gameplay reads.
+  That is what makes skipping safe at any moment and lets a skipped run play identically.
+- **Skip must not steal a combat button.** The skip affordance is a visible chip on the box plus a
+  non-combat key or a touch tap; do not bind it to ranged, melee, guard, power, skill or dash. The exact
+  bind is still open.
+
+### Open questions
+
+1. One User or a group of Users at ROOT?
+2. Does the cat travel with the party on the route plate, or only appear at scripted beats?
+3. Exact skip/advance bind (keyboard, gamepad, touch) that stays clear of the action jobs.
+4. Does THE WARDEN keep talking during the boss fight, or does his voice stop once the fight starts?
+
 ## One route, not a level select
 
 The campaign is a single internet route through device clusters. Each sector is one cluster: a dev

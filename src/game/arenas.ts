@@ -136,13 +136,29 @@ export interface ArenaPropDef {
   kind: number;
 }
 
-/** A destructible feed pipe. `x,y` is the mouth; the body runs back toward the wall. */
+/**
+ * A destructible feed pipe. `x,y` is the mouth; the body runs back toward the wall.
+ * `pinball` pipes use the arcade feed: a file, a bouncy ball, a virus, then a sentry.
+ */
 export interface ArenaPipeDef {
   x: number;
   y: number;
   angle: number;
   /** Stagger the first emission in seconds. */
   offset?: number;
+  feed?: 'pinball';
+}
+
+/**
+ * A round arena post. Kind 0 is a passive column that reflects shots and shoves bodies;
+ * kind 1 is a lit bumper that launches bodies and speeds shots up. Post geometry is
+ * data, while the feel values live in `SPACE_CADET` tuning.
+ */
+export interface ArenaBumperDef {
+  x: number;
+  y: number;
+  radius: number;
+  kind: 0 | 1;
 }
 
 /** A floor switch that triggers one firewall sweep, then rearms after a long cooldown. */
@@ -196,6 +212,8 @@ export interface ArenaDef {
   props?: ArenaPropDef[];
   /** Destructible feed pipes. Local content; hosted rooms skip this arena. */
   pipes?: ArenaPipeDef[];
+  /** Round posts and pinball bumpers. Local content; hosted rooms skip this arena. */
+  bumpers?: ArenaBumperDef[];
   /** One-shot firewall starter. Local content; hosted rooms skip this arena. */
   firewallSwitch?: ArenaFirewallSwitchDef;
   /** Multi-deck floor content. Absent means a flat arena. */
@@ -615,6 +633,44 @@ export const ARENAS: readonly ArenaDef[] = [
     // At the west end, off the spawn ring. One manual sweep, then a three-minute rearm.
     firewallSwitch: { x: 155, y: 547, radius: 46 },
   },
+  {
+    id: 10,
+    name: 'SPACE CADET',
+    tagline: 'Bumpers, posts and a hungry drain.',
+    hudLabel: 'ARENA // SPACE CADET',
+    accent: '#b79bff',
+    accentSoft: 'rgba(183, 155, 255, 0.32)',
+    accentFaint: 'rgba(183, 155, 255, 0.032)',
+    signature: 2,
+    // A cabinet, not a room: tall, narrow and read top-to-bottom like a pinball table.
+    bounds: { left: 240, top: 40, right: 1040, bottom: 1720 },
+    pillars: [],
+    // Passive posts first, then the lit kickers above the drain. The three kickers face
+    // into the open lane, so a body that crosses the lower third gets thrown back up.
+    bumpers: [
+      { x: 640, y: 430, radius: 54, kind: 0 },
+      { x: 410, y: 720, radius: 42, kind: 0 },
+      { x: 870, y: 760, radius: 42, kind: 0 },
+      { x: 640, y: 1040, radius: 62, kind: 1 },
+      { x: 400, y: 1100, radius: 50, kind: 1 },
+      { x: 880, y: 1100, radius: 50, kind: 1 },
+    ],
+    // The drain sits below the kickers. It reaches the bottom lip, so a body carried
+    // down the cabinet has nowhere to stand once it crosses the rim.
+    voids: [{ x: 390, y: 1450, w: 500, h: 270 }],
+    // The right-side feed runs down the cabinet wall and points left into the bumpers.
+    pipes: [{ x: 1000, y: 600, angle: Math.PI, offset: 0.8, feed: 'pinball' }],
+    spawns: [
+      { x: 640, y: 140 },
+      { x: 920, y: 300 },
+      { x: 920, y: 900 },
+      { x: 900, y: 1360 },
+      { x: 320, y: 1360 },
+      { x: 320, y: 900 },
+      { x: 320, y: 300 },
+      { x: 520, y: 540 },
+    ],
+  },
 ];
 
 export function discCenterX(arena: ArenaDef): number {
@@ -835,6 +891,17 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
   }
 
+  // Round furniture reads at thumbnail size as bright pips.
+  if (arena.bumpers) {
+    for (let i = 0; i < arena.bumpers.length; i++) {
+      const b = arena.bumpers[i];
+      ctx.beginPath();
+      ctx.arc(mapX(b.x), mapY(b.y), Math.max(1.5, b.radius * Math.min(sx, sy)), 0, Math.PI * 2);
+      ctx.fillStyle = b.kind === 1 ? arena.accent : 'rgba(170, 220, 255, 0.75)';
+      ctx.fill();
+    }
+  }
+
   // Feed pipes and the firewall starter are the arena's readable fixtures.
   if (arena.pipes) {
     ctx.strokeStyle = arena.accent;
@@ -848,6 +915,13 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
       ctx.moveTo(px - Math.cos(p.angle) * 7, py - Math.sin(p.angle) * 7);
       ctx.lineTo(px, py);
       ctx.stroke();
+      if (p.feed === 'pinball') {
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(mapX(bounds.right - 22), py);
+        ctx.lineTo(mapX(bounds.right - 22), mapY(bounds.top + 150));
+        ctx.stroke();
+      }
       ctx.beginPath();
       ctx.arc(px, py, 2.2, 0, Math.PI * 2);
       ctx.fill();

@@ -1,5 +1,5 @@
-import { ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
-import type { CopyMark } from './types';
+import { AIMBOT, ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import type { AimMark, CopyMark } from './types';
 import {
   discArmAngle,
   discArmLength,
@@ -87,6 +87,10 @@ export interface RenderState {
   timeSlowOwner?: number;
   /** Copy Pasta's growing redaction stacks. Local-only. */
   copyMarks?: readonly CopyMark[];
+  /** Aim Bot's pending volley crosshairs. Local-only. */
+  aimMarks?: readonly AimMark[];
+  /** Round bumper flash timers. Local-only arena furniture. */
+  bumperFlash?: ArrayLike<number>;
 }
 
 const FONT_TINY = '700 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -458,6 +462,8 @@ export class Renderer {
       }
 
       this.drawArena(t, state.arena, intro, state.discT ?? 0);
+      this.drawFeedRun(state.arena, t);
+      this.drawBumpers(state.arena, t, state.bumperFlash);
       if (introDone) {
         if (state.props) this.drawProps(state.props);
         if (state.pipes) this.drawPipes(state.pipes, state.arena, t);
@@ -485,6 +491,7 @@ export class Renderer {
       this.drawPlayers(state, alpha, t, intro, view.localMask);
       if (introDone) {
         if (state.copyMarks) this.drawCopyMarks(state.copyMarks);
+        if (state.aimMarks) this.drawAimMarks(state.aimMarks);
         this.drawJumpScares(state, t);
         for (let s = 0; s < state.players.length; s++) {
           if ((view.localMask & (1 << s)) === 0) continue;
@@ -949,6 +956,21 @@ export class Renderer {
   }
 
   /**
+   * Aim Bot's lock pull is intentionally not capped by `CAMERA.focusRange`. A legal
+   * 2400-unit lock is longer than the normal group pull, and the whole point of the
+   * scope is to keep both ends of that line on screen. The zoom floor does the rest.
+   */
+  private addAimLockFocus(x: number, y: number, anchorX: number, anchorY: number): void {
+    const dx = x - anchorX;
+    const dy = y - anchorY;
+    const d = Math.hypot(dx, dy);
+    if (d > this.camSpread) this.camSpread = d;
+    this.camPullW += 1;
+    this.camPullX += dx;
+    this.camPullY += dy;
+  }
+
+  /**
    * While a local slot is dead, its camera follows the surviving squad first, then the
    * body that struck the killing blow, then the nearest living player. The killer can
    * be a player, a worm, a sentry, a cascading error or the training drone; a firewall
@@ -1063,6 +1085,7 @@ export class Renderer {
     const arena = state.arena;
     const b = arena.bounds;
     const local = state.players[view.slot];
+    const aimView = !!local && local.active && local.program === PROGRAM_ID.AIMBOT;
     // A pad swap is a cut, not a pan. Snap on the half where the body changes plates.
     // A shared screen cuts when any of its players swaps, since they all share the frame.
     let padSwap = false;
@@ -1181,6 +1204,11 @@ export class Renderer {
           this.addCameraFocus(e.x, e.y, anchorX, anchorY);
         }
       }
+      // Aim Bot's lock is the other half of the frame. Without this pull, a legal
+      // 2400-unit lock would put the target outside the pane even at maximum zoom-out.
+      if (aimView && local.lockActive) {
+        this.addAimLockFocus(local.lockTX, local.lockTY, anchorX, anchorY);
+      }
       if (this.camPullW > 0.001) {
         const pull = Math.min(1, this.camPullW * CAMERA.groupPull) * CAMERA.maxBias;
         focusX += (this.camPullX / this.camPullW) * pull;
@@ -1217,6 +1245,9 @@ export class Renderer {
     const zoomBase = CAMERA_ZOOM * (this.viewCount > 1 ? CAMERA.splitZoom : 1);
     const spreadFrac = Math.min(1, this.camSpread / CAMERA.focusRange);
     let zoomTarget = zoomBase * (CAMERA.zoomMax + (CAMERA.zoomMin - CAMERA.zoomMax) * spreadFrac) * rigZoom;
+    // Aim Bot sees the whole lane. The lower floor is what makes the long lock and the
+    // six-target volley readable; every other program keeps the normal combat zoom.
+    if (aimView) zoomTarget = Math.min(zoomTarget, CAMERA_ZOOM * AIMBOT.cameraZoom);
 
     // Never clip a group that fits. `layoutViews` already checked the fit at minimum
     // zoom; this is the exact cap for the box the camera is actually framing.
@@ -1422,6 +1453,107 @@ export class Renderer {
       ctx.fillStyle = mark;
       drawSymbol(ctx, PROP_GLYPHS[b.kind] ?? PROP_GLYPHS[1], x + b.w * 0.5, y + b.h * 0.5, 11);
       if (b.hp < FILE_PROP.hp) this.drawCracks(x + 1, y + 1, b.w - 2, b.h - 2, 1, 'rgba(4, 7, 11, 0.9)', i * 7 + b.kind);
+      ctx.restore();
+    }
+  }
+
+  /** The long right-wall feed body for the arcade cabinet. The mouth itself is a Pipe. */
+  private drawFeedRun(arena: ArenaDef, t: number): void {
+    const pipes = arena.pipes;
+    if (!pipes) return;
+    const ctx = this.ctx;
+    for (let i = 0; i < pipes.length; i++) {
+      const def = pipes[i];
+      if (def.feed !== 'pinball') continue;
+      const b = arena.bounds;
+      const x = b.right - 22;
+      const top = b.top + 150;
+      const y = def.y;
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = '#111827';
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(x - 16, top, 32, Math.max(40, y - top), 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = arena.accentSoft;
+      ctx.lineWidth = 1;
+      for (let yy = top + 18; yy < y - 12; yy += 22) {
+        ctx.beginPath();
+        ctx.moveTo(x - 12, yy);
+        ctx.lineTo(x + 12, yy);
+        ctx.stroke();
+      }
+      // Elbow into the mouth, then a slow energy pulse down the run.
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = '#111827';
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(def.x, y - 16, b.right - def.x - 6, 32, 10);
+      ctx.fill();
+      ctx.stroke();
+      const pulse = (t * 0.18 + i * 0.3) % 1;
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = arena.accent;
+      ctx.fillRect(x - 2, top + (y - top) * pulse, 4, 24);
+      ctx.restore();
+    }
+  }
+
+  /** Round posts and lit kickers. Flash timers come from the local world. */
+  private drawBumpers(arena: ArenaDef, t: number, flashes?: ArrayLike<number>): void {
+    const bumpers = arena.bumpers;
+    if (!bumpers) return;
+    const ctx = this.ctx;
+    for (let i = 0; i < bumpers.length; i++) {
+      const b = bumpers[i];
+      const live = b.kind === 1;
+      const flash = flashes?.[i] ?? 0;
+      const pulse = 0.72 + Math.sin(t * 3.4 + i) * 0.12;
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.fillStyle = live ? 'rgba(183, 155, 255, 0.14)' : 'rgba(120, 160, 190, 0.12)';
+      ctx.beginPath();
+      ctx.arc(0, 0, b.radius + 13 + (live ? Math.sin(t * 3 + i) * 3 : 0), 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = live ? '#201b38' : '#141c26';
+      ctx.strokeStyle = live ? arena.accent : 'rgba(150, 190, 220, 0.7)';
+      ctx.lineWidth = live ? 4 : 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, b.radius, 0, TWO_PI);
+      ctx.fill();
+      ctx.stroke();
+      ctx.globalAlpha = live ? pulse : 0.4;
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, b.radius * 0.56, 0, TWO_PI);
+      ctx.stroke();
+      // Four bolts around the hub make the furniture read as a bumper, not a hole.
+      ctx.globalAlpha = live ? 0.9 : 0.45;
+      ctx.fillStyle = live ? arena.accent : '#c7e6ff';
+      for (let k = 0; k < 4; k++) {
+        const a = Math.PI * 0.25 + (k * Math.PI) / 2;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * b.radius * 0.62, Math.sin(a) * b.radius * 0.62, live ? 4 : 2.5, 0, TWO_PI);
+        ctx.fill();
+      }
+      ctx.globalAlpha = live ? 0.95 : 0.65;
+      ctx.beginPath();
+      ctx.arc(0, 0, live ? 9 : 6, 0, TWO_PI);
+      ctx.fill();
+      if (flash > 0) {
+        ctx.globalAlpha = Math.min(1, flash * 7);
+        ctx.strokeStyle = '#f5edff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, b.radius + 7, 0, TWO_PI);
+        ctx.stroke();
+      }
       ctx.restore();
     }
   }
@@ -3003,6 +3135,31 @@ export class Renderer {
         ctx.stroke();
       }
       ctx.restore();
+
+      // Fake density: these diamonds ride the same entity and never add hitboxes.
+      for (let k = 0; k < v.swarm; k++) {
+        const a = t * (1.25 + k * 0.09) + v.phase + k * 2.4;
+        const orbit = v.radius * (2.5 + k * 0.6) + Math.sin(t * 2.1 + k) * 4;
+        const sx = x + Math.cos(a) * orbit;
+        const sy = y + Math.sin(a * 1.13 + 0.8) * orbit * 0.55;
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(-t * 2.2 + k * 1.7 + v.phase);
+        ctx.globalAlpha = 0.52 - k * 0.08;
+        ctx.strokeStyle = THREAT_COLORS.virus;
+        ctx.fillStyle = THREAT_COLORS.virus;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(0, -v.radius * 0.62);
+        ctx.lineTo(v.radius * 0.62, 0);
+        ctx.lineTo(0, v.radius * 0.62);
+        ctx.lineTo(-v.radius * 0.62, 0);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.globalAlpha = 0.5;
+        ctx.fillRect(-1.2, -1.2, 2.4, 2.4);
+        ctx.restore();
+      }
 
       if (v.chargeT > 0) {
         const chargeTotal = VIRUS.chargeWindup + VIRUS.chargeActive + VIRUS.chargeRecovery;
@@ -4672,6 +4829,48 @@ export class Renderer {
           ctx.stroke();
         }
         ctx.restore();
+      } else if (p.type === 17) {
+        // Aim Bot's rail round: a long copper-red tracer with a hard white tip. The
+        // speed tail is deliberately much longer than the body, so a shot reads as a
+        // line crossing the room instead of a slow orb.
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.24;
+        ctx.beginPath();
+        ctx.moveTo(-p.radius, -p.radius * 0.5);
+        ctx.lineTo(-58, -1.2);
+        ctx.lineTo(-72, 0);
+        ctx.lineTo(-58, 1.2);
+        ctx.lineTo(-p.radius, p.radius * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(-p.radius, 0);
+        ctx.lineTo(-58, 0);
+        ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = 'rgba(8, 10, 14, 0.95)';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.radius * 1.8, p.radius, 0, 0, TWO_PI);
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.fillStyle = '#fff2e8';
+        ctx.beginPath();
+        ctx.moveTo(p.radius * 1.8, 0);
+        ctx.lineTo(p.radius * 0.4, -p.radius * 0.45);
+        ctx.lineTo(p.radius * 0.4, p.radius * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
       } else if (p.type === 16) {
         // Copy Pasta's file: a dark document with a folded corner and two text rules,
         // stamped in the owner's colour. Children draw smaller so the chain reads.
@@ -5149,6 +5348,79 @@ export class Renderer {
       }
       ctx.restore();
     }
+  }
+
+  /** Aim Bot's long sight line. Locked targets get a crosshair at the endpoint. */
+  private drawAimSight(p: Player, x: number, y: number, facing: number, color: string): void {
+    const ctx = this.ctx;
+    const locked = p.lockActive && (p.lockTX !== 0 || p.lockTY !== 0);
+    const tx = locked ? p.lockTX : x + Math.cos(facing) * AIMBOT.sightRange;
+    const ty = locked ? p.lockTY : y + Math.sin(facing) * AIMBOT.sightRange;
+    const dx = tx - x;
+    const dy = ty - y;
+    const d = Math.hypot(dx, dy) || 1;
+    const ux = dx / d;
+    const uy = dy / d;
+    const fade = Math.min(1, p.aimSightT * 1.6);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2;
+    ctx.globalAlpha = 0.22 * fade;
+    ctx.setLineDash([10, 7]);
+    ctx.beginPath();
+    ctx.moveTo(x + ux * (PLAYER.radius + 4), y + uy * (PLAYER.radius + 4));
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.85 * fade;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 11, 0, TWO_PI);
+    ctx.moveTo(tx - 18, ty);
+    ctx.lineTo(tx - 5, ty);
+    ctx.moveTo(tx + 5, ty);
+    ctx.lineTo(tx + 18, ty);
+    ctx.moveTo(tx, ty - 18);
+    ctx.lineTo(tx, ty - 5);
+    ctx.moveTo(tx, ty + 5);
+    ctx.lineTo(tx, ty + 18);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Pending volley crosshairs: red, fixed to the target until the shot lands. */
+  private drawAimMarks(marks: readonly AimMark[]): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = PROGRAM_COLORS.aimbot;
+    ctx.fillStyle = PROGRAM_COLORS.aimbot;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < marks.length; i++) {
+      const mark = marks[i];
+      if (!mark.active) continue;
+      const r = AIMBOT.volleyMarkRadius;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.arc(mark.x, mark.y, r, 0, TWO_PI);
+      ctx.stroke();
+      ctx.globalAlpha = 0.65;
+      ctx.beginPath();
+      ctx.moveTo(mark.x - r - 8, mark.y);
+      ctx.lineTo(mark.x - r + 6, mark.y);
+      ctx.moveTo(mark.x + r - 6, mark.y);
+      ctx.lineTo(mark.x + r + 8, mark.y);
+      ctx.moveTo(mark.x, mark.y - r - 8);
+      ctx.lineTo(mark.x, mark.y - r + 6);
+      ctx.moveTo(mark.x, mark.y + r - 6);
+      ctx.lineTo(mark.x, mark.y + r + 8);
+      ctx.stroke();
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.arc(mark.x, mark.y, 2, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   /** Local lock-on marker: translucent while acquiring, solid once locked. */
@@ -5634,6 +5906,12 @@ export class Renderer {
         continue;
       }
 
+      // Aim Bot's sight line is drawn on the floor before the body, so the scope never
+      // sits on top of the hull or the target. The line is only a read; it has no hitbox.
+      if (isLocal && p.program === PROGRAM_ID.AIMBOT && p.aimSightT > 0) {
+        this.drawAimSight(p, x, y, facing, color);
+      }
+
       // Held guard: a tight 180 degree screen right against the body. It is the safe,
       // readable option; the tap swing stays the offensive one.
       if (p.guardT > 0) {
@@ -5670,12 +5948,15 @@ export class Renderer {
       // fill belongs on the tap; the guard is the separate hold action.
       if (p.swingPhase !== 0 && p.program === PROGRAM_ID.SWEEP) {
         this.drawBroomSwing(p, x, y, facing, color);
+      } else if (p.swingPhase !== 0 && p.program === PROGRAM_ID.AIMBOT) {
+        const whip = p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP;
+        this.drawKnifeSwing(p, x, y, facing, color, whip);
       } else if (p.swingPhase !== 0) {
-        const half = PLAYER.swingHalfAngle;
+        const half = p.meleeHalfAngle;
         const dir = p.swingDir < 0 ? -1 : 1;
         const pct = Math.max(0, Math.min(1, p.swingPct));
         const whip = p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP;
-        const reach = PLAYER.swingReach * (whip ? POWERUP.whipMultiplier : 1);
+        const reach = PLAYER.swingReach * p.meleeReachMult * (whip ? POWERUP.whipMultiplier : 1);
         const progress = p.swingPhase === 1 ? 0 : p.swingPhase === 2 ? 1 - pct : 1;
         const start = facing - dir * half * 0.96;
         const angle = start + dir * half * 1.92 * progress;
@@ -7092,6 +7373,102 @@ export class Renderer {
   }
 
   /**
+   * Aim Bot's melee: a combat knife, not the shared spiked lash. The blade is one
+   * bowie outline (grip, cross guard, clipped spine, curved belly, fuller) riding the
+   * same arc sweep, so the sniper's only crowd answer reads as a knife.
+   */
+  private drawKnifeSwing(p: Player, x: number, y: number, facing: number, color: string, whip: boolean): void {
+    const ctx = this.ctx;
+    const half = p.meleeHalfAngle;
+    const dir = p.swingDir < 0 ? -1 : 1;
+    const pct = Math.max(0, Math.min(1, p.swingPct));
+    const reach = PLAYER.swingReach * p.meleeReachMult * (whip ? POWERUP.whipMultiplier : 1);
+    const progress = p.swingPhase === 1 ? 0 : p.swingPhase === 2 ? 1 - pct : 1;
+    const start = facing - dir * half * 0.96;
+    const angle = start + dir * half * 1.92 * progress;
+    const alpha = p.swingPhase === 2 ? 0.95 : p.swingPhase === 3 ? 0.3 : 0.55;
+    const bladeColor = whip ? '#ff3e63' : color;
+    const inner = PLAYER.radius + 8;
+    const len = Math.max(20, reach - inner);
+    const w = Math.max(4.5, len * 0.15);
+    const grip = len * 0.2;
+    const gripEnd = inner + grip;
+    const bladeLen = len - grip;
+
+    ctx.save();
+    ctx.translate(x, y);
+    // Thin ghost blades behind the live one sell the arc without filling it.
+    for (let s = 3; s >= 1; s--) {
+      const ghost = angle - dir * s * 0.13;
+      ctx.save();
+      ctx.rotate(ghost);
+      ctx.globalAlpha = alpha * (0.05 + (3 - s) * 0.045);
+      ctx.strokeStyle = bladeColor;
+      ctx.lineWidth = 1.2;
+      this.pathKnife(inner, bladeLen, w * 0.9);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.rotate(angle);
+    ctx.globalAlpha = alpha;
+    // Grip against the body; the pommel bar keeps the near end readable.
+    ctx.fillStyle = '#10141a';
+    ctx.strokeStyle = bladeColor;
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.rect(inner - 2, -w * 0.22, grip + 2, w * 0.44);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = bladeColor;
+    ctx.fillRect(inner - 4, -w * 0.3, 2.5, w * 0.6);
+    // Cross guard: a short flare where the grip meets the ricasso.
+    ctx.beginPath();
+    ctx.moveTo(gripEnd, -w * 0.9);
+    ctx.lineTo(gripEnd + 5, -w * 0.52);
+    ctx.lineTo(gripEnd + 5, w * 0.52);
+    ctx.lineTo(gripEnd, w * 0.9);
+    ctx.closePath();
+    ctx.fill();
+    // The blade itself: clipped spine, curved belly, translucent fill.
+    this.pathKnife(gripEnd, bladeLen, w);
+    ctx.globalAlpha = alpha * 0.18;
+    ctx.fill();
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 2.2;
+    ctx.lineJoin = 'miter';
+    ctx.stroke();
+    // Fuller groove, then a bright edge highlight along the belly.
+    ctx.globalAlpha = alpha * 0.7;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(gripEnd + bladeLen * 0.12, -w * 0.08);
+    ctx.lineTo(gripEnd + bladeLen * 0.64, -w * 0.08);
+    ctx.stroke();
+    ctx.globalAlpha = alpha * 0.55;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(gripEnd + 4, w * 0.56);
+    ctx.quadraticCurveTo(gripEnd + bladeLen * 0.58, w * 0.95, gripEnd + bladeLen * 0.94, w * 0.05);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** One bowie blade outline: straight spine, clipping point, curved belly. */
+  private pathKnife(x0: number, len: number, w: number): void {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.moveTo(x0, -w * 0.58);
+    ctx.lineTo(x0 + len * 0.72, -w * 0.58);
+    // The clip drops the spine toward the edge before the tip.
+    ctx.lineTo(x0 + len * 0.89, -w * 0.18);
+    ctx.lineTo(x0 + len, 0);
+    // Belly sweeps back from the point to the heel.
+    ctx.quadraticCurveTo(x0 + len * 0.6, w * 0.96, x0, w * 0.58);
+    ctx.closePath();
+  }
+
+  /**
    * Sweep's melee. The broom head is held out in front of the avatar, bristles up, and
    * strokes straight up and down across the lane instead of riding a curved arc. The
    * two diagonal combo hits alternate the direction of the stroke; the big third hit
@@ -7471,6 +7848,21 @@ export class Renderer {
     for (let i = 0; i < arena.pillars.length; i++) {
       const r = arena.pillars[i];
       ctx.fillRect(x0 + (r.x - b.left) * sx, y0 + (r.y - b.top) * sy, Math.max(2, r.w * sx), Math.max(2, r.h * sy));
+    }
+    if (arena.bumpers) {
+      ctx.fillStyle = 'rgba(183, 155, 255, 0.75)';
+      for (let i = 0; i < arena.bumpers.length; i++) {
+        const b = arena.bumpers[i];
+        ctx.beginPath();
+        ctx.arc(
+          x0 + (b.x - arena.bounds.left) * sx,
+          y0 + (b.y - arena.bounds.top) * sy,
+          Math.max(1.5, b.radius * Math.min(sx, sy)),
+          0,
+          TWO_PI,
+        );
+        ctx.fill();
+      }
     }
     const tr = arena.traverse;
     if (tr) {

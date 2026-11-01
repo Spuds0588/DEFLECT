@@ -46,6 +46,19 @@
     "top": 48,
     "bottom": 672
   },
+  "SPACE_CADET": {
+    "bumperLaunch": 980,
+    "postPush": 300,
+    "bumperShotGain": 1.16,
+    "shotSpeedMax": 1800,
+    "bumperFlash": 0.22,
+    "pipeFirst": 2.6,
+    "pipeInterval": 6.2,
+    "pipeBallSpeed": 680,
+    "pipeBallTtl": 10,
+    "pipeBallRadius": 11,
+    "pipeBallDamage": 1
+  },
   "TRAVERSE": {
     "padDwell": 0.32,
     "padRide": 0.36,

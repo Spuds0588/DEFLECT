@@ -74,6 +74,7 @@ export const GHOST = programsJson.GHOST;
 export const COMPRESS = programsJson.COMPRESS;
 export const PINBALL = programsJson.PINBALL;
 export const COPYPASTA = programsJson.COPYPASTA;
+export const AIMBOT = programsJson.AIMBOT;
 
 // --- World, camera and session pacing -------------------------------------
 
@@ -83,6 +84,7 @@ export const FILE_PROP = worldJson.FILE_PROP;
 export const ARENA = worldJson.ARENA;
 export const EMITTER = worldJson.EMITTER;
 export const NETWORK = worldJson.NETWORK;
+export const SPACE_CADET = worldJson.SPACE_CADET;
 export const TRAVERSE = worldJson.TRAVERSE;
 export const POWERUP = worldJson.POWERUP;
 export const ROUND = worldJson.ROUND;

@@ -18,6 +18,7 @@ export const PROGRAM_ID = {
   COMPRESS: 9,
   PINBALL: 10,
   COPYPASTA: 11,
+  AIMBOT: 12,
 } as const;
 
 export interface ProgramDef {
@@ -229,6 +230,20 @@ export const PROGRAMS: readonly ProgramDef[] = [
     // The file-icon hull orbits at 0.8r, so the mark keeps clear air inside the ring.
     coreScale: 0.8,
     bugKind: 14,
+  },
+  {
+    id: PROGRAM_ID.AIMBOT,
+    name: 'AIM_BOT.EXE',
+    role: 'SNIPER',
+    note: 'RAIL SHOT // LASER SIGHT // SIX-TARGET VOLLEY',
+    color: PROGRAM_COLORS.aimbot,
+    /**
+     * Scope reticle. The arena and select portrait draw the vector mark, so the target
+     * rings and crosshair never depend on a symbol font.
+     */
+    glyph: '⌖',
+    coreScale: 1.0,
+    bugKind: 15,
   },
 ];
 

@@ -52,6 +52,8 @@ export const PROGRAM_COLORS = {
   pinball: '#4d8bff',
   /** Copypasta: highlighter yellow, the colour of a copied line on paper. */
   copy: '#ffe95c',
+  /** Aim Bot: signal red, a scope reticle held clear of Kaboom's orange. */
+  aimbot: '#ff3355',
   lure: '#7dffd4',
 } as const;
 
@@ -466,6 +468,51 @@ export function drawPinballMark(
 }
 
 /**
+ * Aim Bot's core: a scope reticle. Two rings and four open crosshair ticks stay
+ * direction-neutral, so the mark reads as a target rather than as a facing arrow.
+ */
+export function drawAimBotMark(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  const ink = ctx.fillStyle as string;
+  ctx.save();
+  ctx.strokeStyle = ink;
+  ctx.fillStyle = ink;
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
+  // Housing ring, then the inner scope ring.
+  ctx.lineWidth = Math.max(1.2, r * 0.14);
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.58, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = Math.max(1, r * 0.1);
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.28, 0, Math.PI * 2);
+  ctx.stroke();
+  // Four open ticks. They stop short of the center so the reticle keeps a clear eye.
+  const inner = r * 0.12;
+  const outer = r * 0.72;
+  ctx.lineWidth = Math.max(1.2, r * 0.12);
+  ctx.beginPath();
+  ctx.moveTo(cx - outer, cy);
+  ctx.lineTo(cx - inner, cy);
+  ctx.moveTo(cx + inner, cy);
+  ctx.lineTo(cx + outer, cy);
+  ctx.moveTo(cx, cy - outer);
+  ctx.lineTo(cx, cy - inner);
+  ctx.moveTo(cx, cy + inner);
+  ctx.lineTo(cx, cy + outer);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, Math.max(1.4, r * 0.08), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
  * Copypasta's core: two offset document squares, the copy-and-paste stamp. Both are
  * strokes so the mark stays a single-hue vector at every size.
  */
@@ -561,6 +608,11 @@ export function drawProgramMark(
     drawCopyMark(ctx, cx, cy, r * fontScale);
     return;
   }
+  // Aim Bot's scope is vector, so the reticle is identical at the core and the portrait.
+  if (programId === 12) {
+    drawAimBotMark(ctx, cx, cy, r * fontScale);
+    return;
+  }
   if (programId === 5 && !hasSymbolFont(symbolFamily ?? '')) {
     drawBombMark(ctx, cx, cy, r * fontScale);
     return;
@@ -617,6 +669,8 @@ export function programHullSides(programId: number): number {
   if (programId === 10) return 0;
   // Copypasta's hull is three upright file icons, one per health segment.
   if (programId === 11) return 0;
+  // Aim Bot's hull is a circle of three scope brackets with inward ticks.
+  if (programId === 12) return 0;
   return 0;
 }
 
@@ -732,6 +786,23 @@ export function pathProgramHealth(
     for (let seg = 0; seg < freshSegments; seg++) {
       const a = spin + seg * (twoPi / 3);
       pathFileIcon(ctx, cx + Math.cos(a) * orbit, cy + Math.sin(a) * orbit, halfW, halfH);
+    }
+    return;
+  }
+  // Aim Bot's hull is three thick scope brackets on the outer circle. Each segment is
+  // an arc plus one inward tick, so the health readout looks like a reticle and the
+  // bright paths never reach the core mark.
+  if (programId === 12) {
+    const gap = 0.24;
+    const span = (twoPi - gap * segments) / segments;
+    const outer = r * 0.96;
+    for (let seg = 0; seg < freshSegments; seg++) {
+      const a0 = spin + seg * (span + gap) + gap * 0.5;
+      ctx.moveTo(cx + Math.cos(a0) * outer, cy + Math.sin(a0) * outer);
+      ctx.arc(cx, cy, outer, a0, a0 + span);
+      const mid = a0 + span * 0.5;
+      ctx.moveTo(cx + Math.cos(mid) * outer, cy + Math.sin(mid) * outer);
+      ctx.lineTo(cx + Math.cos(mid) * outer * 0.72, cy + Math.sin(mid) * outer * 0.72);
     }
     return;
   }

@@ -3415,3 +3415,172 @@ afterimage and timed expiry. `npm run build` clean: 624.52 kB JS / 173.01 kB gzi
 
 **Next:** browser smoke the dash trail in a live gauntlet, then tune the 1.5 s window and one-hit health
 from play. Online matches still run Probe, so nothing enters `Snapshot`.
+
+## 2026-11-01 — AIM_BOT.EXE: scope, rail round, sight clip, six-target volley (v0.1.74)
+
+**Goal:** add the roster's sniper from the design brief: a scope-shaped health outline, one slow but
+lethal rail round that ignores range and never bounces, a long lock with a much wider camera, a visible
+laser sight with a temporary three-shot clip, and a six-target instant volley.
+
+- Program id 12 (`bugKind` 15), signal red `#ff3355`, role `SNIPER`. The hull is an outer scope circle
+  split into three thick brackets, one per health segment, each with one inward tick. The core is a
+  vector twin-ring reticle; the select portrait and arena share it.
+- Ranged type 17: 3200 speed, 8 damage, 20 s life, 1.65 s reload, 18 energy, no bounce, and it dies on
+  the first body or solid. The drawn round is a dark bullet with a white tip and a long red speed tail.
+- Lock range is 2400 through `playerLockRange`; other programs stay at the standard range. The local
+  camera drops to 0.4x base while Aim Bot is alive and uses a dedicated lock pull that bypasses the
+  normal focus-range cap, so a far target stays in frame.
+- Skill: 7 s of visible dashed laser sight and a three-shot clip firing every 0.16 s without the normal
+  reload. Each clip shot still pays 18 energy; the clip clears when the sight expires.
+- Power: up to six bodies in a 0.44 rad forward cone within 2400 units and line of sight get red
+  crosshairs for 0.65 s, then each takes a 12-damage shot in a 0.06 s stagger. Cover is checked again
+  when each mark resolves. No projectile is spawned for the volley.
+- Bots use the rail speed and a 2.4x engagement range; the generic heavy hold builds the volley. The
+  program is local-only and adds no `Snapshot` fields.
+- Build stamp 0.1.74.
+
+**Verification:** `.tmp/check-aimbot.ts` passes 17/17: program id, reload, type 17, 8 damage, 3200 speed,
+20 s life, no bounce, wall death, sight window, three-shot clip, 0.16 s cadence, 2400-unit lock, exposed
+lock point, six crosshairs, six 12-damage hits and no volley projectile. `npm run build` clean: 633.28 kB
+JS / 175.09 kB gzip, 48.60 kB CSS / 10.90 kB gzip.
+
+**Next:** play a live match and tune the 0.4x camera floor against the real arenas; the avatar must stay
+readable at the far edge. Then judge the red crosshair telegraph at couch distance.
+
+## 2026-11-01 — SPACE CADET pinball arena (v0.1.75)
+
+**Goal:** add a tall pinball-cabinet arena that uses the new player's bounce language.
+
+- Arena id 10 `SPACE CADET`: tall bounds, six round posts/kickers, a bottom drain and a right-wall feed.
+- Posts reflect shots and shove bodies; kickers launch bodies at 980 and boost shots 1.16x. Aim Bot's rail
+  and other committed shapes die on the furniture instead of bouncing.
+- The arcade pipe loops file, hostile bouncing ball, virus, sentry. The ownerless type-14 ball keeps its
+  wall/pillar rally and can hurt any body.
+- Renderer, minimap, arena preview, bot avoidance and AGENTS D35. Local-only; no snapshot fields.
+- Build stamp 0.1.75.
+
+**Verification:** `.tmp/check-space-cadet.ts` passes 18/18 (layout, furniture, launch, reflection, pipe
+beats, hostile ball wall bounce and drain death). `npm run build` clean: 640.14 kB JS / 176.70 kB gzip,
+48.60 kB CSS / 10.90 kB gzip.
+
+**Next:** browser-test the tall camera and live pinball feed; tune the kicker launch and drain size from play.
+
+## 2026-11-01 — INFECTION: left launch, right tide, swarm groups (v0.1.76)
+
+**Goal:** make INFECTION read as an endless colony tide: all operators on the left, all viruses entering
+from the right, and higher visual density without adding hitboxes.
+
+- Operators now spawn on one left-side line instead of a perimeter ring. The opening colony is a vertical
+  queue beyond the right lip; every opening and split spawn reuses an inactive virus at that edge.
+- The recycled body glides in during its existing spawn build (`entrySpeedMult`), so the swarm appears as
+  a feed from the right instead of popping in around the players. Entering bodies are skipped by void and
+  platter containment until they cross the floor edge.
+- `Virus.swarm` draws up to two satellite diamonds around one virus. The satellites are animation only:
+  one hitbox, one health point, one kill, no extra pool slots. The field is mirrored in co-op snapshots.
+- `INFECTION.leftSpawnFrac`, `entrySpeedMult`, `entryJitter` and `swarmChance` are the new tuning knobs.
+- Build stamp 0.1.76.
+
+**Verification:** `.tmp/check-infection-tide.ts` passes 11/11: two active operators on the same left line,
+opening colony beyond the right lip, all entries gliding left, swarm satellites on some bodies, unchanged
+entity count, movement into the arena, no cull during entry and split re-entry from the right. `npm run
+build` clean: 640.83 kB JS / 176.94 kB gzip, 48.60 kB CSS / 10.90 kB gzip.
+
+**Next:** playtest the opening density on SPACE CADET and a small arena; tune `swarmChance` and
+`entrySpeedMult` against how quickly the right side becomes a wall.
+
+## 2026-11-01 — AIM_BOT.EXE combat knife melee (v0.1.77)
+
+**Goal:** give the sniper a crowd answer that does not come from the rail: a wider, longer melee with a
+harder shove, styled as a combat knife.
+
+- Melee shape is per body now: `Player.meleeReachMult`, `meleeHalfAngle` and `meleeKnock` are set at
+  program bind like Pinball's guard reach, so respawn, the renderer and bot spacing share one source.
+- Aim Bot: 1.5x reach (78 catch / 108 body), a 219.6 degree sweep (from 180), and a 980 shove (from 560).
+- The swing draws as a bowie blade: dark grip and pommel, cross guard, clipped spine, curved belly and
+  fuller, with thin ghost blades behind the live arc. Every other program keeps the spiked lash.
+- Damage is unchanged. The trade is area and shove, not more damage.
+- Numbers live in `tuning/programs.json` under `AIMBOT` (`meleeReachMult`, `meleeArcMult`,
+  `meleeKnockMult`).
+- Build stamp 0.1.77.
+
+**Verification:** `.tmp/check-aimbot-knife.ts` passes 12/12: the shared lash keeps 180 degrees, 1x reach and
+560 shove; Aim Bot measures 219.6 degrees, 1.5x reach and 980 shove; a body at 100 units and a body 106
+degrees off facing are missed by the lash and hit by the knife; the knife carries a close body 67 units
+against 38. `.tmp/check-aimbot.ts` still passes 17/17. `npm run build` clean: 642.82 kB JS / 177.48 kB
+gzip, 48.60 kB CSS / 10.90 kB gzip.
+
+**Next:** browser-check the blade at arena scale (it must read as a knife while sweeping, not a thin
+line); tune `meleeKnockMult` if the shove throws bodies into walls too easily.
+
+## 2026-11-01 — Campaign narrative context recorded (docs only)
+
+**Goal:** capture the campaign opening, narration presentation and cast before any runtime work starts.
+
+- Added the narrative spine to `CAMPAIGN.md`: the run opens in a dev system's quarantine section with the
+  player's programs flagged malicious and being retrained; the infection breakout is the inciting incident.
+- Recorded the narration format: bottom-screen text boxes with a floating emoji/Unicode/Wingdings head for
+  the speaker, and the cast: 👮 quarantine manager, 🐱 friendly program who gets the players out, and the
+  User/Users AI antagonist at ROOT.
+- Recorded the constraints that matter before building it: the text box collides with the campaign
+  objective strip at the bottom, colour emoji cannot be tinted, symbol fallbacks need the D16 check, and
+  narration stays local and outside `World`/`Snapshot`.
+- AGENTS D13 now points at the narrative section; TODO carries the unbuilt checklist.
+- Docs only: no code, tuning or build stamp change.
+
+**Verification:** documentation review only; no build run.
+
+**Next:** decide whether THE WARDEN is the quarantine officer, then write the first narration beat around
+BUILD ROOT.
+
+## 2026-11-01 — Campaign narration decisions (docs only)
+
+**Goal:** settle the open questions from the narrative spine before any runtime work.
+
+- THE WARDEN is the quarantine officer, not a separate character: he speaks through the opening and the
+  LOCALHOST sector gate is his fight. Every roster program is framed as a bad program pulled by antivirus
+  and sent to quarantine for retraining, so the program pick is choosing which inmate to run.
+- Narration is live over the running simulation and never pauses or dims it, reveals near-instantly instead
+  of a slow typewriter, and is skippable per line and per beat.
+- Campaign setup will carry a persisted `STORY BEATS` toggle beside `FRIENDLY FIRE`; skipping bypasses the
+  beats for that run, for replays.
+- Recorded the guardrail that makes skipping safe: beats are cosmetic and may not gate spawns, doors or
+  flags gameplay reads.
+- Updated `CAMPAIGN.md`, AGENTS D13 and the TODO checklist. No code, tuning or build stamp change.
+
+**Verification:** documentation review only; no build run.
+
+**Next:** write the first quarantine beat around BUILD ROOT once the text box layout is picked.
+
+## 2026-11-01 — Bot balance pass: duels and wave pressure (v0.1.78)
+
+**Goal:** measure the roster against itself with bots and take the worst outliers out of the duel matrix
+before tuning gauntlet and campaign pressure.
+
+- Built a headless harness (`.tmp/balance.ts`) on the existing `World` + `BotBrain`: a round-robin duel
+  matrix (3 samples per ordered pair, both slots, HARD bots), a rail parameter sweep, a scored gauntlet
+  run per program, and a wave-pressure probe that jumps to waves 3/6/9/12/15.
+- First stable 72-game matrix: Atomize 87.5%, Aim Bot 75.7%, Kaboom 22.2%, Bad Lag 15.3%. The earlier
+  single-sample pass had Aim Bot at 24-0, which was not noise.
+- Aim Bot: the 8-damage rail stays, but speed drops 3200→2000, life 20→1.6 s and reload 1.65→2.0 s. At
+  3200 the round was hitscan in practice and perfect-aim bots never missed; the slower round keeps the
+  one-shot and adds travel time. Final duel rate 72.9%.
+- Atomize: cadence 0.34→0.38, seek range 460→380, turn 2.8→2.4, shield cooldown 9→11 s. 6 segments stay;
+  the trim is uptime, not the hull identity. Final 79.9%.
+- Kaboom: bomb speed 250→330, blast 52→58, cadence 0.9→0.78. Bad Lag: hourglass speed 430→580, body hits
+  3→4, cadence 0.62→0.56. Wedge: string speed 730→800, life 0.4→0.5. Final rates 32.6 / 23.6 / 34.7%.
+- Gauntlet wave makeup: worm and virus intervals 34→28 s, virus burst size 4→5, sentry interval 30→26 s. The wave probe showed the mid-game room held about one virus and under one worm
+  at waves 9-15, and pilots took 1-3 damage per minute; after the change Probe dies at wave 9 and Aim Bot
+  at 12 in the sampled windows.
+- Harness correction after the first pass: the duel world used `botSlots` 0, so only slot 0 counted as AI;
+  slot 1 fired at full speed while its brain still led at the 0.8x enemy speed. The corrected all-AI setup
+  (`localSlot` -1, `botSlots` 1) matches projectile speed to lead and was re-run for the final numbers.
+- Extended scored run at a 420 s cap shows the kit spread the duel table cannot: Atomize and Compress reach
+  wave 15, Kaboom 14, Probe and Ghost 13, Pinball 12, Copy Pasta 11, Wedge and Fisher 9, Toxic 8, Aim Bot
+  and Sweep 7, Bad Lag 5. Aim Bot's low gauntlet standing is the no-crowd-clear trade, not a rail bug.
+- Build stamp 0.1.78. No new systems, no snapshot changes, no protocol changes.
+
+**Verification:** 72-game matrix before/after, wave probe at five waves, `npx tsc --noEmit` clean and
+`npm run build` clean.
+
+**Next:** human playtest the rail travel time and the mid-game gauntlet pressure; bot duels overstate Aim
+Bot because the bots aim perfectly, so the next read must come from a person.
