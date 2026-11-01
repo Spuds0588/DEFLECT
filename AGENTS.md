@@ -216,8 +216,9 @@ Traversal is also the intended route for threats to spill into a later campaign 
 a pad across linked rooms); until a campaign runtime exists, pads only move player bodies.
 
 ### D9 — Gauntlet is a local threat sandbox (revised 2026-10-29)
-On explicit designer request, hostiles exist in a local **GAUNTLET** mode, not in ranked PvP and not over
-the network. It is a test bed for the eventual PvE direction, not a promise of online PvE.
+On explicit designer request, hostiles exist in a **GAUNTLET** mode, not in ranked PvP. It is a test bed
+for the eventual PvE direction, not a promise of online PvE. The single exception is INFECTION, which is
+solo and host-authoritative online co-op (D32); every other gauntlet threat stays local.
 
 - Enter from the title screen, choose an arena, then begin a one-life run. The ring breaking ends the run
   and writes a local record. There is no practice or respawn option in the gauntlet UI; training is the
@@ -284,8 +285,16 @@ the network. It is a test bed for the eventual PvE direction, not a promise of o
   unlock. The mode is a one-life survive-as-long-as-you-can sandbox; there is no final win and no in-run
   respawn. Enemy health is deliberately low; firewalls do extra damage to enemy factions
   (`FIREWALL.enemyDamage`).
-- The mode is deliberately absent from `Snapshot` and `NetView`. Any future networked PvE needs its own
-  protocol work and a new decision; do not leak gauntlet entities into match snapshots.
+- Gauntlet and campaign entities are deliberately absent from `Snapshot` and `NetView`. INFECTION is the
+  one exception: a co-op snapshot carries only the shared infection readout and the virus colony. Guests
+  render that colony; they never simulate it, resolve hits, or receive worms, sentries, errors, emitters,
+  pickups or campaign state. Any broader networked PvE needs its own protocol decision.
+- **Co-op infection uses the same host sim.** The lobby `MODE` toggle is host-owned and travels in the
+  lobby packet and `START`. The host builds `World('gauntlet', …, infectionMode=true)` with every connected
+  operator, spreads the opening flood around their spawns, and targets the nearest live runner. Dead
+  operators remain active spectators; the attempt fails only when no runner is left standing. `RETRY`
+  rebuilds the host world and broadcasts `REMATCH`; a guest only leaves. Do not give a guest virus
+  authority or a second simulation.
 - Tuning lives in `tuning/threats.json`, exported as `GAUNTLET`, `WORM`, `VIRUS`, `FIREWALL`, `SENTRY`,
   `CASCADING_ERROR` and `THRALL` from `config.ts`.
 
@@ -1176,17 +1185,18 @@ All numbers live in `tuning/programs.json` under `PINBALL`; the skill cooldown i
 
 ### D32 — INFECTION: a timed swarm clear (built 2026-11-01)
 
-`SINGLE PLAYER > INFECTION` is a local timed clear built on the gauntlet simulation. It runs
-`World('gauntlet', …, infectionMode=true)` and keeps the `gauntlet` mode string, like the campaign, so no
-threat, camera, overlay or network branch forks. The arena is flooded with viruses that hunt across the
-whole floor and keep budding; the run ends when the last body is gone or the player's ring breaks.
+`SINGLE PLAYER > INFECTION` is a timed clear built on the gauntlet simulation; the same rule runs as
+online co-op from the lobby's `MODE: INFECTION`. It runs `World('gauntlet', …, infectionMode=true)` and
+keeps the `gauntlet` mode string, like the campaign, so no threat, camera or overlay branch forks. The
+arena is flooded with viruses that hunt across the whole floor and keep budding; the run ends when the
+last body is gone or every runner's ring breaks.
 
 - **The readout is the mode.** `infectionProgress` is `kills / (kills + live)` and is capped at 99% while
   any virus lives, so a fresh bud visibly sets the clear meter back. Only an empty floor reaches 100%.
   The renderer draws one top-centred bar with `VIRUS CLEARED`, the percentage and the run clock; the
   gauntlet's bottom possession strip is suppressed. `gauntletTime` is the run clock. Do not replace the
   derived meter with a fixed kill quota: the colony's growth is the pressure.
-- **Flood and growth.** `INFECTION.startViruses` (24) land on a ring around the player at run start, the
+- **Flood and growth.** `INFECTION.startViruses` (24) land on rings around the runners at run start, the
   pool is `INFECTION.maxViruses` (44) rather than the gauntlet's 10, and one split lands every
   `growInterval` (1.6 s) while under the cap. Viruses use `INFECTION.huntRadius` (whole arena) and
   `speedMult`, not the gauntlet's 310-unit interest radius. Do not reuse the gauntlet's wave ramp here.
@@ -1199,9 +1209,15 @@ whole floor and keep budding; the run ends when the last body is gone or the pla
   friendly fire is forced off when the run starts so the colony cannot thin itself for free. Best times
   must not depend on a powerup roll. Arena emitters and floor hazards still run: they are part of the
   arena's identity and of the route.
-- **One life, one clear.** The player's death sets `infectionFailed`; a clean sweep sets
-  `infectionCleared`. Both set `gauntletOver`, which freezes the arena through the existing gauntlet
+- **One life each, one shared clear.** A death only downs that runner; in co-op the body stays on the
+  roster as a spectator and the attempt fails when no runner is left alive. A clean sweep sets
+  `infectionCleared`, a wipe sets `infectionFailed`, and both set `gauntletOver` through the existing
   freeze path. `infectionOver` is the single test for the results hook in `main.ts`.
+- **Co-op wire format.** The host owns the colony, clock, kills and clear meter. `Snapshot` carries an
+  optional `infection` row and compact virus rows; `NetView` mirrors the readout and interpolates the
+  swarm for rendering only. Dead guests keep receiving snapshots. The host records the clear; a guest's
+  overlay offers `LEAVE ROOM`. Host `RETRY` rebuilds the world and broadcasts `REMATCH`. Nothing else
+  from the gauntlet enters the packet.
 - **Records.** `src/game/infectionRecords.ts` keeps one best time per arena under
   `deflect.infection.bests`, in `m:ss.d`. A failed run is never recorded; a clear only replaces a slower
   time. The title menu shows the fastest clean sweep across arenas. Records are local and never enter
@@ -1212,7 +1228,8 @@ whole floor and keep budding; the run ends when the last body is gone or the pla
   result overlay; the run is never saved mid-attempt.
 
 Tuning lives in `tuning/threats.json` under `INFECTION`; the mode identity and records live in
-`infectionRecords.ts` and `main.ts`. It is local-only, like the gauntlet and the campaign.
+`infectionRecords.ts` and `main.ts`. Solo runs stay in the local `World`; online co-op uses the same host
+simulation and the narrow infection snapshot described above.
 
 ---
 

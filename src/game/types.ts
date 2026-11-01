@@ -852,6 +852,8 @@ export interface LobbyState {
   canStart: boolean;
   players: LobbyPlayer[];
   arenaId: number;
+  /** 0 versus, 1 infection. Host-owned; guests read it. */
+  mode: number;
 }
 
 export type Pillar = Rect;

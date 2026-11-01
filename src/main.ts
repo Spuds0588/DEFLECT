@@ -98,6 +98,7 @@ const gauntletBtn = el<HTMLButtonElement>('btn-gauntlet');
 const infectionBtn = el<HTMLButtonElement>('btn-solo-infection');
 const infectionBestValue = el('infection-best');
 const lobbyArenaBtn = el<HTMLButtonElement>('btn-arena-cycle');
+const lobbyModeBtn = el<HTMLButtonElement>('btn-mode-cycle');
 const hitRotationInput = el<HTMLInputElement>('hit-rotation');
 const hitRotationValue = el('hit-rotation-value');
 const settingsTabs = el('settings-tabs');
@@ -482,6 +483,7 @@ function bindUi(): void {
   startBtn.addEventListener('click', startHostMatch);
   copyBtn.addEventListener('click', () => void copyInvite());
   lobbyArenaBtn.addEventListener('click', cycleLobbyArena);
+  lobbyModeBtn.addEventListener('click', cycleLobbyMode);
   el<HTMLButtonElement>('btn-lobby-back').setAttribute('data-nav', '');
 
   callsignInput.addEventListener('input', () => {
@@ -1533,6 +1535,15 @@ function cycleLobbyArena(): void {
   toast(`ARENA // ${getArena(arenaIndex).name}`);
 }
 
+/** Host-only room rule. Guests see the label; the host owns the choice. */
+function cycleLobbyMode(): void {
+  if (mode !== 'host' || !hostNet || busy) return;
+  hostNet.setMode(hostNet.getMode() === 1 ? 0 : 1);
+  lobbyState = hostNet.getLobbyState();
+  renderLobby(lobbyState);
+  toast(hostNet.getMode() === 1 ? 'MODE // INFECTION' : 'MODE // VERSUS');
+}
+
 // Touch layout and local assists ------------------------------------------------------------
 
 /**
@@ -2325,7 +2336,8 @@ async function createRoom(): Promise<void> {
       if (world && screen === 'game') {
         world.removePlayer(slot);
         toast(`${guestName} DISCONNECTED`, 'warn');
-        if (world.activeCount() < 2) endMatchToLobby('MATCH ABANDONED // NOT ENOUGH OPERATORS');
+        // Co-op infection keeps running while one operator remains; versus needs two.
+        if (!infectionRun && world.activeCount() < 2) endMatchToLobby('MATCH ABANDONED // NOT ENOUGH OPERATORS');
       } else {
         toast(`${guestName} LEFT`, 'warn');
       }
@@ -2379,6 +2391,7 @@ function joinRoom(): void {
       if (screen === 'game') {
         world = null;
         guestView = null;
+        infectionRun = false;
         setScreen('lobby');
         audio.stopMusic();
         renderLobby(state);
@@ -2394,9 +2407,9 @@ function joinRoom(): void {
       if (lobbyState && screen === 'lobby') renderLobby(lobbyState);
       setLobbyStatus(`CONNECTED AS OPERATOR ${slot + 1}`);
     },
-    onStart: (arenaId) => {
+    onStart: (arenaId, gameMode) => {
       if (guestNet !== net) return;
-      startGuestGame(arenaId);
+      startGuestGame(arenaId, gameMode);
     },
     onSnapshot: (snap: Snapshot) => {
       if (guestNet !== net || !guestView) return;
@@ -2431,20 +2444,21 @@ function joinRoom(): void {
   net.connect(code);
 }
 
-function startGuestGame(arenaId: number): void {
+function startGuestGame(arenaId: number, gameMode = 0): void {
   if (!guestNet) return;
   localSlot = guestNet.slot >= 0 ? guestNet.slot : 0;
   const arena = getArena(arenaId);
   arenaIndex = arena.id;
-  guestView = new NetView(localSlot, arena);
+  infectionRun = gameMode === 1;
+  guestView = new NetView(localSlot, arena, infectionRun);
   guestView.names = namesFromLobby();
   resetCounters();
   fx.reset();
   setScreen('game');
-  beginLoadSequence(arena.name);
+  beginLoadSequence(infectionRun ? `INFECTION // ${arena.name}` : arena.name);
   audio.unlock();
   audio.startMusic();
-  console.log('[DEFLECT-STATE] Guest match start, slot', localSlot, arena.name);
+  console.log('[DEFLECT-STATE] Guest', infectionRun ? 'infection' : 'match', 'start, slot', localSlot, arena.name);
 }
 
 function startHostMatch(): void {
@@ -2462,8 +2476,13 @@ function startHostMatch(): void {
   }
   lobbyState = state;
   const arena = getArena(onlineArenaIndex(hostNet.getArenaIndex()));
+  const infection = state.mode === 1;
   arenaIndex = arena.id;
-  world = new World('match', names, 0, arena);
+  infectionRun = infection;
+  world = infection
+    ? new World('gauntlet', names, 0, arena, false, PROGRAM_ID.PROBE, 0, null, false, null, true)
+    : new World('match', names, 0, arena);
+  if (infection) world.friendlyFire = false;
   hostNet.inputs[0] = localFrame;
   hostNet.startMatch(arena.id);
   localSlot = 0;
@@ -2471,10 +2490,10 @@ function startHostMatch(): void {
   resetCounters();
   fx.reset();
   setScreen('game');
-  beginLoadSequence(arena.name);
+  beginLoadSequence(infection ? `INFECTION // ${arena.name}` : arena.name);
   audio.unlock();
   audio.startMusic();
-  console.log('[DEFLECT-STATE] Host match start with', connected.length, 'operators');
+  console.log('[DEFLECT-STATE] Host', infection ? 'infection' : 'match', 'start with', connected.length, 'operators');
 }
 
 function startStress(count: number): void {
@@ -2526,6 +2545,7 @@ function handleRemoteEvents(events: GameEvent[]): void {
 function endMatchToLobby(message: string): void {
   if (!hostNet) return;
   world = null;
+  infectionRun = false;
   hostNet.setInMatch(false);
   setScreen('lobby');
   audio.stopMusic();
@@ -2537,12 +2557,37 @@ function endMatchToLobby(message: string): void {
 function returnToLobby(): void {
   if (mode !== 'host' || !hostNet) return;
   world = null;
+  infectionRun = false;
   hostNet.setInMatch(false);
   lobbyState = hostNet.getLobbyState();
   setScreen('lobby');
   renderLobby(lobbyState);
   audio.stopMusic();
   resetCounters();
+}
+
+function hostInfectionRetry(): void {
+  if (mode !== 'host' || !hostNet) return;
+  lobbyState = hostNet.getLobbyState();
+  const names = namesFromLobby();
+  const arena = getArena(arenaIndex);
+  world = new World('gauntlet', names, 0, arena, false, PROGRAM_ID.PROBE, 0, null, false, null, true);
+  world.friendlyFire = false;
+  hostNet.inputs[0] = localFrame;
+  hostNet.broadcastRematch();
+  infectionRecorded = false;
+  fxCursor = 0;
+  netCursor = 0;
+  lastPhase = '';
+  lastRound = -1;
+  lastRoundWinner = -2;
+  lastMatchWinner = -2;
+  goUntil = 0;
+  fx.reset();
+  hideOverlayInternal();
+  setScreen('game');
+  audio.startMusic();
+  toast('INFECTION RESET');
 }
 
 function hostRematch(): void {
@@ -2777,14 +2822,14 @@ function syncPhaseUi(state: RenderState): void {
     if (overlayKind !== 'leave') hideOverlayInternal();
     return;
   }
-  if (infectionRun && world) {
-    if (!world.infectionOver) {
+  if (infectionRun) {
+    if (!state.infectionOver) {
       deathHoldUntil = 0;
       return;
     }
     if (overlayKind === 'none') {
       if (deathHoldUntil === 0) deathHoldUntil = performance.now() + DEATH_HOLD_MS;
-      if (performance.now() >= deathHoldUntil) showInfectionOverOverlay(world);
+      if (performance.now() >= deathHoldUntil) showInfectionOverOverlay(state);
     }
     return;
   }
@@ -2908,15 +2953,15 @@ function returnToGauntletSetup(): void {
   setTitleStatus('');
 }
 
-function showInfectionOverOverlay(w: World): void {
+function showInfectionOverOverlay(state: RenderState): void {
   if (overlayKind === 'leave' || overlayKind === 'runover') return;
-  const seconds = w.gauntletTime;
-  const kills = w.infectionKills;
-  const cleared = w.infectionCleared;
-  const pct = Math.floor(w.infectionProgress * 100);
+  const seconds = state.gauntletTime ?? 0;
+  const kills = state.infectionKills ?? 0;
+  const cleared = !!state.infectionCleared;
+  const pct = Math.floor((state.infectionProgress ?? 0) * 100);
 
   let bestLine = '';
-  if (cleared) {
+  if (cleared && mode !== 'guest') {
     if (!infectionRecorded) {
       const result = recordInfectionClear(infectionBests, {
         name: getCallsign(),
@@ -2942,13 +2987,21 @@ function showInfectionOverOverlay(w: World): void {
     cleared ? 'INFECTION // SYSTEM CLEAN' : 'INFECTION // SIGNAL LOST',
     cleared ? `CLEARED // ${formatInfectionTime(seconds)}` : 'RING BROKEN',
     cleared
-      ? `${kills} VIRUSES // ${pct}% CLEARED${bestLine} // ${w.arena.name}`
-      : `${pct}% CLEARED // ${kills} VIRUSES // ${w.arena.name}`,
-    [
-      { label: 'RETRY', primary: true, onClick: () => startInfection() },
-      { label: 'ARENA', onClick: returnToInfectionSetup },
-      { label: 'TITLE', onClick: leaveToTitle },
-    ],
+      ? `${kills} VIRUSES // ${pct}% CLEARED${bestLine} // ${state.arena.name}`
+      : `${pct}% CLEARED // ${kills} VIRUSES // ${state.arena.name}`,
+    mode === 'host'
+      ? [
+          { label: 'RETRY', primary: true, onClick: hostInfectionRetry },
+          { label: 'LOBBY', onClick: returnToLobby },
+          { label: 'TITLE', onClick: leaveToTitle },
+        ]
+      : mode === 'guest'
+        ? [{ label: 'LEAVE ROOM', primary: true, onClick: leaveToTitle }]
+        : [
+            { label: 'RETRY', primary: true, onClick: () => startInfection() },
+            { label: 'ARENA', onClick: returnToInfectionSetup },
+            { label: 'TITLE', onClick: leaveToTitle },
+          ],
   );
 }
 
@@ -3171,6 +3224,9 @@ function renderLobby(state: LobbyState | null, connectingCode: string | null = n
   const lobbyArena = getArena(state?.arenaId ?? arenaIndex);
   lobbyArenaBtn.textContent = `ARENA: ${lobbyArena.name}`;
   lobbyArenaBtn.disabled = mode !== 'host' || busy;
+  const lobbyMode = state?.mode ?? 0;
+  lobbyModeBtn.textContent = `MODE: ${lobbyMode === 1 ? 'INFECTION' : 'VERSUS'}`;
+  lobbyModeBtn.disabled = mode !== 'host' || busy;
 
   const players = state?.players ?? [];
   lobbyCount.textContent = `${players.length} / ${MAX_PLAYERS}`;

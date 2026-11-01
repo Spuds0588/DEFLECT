@@ -1,8 +1,8 @@
 import Peer from 'peerjs';
 import type { DataConnection } from 'peerjs';
-import { MAX_PLAYERS, MAX_PROJECTILES, NET, PLAYER } from '../game/config';
+import { INFECTION, MAX_PLAYERS, MAX_PROJECTILES, NET, PLAYER } from '../game/config';
 import { ARENAS, arenaSolids, type ArenaDef } from '../game/arenas';
-import { createPlayer, createProjectile, playerFlags } from '../game/entities';
+import { createPlayer, createProjectile, createVirus, playerFlags } from '../game/entities';
 import { sanitizeName } from '../game/identity';
 import { stepPlayerMotion } from '../game/movement';
 import type { World } from '../game/world';
@@ -10,12 +10,14 @@ import {
   ACTION,
   PF,
   type GameEvent,
+  type GameMode,
   type InputFrame,
   type LobbyPlayer,
   type LobbyState,
   type Phase,
   type Player,
   type Projectile,
+  type Virus,
 } from '../game/types';
 
 export const MSG = {
@@ -105,6 +107,8 @@ export class HostNet {
   private entries: (HostEntry | null)[] = new Array(MAX_PLAYERS).fill(null);
   private inMatch = false;
   private arenaIndex = 0;
+  /** 0 versus, 1 infection. Infection is a co-op clear on the gauntlet simulation. */
+  private modeIndex = 0;
   private seq = 0;
   private closed = false;
 
@@ -174,11 +178,22 @@ export class HostNet {
       canStart: !this.inMatch && players.length >= 2,
       players,
       arenaId: this.arenaIndex,
+      mode: this.modeIndex,
     };
   }
 
   getArenaIndex(): number {
     return this.arenaIndex;
+  }
+
+  getMode(): number {
+    return this.modeIndex;
+  }
+
+  setMode(mode: number): void {
+    if (this.inMatch) return;
+    this.modeIndex = mode === 1 ? 1 : 0;
+    this.emitLobby();
   }
 
   setArena(index: number): void {
@@ -197,6 +212,7 @@ export class HostNet {
       0,
       state.players.map((p) => [p.slot, p.name, p.ready ? 1 : 0, p.connected ? 1 : 0]),
       state.arenaId,
+      this.modeIndex,
     ];
     this.broadcast(packet);
   }
@@ -210,7 +226,7 @@ export class HostNet {
     if (!this.peer || this.inMatch) return;
     this.arenaIndex = ((arenaIndex % ARENAS.length) + ARENAS.length) % ARENAS.length;
     this.inMatch = true;
-    this.broadcast([MSG.START, this.arenaIndex]);
+    this.broadcast([MSG.START, this.arenaIndex, this.modeIndex]);
   }
 
   broadcastRematch(): void {
@@ -268,6 +284,26 @@ export class HostNet {
       events.push([e.kind, e.slot, round1(e.x), round1(e.y), round2(e.power), round2(e.dirX), round2(e.dirY)]);
     }
 
+    // Infection is host-authoritative like every other hit. The colony, the clock and
+    // the shared clear meter travel with the snapshot; guests never simulate a virus.
+    let infection: number[] | null = null;
+    const viruses: number[][] = [];
+    if (world.infectionMode) {
+      infection = [
+        round3(world.infectionProgress),
+        round2(world.gauntletTime),
+        world.infectionKills,
+        world.infectionCleared ? 1 : 0,
+        world.infectionFailed ? 1 : 0,
+        world.infectionOver ? 1 : 0,
+      ];
+      for (let i = 0; i < world.viruses.length; i++) {
+        const v = world.viruses[i];
+        if (!v.active) continue;
+        viruses.push([i, round1(v.x), round1(v.y), round3(v.phase), round1(v.radius), round2(v.spawnT), round2(v.hitFlash)]);
+      }
+    }
+
     const packet: unknown[] = [
       MSG.SNAPSHOT,
       this.seq,
@@ -280,6 +316,8 @@ export class HostNet {
       players,
       projectiles,
       events,
+      infection,
+      viruses,
     ];
     this.broadcast(packet);
   }
@@ -409,7 +447,7 @@ export class HostNet {
 export interface GuestCallbacks {
   onLobby: (state: LobbyState) => void;
   onJoined: (slot: number) => void;
-  onStart: (arenaId: number) => void;
+  onStart: (arenaId: number, mode: number) => void;
   onSnapshot: (snapshot: Snapshot) => void;
   onRematch: () => void;
   onClosed: (reason: string) => void;
@@ -427,6 +465,10 @@ export interface Snapshot {
   players: number[][];
   projectiles: number[][];
   events: GameEvent[];
+  /** [progress, clock, kills, cleared, failed, over] or null outside infection. */
+  infection: number[] | null;
+  /** [id, x, y, phase, radius, spawnT, hitFlash]. Guest renders these only. */
+  viruses: number[][];
   time: number;
 }
 
@@ -522,7 +564,7 @@ export class GuestNet {
         break;
       }
       case MSG.START: {
-        this.callbacks.onStart(Number(data[1]) | 0);
+        this.callbacks.onStart(Number(data[1]) | 0, Number(data[2]) | 0);
         break;
       }
       case MSG.REMATCH: {
@@ -593,6 +635,7 @@ export function parseLobby(data: unknown[]): LobbyState {
     canStart: !!data[2],
     players,
     arenaId: Number(data[5]) | 0,
+    mode: Number(data[6]) === 1 ? 1 : 0,
   };
 }
 
@@ -625,6 +668,8 @@ export function parseSnapshot(data: unknown[]): Snapshot | null {
     players: (data[8] as number[][]).filter((p) => Array.isArray(p)),
     projectiles: (data[9] as number[][]).filter((p) => Array.isArray(p)),
     events,
+    infection: Array.isArray(data[11]) ? (data[11] as number[]) : null,
+    viruses: Array.isArray(data[12]) ? (data[12] as number[][]).filter((v) => Array.isArray(v)) : [],
     time: performance.now() / 1000,
   };
 }
@@ -632,7 +677,7 @@ export function parseSnapshot(data: unknown[]): Snapshot | null {
 // --- Guest view ---------------------------------------------------------------------------
 
 export class NetView {
-  mode = 'match' as const;
+  mode: GameMode = 'match';
   /** Snapshots do not carry programs, so a networked room identifies by slot. */
   readonly online = true;
   readonly arena: ArenaDef;
@@ -646,7 +691,17 @@ export class NetView {
   names: string[] = [];
   readonly players: Player[];
   readonly projectiles: Projectile[];
+  readonly viruses: Virus[];
   readonly drone = null;
+  /** Host-authoritative infection readout, mirrored from the snapshot. */
+  infectionMode = false;
+  infectionProgress = 0;
+  infectionKills = 0;
+  gauntletTime = 0;
+  infectionCleared = false;
+  infectionFailed = false;
+  infectionOver = false;
+  gauntletOver = false;
 
   readonly predictor: LocalPredictor;
   private snaps: (Snapshot | null)[] = [null, null, null, null];
@@ -655,13 +710,17 @@ export class NetView {
   private stamp = 0;
   private projStamp = new Int32Array(MAX_PROJECTILES);
 
-  constructor(localSlot: number, arena: ArenaDef = ARENAS[0]) {
+  constructor(localSlot: number, arena: ArenaDef = ARENAS[0], infectionMode = false) {
     this.localSlot = localSlot;
     this.arena = arena;
+    this.infectionMode = infectionMode;
+    this.mode = infectionMode ? 'gauntlet' : 'match';
     this.players = new Array(MAX_PLAYERS);
     for (let i = 0; i < MAX_PLAYERS; i++) this.players[i] = createPlayer(i);
     this.projectiles = new Array(MAX_PROJECTILES);
     for (let i = 0; i < MAX_PROJECTILES; i++) this.projectiles[i] = createProjectile();
+    this.viruses = new Array(INFECTION.maxViruses);
+    for (let i = 0; i < this.viruses.length; i++) this.viruses[i] = createVirus();
     this.predictor = new LocalPredictor(localSlot, arena);
   }
 
@@ -675,6 +734,16 @@ export class NetView {
     this.roundTimer = snap.roundTimer;
     this.roundWinner = snap.roundWinner;
     this.matchWinner = snap.matchWinner;
+    if (snap.infection) {
+      this.infectionMode = true;
+      this.infectionProgress = snap.infection[0] ?? 0;
+      this.gauntletTime = snap.infection[1] ?? 0;
+      this.infectionKills = snap.infection[2] ?? 0;
+      this.infectionCleared = !!snap.infection[3];
+      this.infectionFailed = !!snap.infection[4];
+      this.infectionOver = !!snap.infection[5];
+      this.gauntletOver = this.infectionOver;
+    }
 
     let local: number[] | null = null;
     for (let i = 0; i < snap.players.length; i++) {
@@ -695,6 +764,14 @@ export class NetView {
     this.roundTimer = 0;
     this.roundWinner = -1;
     this.matchWinner = -1;
+    this.infectionProgress = 0;
+    this.infectionKills = 0;
+    this.gauntletTime = 0;
+    this.infectionCleared = false;
+    this.infectionFailed = false;
+    this.infectionOver = false;
+    this.gauntletOver = false;
+    for (let i = 0; i < this.viruses.length; i++) this.viruses[i].active = false;
     this.snapCount = 0;
     this.snapWrite = 0;
     this.snaps[0] = this.snaps[1] = this.snaps[2] = this.snaps[3] = null;
@@ -723,6 +800,19 @@ export class NetView {
     this.roundTimer = b.roundTimer;
     this.roundWinner = b.roundWinner;
     this.matchWinner = b.matchWinner;
+    if (b.infection) {
+      this.infectionProgress = b.infection[0] ?? 0;
+      this.gauntletTime = b.infection[1] ?? 0;
+      this.infectionKills = b.infection[2] ?? 0;
+      this.infectionCleared = !!b.infection[3];
+      this.infectionFailed = !!b.infection[4];
+      this.infectionOver = !!b.infection[5];
+      this.gauntletOver = this.infectionOver;
+    } else if (a?.infection) {
+      this.infectionProgress = a.infection[0] ?? 0;
+      this.gauntletTime = a.infection[1] ?? 0;
+      this.infectionKills = a.infection[2] ?? 0;
+    }
 
     for (let i = 0; i < this.players.length; i++) this.players[i].active = false;
 
@@ -869,6 +959,28 @@ export class NetView {
         view.trailCount = 0;
       }
     }
+
+    // Viruses are visual-only on a guest. The host owns their movement, spawning and
+    // contact; this only interpolates the last two snapshots for a smooth swarm.
+    if (this.infectionMode) {
+      for (let i = 0; i < this.viruses.length; i++) this.viruses[i].active = false;
+      for (let i = 0; i < b.viruses.length; i++) {
+        const raw = b.viruses[i];
+        const id = raw[0] | 0;
+        if (id < 0 || id >= this.viruses.length) continue;
+        const old = a ? findVirus(a.viruses, id) : null;
+        const view = this.viruses[id];
+        view.active = true;
+        view.x = old ? raw[1] + (old[1] - raw[1]) * (1 - alpha) : raw[1];
+        view.y = old ? raw[2] + (old[2] - raw[2]) * (1 - alpha) : raw[2];
+        view.prevX = view.x;
+        view.prevY = view.y;
+        view.phase = raw[3] ?? 0;
+        view.radius = raw[4] ?? 7;
+        view.spawnT = raw[5] ?? 0;
+        view.hitFlash = raw[6] ?? 0;
+      }
+    }
   }
 
   predictStep(input: InputFrame, dt: number): void {
@@ -907,6 +1019,11 @@ function findPlayer(players: number[][], slot: number): number[] | null {
 
 function findProjectile(projectiles: number[][], serial: number): number[] | null {
   for (let i = 0; i < projectiles.length; i++) if ((projectiles[i][0] | 0) === serial) return projectiles[i];
+  return null;
+}
+
+function findVirus(viruses: number[][], id: number): number[] | null {
+  for (let i = 0; i < viruses.length; i++) if ((viruses[i][0] | 0) === id) return viruses[i];
   return null;
 }
 

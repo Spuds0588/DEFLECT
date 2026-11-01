@@ -109,8 +109,9 @@ threats hold.
 - **HEALTH:** enemy hit points are deliberately low so a crowded screen can be cleared. Worms, viruses,
   errors and shooters all die faster than in v0.1.8; firewalls burn enemy factions harder.
 
-Everything is local. The mode does not occupy a room slot and no enemy data crosses the network. Hits
-push, throw a directional spray of rotating triangles, and tilt the view by the amount set in Settings.
+The gauntlet sandbox is local. INFECTION also has a co-op room mode, where the host owns the colony and
+sends it to the other players; no other gauntlet enemy crosses the network. Hits push, throw a directional
+spray of rotating triangles, and tilt the view by the amount set in Settings.
 
 ### Infection
 
@@ -121,6 +122,12 @@ the screen carries the only number that matters: **VIRUS CLEARED**, rising from 
 clock underneath. Clear the last body to stop the clock; the fastest clean sweep per arena is kept on
 the title menu as `BEST`.
 
+Online, host a room and set the lobby's `MODE` to `INFECTION`. Up to eight operators share the same
+colony, clock and clear meter. The host owns every hit and the virus movement; other players render the
+swarm and fight. Each operator has one life: a downed player stays in the room as a spectator, and the
+attempt only fails when nobody is left standing. The host can retry a failed or cleared run for the whole
+room from the result screen; guests can leave. The host records the clear time locally.
+
 - The meter is live, not a quota: `kills / (kills + living)`. A fresh split pushes it back. It only
   reaches 100% when nothing is left alive.
 - Viruses **bite on contact** for one segment and shove you clear; eight tenths of a second of grace keeps
@@ -128,8 +135,9 @@ the title menu as `BEST`.
   swarm is a wall to kite, not a line of jousters.
 - There are no powerup drops, no pickups and no friendly fire, so a best time is about the swarm and your
   kit, not a lucky roll. Arena emitters and floor hazards still run.
-- One life. If your ring breaks the attempt is over and no time is recorded; `RETRY` starts a fresh flood,
-  `ARENA` goes back to the grid and `TITLE` leaves. Nothing is saved mid-run.
+- One life each. Solo, a broken ring ends the attempt and no time is recorded; co-op continues while at
+  least one operator is standing. `RETRY` starts a fresh flood, `ARENA` goes back to the grid and `TITLE`
+  leaves. Nothing is saved mid-run.
 
 ### Campaign
 

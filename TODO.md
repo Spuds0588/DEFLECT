@@ -2,7 +2,35 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-01 (v0.1.70 copy_pasta name)
+Last updated: 2026-11-01 (v0.1.71 infection co-op)
+
+---
+
+## v0.1.71 — INFECTION online co-op (2026-11-01)
+
+### Built
+- [x] Lobby `MODE: VERSUS / INFECTION` toggle, host-owned and mirrored to guests in the lobby packet
+- [x] Host infection world keeps every connected operator on the roster, spreads the opening 24-virus
+      flood around their spawns, and retargets the colony at the nearest live runner
+- [x] Infection snapshots carry the shared clear meter, clock, kills and compact virus rows; `NetView`
+      renders and interpolates the colony while the host owns all movement and contact
+- [x] A downed operator remains a spectator; the run fails only when no runner is alive. Host retry
+      rebuilds the world and broadcasts `REMATCH`; guests get a leave action
+- [x] Build stamp 0.1.71 and docs (AGENTS D9/D32, README, GAME_GUIDE)
+
+### Verification
+- [x] `npm run build` clean (613.78 kB JS / 170.20 kB gzip; 48.60 kB CSS / 10.90 kB gzip)
+- [x] `.tmp/check-infection-coop.ts`: 21/21 (roster, shared flood, nearest-target setup, spectator death,
+      last-runner failure, snapshot readout, virus placement, rematch clear)
+- [x] `.tmp/check-infection.ts`: 19/19 solo regression
+- [x] Live PeerJS harness: lobby mode and `START` mode round-trip, a real guest joins slot 1, and the
+      snapshot carries 2 players, 24 virus rows and a 1.5 s infection clock
+- [ ] Visible two-window playtest on production: guest death spectate and host retry
+
+### Next
+- [ ] Playtest difficulty with two runners: the opening flood is per-player, so confirm the shared 44 cap
+      still leaves enough room to kite rather than turning a split into a stationary crossfire
+- [ ] Decide whether the guest should see the host's best time in the result overlay
 
 ---
 

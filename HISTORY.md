@@ -3331,3 +3331,34 @@ arena is still blocked on a layout brief.
 CSS). Production select card and How to Play roster read `COPY_PASTA.EXE`.
 
 **Next:** the arena layout brief is still outstanding; Copy Pasta's first human playtest is still pending.
+
+## 2026-11-01 — INFECTION online co-op (v0.1.71)
+
+**Goal:** infection was shipped as a solo mode; it is also a multiplayer mode. Add it to online rooms
+without a second simulation or a new transport.
+
+- The room lobby now carries a host-owned `MODE: VERSUS / INFECTION` toggle in the lobby packet and in
+  `START`. Guests see the mode read-only. Versus rooms are unchanged.
+- The host builds the infection `World('gauntlet', …, infectionMode=true)` with every connected operator.
+  Infection setup now preserves connected guests through the gauntlet roster reset and places the squad
+  on the arena's spawn points instead of deactivating slots 1+.
+- The opening 24-virus flood is distributed around each runner's spawn. Viruses choose the nearest live
+  player; contact checks every live runner; the single-target charge stays disabled in infection.
+- A downed runner stays active as a spectator and the attempt fails only when no player is left standing.
+  The host's result overlay records the clear and offers `RETRY` (rebuild + `REMATCH`) and `LOBBY`; a guest
+  gets `LEAVE ROOM`.
+- Infection snapshots add `infection` (`progress, clock, kills, cleared, failed, over`) and compact virus
+  rows (`id, x, y, phase, radius, spawnT, hitFlash`). `NetView` mirrors the readout and interpolates the
+  colony for rendering only. No other gauntlet entity enters the packet.
+- Build stamp 0.1.71.
+
+**Verification:** `npm run build` clean: 613.78 kB JS / 170.20 kB gzip, 48.60 kB CSS / 10.90 kB gzip.
+`.tmp/check-infection-coop.ts` 21/21: guest slot survives setup, both runners spawn, 24 opening viruses
+split around them, co-op clock and budding run, a downed guest stays on the roster without failing the
+run, the last death fails it, a guest view mirrors progress/clock/kills and places two virus rows, and a
+rematch clears the colony and readout. `.tmp/check-infection.ts` still passes 19/19 for solo infection.
+A live PeerJS harness in the dev page connected a real host and guest: the guest saw lobby mode 1, `START`
+carried arena 0 and mode 1, and the decoded snapshot had 2 players, 24 virus rows and a 1.5 s clock.
+
+**Next:** two-browser production pass on the lobby toggle, guest mirror, spectator death and host retry;
+then tune the shared 44-virus cap for two runners. The arena layout brief is still outstanding.

@@ -52,6 +52,10 @@ export interface RenderState {
   /** INFECTION run: the top-centred clear meter replaces the gauntlet warning strip. */
   infectionMode?: boolean;
   infectionProgress?: number;
+  infectionKills?: number;
+  infectionCleared?: boolean;
+  infectionFailed?: boolean;
+  infectionOver?: boolean;
   gauntletKills?: number;
   wave?: number;
   waveBannerT?: number;

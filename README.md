@@ -115,8 +115,8 @@ scheduler or garbage-collection outlier, not steady cost; the guardrail is the a
   so a high-DPI phone does not pay for 3× or 4× pixels it cannot resolve.
 - **Cheap AI.** Bots replan on a timer with a preallocated per-arena navigation grid and line-of-sight
   shortcuts, never a full-grid search per tick.
-- **Local modes pay no network cost.** Training, bot matches, the gauntlet, the infection clear and the
-  campaign never serialize or send a packet; online is opt-in.
+- **Local modes pay no network cost.** Training, bot matches, the gauntlet, the campaign and solo
+  infection never serialize or send a packet; online co-op is opt-in.
 - **Defensive catch-up.** The four-step clamp, a 100 ms delta cap and render interpolation keep a stalled
   tab from snowballing.
 
@@ -141,6 +141,9 @@ authority:
 - **Inputs up, snapshots down.** Guests send their `InputFrame` at 60 Hz. The host runs all physics, hit
   detection, scoring and round flow, then broadcasts a 30 Hz snapshot as nested numeric arrays serialized
   with BinaryPack. No JSON on the wire.
+- **Two room modes.** The host's lobby toggle selects `VERSUS` or `INFECTION`. Infection runs the gauntlet
+  colony on the host; its snapshot also carries the shared clear meter and compact virus rows, so guests
+  render the swarm without simulating it. Dead operators spectate until the last runner falls.
 - **Local feel.** A guest predicts only its own movement against the shared arena, and interpolates every
   other body from a 65 ms snapshot buffer. The host never predicts; it owns the result.
 - **Bandwidth.** A full 8-player, 48-projectile snapshot measures **2.45 KB** packed (one event included),
@@ -149,9 +152,10 @@ authority:
   host's upload that runs out first, not the protocol.
 - **Failure behavior.** If the host closes the tab the room ends; guests get a disconnect state. A guest
   leaving frees its slot. There is no migration and no dedicated server.
-- **What is not networked yet.** Competitive rooms carry match state only: no programs, kits, gauntlet
-  threats, pickups or arena animation phase. Online opponents currently use slot identity and Probe's
-  kit, and local-only content stays local. Server hosting and richer snapshots are separate future work.
+- **What is not networked yet.** Versus rooms carry match state only; infection co-op adds just its
+  clear readout and virus colony. No programs, kits, pickups, campaign state, most gauntlet threats or
+  arena animation phase cross the wire. Online opponents currently use slot identity and Probe's kit.
+  Server hosting and richer snapshots are separate future work.
 
 The same 4-character room join path is the intended cross-platform layer for native builds (see the
 roadmap): a Tauri app and a browser both speak WebRTC.

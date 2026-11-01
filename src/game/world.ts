@@ -584,7 +584,35 @@ export class World {
    * still run: they are part of the route.
    */
   private setupInfection(): void {
+    // Gauntlet setup parks slots 1+ because a solo run is one body. Infection is also a
+    // co-op mode, so remember the connected guests before that reset and put them back.
+    const roster: number[] = [];
+    for (let i = 1; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (p.active && p.connected && p.name) roster.push(i);
+    }
     this.setupGauntlet();
+    for (let i = 0; i < roster.length; i++) {
+      const p = this.players[roster[i]];
+      p.active = true;
+      p.connected = true;
+      p.alive = true;
+      p.hp = p.maxHp;
+      p.thrall = false;
+    }
+
+    const active: Player[] = [];
+    for (let i = 0; i < this.players.length; i++) if (this.players[i].active) active.push(this.players[i]);
+    computeSpawns(Math.max(1, active.length), this.arena, this.spawnX, this.spawnY);
+    for (let i = 0; i < active.length; i++) {
+      const p = active[i];
+      const sx = this.spawnX[i];
+      const sy = this.spawnY[i];
+      this.spawnX[p.slot] = sx;
+      this.spawnY[p.slot] = sy;
+      clearPlayerForSpawn(p, sx, sy, Math.atan2(this.centerY - sy, this.centerX - sx));
+    }
+
     this.infectionKills = 0;
     this.infectionCleared = false;
     this.infectionFailed = false;
@@ -594,12 +622,20 @@ export class World {
     this.wave = 1;
     this.waveBannerT = 0;
 
-    const p = this.players[0];
+    // A shared flood: each body gets a slice of the opening colony in a complete ring
+    // around its own spawn, so a split-up squad starts the clear from both sides.
     let spawned = 0;
-    for (let i = 0; i < INFECTION.startViruses; i++) {
-      const angle = (i / INFECTION.startViruses) * Math.PI * 2 + this.rng.range(-0.18, 0.18);
-      const dist = this.rng.range(INFECTION.startRadiusMin, INFECTION.startRadiusMax);
-      if (this.spawnVirus(p.x + Math.cos(angle) * dist, p.y + Math.sin(angle) * dist)) spawned++;
+    const squad = Math.max(1, active.length);
+    for (let pi = 0; pi < squad; pi++) {
+      const p = active.length > 0 ? active[pi] : this.players[0];
+      const from = Math.floor((INFECTION.startViruses * pi) / squad);
+      const to = Math.floor((INFECTION.startViruses * (pi + 1)) / squad);
+      const count = Math.max(1, to - from);
+      for (let j = 0; j < count; j++) {
+        const angle = (j / count) * Math.PI * 2 + this.rng.range(-0.18, 0.18);
+        const dist = this.rng.range(INFECTION.startRadiusMin, INFECTION.startRadiusMax);
+        if (this.spawnVirus(p.x + Math.cos(angle) * dist, p.y + Math.sin(angle) * dist)) spawned++;
+      }
     }
     // A failed spawn is only possible on a degenerate arena; the run still starts and
     // the first growth beat seeds the colony.
@@ -1601,6 +1637,12 @@ export class World {
     p.active = false;
     p.connected = false;
     p.alive = false;
+    // If the departing body was the last active runner, the co-op attempt is over
+    // even though no virus landed the final blow.
+    if (this.infectionMode && !this.infectionOver && this.aliveCount() === 0) {
+      this.infectionFailed = true;
+      this.gauntletOver = true;
+    }
   }
 
   resetMatch(): void {
@@ -7457,6 +7499,21 @@ export class World {
         this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
         return;
       }
+      if (this.infectionMode) {
+        // Co-op infection: a downed body stays on the roster as a spectator. Only the
+        // last standing runner ends the attempt, and one death never deactivates a guest.
+        let standing = 0;
+        for (let i = 0; i < this.players.length; i++) {
+          const other = this.players[i];
+          if (other.active && other.alive) standing++;
+        }
+        if (standing === 0) {
+          this.infectionFailed = true;
+          this.gauntletOver = true;
+        }
+        this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
+        return;
+      }
       if (this.mode === 'gauntlet' && p.slot > 0) {
         if (this.attractMode && p.slot < this.attractSquad) {
           p.respawnT = TRAINING.playerRespawn;
@@ -8776,7 +8833,7 @@ export class World {
     let alive = 0;
     for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) alive++;
 
-    if (this.infectionStarted && alive === 0) {
+    if (this.infectionStarted && alive === 0 && !this.infectionFailed) {
       this.infectionCleared = true;
       this.gauntletOver = true;
       return;
@@ -10605,7 +10662,23 @@ export class World {
       v.vy = 0;
       return;
     }
-    const p = this.players[0];
+    // Infection hunts the nearest live runner, not slot 0. Versus virus behaviour is
+    // unchanged because a normal match only ever has one local body here.
+    let p = this.players[0];
+    if (this.infectionMode) {
+      let pScore = Infinity;
+      for (let i = 0; i < this.players.length; i++) {
+        const other = this.players[i];
+        if (!other.active || !other.alive || other.cloakT > 0) continue;
+        const sdx = other.x - v.x;
+        const sdy = other.y - v.y;
+        const sd2 = sdx * sdx + sdy * sdy;
+        if (sd2 < pScore) {
+          pScore = sd2;
+          p = other;
+        }
+      }
+    }
     let targetWorm = -1;
     let targetPlayer = false;
     let lureTarget = false;
@@ -10625,6 +10698,8 @@ export class World {
         ty = p.y;
       }
     }
+    // A worm is only a better meal than the nearest runner, never than a teammate who
+    // happens to be closer. The biases still apply exactly as in the solo sandbox.
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active || w.infected) continue;
@@ -10781,19 +10856,22 @@ export class World {
       }
     }
 
-    if (p.alive && p.cloakT <= 0 && p.iframes <= 0 && v.contactCd <= 0) {
-      const pdx = p.x - v.x;
-      const pdy = p.y - v.y;
-      const rr = v.radius + PLAYER.radius;
-      if (pdx * pdx + pdy * pdy <= rr * rr) {
-        v.contactCd = VIRUS.contactCooldown;
-        if (this.infectionMode) {
-          // A flood cannot all commit the single-target charge at once, so the swarm
-          // bites on contact instead. The shared grace keeps sixteen bodies from
-          // stacking three hits into one frame; the shove is what opens the escape.
+    if (this.infectionMode) {
+      // A flood cannot all commit the single-target charge at once, so the swarm bites
+      // on contact instead. Every live teammate is a valid victim; the shared grace
+      // keeps sixteen bodies from stacking three hits into one frame.
+      if (v.contactCd <= 0) {
+        for (let i = 0; i < this.players.length; i++) {
+          const other = this.players[i];
+          if (!other.active || !other.alive || other.cloakT > 0 || other.iframes > 0) continue;
+          const pdx = other.x - v.x;
+          const pdy = other.y - v.y;
+          const rr = v.radius + PLAYER.radius;
+          if (pdx * pdx + pdy * pdy > rr * rr) continue;
+          v.contactCd = VIRUS.contactCooldown;
           const d = Math.hypot(pdx, pdy) || 1;
           this.damagePlayer(
-            p,
+            other,
             INFECTION.contactDamage,
             -1,
             pdx / d,
@@ -10802,10 +10880,17 @@ export class World {
             SRC.VIRUS,
             this.viruses.indexOf(v),
           );
-          p.iframes = Math.max(p.iframes, INFECTION.hitGrace);
-        } else {
-          this.addInfection(GAUNTLET.infectionPerTouch, p.x, p.y);
+          other.iframes = Math.max(other.iframes, INFECTION.hitGrace);
+          break;
         }
+      }
+    } else if (p.alive && p.cloakT <= 0 && p.iframes <= 0 && v.contactCd <= 0) {
+      const pdx = p.x - v.x;
+      const pdy = p.y - v.y;
+      const rr = v.radius + PLAYER.radius;
+      if (pdx * pdx + pdy * pdy <= rr * rr) {
+        v.contactCd = VIRUS.contactCooldown;
+        this.addInfection(GAUNTLET.infectionPerTouch, p.x, p.y);
       }
     }
 
