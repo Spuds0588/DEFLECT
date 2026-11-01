@@ -34,7 +34,10 @@ export class ArenaNav {
   private generation = 0;
 
   constructor(arena: ArenaDef) {
-    const solids = arenaSolids(arena);
+    // Floor holes are not body blockers for players (a dash can cross one), but a bot
+    // route should not walk through them. Bake static voids into the nav grid so A*
+    // routes around the rim instead of relying on the near-field repulsion alone.
+    const solids = arenaSolids(arena).concat(arena.voids ?? []);
     this.bounds = arena.bounds;
     this.cols = Math.max(1, Math.floor((this.bounds.right - this.bounds.left) / CELL));
     this.rows = Math.max(1, Math.floor((this.bounds.bottom - this.bounds.top) / CELL));

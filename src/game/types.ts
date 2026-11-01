@@ -6,7 +6,7 @@ export type GameMode = 'match' | 'training' | 'gauntlet';
  * Campaign script inside a gauntlet-mode world. `cleared` and `failed` set
  * `gauntletOver`, which freezes the arena under the DOM result overlay.
  */
-export type CampaignPhase = 'none' | 'calibration' | 'drill' | 'breach' | 'assault' | 'cleared' | 'failed';
+export type CampaignPhase = 'none' | 'calibration' | 'release' | 'briefing' | 'drill' | 'breach' | 'assault' | 'cleared' | 'failed';
 
 export interface InputFrame {
   /** Movement / facing vector, magnitude <= 1. */
@@ -79,6 +79,12 @@ export const SRC = {
   EMITTER: 9,
   /** Arena feed pipe: a hostile file box or its intake. */
   PIPE: 10,
+  /** Phone-pad key slam. No body, so the death camera falls through. */
+  KEYPAD: 11,
+  /** Document-scanner read line. No body, so the death camera falls through. */
+  SCANNER: 12,
+  /** Browser cursor click slam. No body, so the death camera falls through. */
+  BROWSER: 13,
 } as const;
 
 export const EV = {
@@ -917,6 +923,10 @@ export interface LobbyState {
   arenaId: number;
   /** 0 versus, 1 infection. Host-owned; guests read it. */
   mode: number;
+  /** Games in the current series: 1, 3 or 5. Host-owned. */
+  series: number;
+  /** 0 random maps, 1 fixed to the setup arena. Host-owned. */
+  mapRule: number;
 }
 
 export type Pillar = Rect;

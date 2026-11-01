@@ -15,7 +15,7 @@ there is no runtime fetch, which keeps snapshots, bot determinism and the PWA ca
 | `programs.json` | `WEDGE`, `FISHER`, `SWEEP`, `TOXIC`, `KABOOM`, `BUFFER`, `ATOMIZE` kits |
 | `threats.json` | `GAUNTLET` wave pacing, `WORM`, `VIRUS`, `SENTRY`, `CASCADING_ERROR`, `THRALL`, `FIREWALL` |
 | `campaign.json` | `CAMPAIGN` node pacing, drill/breach beat and score weights |
-| `world.json` | `CAMERA`, `FALL`, `FILE_PROP`, `ARENA`, `TRAVERSE`, `EMITTER`, `POWERUP`, `ROUND`, `TRAINING`, `NET`, `ATTRACT`, `HAPTICS` |
+| `world.json` | `CAMERA`, `FALL`, `FILE_PROP`, `ARENA`, `KEYPAD`, `SCANNER`, `BROWSER`, `TRAVERSE`, `EMITTER`, `POWERUP`, `ROUND`, `TRAINING`, `NET`, `ATTRACT`, `HAPTICS` |
 
 ## Units
 
@@ -40,7 +40,15 @@ Keep gameplay invariants in `AGENTS.md` and in the system code, not in this fold
 break while tuning:
 
 - Bomb types 8 and 9 are never deflectable; every deflect/guard branch must exclude them.
+- A reflected shot resets to `BOLT.reflectTtl`, adds 1 damage per catch (`BOLT.damage + proj.deflects`) and
+  gains speed up to `BOLT.maxSpeed`. Do not add a separate near/far lifetime for returns.
 - A guard reflection leaves at `PLAYER.laserReflectAngle` and never returns to the caster.
+- Probe's mine is a persistent trap: `MINE.maxActive` caps one owner's live mines and a fourth retires
+  the oldest. Do not add a timed fuse back; a mine waits until a hostile enters `triggerRadius`.
+- Health is an identity value, not a balance knob. Do not change `PLAYER.hp`, `ProgramDef.healthSegments`,
+  or enemy/threat HP without explicit user approval. Tune damage, speed, cadence, cooldowns, movement and
+  telegraph timing instead. Bad Lag is the standard three-segment program; its survivability comes from
+  the faster hourglass and longer time windows (D21).
 - Arena emitters are local gauntlet/training hazards; a hosted match never arms them. Their guard return
   follows the guard's facing, not `PLAYER.laserReflectAngle` (D27).
 - Health-segment hulls must clear the core mark (see D4); do not shrink a `coreScale` to fit a bigger

@@ -52,9 +52,9 @@ Consequences that are part of the design, not bugs:
 - You must face a threat by moving toward it, which puts you in danger.
 - Dash direction is the **last nonzero movement direction**, not facing. Target lock can hold facing on
   an enemy while you strafe; dashing then goes sideways, not at the target.
-- Target lock (`LT`) holds facing only. It never grants a second aim stick, and the beam still sweeps
-  at `PLAYER.laserTurnRate`. `RB` and right-stick left/right step the held lock around the available
-  targets while `LT` stays down; that is target selection, not aim.
+- Target lock (`LT` hold, `Q` toggle) holds facing only. It never grants a second aim stick, and the
+  beam still sweeps at `PLAYER.laserTurnRate`. `RB` and right-stick left/right step the lock around the
+  available targets while it is active; that is target selection, not aim.
 
 ### D3 — N players, host-authoritative star (decided 2026-10-28)
 Not a two-player game. Target cap is **8** for v1 (`MAX_PLAYERS` in `src/game/config.ts`), measured rather
@@ -82,10 +82,10 @@ and do not occupy room slots. A future host-side bot slot is separate work.
 
 ### D4 — Identity: program silhouette + glyph, slot palette online (revised 2026-10-29)
 Every avatar carries a colored outline with a geometric glyph at its center. The **local** avatar's
-outline is split into its health segments (three for most programs, six for Atomize); a hit drops that
-segment to a faint ghost, so the silhouette stays whole and low health still reads at a glance. Do not hide lost segments entirely. Local bots are
-player characters too: they draw the same program hull, three health segments and glow, with their own
-damage. They keep no heading arrow, energy arc or readiness column, and their action effects still
+outline is split into its health segments (three for most programs; Atomize and Compress have six); a hit
+drops that segment to a faint ghost, so the silhouette stays whole and low health still reads at a
+glance. Do not hide lost segments entirely. Local bots are player characters too: they draw the same
+program hull and health segments, with their own damage. They keep no heading arrow, energy arc or readiness column, and their action effects still
 render. Networked guests keep the slot hull until `Snapshot` carries programs.
 Enemy damage visuals are undecided, so do not add health pips back for threat families until that pass
 happens.
@@ -96,15 +96,15 @@ an amber diamond with `▣`, Fisher an indigo hex reel with `≈`, Sweep a lime 
 with `☠`, Kaboom a red-orange triangle built from three outward triangles with a bomb at the center,
 Bad Lag six clock faces on a ring with a pinched hourglass, Atomize three overlapping white
 ellipse orbits with an atom at the center, Ghost three outward steel-grey arcs with a closed eye at the
-core, Compress six upright Z marks on a ring, Pinball a cabinet-blue circular ring with a vector
-circled X at the core, and Aim Bot a signal-red scope ring split into three brackets with one inward
+core, Compress six upright Z marks on a ring, Pinball three cabinet-blue flipper bats on a ring with a
+vector circled X at the core, and Aim Bot a signal-red scope ring split into three brackets with one inward
 tick per health segment. Probe's mark is a vector compass rose (`drawCompassMark`): a thin housing ring around a four-point
 star, not the old concentric target. Its four tips are symmetric, so the compass never reads as a facing
 arrow. The select screen and the arena share that shape and glyph, so a
 program reads the same in the roster, intro and fight. A program's `glyph` may be a single character, a multi-character text combo, Unicode dingbats/wingdings, or a multi-line ASCII picture; `drawSymbol` scales it to the core and portrait, strips common indentation, and measures the real advance against the symbol font stack (`ui-monospace` first, then `Segoe UI Symbol`, `Noto Sans Symbols 2`, `Apple Symbols`, Wingdings, Webdings) so a wide mark shrinks instead of spilling through the hull. Prefer direction-neutral marks: a pointing glyph at the core reads as facing. Each program also owns `coreScale` so a tight hull keeps clearance from its
 rotating health segments: Probe `1.12`, Wedge `0.88` (the diamond's sides are the tightest core), Fisher
 `1.10`, Sweep `1.06`, Toxic `1.0`, Kaboom `0.76`, Bad Lag `0.72`, Atomize `0.72`, Ghost `0.82`,
-Compress `0.8`, Pinball `1.0` (its circular hull leaves the core clear air), Copy Pasta `0.8` and
+Compress `0.8`, Pinball `1.0` (the flipper bats sit outside the core), Copy Pasta `0.8` and
 Aim Bot `1.0`. The select portrait applies `coreScale` too, at its own poster radius; do not draw the poster mark at full size or the vector centers overlap their hulls. A wide multi-line ASCII mark sets `glyphRadius` (a fraction of `PLAYER.radius`) and
 uses the empty space between the core disc and the hull, with tighter row spacing and a narrower width
 budget; a single glyph keeps the default 0.51. The low-health core keeps a scale floor
@@ -165,6 +165,8 @@ labelled `EASY`, `MEDIUM`, `HARD` and `IMPOSSIBLE` (the last is the reserved cei
 (`DUELIST`, `TRICKSTER`, `SIEGE`). They are local opponents, not a future PvE system; do not give them
 network authority or direct world mutation. AI-owned bolts travel at `BOLT.enemySpeedMult`; bot lead,
 maximum fire range and style engagement range must use that slowed speed, not the human bolt speed. A
+program with its own shot speed or TTL must also feed those values into the brain (Bad Lag's 700-speed,
+2.1-second hourglass is the current example); do not calibrate it against the generic bolt.
 style may not hold outside the distance its own bolt can reach. Bots scale engagement range by program
 and commit to program heavies on a cooldown by holding the power button. Wedge bots turn away from a
 threat to plant the wall between it and themselves, and place one while reloading; Fisher bots drop the
@@ -173,6 +175,11 @@ separate difficulty preferences.
 
 `?autoplay=N` is a QA-only boot hook: it starts a VS BOTS match with bots in every slot, including
 slot 0, and auto-rematches when the match ends. It must stay out of menus and snapshots.
+`?playtest=1` is the designer capture hook: VS BOTS with three bots, three completed rounds on each arena
+in `ARENAS` order, rotating automatically, with a JSON session log saved after every round and offered as
+a download/copy at the end. It is local QA only, never enters menus, `Snapshot` or the service worker
+shell, and it must not become the only way to reach a mode. `PLAYTEST.md` documents the log and why a
+GitHub token never belongs in the client.
 `?gauntlet=1&arena=N&bot=1` is the gauntlet counterpart: it boots a one-life run on an arena and lets a
 `BotBrain` drive the local player. With no player target in the gauntlet, `BotBrain.engageHostiles`
 walks to the nearest live threat and uses ranged and melee. It is a camera-test pilot, not a PvE ally
@@ -181,7 +188,13 @@ controller, and it must not become a menu bot or a networked participant.
 Bot movement around cover uses a precomputed 20-unit occupancy grid per arena plus one reusable A*
 workspace (`src/game/nav.ts`). Routes are planned on a timer or when the target moves, then shortcut by
 line of sight. All path buffers are preallocated per brain; do not allocate or run a full-grid search
-every tick. Do not move pathfinding into `World.step`.
+every tick. Static floor voids are baked into the nav grid so a route goes around a hole; idle drift and
+the chase also steer away from charging emitter lanes. Player movement still treats a void as a drop,
+not a wall. The gauntlet/attract pilot also commits to the program's power attack when a target is in
+range; without that branch the kiosk loop never showed Wedge's plow (or any other heavy), even though the
+duel pilot did. Keep that branch in `engageHostiles`, not only in the player-target path. It must not
+begin or hold a rooted heavy while the compactor is warning or active. Do not move pathfinding into
+`World.step`.
 
 Bots hold **target lock** while they fight and strafe around a standoff range. The lock keeps facing on
 the target, so a shot leaves along facing without the body stepping into it; the spacing error is
@@ -206,6 +219,11 @@ same definition. The room host selects one and sends the id in `START`; snapshot
 Do not reintroduce a global `PILLARS` constant or branch collision on map names. New arenas are content
 entries, not new systems.
 
+`rooms`, `bridges` and `port` are tutorial presentation data, not a second traversal system. Rooms only
+draw floor plates, labels and dressing; the matching `traverse.chasms` are the body blockers and the
+`traverse.bridges` are the walkable spans. A room arena stays local-only (`isOnlineArena` skips `rooms`)
+and never enters host/guest room selection. See D41.
+
 An arena may also carry a `traverse` record: chasms, bridge decks, upper-deck treatment, paired pads and
 linked lift plates. Chasms are **body** blockers, not cover: `arenaSolids()` adds them to `pillars` for
 bodies, bot pathing, spawns and placement, while projectiles and lasers keep using `pillars` alone and fly
@@ -222,7 +240,8 @@ hostile file box and a small threat, and its intake pulls loose files and small 
 hostile file is the normal `Prop` record with `hazard` set, so it uses the existing debris physics and
 damage path rather than a second projectile system. `firewallSwitch` is a floor plate that starts one
 firewall sweep from the opposite wall and rearms after `NETWORK.switchCooldown` (180 s). Both fixtures are
-local content: `onlineArenaIndex` skips an arena with `pipes`, and neither fixture enters `Snapshot`.
+local content: `onlineArenaIndex` skips an arena with `pipes`, and neither fixture enters `Snapshot`. The
+compactor, keypad, scanner and browser are not in this group; their clocks are networked under D40.
 
 ### D9 — Gauntlet is a local threat sandbox (revised 2026-10-29)
 On explicit designer request, hostiles exist in a **GAUNTLET** mode, not in ranked PvP. It is a test bed
@@ -323,7 +342,7 @@ bolt:
   electron that leaves one hand and seeks a target in front of it (see D25), Ghost throws a wide
   chomping mouth that is slower than a bolt but hits for two and dazes (see D26), and Pinball throws a
   long-lived ricochet ball whose damage climbs 1-5 across five bodies (see D31). Aim Bot fires a
-  2000-speed rail round for 8 damage that dies on the first body or solid and never bounces (see D34).
+  2000-speed rail round for 5 damage that dies on the first body or solid and never bounces (see D34).
   Do not restore the old long TTL without reworking the kit.
 - **Melee attack (`B` tap)**: the cone is **180°**. Every quick press is a fast spiked lash that sweeps
   the arc left, right, left. It reflects incoming fire and shoves players and hostiles sideways in the
@@ -341,8 +360,16 @@ bolt:
   incoming angle. The shield visual is one clean crescent: fill, rim and burn-down edge, with no radial
   fan and no cooldown ghost arc beside the avatar. Pinball's shield is the same 180 degrees but wider
   (`1.65x` reach) and longer (`1.85x` duration); read `Player.guardReach`/`guardMax`, not the globals.
+- **Reflected shots:** a catch refills the shot's fuse to `BOLT.reflectTtl` (30 s), so a reflected
+  projectile has no practical distance cap and can cross the arena and come back. Speed keeps multiplying
+  by `BOLT.deflectMult` up to `BOLT.maxSpeed`, and damage becomes `BOLT.damage + proj.deflects`; two
+  catches are 3 damage, enough to delete a three-segment program. The rule applies to guard, lash, bash,
+  net and the Pinball arm. This is keyed to the action, not the character: every playable program
+  reflects with guard and lash. Fisher's web and Pinball's arm are additional kit-owned reflectors;
+  do not gate a shared catch on `PROGRAM_ID.PROBE`. Bombs 8/9 remain unreflectable.
 - **Skill (`Y` tap)**: the program's assigned skill, owned by `PROGRAMS` (`bugKind` is the wire field):
-  Probe's proximity mine, Wedge's **static wall**, Fisher's lure beacon, Sweep's **split brooms**. Sweep
+  Probe's persistent trap mine (64-unit trigger, 132-unit blast; three live, oldest retired on a fourth),
+  Wedge's **static wall**, Fisher's lure beacon, Sweep's **split brooms**. Sweep
   starts two brooms together in front of him and sends them outward along the tangent, shoving bodies and
   hostiles out of the lane before walking through the gap. Wedge plants his bracket shape as
   a solid barrier one body-length behind him (`WEDGE.wall*`): it blocks bodies and reflects shots, so it
@@ -350,16 +377,17 @@ bolt:
   projectile delete; dodge still phases through it. A wall that would land in cover is refused and the
   energy is handed back. Legacy kinds `1` trap, `2` wall shield and `3` ghost remain implemented
   prototypes for future programs; do not expose them as a random roll again. The host owns each player's
-  skill; guests read it from the snapshot. Atomize's skill raises three blue orbital shield balls: each
+  skill; guests read it from the snapshot. Atomize's skill raises two blue orbital shield balls: each
   blocks one full hit or damages the first hostile it touches, and they never expire on their own. Ghost's
   skill cloaks the body for a few seconds: enemies lose the target, shots pass through, and damage is
   skipped (see D26). Pinball plants a flipper arm for 16 s that punts hostile fire and swats bodies at
   other enemies (see D31). Aim Bot raises a visible laser sight for 7 s and loads a three-shot clip that
   bypasses the normal reload (see D34).
-- **Power attack (`Y` hold)**: program-specific heavy. Probe charges for 0.63 s, then **auto-fires**
+- **Power attack (`Y` hold)**: program-specific heavy. Probe charges for 0.45 s, then **auto-fires**
   without waiting for release for 3 s, rooted, sweeping at `PLAYER.laserTurnRate` (0.55 rad/s), piercing
   every enemy in the line. The shaft stops on the first solid surface (see D22), and a raised guard
-  glances it away at an angle instead of letting it pass. Wedge plows forward with a bracket; Fisher draws a
+  glances it away at an angle instead of letting it pass. Releasing `CANDLE` after the beam is live cuts it
+  short, ends the root and starts the full cooldown; this is Probe only. Wedge plows forward with a bracket; Fisher draws a
   **freeform web**; Sweep materializes a giant broom head by sweeping the lane from the side he faces,
   shoving bodies out of the way before the stroke starts, then damages every body the stroke crosses;
   Bad Lag dilates time; Atomize opens a moving orbit field instead of a beam; Ghost arms a jump-scare,
@@ -371,9 +399,15 @@ bolt:
   geometry and enemies; hold after the tap for the charged triangle dash that damages what it crosses.
 
 Health is a fixed segment pool on the local avatar's program outline (`Player.maxHp`: three for most
-programs, six for Atomize). One ordinary hit removes one segment. Do not add a separate health bar beside
-the avatar; the outline is the local readout. Remotes do not show segments until enemy/bot health visuals
-are designed.
+programs, six for Atomize and Compress). Bad Lag uses the standard three. One ordinary hit removes one
+segment. Do not add a separate health bar beside the avatar; the outline is the local readout. Remotes do
+not show segments until enemy/bot health visuals are designed.
+
+**Health is an identity budget, not a balance knob.** Do not change `PLAYER.hp`, a program's
+`healthSegments`, or any enemy/threat HP to fix balance or survivability without explicit user approval.
+Tune damage, projectile speed and lifetime, cadence, cooldowns, movement and telegraph timing instead.
+The existing six-segment Atomize/Compress hulls and enemy HP are grandfathered; they are not permission
+to make future health changes.
 
 ### D12 — Pickups are local content, definitions are data (decided 2026-10-28)
 Healing and timed powerups are a **local training/gauntlet** system for now. They do not enter the network
@@ -443,10 +477,11 @@ line, no grid backdrop, and no footer links. The ASCII logo header belongs to th
 sub-stage hides it (`stage-open` on `#screen-title`) so the reclaimed height goes to the stage content.
 The hub is `SINGLE PLAYER`, `MULTIPLAYER`, `HOW TO PLAY`, `SETTINGS`; callsign editing lives in
 `SETTINGS > SYSTEM`. The Multiplayer stage has exactly two modes: **ONLINE** (host game or join game) and
-**LOCAL** (same screen, not built yet). Local lists `ARENA` and `GAUNTLET` as placeholders that report they
-are not wired; it must not grow a fake player/device setup before local slots exist. Public room discovery
+**LOCAL** (same screen, arena versus). Local's setup stage is the real setup: couch seat rows, an arena
+grid, and a start gate that needs one controller beside the keyboard. Seats, drop-in and the split rules
+live in D18. Local gauntlet co-op is not built. Public room discovery
 is planned around a shared prefix on the 4-character code: a public game opts into the prefix, a private
-game keeps an unprefixed code. Do not add that search UI before the local mode is built. The campaign
+game keeps an unprefixed code. Do not add that search UI yet. The campaign
 blueprint archive is not on this screen. The solo flow is staged and auto-advances: **gameplay mode →
 (training/gauntlet: program select; campaign: save slot) → that mode's setup**. Program select is a card
 grid that grows with `PROGRAMS`. Training: arena with previews →
@@ -517,10 +552,12 @@ link is a `bridge`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   completed level. Slots are local only and never enter `Snapshot`. Do not turn this stage into a
   sector-select screen. The blueprint archive is parked and unlinked while this flow is built; do not
   reattach it to the campaign stage without a decision.
-- The first playable node is **BUILD ROOT** (`src/game/campaign.ts`) on `CROSSROADS`; see D17. It is a
-  scripted gauntlet-mode world, saves the slot on clear, and returns to the slot stage. Only one node is
-  authored, so a cleared slot replays it until the next node lands.- The campaign route plate (`road.ts`) belongs to the between-level transition, not to the archive. Do not mount it in a menu.
-- **Narrative framing (decided 2026-11-01, not built)**: the run opens in the quarantine section of a dev
+- The first playable node is **BUILD ROOT** (`src/game/campaign.ts`) on `QUARANTINE`; see D17 and D41. It
+  is a scripted gauntlet-mode world, saves the slot on clear, and returns to the slot stage. **REBOOT** on
+  `GRID ZERO` is authored but parked with `playable: false` until the route continues; a completed BUILD
+  ROOT slot reports `MORE LEVELS COMING SOON` instead of starting it.
+- The campaign route plate (`road.ts`) belongs to the between-level transition, not to the archive. Do not mount it in a menu.
+- **Narrative framing (first beat built 2026-11-01, v0.1.92)**: the run opens in the quarantine section of a dev
   system. Every roster program is a "bad" program pulled by antivirus and sent to be retrained; the pick is
   choosing which inmate to run. Story arrives in bottom-screen text boxes whose speaker head is a floating
   emoji/Unicode/Wingdings mark: 👮 THE WARDEN (the LOCALHOST sector boss, not a separate character), 🐱 a
@@ -530,6 +567,15 @@ link is a `bridge`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   Beats are cosmetic and must not gate gameplay, or a skipped replay would diverge. Cast, presentation rules
   and open questions live in `CAMPAIGN.md`. Narration is local presentation only: no new `PROGRAMS` entries,
   hulls, hitboxes, `World` bodies or `Snapshot` fields.
+- **Orientation (built v0.1.92)**: `src/game/tutorial.ts` owns a reusable `TutorialRunner` and the first
+  two lessons. `BUILD ROOT` opens with `WARDEN_TUTORIAL`: move, dash, fire, lock, cycle (`R`/`F` on
+  keyboard, `RB`/right stick on pad), melee, then catching one harmless test shot. The six calibration
+  subjects stay dormant in holding until the player arrives, then wake as wave 1; `CALIBRATION_SKILL_TUTORIAL`
+  teaches the skill. Clearing wave 1 powers the sealed cell block down and
+  `CALIBRATION_POWER_TUTORIAL` teaches the heavy over wave 2 (two viruses and a worm). `REBOOT` opens
+  with `KITTY_TUTORIAL`: tap skill, then hold the power attack. Narration lines auto-advance; action
+  steps wait for the input; `SKIP TUTORIAL` ends the lesson and the level continues on the same beat.
+  The story box is DOM, live over play, and local-only; it never pauses `World` and never enters `Snapshot`.
 
 ### D14 — Sweep.exe: broom push kit, clean core mark (built 2026-10-29)
 `SWEEP.EXE` is the fourth program and the roster's **shove** specialist. Identity: lime accent, an
@@ -545,7 +591,7 @@ a bigger forward broom. Every hit locks facing and the hold is still the guard. 
 along the full `SWEEP.bigReach` shaft, not just `PLAYER.swingReach`. The broom is drawn upright in front
 of the avatar (binder on top, bristles under it) and strokes **straight up and down** across the lane; it
 does not swing on a curved arc, and the head never turns over. Hit one strokes down, hit two back up.
-- **Ranged**: a thrown broom head at `SWEEP.shotSpeed` (600, slower than a bolt but fast enough to
+- **Ranged**: a thrown broom head at `SWEEP.shotSpeed` (650, slower than a bolt but fast enough to
 trade shots). It is wide
 (`shotRadius` 18), does 2 damage, stops on the body and shoves hard (`shotKnockback` 1200, the biggest
 ranged shove in the roster), and **dies on geometry** rather than ricocheting. It draws no line trail and no handle: just the same upright comb as the melee, with the
@@ -589,7 +635,7 @@ segments cut cleanly with no frame rim; the trim is half an edge at each segment
   is geometry (`drawSyringe`: flange, plunger, barrel with a venom window, hub and a long needle), not
   the `†` mark, which read as a cross at projectile size. It does not bounce and carries no motion tail;
   a small green halo is the only glow. Its damage is deliberately small because the venom is the payload.
-- **Venom**: 3.5 s, one tick every 0.75 s for 0.34 (about a third of a segment). A hit refreshes the whole
+- **Venom**: 3.5 s, one tick every 0.75 s for 0.4 (about two-fifths of a segment). A hit refreshes the whole
   duration instead of stacking. Poisoned bodies get a pulsing green rim and a flashing `☠` above the
   body — a status mark, not a health pip, so it is allowed on bots and remotes too.
 - **Skill**: a 360° burst at the cast point, damaging and poisoning every body inside `sprayRadius` with
@@ -616,8 +662,8 @@ installed; on a host without Wingdings, `drawBombMark` draws a vector shell inst
 reads as a letter. `document.fonts.check` alone reports true for missing system families, so
 `hasSymbolFont` also compares glyph advances against a definitely-missing family.
 
-- **Ranged**: one slow bomb (type 8, 250 u/s, 1.9 s life). It does no direct-hit damage: it explodes on a
-  body, on cover, or at the end of its fuse, and the blast (52 radius, 1 damage, 520 shove) does the work.
+- **Ranged**: one slow bomb (type 8, 360 u/s, 2.0 s life). It does no direct-hit damage: it explodes on a
+  body, on cover, or at the end of its fuse, and the blast (64 radius, 1 damage, 520 shove) does the work.
   Cover is real for the blast, so a shell that lands behind a pillar clears nothing.
 - **Skill**: a heavy bomb lobbed in an arc (type 9, `lobTime` 0.62 s, `lobRange` 300) that flies over
   pillars, lands at the target distance, and detonates for 2 damage in a 116 blast. It also explodes on
@@ -641,16 +687,22 @@ reads as a letter. `document.fonts.check` alone reports true for missing system 
 
 All numbers live in `tuning/programs.json` under `KABOOM`.
 
-### D17 — First campaign node: BUILD ROOT (built 2026-10-30)
+### D17 — First campaign node: BUILD ROOT; REBOOT parked (built 2026-10-30)
 
-The campaign's first playable level is `BUILD ROOT` (`src/game/campaign.ts`) on `CROSSROADS`. It runs in a
+The campaign's live level is `BUILD ROOT` on `QUARANTINE` (`src/game/campaign.ts`); `REBOOT` on `GRID ZERO`
+is authored but marked `playable: false` until the next route segment ships. They run in a
 `World('gauntlet')` with `campaign = true`, so it reuses the threat simulation and stays local-only; the
 mode string stays `gauntlet` so no threat branch forks. The script lives in `World`, not in `main.ts`.
 
-- **Calibration**: the node opens on six dormant geometric subjects, two each of a blue circle, a red
-  triangle and a yellow rectangle. They wake together after `CALIBRATION.wakeDelay` (6 s), when the player
-  walks inside `CALIBRATION.wakeRadius`, or on the first hit; killing them while dormant is deliberately
-  not allowed, because the eye opening is the lesson. A dormant shape is plain geometry; awake, it
+- **Calibration**: after the Warden's orientation lesson the node holds six dormant geometric subjects,
+  two each of a blue circle, a red triangle and a yellow rectangle, in the square **HOLDING** office. The
+  class wakes together when the player reaches holding (or after `CALIBRATION.entryWait` 18 s, so a player
+  who ignores the prompt cannot soft-lock the node), on a node without an intro after
+  `CALIBRATION.wakeDelay` (6 s), inside `CALIBRATION.wakeRadius`, or on the first hit; killing them while
+  dormant is deliberately not allowed, because the eye opening is the lesson. The class forms two columns
+  in the holding office's lower half, leaving the centre lane for the bridge entry. Waking also hides the
+  three holding civilians, marks their loss with a short burst, and starts `CALIBRATION_SKILL_TUTORIAL`:
+  tap the skill while wave 1 is live. A dormant shape is plain geometry; awake, it
   carries a small red eye and each primary owns one attack: the circle dashes and bounces off walls and
   cover; the triangle never holds still, drifting on a wandering heading at `floatSpeed` while it keeps a
   loose `floatRing` band around the player and turns off a wall before the clamp catches it, so it reads as
@@ -659,10 +711,16 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
   the fight moves); the rectangle does not spin, bobs
   lightly, clones itself directly left and right into an axis-aligned row, then the whole row commits to
   one very fast shared dash. This pack is deliberately **untelegraphed**: no lane, arrow or link lines,
-  because the switch from passive to attacking is the fear beat. Clear all six to start the drill. They
-  reuse sentry kinds 4-8 so every player weapon already hits them, but calibration kills pay no score or
+  because the switch from passive to attacking is the fear beat. The cell block is a solid body while
+  it is sealed. Clear all six and finish the skill beat to make the block fail: `beginCellRelease`
+  removes the bar solid, retracts the bars and spawns wave 2, two viruses and a worm, in the cells.
+  `CALIBRATION_POWER_TUTORIAL` then asks for the heavy; clear wave 2 and finish that lesson before the drill.
+  The six reuse sentry kinds 4-8 so every player weapon already hits them, but calibration kills pay no score or
   pickups, no parents wake the assault counter, and arena emitters stay parked for the whole prologue.
   Everything lives in `CALIBRATION` in `tuning/campaign.json`.
+- **Tutorial route**: `QUARANTINE` stages the basic lesson, the dormant-class reveal and the cell release
+  across four linked rooms; see D41. The six subjects wait in the holding office, not in the player's
+  opening circle, and script_kitty is behind the middle cell bars.
 - **Drill**: 18 s of sparring against the run's bot squad, using the same `BotBrain` inputs as training and
   VS BOTS. A `NO BOTS` run still gets one instructor so the drill has a partner. Death on either side
   respawns on the training timer. The squad forms an arc `CAMPAIGN.drillRing` in front of the player and
@@ -674,10 +732,14 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
 - **Assault**: the opening sentry pack lands on the breach beat, then worms arrive, then a new pack every
   14 s. Campaign waves start at 3 and step every 14 s, so viruses arrive after about 40 s. Clearing 10
   threats clears the node; one death fails it. The objective strip at the bottom is one pip per delete.
-- **Completion**: a clear writes the save slot (level 1, `program`, `players`, `bots`, seconds) and shows
-  the node-cleared overlay; CONTINUE returns to the save-slot stage. Nothing is saved mid-level. A failed
-  node offers RETRY and SLOTS. Only one node is authored, so resuming a cleared slot replays BUILD ROOT;
-  add the next node to `campaign.ts` before promising a route.
+- **Completion**: a clear writes the save slot (`level` = completed count, `program`, `players`, `bots`,
+  seconds) and shows the clear overlay. With only BUILD ROOT live, the overlay reads `MORE LEVELS COMING
+  SOON`, the slot shows `COMPLETE`, and `STORY SLOTS` / `REPLAY` are the actions. Nothing is saved
+  mid-level. A failed node offers RETRY and SLOTS. `PLAYABLE_CAMPAIGN_LEVELS` is the live list; do not
+  re-enable a parked level without checking its clear path.
+- **REBOOT (parked)**: script_kitty's briefing on `GRID ZERO`. It opens with `KITTY_TUTORIAL` (tap skill,
+  then hold the power attack) with no threats in the room, then starts the breach and a four-kill live-fire
+  check. Keep `playable: false` until the route after BUILD ROOT is authored and tested.
 - **Bots are the drill squad, not allies.** `World` has no team model for bot companions yet, so do not
   fake allies by disabling friendly fire. Team ownership is the prerequisite for bots that fight beside
   the player after the breach.
@@ -728,11 +790,17 @@ The camera is part of the read, not a fixed follow. All numbers live in `tuning/
   a narrative beat. Shipped cues: a gauntlet wave glances at the nearest sentry pack outside
   `CAMERA.waveLookAhead`; the campaign breach pushes in 8%. Keep cues short and opt-in; a full blend may
   leave the avatar off frame on purpose.
-- **Split scope**: `Renderer.setLocalSlots([...])` is camera/render plumbing only. Local input slots,
-  same-screen menus and a second human controller are not built; `?split=N` is a QA-only visual hook and
-  stays out of the menus. Slots that are not active fall back to the primary slot. World effect emitters
+- **Split scope (local play built)**: `Renderer.setLocalSlots([...])` is fed by `LocalSeats`
+  (`src/game/localplay.ts`). P1 is keyboard + mouse; every detected gamepad is adopted automatically as
+  P2–P4, on the setup screen and mid-match. A drop-in calls `World.joinLocalPlayer`, which activates a
+  spare slot, keeps the kit already assigned by `botPrograms`, and spawns at the arena point farthest
+  from the field. A disconnect keeps the seat and body through a 0.9 s grace, then zeroes that slot's
+  frame; reconnecting the same pad index resumes it. Frames are written per slot into `localFrames` and
+  passed straight to `World.step`; pads never drive P1 (`Input.keyboardOnly`). One readiness dock per
+  seat, per-pad rumble, and the shared/split camera follow automatically. `?split=N` remains a QA visual
+  hook outside menus. Slots that are not active fall back to the primary slot. World effect emitters
   (slide/broom/toxic dust, projectile and dash trails) run once per frame; only their draw calls run per
-  pane.
+  pane. Local seats, pad ids and frames never enter `Snapshot`; online rooms still have no local slots.
 - **Death spectate**: `damagePlayer` records the attacker family and index (`SRC`) on every hit. While a
   local slot is dead its camera follows a surviving campaign drill partner first, then the killing body
   (player, worm, virus, sentry, cascading error or training drone), then the nearest living player. A
@@ -810,7 +878,7 @@ snapshots do not move. Identity:
 
 - **Hull**: six clock faces, two per health segment, orbiting at `0.78r` with a `0.17r` radius. Each
   face carries a minute and an hour hand at its own angle, so the ring reads as a set of times rather
-  than six dots. Losing a segment removes two whole clocks; the rest stay bright, and the lost clocks
+  than a row of dots. Losing a segment removes two whole clocks; the rest stay bright, and the lost clocks
   still ghost like every other hull. The inner edge is `0.61r`, just outside the `0.6r` core clearance.
 - **Core**: the hourglass is vector, never the `⧗` codepoint. U+29D7 resolves to a colour emoji on some
   systems and paints an opaque tile into the core, so `drawHourglassMark` draws two rounded triangles
@@ -819,22 +887,26 @@ snapshots do not move. Identity:
   keeps clear air between itself and the clock ring. **Do not draw the dark core disc behind it**: Bad Lag
   is the one program whose mark is a solid filled shape, and a disc behind it reads as a black tile. The
   renderer skips the disc for `PROGRAM_ID.BUFFER` only.
-- **Ranged**: one heavy hourglass (type 10), `430 u/s`, wide (`13`), no motion tail, dies on geometry.
-  It passes through up to three bodies (`BUFFER.shotHits`), damaging each once and shoving hard
-  (`780`); every body struck flips `spinDir`, so the mark visibly reverses. It uses the spear's hit
+- **Ranged**: one heavy hourglass (type 10), `740 u/s`, 2.1 s life, wide (`14`), no motion tail, dies on
+  geometry. It passes through up to five bodies (`BUFFER.shotHits`), damaging each for 1.75 and shoving
+  hard (`780`); every body struck flips `spinDir`, so the mark visibly reverses. It uses the spear's hit
   masks per family, and a worm swallows it. Every `type >= 3` deflect branch may turn it into a bolt,
   which is the existing guard/lash rule; types 8/9 remain the never-deflectable exceptions.
-- **Skill**: **fast-forward** for `2.6 s`. Movement, attack rate and every cooldown run at `2.5x` for
+- **Skill**: **fast-forward** for `3.8 s`. Movement, attack rate and every cooldown run at `2.8x` for
   that body only. It is driven by `Player.fastT` (local-only) and a per-player `pdt` that scales
   cooldown/attack timers; `Player.speedMult` scales walking only, so dash and plow keep their committed
-  distance. The duration runs on the real clock.
-- **Power**: **time dilation** for `5 s`. Every body except the caster, every hostile projectile, and the
-  whole gauntlet/drone simulation run at `0.3x` (`World.timeSlowT`/`timeSlowOwner`). The field runs on
-  the real clock and never enters `Snapshot`; a guest never sees it because online still runs Probe.
-  The renderer washes the frame edges in Bad Lag pink while it is live and marks the caster's dock as the
-  live heavy.
+  distance. The duration runs on the real clock. Its skill cooldown is 7.5 s.
+- **Power**: **time dilation** for `6.2 s`. Every body except the caster, every hostile projectile, and the
+  whole gauntlet/drone simulation run at `0.25x` (`World.timeSlowT`/`timeSlowOwner`). The field runs on
+  the real clock and never enters `Snapshot`; a guest never sees it because online still runs Probe. The
+  charge takes 0.45 s and the cooldown is 7.25 s. The renderer washes the frame edges in Bad Lag pink while
+  it is live and marks the caster's dock as the live heavy.
 - **Bots**: tap fast-forward when a target sits 40–320 units away; the generic heavy hold builds the
-  dilation. Both ride the same `InputFrame` path as a human.
+  dilation. Bot lead and engagement range use the true 740-speed, 2.1-second hourglass. Both ride the same
+  `InputFrame` path as a human.
+- **Durability**: three health segments, the standard roster pool. The kit has no shield, burst clear or
+  escape skill; survivability comes from the faster/longer fast-forward and the stronger dilation, not a
+  larger health pool. Do not add a health segment without explicit user approval.
 
 All numbers live in `tuning/programs.json` under `BUFFER`. The kit is local-only like every other program.
 
@@ -935,13 +1007,13 @@ respawn and damage read follows. Do not hard-code six in the damage path.
   nucleus and three orbit strokes in vector, so the `⚛` codepoint can never land as a colour emoji.
 - **Ranged**: one electron per throw, alternating hands (`Player.atomSide`). The ball spawns from the left
   or right side of the body with the launch angle tilted **inward** by `ATOMIZE.shotArcAngle`, so the two
-  shots cross the body before the seek bends them forward. It is type `11`, `480 u/s`, 1 damage, no
+  shots cross the body before the seek bends them forward. It is type `11`, `480 u/s`, 0.72 damage, no
   geometry piercing. `findAtomTarget` picks the nearest body in a forward cone (`shotSeekRange`,
   `shotSeekDot`) with line of sight, and `steerAtomBolt` turns toward it at `shotTurn`. The ball cycles
   yellow, green and blue; its long white trail is what draws the arc. Cover blocks the seek, so it cannot
   curve through a wall. Do not route type 11 through `steerPathBolt` (the PATHFIND powerup's axis search);
   it carries `homing` as a seek flag, and the path steer is type 0 only.
-- **Skill**: three blue balls take an orbit at `ATOMIZE.ballOrbit` and spin at `ballSpin`. They have no
+- **Skill**: two blue balls take an orbit at `ATOMIZE.ballOrbit` and spin at `ballSpin`. They have no
   timer. Each ball is spent on the first hostile body it touches (1 damage, `ballKnockback`) or blocks one
   full hit on the avatar before health or campaign damage is recorded (`damagePlayer` checks
   `atomBalls`). Venom chip and the void are not full hits and are never shielded. A second tap while any
@@ -978,13 +1050,13 @@ path never touches the core mark; `coreScale` is `0.82` so the lashes keep clear
   jaw with sharp triangle teeth the whole program uses. A hit dazes the victim: `shotDaze` 0.7 s at
   `shotDazeSlow` 0.55 movement. The daze is a heavy-footed slow, not a root, so the victim can still turn
   and answer late.
-- **Skill**: `cloakT` for `cloakTime` 3.5 s. `phased()` gates `damagePlayer`, so shots, blasts and
+- **Skill**: `cloakT` for `cloakTime` 3.2 s. `phased()` gates `damagePlayer`, so shots, blasts and
   contact damage skip the body; AI target picks and sentry/worm/virus acquisition skip a cloaked player,
   while the local renderer keeps a faint dashed readout so the owner can navigate. Attacking does not break
   the cloak. A fall takes the cloak with it: the floor is not a hit and does not respect iframes. Cloak and
   the legacy skill-3 ghost timer share the same hit gate; do not add a second invisibility flag.
 - **Power**: hold the heavy for `scareChargeTime` 0.45 s to re-cloak and arm the jump-scare for
-  `scareWindow` 3.2 s. While armed, **any** action press (`BOLT`, `SWING`, `CANDLE` or `DASH`) fires it,
+  `scareWindow` 3.0 s. While armed, **any** action press (`BOLT`, `SWING`, `CANDLE` or `DASH`) fires it,
   after which the press is consumed so the same button cannot also act; if the window expires it fires
   nothing. The burst is a cover-respecting `explodeBlast` at `scareRadius` 210, 2 damage and
   `scareKnockback` 1200, drops the cloak, and stamps `SCARE_FACE` at the burst point for `faceTime`
@@ -1165,10 +1237,13 @@ the plate ends. Do not add a second circular-bound check in a family branch.
 ### D31 — PINBALL.EXE: ricochet ball, flipper arm, giant ball (built 2026-10-31)
 
 `PINBALL.EXE` is the roster's **ricochet** program (id 10, `bugKind` 13). Identity:
-`PROGRAM_COLORS.pinball` (`#4d8bff`, cabinet blue), a circular three-arc hull, and a vector circled X at
+`PROGRAM_COLORS.pinball` (`#4d8bff`, cabinet blue), a three-flipper hull, and a vector circled X at
 the core. The X is drawn (`drawPinballMark`), not the `⊗` codepoint, so the stamp is identical on every
-host and at every hull size; `⊗` is only the text metadata glyph. `coreScale` is 1.0 because a circular
-hull already leaves the core clear air. Do not put the mark behind the hull segments at low health.
+host and at every hull size; `⊗` is only the text metadata glyph. The three health bats use
+`pathPinballFlipper`, the same tapered paddle as the deployed skill arm. Melee replaces the shared lash
+with a two-flipper snap hinged at the body's sides. The ranged and super balls are solid glossy spheres
+with a fixed top reflection, not chrome rings. `coreScale` is 1.0 because the bats sit outside the core.
+Do not put the mark behind the hull segments at low health.
 
 - **Three dodges.** `Player.dashMax` owns the charge cap (2 for every other program, `PINBALL.dashCharges`
   3 here). Recharge, respawn and the readiness dock all read `dashMax`; do not restore a global
@@ -1343,7 +1418,7 @@ public/               manifest, generated icons, service worker
   contact/projectile damage and ends on any attack.
 - Hit detection is substepped (max 6 units per substep) so 2800 u/s bolts cannot tunnel.
 - Program kits are data in `programs.ts` plus branches in `World`. Probe keeps the five-shot burst,
-  charged piercing beam and proximity mine; Wedge fires a three-shot string, dashes with a damaging
+  charged piercing beam (0.45 s, release-cancelable) and persistent trap mine; Wedge fires a three-shot string, dashes with a damaging
   bracket, plows a charge with side shoves, and plants a static wall behind himself; Fisher throws a piercing spear,
   draws a freeform net that catches bodies and reflects shots, and drops a lure beacon that pulls aggro. Do not fork the
   whole world per program; branch the four kit jobs and keep collisions, energy, cooldowns and hit rules
@@ -1448,7 +1523,7 @@ keeps it lower-left; a split view or more than one local player puts it top-cent
 | Ranged attack | `X` | Right mouse / `K` |
 | Power attack (hold) / skill (tap) | `Y` | `E` / `L` / middle mouse |
 | Lock target | `LT` | `Q` |
-| Cycle lock target (hold `LT`) | `RB` / right stick left-right | — |
+| Cycle lock target (hold `LT`) | `RB` / right stick left-right | `R` / `F` (hold `Q`) |
 | Dash / charged dash | `A` / `L3` | `Shift` / `Space` |
 | Menu confirm | `A` / `Start` | `Enter` / focused button + `Space` |
 | Menu move | D-pad / left stick | Arrows |
@@ -1512,6 +1587,12 @@ slot after a 6 s grace and marks the player as disconnected; if a round is live,
 - Every gameplay number lives in `src/game/tuning/*.json` and is re-exported from `src/game/config.ts`.
   Systems import from `config.ts`, never from JSON. No magic numbers in `world.ts`.
 - A feel change must state the old value, new value, and why in `HISTORY.md`.
+- Headless harnesses are the first pass, not the final word. When results are surprising, inconsistent
+  between samples, or depend on readability, camera framing, hit feedback, audio or control feel, run a
+  headed `npm run dev` session and play the exact scenario. Headed/visual evidence may qualify or overturn
+  a numeric result; record both.
+- **Health is not a balance knob.** Do not change player or enemy health to improve balance without
+  explicit user approval. Tune damage, speed, cadence, cooldowns, telegraphs, movement and attack windows.
 - Keep the single-stick trade-off intact: if a change lets a player face one way and attack another,
   it is out of scope (that is twin-stick) unless the designer explicitly asks for it.
 - Visual identity: basic shapes only. No bitmaps besides the PWA icon. No sprite sheets. Animation comes
@@ -1571,11 +1652,12 @@ inward tick), and a vector twin-ring reticle at the core (`drawAimBotMark`). The
 0.96r and its tick reaches only 0.72r, so the hull never crosses the core disc. The mark is direction
 neutral; do not replace it with a pointing arrow.
 
-- **Ranged** (type 17): one rail round, `shotDamage` 8, `shotSpeed` 2000, `shotRadius` 5,
-  `shotTtl` 1.6 s, `attackCooldown` 2.0 s, `shotCost` 18. It does not bounce and dies on the first body
+- **Ranged** (type 17): one rail round, `shotDamage` 5, `shotSpeed` 2000, `shotRadius` 5,
+  `shotTtl` 1.6 s, `attackCooldown` 2.8 s, `shotCost` 18. It does not bounce and dies on the first body
   or solid surface. The 1.6 s life covers 3200 units of travel, enough for the sight line in these arenas.
-  Speed 2000 keeps the one-shot but restores travel time: at 3200 the round was effectively hitscan and a
-  perfect-aim bot never missed, which measured 24-0 across the roster. The projectile is
+  Speed 2000 restores travel time: at 3200 the round was effectively hitscan and a
+  perfect-aim bot never missed, which measured 24-0 across the roster. Five damage still deletes a
+  three-segment program but leaves a six-segment hull on one segment. The projectile is
   drawn as a dark bullet with a white tip and a long fading red speed tail, not as a bolt. It is a normal
   player projectile for guard/deflect purposes; do not add it to the heavy splash lists.
 - **Lock and camera**: `playerLockRange` raises Aim Bot's lock to `AIMBOT.lockRange` 2400; every other
@@ -1584,7 +1666,7 @@ neutral; do not replace it with a pointing arrow.
   lock without the normal `CAMERA.focusRange` cap. Do not route that pull through `addCameraFocus`; a
   2400-unit target is deliberately outside the normal group pull and would fall off screen.
 - **Skill**: `sightTime` 7 s of visible dashed sight plus `clipSize` 3. Clip shots fire at
-  `clipInterval` 0.16 s, skip the 2.0 s reload, and still pay 18 energy each. The clip expires when the
+  `clipInterval` 0.16 s, skip the 2.8 s reload, and still pay 18 energy each. The clip expires when the
   sight does; it is not a permanent second magazine.
 - **Power**: builds up to six targets inside a 0.44 rad half-angle forward cone within 2400 units and
   line of sight (`players`, worms, viruses, the training drone, sentries and cascading errors). Each gets
@@ -1615,6 +1697,220 @@ file, hostile type-14 ball, virus, sentry loop. The ball is ownerless, bounces o
 can hurt any body. This is local-only content; the arena carries pipes, so hosted rooms skip it. All feel
 values live in `world.json` under `SPACE_CADET`.
 
+### D36 — KEYPAD: moving keycaps as an online-safe arena hazard (built 2026-11-01)
+
+`KEYPAD` (arena id 11) is a ten-key phone pad in the middle of a walled room. The layout in
+`ArenaDef.keypad` is a 3×4 grid: digits 1–9 in the top three rows and a centered 0 on the bottom. The
+ten caps cycle from a recessed socket to a warning lift, a downward slam, solid cover, and a rise. Every
+key has a phase offset from `KEYPAD.offsetStep`, so the pad is a rolling pattern instead of ten caps
+moving together. Timing, crush damage and offset live in `tuning/world.json` under `KEYPAD`.
+
+- A cap is harmless while up or warning. On the first frame of `SLAM`, every body whose circle overlaps
+the cap is crushed. Players take `KEYPAD.playerDamage` (3 segments); training drones, worms, viruses,
+sentries and error blocks take `KEYPAD.threatDamage` (99), which deletes them through the normal damage
+paths. This is deliberately lethal to threats, not a second combat system.
+- `SLAM`, `DOWN` and `RISE` footprints are solid cover. They block players, local threats and projectiles;
+the player is pushed out after the shared motion step, and a dash still phases them. A down cap also
+blocks beams and line-of-sight reads, so it is true cover while it is on the floor.
+- Key timing is **online-safe**: `Snapshot` carries the shared `keypadT` clock and every peer derives the
+ten states with `keypadKeyState()`. The host still owns the crush; a guest mirrors HP and uses the solid
+caps only for prediction. `onlineArenaIndex` no longer skips a keypad arena. Do not add per-key state rows
+to the snapshot; the clock is the contract (D40).
+- Bots steer around warning and down caps through the same furniture-avoidance path as bumpers. The
+keypad must not add per-tick pathfinding or a second grid; the dynamic caps are not baked into `nav.ts`.
+- The renderer draws the socket, warning bars, solid cap, digit and minimap footprint from the same
+`World.keypadStates` array. Keep the digit readable in every state: the phone-pad silhouette is the
+map's identity, not decoration.
+
+### D37 — DOCUMENT SCANNER: page churn and a sweeping read line (built 2026-11-01)
+
+`DOCUMENT SCANNER` (arena id 12) is a walled room with a large glass platen at its center. The page and
+its feed slot live in `ArenaDef.scanner`: a 1254×758 bed and a short stack of document labels. The
+timings and damage live in `SCANNER` under `tuning/world.json`. The cycle is **load → warn → down → up →
+unload**: a sheet rises from the slot, a horizontal read line sweeps from the top of the bed to the
+bottom, snaps back up, then the sheet drops away and the next one rises. The return is intentionally
+much faster than the read (3.2 s down, 0.6 s up) so players have to keep hopping the line instead of
+walking behind it once and settling.
+
+- The line is active on the down and up passes, never during load, warning or unload. It is a
+firewall-class hazard: `SCANNER.damage` (1 segment) and `SCANNER.knockback` for players,
+`SCANNER.enemyDamage` (3) for worms, viruses, sentries and error blocks. A dash is airborne and phases
+the line; the scanner must not damage a body with `dashT > 0` or a phased cloak.
+- Damage is **once per pass per body**, tracked with the same bitmask pattern as a beam pass. Do not
+replace it with a per-tick tick timer: a body standing in the line would eat several segments on one
+sweep, which breaks the hop rhythm and makes the map read as unfair.
+- The page labels, redaction bars and review stamps are cosmetic storytelling. They are not campaign
+flags, objectives or a second narrative system, and they must not gate spawns or rewards. The current
+labels imply an internal review with missing material and a cold-storage paper trail; keep that in the
+renderer/data rather than adding `World` story state.
+- `Snapshot` carries `scannerT` and `scannerPage`; `scannerPhaseAt()` and `scannerLaserY()` derive the
+presentation on every peer. The host still resolves the once-per-pass damage and hit masks locally.
+`onlineArenaIndex` may keep a scanner arena; never add hit masks or per-body pass bits to the snapshot.
+- `scannerCycle()`, `scannerPhaseAt()` and `scannerLaserY()` in `arenas.ts` are the single source of
+truth for the renderer and the world. Keep the line clipped to the bed and the page slide in the
+renderer; no scanner state belongs in the nav grid or bot targeting.
+
+### D38 — BROWSER: forum pages and a click cursor (built 2026-11-01)
+
+`BROWSER` (arena id 13) is a browser window whose site is a forum thread. `ArenaDef.browser` supplies the
+chrome, page rectangle, tabs, scrollbar and a `pages` list. Each page has a title, URL, solid forum cards
+and a navigation link. The **active page's cards are real cover**; the chrome and scrollbar are the only
+static `pillars`. The page index and cycle clock travel in `Snapshot`; `browserCursorAt()` and
+`browserClickAt()` derive the cursor, phase and click flash on both sides. The host still owns click
+damage. The map is online-safe under D40.
+
+- The cursor idles over the page, seeks the current link, hovers, then **click slams** for one segment and a
+  shove in `BROWSER.clickRadius`. A dash or cloak clears the slam. Threat families take
+  `BROWSER.enemyDamage`. The slam lands at the link, then the browser advances to the next forum page; the
+  crosshair is a navigation action, not a second player attack.
+- Page cards are dynamic cover for players, threats, projectiles, bombs, beams and blast line of sight.
+  They are swapped by `World` from the page data. Do not add the cards to the static `pillars` list or to the
+  nav grid: the grid cannot follow a page swap. Bots steer around the active card rects with the near-field
+  probe, while movement uses the same slide as other furniture.
+- The four pages are a forum index, a thread, a deeper post and a locked/archived page. Their card layouts
+  differ on purpose, so navigating changes the fight's cover. Labels and URLs are browser flavor, not
+  objectives. The active tab is visual; no tab closes during play.
+- `browserCycle()` and `browserPhaseAt()` in `arenas.ts` are the shared timing source. `World` owns the page
+  cursor and click; the renderer draws the page, link and pointer from those public fields. Keep the page
+  layout aligned with the active `elements` list: a card moved only in the renderer is a collision bug.
+- The title-card preview shows the first page; the minimap shows the active page's cards. `Snapshot`
+  carries `browserT` and `browserPage`, and the guest rebuilds the active page's cards from the arena
+  record. Do not send the card list or cursor coordinates; derive both. Host owns the click hit (D40).
+
+### D39 — Series are fixed-length, random-by-default map runs (built 2026-11-01)
+
+`VS BOTS` and online versus may run a **series**: 1, 3 or 5 games. A game is unchanged — the normal
+first-to-3-round match (`ROUND.winsNeeded`); the series counts game wins and can end tied with three or
+more players. Default `GAMES: 1`. Training, gauntlet, campaign and infection never use a series.
+
+`MAPS: RANDOM` is the default. It draws from the same eligibility predicate as `onlineArenaIndex()` for
+hosted rooms and all `ARENAS` locally, and never repeats the immediately previous map while another
+candidate exists. `MAPS: FIXED` is the custom choice and uses the arena selected in setup or the lobby for
+every game. Do not add per-game veto/vote UI: the host owns the rule online and guests follow `START`.
+
+`src/game/series.ts` owns lengths, normalization, map picking and series winner/tie calculation. Local
+bookkeeping lives in `main.ts`; online `LobbyState` carries `series` and `mapRule`, and `START` carries
+series/game/mapRule. The host advances with `HostNet.startNextMatch()` without rebuilding the room; the
+guest waits for the next `START`. Do not put series state in `Snapshot`: it is match metadata, not per-tick
+simulation. A fixed map must remain an eligible arena for the room.
+
+Pattern source: Smash Ultimate stage rules separate a random/curated stage choice from the fight, and
+Mario Kart VS races separate race count from course selection:
+<https://www.ign.com/wikis/super-smash-bros-ultimate/Stages_and_Stage_Options>,
+<https://game8.co/games/Mario-Kart-World/archives/527834>. Halo veto/vote is deliberately not copied; it
+adds matchmaking ceremony a private group does not need.
+
+### D40 — Arena hazard clocks are snapshot data (built 2026-11-01)
+
+The compactor, keypad, scanner and browser arenas are **online-safe**. `Snapshot` index 13 carries one
+compact hazard block, or `null` on a quiet floor:
+
+`[pusherT, keypadT, scannerT, scannerPage, browserT, browserPage, props]`
+
+`props` is `[index, kind, x, y, w, h, hp, hitFlash, dropT]` for each live file box. Six clocks/indices and
+the live debris list are enough because every visible hazard is deterministic from the arena record:
+`pusherPhaseAt()`, `keypadKeyState()`, `scannerPhaseAt()`/`scannerLaserY()`, `browserPhaseAt()`/
+`browserCursorAt()` and `browserClickAt()` are the shared derivations. Do not send per-key states, cursor
+coordinates, page cards or hit masks; they can drift or bloat the packet.
+
+- The **host still owns every hazard hit**: compactor carry, keypad crush, scanner pass, browser click,
+  prop damage and prop physics all resolve only in `World`. A guest mirrors HP from the same player rows
+  and never runs hazard damage or prop physics. `NetView` is presentation plus prediction only.
+- Guest prediction adds dynamic cover it can see: solid key caps and the active forum page's cards.
+  Static `arenaSolids()` remains shared. The compactor is a **carry clamp after motion**, not a solid
+  rect, because resolving the descending plate as a rect would push a body above it out through the top
+  edge. This is feel correction, not authority; the host's position wins on the next snapshot. Props are
+  not body cover and never enter the predictor.
+- `NETWORK SWITCH` and `SPACE CADET` stay local. Their `pipes` spawn hostile files, sentries and viruses,
+  and `NETWORK` carries a firewall switch and sweep; none of that threat state is in `Snapshot` (D9).
+  `onlineArenaIndex` excludes `pipes`/`firewallSwitch`, not the clocks above. Do not add threat rows to the
+  snapshot just to open those two maps.
+- `DISK PLATTER` and the wall emitters are not in this block. Hosted matches keep the platter's static
+  holes, parked arm and unbuilt emitters because their moving voids/beams would need dynamic prediction
+  and a separate protocol decision (D27, D30). Do not treat the four clocks above as permission to add
+  every fixture to the packet.
+- Measured v0.1.88: the heaviest hazard block (7 live boxes on `RECYCLING BIN`) packed to **180 B**;
+  clock-only maps packed to 16 B. At 30 Hz that is +5.4 KB/s per guest, or +37.8 KB/s of host upload with
+  seven guests (about 6% of the measured 0.59 MiB/s host baseline at 8P/48 projectiles). A quiet arena pays
+  one `null`.
+
+### D41 — QUARANTINE is the connected tutorial level (built 2026-11-01)
+
+`BUILD ROOT` now opens on `QUARANTINE` (arena id 14), one local-only arena with four authored rooms and
+three bridge crossings: the circular **INTAKE** office, the square **HOLDING** office with a three-cell
+block, the **MAINBOARD** rectangle, and the larger **ROUTER** room ending at a **NETWORK PORT**. This is
+one continuous level, not four campaign nodes; the camera and lesson follow the player across the bridges
+without a separate transition system.
+
+- `ArenaDef.rooms` (shape, theme, label, sub) and `ArenaDef.bridges` are presentation data.
+  `traverse.chasms` owns the body blockers: the floor between rooms is split above and below each deck,
+  so the bridge is the only crossing for bodies; shots and beams still cross the gap. Do not add room
+  collision to `World` or the guest predictor.
+- The room renderer (`drawTutorialRooms`) paints the circle/rect plates, intake carpet/lamp cones, holding
+  cell block and bars, mainboard traces/chip pads, router port banks/LEDs, bridge rails/data thread, and the
+  final port. `ROOM_THEME_COLORS` is shared with the picker preview. No `shadowBlur`, filters or per-frame
+  gradients.
+- `BUILD ROOT` starts at spawn 6 in the intake circle. The Warden's move/dash/fire/lock/cycle/melee/
+  reflect lesson runs there. `spawnCalibrationShapes` places the six dormant subjects in two columns in
+  the `holding` room's lower half when the arena has rooms, leaving the centre lane for the bridge entry.
+  The first crossing is the reveal. Keep the anchor generic; do not hard-code an arena id.
+- The holding room owns the scripted set piece: three civilian monitors (TICKET, PATCH, CACHE), three cells,
+  and script_kitty in the middle cell. On wake the civilians are hidden and a short red/orange burst is
+  emitted at each monitor anchor; any carried files drop. They remain decorative; no `Player` bodies, hits,
+  health, AI or snapshot rows are added for them. The kitty is a render-only cameo in the cell block, not
+  an `ArenaDef.regular`.
+- The holding cell block is solid body collision while it is sealed; `holdingCellLayout` owns the shared
+  geometry. The painted worm and virus silhouettes wait behind the bars, and their real bodies spawn only
+  on release.
+- `CALIBRATION_SKILL_TUTORIAL` starts on wake and asks for the skill while wave 1 (the six subjects) is
+  live. After the class is down and the skill beat is done, `beginCellRelease` removes the cell-block
+  solid, flashes the bars, marks them open, spawns two viruses and a worm in the cells, and gives the
+  player 1.2 s of iframes for the cut. `CALIBRATION_POWER_TUTORIAL` then asks for the heavy while wave 2
+  is live. `campaignPhase === 'release'` updates only those viruses/worms; the gauntlet timers stay parked.
+  Clear wave 2 and finish the heavy beat to start the drill. The bars stay open for the rest of the node.
+- Data crates are spread through the four rooms. The port is a visual endpoint for now: the node still
+  clears on the assault kill count, and no room, cell or port state enters `Snapshot`.
+- Room arenas are local-only: `isOnlineArena` skips `rooms`, like the pipe and firewall fixtures. The
+  tutorial geometry is not a versus map and must not be selected into a hosted room or online series.
+
+### D42 — Ordinary programs are floating CRT monitors, not roster hulls (built 2026-11-01)
+
+`src/game/regulars.ts` defines the machine world's civilian population as a floating CRT
+monitor with an emoji face on its screen. This is the format for **ordinary programs**, not a
+new playable hull and not a threat family.
+
+- A regular is a data row (`REGULAR_PROGRAMS`): id, name, role, face, shell colour, screen
+  colour and accent. The silhouette is fixed: a shadow/hover ring, a rounded CRT shell, an
+  inset screen and one emoji face. There is no body, neck, stand, wheels, arms or legs.
+  Adding a regular is a colour/face row, not a second drawing or a per-character renderer
+  branch.
+- `ArenaDef.regulars` places them by id. `drawRegularPrograms` paints them before pillars and
+  cover, so a desk can occlude a monitor. They hover and bob with a per-placement phase. They
+  have no `Player` body, collision, health, AI, hit surface, readiness dock or snapshot row.
+  Do not add them to `PROGRAMS`, the select screen, `World` or `Snapshot`.
+- Emoji faces are colour bitmaps and ignore `fillStyle`; the shell, screen bezel and power LED
+  carry the tint. Draw the face on the screen with the emoji font stack, never inside a
+  playable program's core or a projectile. No `shadowBlur`, filters or gradients.
+- A regular must not read as a combatant: no health segments, hull glyph, lock reticle or
+  action marks. The floating CRT monitor is the whole silhouette.
+- **Carried files:** `ArenaRegularDef.carry` (0–3) draws small paper files tucked behind the
+  monitor. On fear or the campaign's scripted loss the stack drops at the anchor and fades. The
+  files are dressing, not props, pickups or hit surfaces; `drawDroppedFiles` owns the flat
+  floor papers.
+- **Moods:** `RegularMood` is `calm`, `scared`, `angry` or `sad`. Calm uses the portrait face;
+  `CIVILIAN_FACES` swaps it for the others. `ArenaRegularDef.mood` sets a baseline for an
+  unnamed civilian, and a nearby hostile forces `scared` while it runs. script_kitty keeps her
+  cat face and is drawn as a render-only cameo, not an `ArenaDef.regular`.
+- **Escape:** this is local presentation only, owned by the renderer. A live hostile inside
+  `CIVILIAN_FLEE_RADIUS` (230) makes the civilian drop its files and move at `CIVILIAN_FLEE_SPEED`
+  (82) toward the arena port, then a pad/lift, then the room farthest from the threat. A port or
+  pad exit fades the monitor out; a safe room becomes its new idle anchor. There is no collision,
+  pathfinding or World state; do not turn this into civilian AI or put it in a snapshot.
+- Three staff the `QUARANTINE` holding office: TICKET (teal, one file), PATCH (amber, empty-handed)
+  and CACHE (violet, two files). They are hidden when the calibration class wakes. PING (rose,
+  anxious courier) is defined but unplaced. They are local presentation only, like the tutorial
+  rooms themselves.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.
@@ -1625,6 +1921,9 @@ values live in `world.json` under `SPACE_CADET`.
 - Snapshot budget: keep 8P/48 projectiles at or below ~3 KB. Last measured v0.1.2: 2.88 KB. v0.1.4 adds
   lock and bug fields to every player row, so those sizes must be remeasured before quoting a new cap.
   Use binarypack arrays only; delta compression is deferred until a real playtest shows bandwidth trouble.
+- Hazard snapshots: v0.1.88 measured 16 B clock-only and 180 B with seven live boxes. Keep the block to
+  clocks, page indices and live props; a new fixture must prove its packet and prediction cost before it
+  adds rows.
 - Verify player cap with `F3` (frame time, sim time, projectile count) and the bench scenario
   (`?stress=8` spawns eight simulated players in training).
 - Bot cost is part of the bench result; do not move AI into `World.step` or allocate per bot per frame.
@@ -1645,6 +1944,14 @@ npm run build      # tsc --noEmit && vite build
 npm run bench      # headless sim benchmark
 npm run dev        # manual playtest
 ```
+
+Headless harnesses (`balance.ts`, `bench`) are for the first pass and for repeatable comparisons. Switch to
+a headed browser session when the headless data is surprising, noisy, or cannot answer the question: attack
+tells, off-screen threats, camera framing, hit feedback, audio cues, route readability, and whether a
+control actually feels usable. Use the normal dev server, `?autoplay=N`, `?gauntlet=1&arena=N&bot=1`, and
+`F3`; exercise the exact scenario rather than tuning from a table alone. Report headed findings alongside
+the headless numbers, and treat a visual/play contradiction as a reason to investigate, not a reason to
+discard it.
 
 Manual pass after gameplay changes: training on each arena (move/face/melee lash/held guard/two dodge
 charges/ranged stream/skill/power attack), losing each health segment on the local outline, endless

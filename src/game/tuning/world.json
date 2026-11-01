@@ -46,6 +46,39 @@
     "top": 48,
     "bottom": 672
   },
+  "KEYPAD": {
+    "period": 6.2,
+    "warn": 0.8,
+    "slam": 0.1,
+    "down": 1.7,
+    "rise": 0.35,
+    "offsetStep": 0.58,
+    "playerDamage": 3,
+    "threatDamage": 99,
+    "knockback": 0
+  },
+  "SCANNER": {
+    "load": 0.7,
+    "warn": 0.45,
+    "down": 3.2,
+    "up": 0.6,
+    "unload": 0.45,
+    "width": 16,
+    "damage": 1,
+    "enemyDamage": 3,
+    "knockback": 620
+  },
+  "BROWSER": {
+    "dwell": 3.2,
+    "seek": 1.1,
+    "hover": 0.75,
+    "slam": 0.3,
+    "transition": 0.45,
+    "clickRadius": 118,
+    "clickDamage": 1,
+    "enemyDamage": 3,
+    "knockback": 640
+  },
   "SPACE_CADET": {
     "bumperLaunch": 980,
     "postPush": 300,
@@ -147,8 +180,8 @@
   "NETWORK": {
     "pipeHp": 6,
     "pipeRadius": 30,
-    "pipeInterval": 7.4,
-    "pipeFirst": 2.2,
+    "pipeInterval": 8.6,
+    "pipeFirst": 3.4,
     "fileSpeed": 330,
     "fileDamage": 1,
     "fileKnockback": 420,

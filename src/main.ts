@@ -1,6 +1,7 @@
 import { ATTRACT, AUTO_ATTACK, CAMERA, CAMPAIGN, HAPTICS, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
-import { CAMPAIGN_LEVELS, FIRST_CAMPAIGN_LEVEL } from './game/campaign';
-import { ARENAS, drawArenaPreview, getArena } from './game/arenas';
+import { FIRST_CAMPAIGN_LEVEL, PLAYABLE_CAMPAIGN_LEVELS } from './game/campaign';
+import { ARENAS, drawArenaPreview, getArena, type ArenaDef } from './game/arenas';
+import { LocalSeats, type LocalSeat } from './game/localplay';
 import { BOT_NAMES, BOT_TIERS, BOT_TIER_LABELS, BotBrain, type BotTier } from './game/bot';
 import { AudioEngine } from './game/audio';
 import { Fx } from './game/fx';
@@ -25,6 +26,14 @@ import { Input, type MenuEdges } from './game/input';
 import { Renderer, type RenderState } from './game/render';
 import { PROGRAM_ID, PROGRAMS, clampProgram, programDef } from './game/programs';
 import { STORY_SLOT_COUNT, loadStorySlots, saveStoryProgress, type StorySave } from './game/saves';
+import {
+  SERIES_LENGTHS,
+  normalizeSeriesGames,
+  normalizeSeriesMapRule,
+  pickSeriesArena,
+  seriesWinner,
+  type SeriesMapRule,
+} from './game/series';
 import { SECTORS } from './game/sectors';
 import { ACTION, EV, type GameEvent, type InputFrame, type LobbyPlayer, type LobbyState, type Phase } from './game/types';
 import { World } from './game/world';
@@ -35,8 +44,101 @@ import { drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, rando
 
 type Screen = 'title' | 'lobby' | 'game' | 'settings' | 'howto';
 type SettingsTab = 'feedback' | 'controls' | 'audio' | 'system';
-type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'gauntlet' | 'campaign';
+type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntlet' | 'campaign';
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
+
+/** Build stamp shared by the boot log and exported playtest logs. */
+const BUILD = '0.1.101';
+const PLAYTEST_ROUNDS_PER_MAP = 3;
+const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
+
+interface PlaytestDeflectLog {
+  guard: number;
+  swing: number;
+  beam: number;
+  atom: number;
+  net: number;
+  arm: number;
+  plow: number;
+  broom: number;
+  wave: number;
+}
+
+interface PlaytestPlayerLog {
+  slot: number;
+  name: string;
+  program: string;
+  hp: number;
+  maxHp: number;
+  score: number;
+  shots: number;
+  dashes: number;
+  swings: number;
+  deflects: number;
+  skills: number;
+  heavies: number;
+  hits: number;
+  damage: number;
+  kills: number;
+  deaths: number;
+}
+
+interface PlaytestRoundLog {
+  arenaId: number;
+  arenaName: string;
+  round: number;
+  duration: number;
+  winner: number;
+  winnerName: string;
+  matchWinner: number;
+  players: PlaytestPlayerLog[];
+  deflect: PlaytestDeflectLog;
+  fps: number;
+  simMs: number;
+}
+
+interface PlaytestMapLog {
+  arenaId: number;
+  arenaName: string;
+  rounds: PlaytestRoundLog[];
+}
+
+interface PlaytestSummary {
+  rounds: number;
+  seconds: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  shots: number;
+  swings: number;
+  deflects: number;
+  skills: number;
+  heavies: number;
+  damage: number;
+  kills: number;
+  deaths: number;
+  avgFps: number;
+}
+
+interface PlaytestSessionLog {
+  schema: number;
+  build: string;
+  startedAt: string;
+  finishedAt: string | null;
+  complete: boolean;
+  mode: string;
+  program: string;
+  botCount: number;
+  botTier: string;
+  roundsPerMap: number;
+  maps: PlaytestMapLog[];
+  summary: PlaytestSummary;
+}
+
+interface PlaytestRoundDraft {
+  log: PlaytestRoundLog;
+  deflectBase: PlaytestDeflectLog;
+}
 
 const canvas = el<HTMLCanvasElement>('arena');
 const titleScreen = el('screen-title');
@@ -58,6 +160,13 @@ const overlayKicker = el('overlay-kicker');
 const overlayTitle = el<HTMLHeadingElement>('overlay-title');
 const overlaySub = el('overlay-sub');
 const overlayActions = el('overlay-actions');
+const tutorialEl = el('tutorial');
+const tutorialMark = el('tutorial-mark');
+const tutorialSpeaker = el('tutorial-speaker');
+const tutorialStep = el('tutorial-step');
+const tutorialLine = el('tutorial-line');
+const tutorialPrompt = el('tutorial-prompt');
+const tutorialSkipBtn = el<HTMLButtonElement>('tutorial-skip');
 const countdownEl = el('countdown');
 const countdownLabel = el('countdown-label');
 const countdownValue = el<HTMLElement>('countdown-value');
@@ -99,6 +208,8 @@ const infectionBtn = el<HTMLButtonElement>('btn-solo-infection');
 const infectionBestValue = el('infection-best');
 const lobbyArenaBtn = el<HTMLButtonElement>('btn-arena-cycle');
 const lobbyModeBtn = el<HTMLButtonElement>('btn-mode-cycle');
+const lobbySeriesBtn = el<HTMLButtonElement>('btn-series-cycle');
+const lobbyMapRuleBtn = el<HTMLButtonElement>('btn-map-rule-cycle');
 const hitRotationInput = el<HTMLInputElement>('hit-rotation');
 const hitRotationValue = el('hit-rotation-value');
 const settingsTabs = el('settings-tabs');
@@ -136,6 +247,11 @@ const storyBotsBackBtn = el<HTMLButtonElement>('btn-story-bots-back');
 const menuArena = el('menu-arena');
 const menuSoloBots = el('menu-solo-bots');
 const menuSoloTier = el('menu-solo-tier');
+const menuSoloSeries = el('menu-solo-series');
+const seriesBackBtn = el<HTMLButtonElement>('btn-series-back');
+const seriesStageLabel = el('series-stage-label');
+const seriesMapsBtn = el<HTMLButtonElement>('btn-series-maps');
+const seriesGamesEl = el('series-games');
 const menuMulti = el('menu-multi');
 const menuOnline = el('menu-online');
 const menuLocal = el('menu-local');
@@ -150,8 +266,9 @@ const multiOnlineBtn = el<HTMLButtonElement>('btn-multi-online');
 const localBtn = el<HTMLButtonElement>('btn-local');
 const onlineBackBtn = el<HTMLButtonElement>('btn-online-back');
 const localBackBtn = el<HTMLButtonElement>('btn-local-back');
-const localArenaBtn = el<HTMLButtonElement>('btn-local-arena');
-const localGauntletBtn = el<HTMLButtonElement>('btn-local-gauntlet');
+const localStartBtn = el<HTMLButtonElement>('btn-local-start');
+const localSeatsEl = el('local-seats');
+const localArenaPickerEl = el('local-arena-picker');
 const localStatusLine = el('local-status');
 const soloBackBtn = el<HTMLButtonElement>('btn-solo-back');
 const multiBackBtn = el<HTMLButtonElement>('btn-multi-back');
@@ -161,6 +278,12 @@ const bootStatus = el('boot-status');
 
 const renderer = new Renderer(canvas);
 const input = new Input(canvas);
+/** Couch seats and their per-slot frames. P1 is always keyboard + mouse. */
+const localSeats = new LocalSeats();
+const localFrames: (InputFrame | null)[] = new Array(MAX_PLAYERS).fill(null);
+const lastLocalSeatHp = new Float32Array(MAX_PLAYERS).fill(-1);
+let localSeatSignature = '';
+localSeats.onJoin = handleLocalJoin;
 const audio = new AudioEngine();
 const fx = new Fx();
 const haptics = new Haptics(() => input.activePad());
@@ -202,6 +325,7 @@ type MenuStage =
   | 'soloArena'
   | 'soloBots'
   | 'soloTier'
+  | 'soloSeries'
   | 'gauntlet'
   | 'story'
   | 'storyBots'
@@ -221,6 +345,8 @@ let infectionRecorded = false;
 let infectionBests: InfectionBest[] = [];
 /** Campaign drill squad size (0-3). A NO BOTS run still drills against one instructor. */
 let campaignBots = 0;
+/** Index into the playable campaign levels for the live node. */
+let campaignLevelIndex = 0;
 /** Save-slot index being set up on the campaign stage; -1 when none is selected. */
 let storySlot = -1;
 /** Save slot of the live campaign run, and the run state a clear needs to persist. */
@@ -251,6 +377,15 @@ let stressInputs: InputFrame[] = [];
 let botInputs: InputFrame[] = [];
 let botBrains: (BotBrain | null)[] = [];
 let arenaIndex = 0;
+let seriesGames = 1;
+let seriesMapRule: SeriesMapRule = 'random';
+let seriesRun = false;
+let seriesGame = 1;
+let seriesWins = new Array(MAX_PLAYERS).fill(0);
+let seriesResultRecorded = false;
+let seriesLastArenaId = -1;
+let guestSeriesTotal = 1;
+let guestSeriesGame = 1;
 let botCount = 3;
 let botTier: BotTier = 'veteran';
 /** Training and VS BOTS keep separate difficulty picks; gauntlet/campaign use the training slot. */
@@ -260,6 +395,19 @@ let friendlyFire = true;
 let stress = false;
 let stressBots = 0;
 let stressTick = 0;
+
+let playtestActive = false;
+let playtestComplete = false;
+let playtestMaps: PlaytestMapLog[] = [];
+let playtestRound: PlaytestRoundDraft | null = null;
+let playtestMapIndex = 0;
+let playtestRoundsOnMap = 0;
+let playtestAdvanceAt = 0;
+let playtestStartedAt = '';
+let playtestFinishedAt: string | null = null;
+let playtestProgramId: number = PROGRAM_ID.PROBE;
+let playtestBotTier: BotTier = 'veteran';
+let playtestBotCount = 3;
 
 let acc = 0;
 let snapTimer = 0;
@@ -323,6 +471,8 @@ function boot(): void {
   const attractParam = params.get('attract') === '1';
   const stressParam = Number(params.get('stress') ?? '0');
   const autoplayParam = Number(params.get('autoplay') ?? '0');
+  const playtestParam = params.get('playtest');
+  const playtestMode = playtestParam === '1' || playtestParam === 'true';
   // QA-only split-screen hook: `?split=2` (with `?autoplay=N`) renders N local panes.
   // Local same-screen play has no input slots yet, so this is the visual test bed.
   const splitParam = Math.floor(Number(params.get('split') ?? '0'));
@@ -352,6 +502,25 @@ function boot(): void {
       touch: () => touchVisible,
       assist: () => ({ autoLock, autoAttack, touchMode }),
       frame: () => localFrame,
+      playtestLog: () => buildPlaytestLog(),
+      playtestState: () => ({
+        active: playtestActive,
+        complete: playtestComplete,
+        mapIndex: playtestMapIndex,
+        roundsOnMap: playtestRoundsOnMap,
+        advanceAt: playtestAdvanceAt,
+      }),
+      localSeats: () => ({
+        mode,
+        slots: localSeats.slots(),
+        seats: localSeats.seats.map((s) => ({
+          slot: s.slot,
+          pad: s.padIndex,
+          name: s.name,
+          padName: s.padName,
+          connected: s.connected,
+        })),
+      }),
       audio,
     };
   }
@@ -365,12 +534,14 @@ function boot(): void {
     window.setTimeout(() => startInfection(gauntletBot), 250);
   } else if (gauntletParam >= 1) {
     window.setTimeout(() => startGauntlet(gauntletBot), 250);
+  } else if (playtestMode) {
+    window.setTimeout(startPlaytest, 250);
   } else if (autoplayParam >= 1) {
     window.setTimeout(() => startAutoplay(autoplayParam), 250);
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.78 ready. Max players:', MAX_PLAYERS);
+  console.log(`[DEFLECT-INIT] Build ${BUILD} ready. Max players:`, MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -387,12 +558,8 @@ function bindUi(): void {
   localBtn.addEventListener('click', () => showMenuStage('local'));
   onlineBackBtn.addEventListener('click', () => showMenuStage('multi'));
   localBackBtn.addEventListener('click', () => showMenuStage('multi'));
-  localArenaBtn.addEventListener('click', () => {
-    localStatusLine.textContent = 'LOCAL ARENA // NOT WIRED YET. THE SETUP SCREEN COMES FIRST.';
-  });
-  localGauntletBtn.addEventListener('click', () => {
-    localStatusLine.textContent = 'LOCAL GAUNTLET // NOT WIRED YET. THE SETUP SCREEN COMES FIRST.';
-  });
+  localStartBtn.addEventListener('click', startLocalMatch);
+  tutorialSkipBtn.addEventListener('click', () => world?.skipTutorial());
   programBackBtn.addEventListener('click', () => programStageBack());
   soloBackBtn.addEventListener('click', () => showMenuStage('hub'));
   multiBackBtn.addEventListener('click', () => showMenuStage('hub'));
@@ -406,6 +573,10 @@ function bindUi(): void {
   el<HTMLButtonElement>('btn-arena-back').addEventListener('click', () => showMenuStage('soloProgram'));
   el<HTMLButtonElement>('btn-gauntlet-back').addEventListener('click', () => showMenuStage('soloArena'));
   gauntletStartBtn.addEventListener('click', () => startGauntlet());
+  seriesBackBtn.addEventListener('click', () => showMenuStage('soloTier'));
+  seriesMapsBtn.addEventListener('click', toggleSeriesMapRule);
+  lobbySeriesBtn.addEventListener('click', cycleLobbySeries);
+  lobbyMapRuleBtn.addEventListener('click', cycleLobbyMapRule);
   gauntletFriendlyBtn.addEventListener('click', toggleFriendlyFire);
   campaignFriendlyBtn.addEventListener('click', toggleFriendlyFire);
   el<HTMLButtonElement>('btn-bots-back').addEventListener('click', () => showMenuStage('soloArena'));
@@ -583,6 +754,7 @@ function showMenuStage(stage: MenuStage): void {
   menuGauntlet.hidden = stage !== 'gauntlet';
   menuSoloBots.hidden = stage !== 'soloBots';
   menuSoloTier.hidden = stage !== 'soloTier';
+  menuSoloSeries.hidden = stage !== 'soloSeries';
   menuStory.hidden = stage !== 'story';
   menuStoryBots.hidden = stage !== 'storyBots';
   menuLocal.hidden = stage !== 'local';
@@ -592,10 +764,11 @@ function showMenuStage(stage: MenuStage): void {
   if (stage === 'soloArena') updateSoloArenaCopy();
   // Count and tier options depend on the mode: training can be solo, VS BOTS cannot.
   if (stage === 'soloBots' || stage === 'soloTier') renderBotControls();
+  if (stage === 'soloSeries') renderSeriesSetup();
   if (stage === 'gauntlet') renderGauntletSetup();
   if (stage === 'story') renderStorySetup();
   if (stage === 'storyBots') renderStoryBots();
-  if (stage === 'local') localStatusLine.textContent = '';
+  if (stage === 'local') openLocalSetup();
   clearMenuSelection();
   // A taller TV-scale menu can put the next stage's first control above the fold.
   document.getElementById('screen-title')?.scrollTo({ top: 0 });
@@ -638,6 +811,34 @@ function updateSoloArenaCopy(): void {
   arenaStageLabel.textContent = `${label} // ${def.name} // SELECT ARENA`;
 }
 
+/** VS BOTS series setup. The default is random maps for a multi-game series; fixed
+ * uses the arena already chosen in the picker. */
+function renderSeriesSetup(): void {
+  seriesStageLabel.textContent = 'VS BOTS // SERIES';
+  seriesMapsBtn.textContent =
+    seriesMapRule === 'random' ? 'MAPS: RANDOM' : `MAPS: FIXED // ${getArena(arenaIndex).name}`;
+  seriesMapsBtn.setAttribute('aria-pressed', String(seriesMapRule === 'random'));
+  clearChildren(seriesGamesEl);
+  for (let i = 0; i < SERIES_LENGTHS.length; i++) {
+    const games = SERIES_LENGTHS[i];
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `console-choice${seriesGames === games ? ' selected' : ''}`;
+    button.dataset.nav = '';
+    button.textContent = games === 1 ? '1 GAME' : `${games} GAMES`;
+    button.setAttribute('aria-pressed', String(seriesGames === games));
+    button.addEventListener('click', () => startBotSeries(games));
+    seriesGamesEl.appendChild(button);
+  }
+}
+
+function toggleSeriesMapRule(): void {
+  seriesMapRule = seriesMapRule === 'random' ? 'fixed' : 'random';
+  persistArenaPrefs();
+  renderSeriesSetup();
+  toast(`MAPS // ${seriesMapRule === 'random' ? 'RANDOM' : 'FIXED'}`);
+}
+
 /** Clear any visible selection. A stage opens with nothing highlighted until real input. */
 function clearMenuSelection(): void {
   resetNavFocus();
@@ -652,7 +853,8 @@ function markPointerLive(): void {
 
 function menuBack(): void {
   if (screen !== 'title') return;
-  if (menuStage === 'soloTier') showMenuStage('soloBots');
+  if (menuStage === 'soloSeries') showMenuStage('soloTier');
+  else if (menuStage === 'soloTier') showMenuStage('soloBots');
   else if (menuStage === 'soloBots') showMenuStage('soloArena');
   else if (menuStage === 'gauntlet') showMenuStage('soloArena');
   else if (menuStage === 'soloArena') showMenuStage('soloProgram');
@@ -673,6 +875,8 @@ function loadArenaPrefs(): void {
     if (Number.isFinite(savedArena)) arenaIndex = ((savedArena % ARENAS.length) + ARENAS.length) % ARENAS.length;
     const savedCount = Number(localStorage.getItem('deflect.botCount') ?? '3');
     if (savedCount >= 0 && savedCount <= 3) botCount = savedCount;
+    seriesGames = normalizeSeriesGames(Number(localStorage.getItem('deflect.seriesGames') ?? '1'));
+    seriesMapRule = normalizeSeriesMapRule(localStorage.getItem('deflect.seriesMapRule'));
     // Migrate the old shared tier key, then prefer the per-mode keys when present.
     const savedTier = localStorage.getItem('deflect.botTier');
     if (savedTier && (BOT_TIERS as readonly string[]).includes(savedTier)) {
@@ -906,6 +1110,8 @@ function persistArenaPrefs(): void {
     localStorage.setItem('deflect.botTier', botTier);
     localStorage.setItem('deflect.botTier.training', botTierPrefs.training);
     localStorage.setItem('deflect.botTier.bots', botTierPrefs.bots);
+    localStorage.setItem('deflect.seriesGames', String(seriesGames));
+    localStorage.setItem('deflect.seriesMapRule', seriesMapRule);
     localStorage.setItem('deflect.program', String(selectedProgram));
     localStorage.setItem('deflect.friendlyFire', friendlyFire ? '1' : '0');
   } catch {
@@ -927,19 +1133,92 @@ function selectArena(index: number): void {
 }
 
 /**
- * Compactor arenas are local content. The slam is host-side world state and the match
- * snapshot carries no pusher timer, so a guest would be shoved by nothing. Keep them out
- * of hosted rooms and let training, VS BOTS and the gauntlet use them.
+ * Compactor, keypad, scanner and browser clocks ride the snapshot, and the host still
+ * resolves every hazard hit. Feed pipes and the firewall switch are different: they
+ * spawn local threats and a sweep the snapshot does not carry, so those arenas stay
+ * local until the threat layer itself has a protocol.
  */
+function isOnlineArena(a: ArenaDef): boolean {
+  // Room arenas are tutorial staging: their chasms, props and fixture clocks are local
+  // presentation/content, not a versus map. Keep them out of hosted rooms and series.
+  return !a.pipes && !a.firewallSwitch && !a.rooms;
+}
+
 function onlineArenaIndex(index: number): number {
   const n = ARENAS.length;
   const start = ((index % n) + n) % n;
-  if (!ARENAS[start].pushers && !ARENAS[start].pipes) return start;
+  if (isOnlineArena(ARENAS[start])) return start;
   for (let i = 1; i < n; i++) {
     const idx = (start + i) % n;
-    if (!ARENAS[idx].pushers && !ARENAS[idx].pipes) return idx;
+    if (isOnlineArena(ARENAS[idx])) return idx;
   }
   return start;
+}
+
+/** Reset the series-owned match bookkeeping before game one. */
+function beginSeriesState(games: number, rule: SeriesMapRule, run: boolean): void {
+  seriesGames = normalizeSeriesGames(games);
+  seriesMapRule = rule;
+  seriesRun = run && seriesGames > 1;
+  seriesGame = 1;
+  seriesWins.fill(0);
+  seriesResultRecorded = false;
+  seriesLastArenaId = -1;
+}
+
+/** Pick the next game's arena from the eligible pool, avoiding the last map. */
+function chooseSeriesArena(online: boolean): ArenaDef {
+  const pool = online ? ARENAS.filter(isOnlineArena) : ARENAS.slice();
+  const arena = pickSeriesArena(pool, arenaIndex, seriesMapRule, seriesLastArenaId);
+  if (!arena) return getArena(online ? onlineArenaIndex(arenaIndex) : arenaIndex);
+  seriesLastArenaId = arena.id;
+  return arena;
+}
+
+function startBotSeries(games: number): void {
+  if (busy) return;
+  beginSeriesState(games, seriesMapRule, games > 1);
+  persistArenaPrefs();
+  startBotMatch(false, true);
+}
+
+function startNextBotSeriesGame(): void {
+  if (mode !== 'bots' || !seriesRun) return;
+  seriesGame++;
+  seriesResultRecorded = false;
+  startBotMatch(false, true);
+}
+
+function returnToSeriesSetup(): void {
+  teardownSession();
+  soloProgram = 'bots';
+  showMenuStage('soloSeries');
+  setScreen('title');
+  refreshTitleButtons();
+  setTitleStatus('');
+}
+
+function seriesScoreLine(state: RenderState): string {
+  const parts: string[] = [];
+  for (let i = 0; i < state.players.length; i++) {
+    const p = state.players[i];
+    // At match end only the survivor may still be active; keep every named slot in the score.
+    if (!p.name) continue;
+    parts.push(`${p.name} ${seriesWins[i]}`);
+  }
+  return parts.join('  /  ');
+}
+
+function recordSeriesResult(state: RenderState): void {
+  if (!seriesRun || seriesResultRecorded) return;
+  seriesResultRecorded = true;
+  if (state.matchWinner >= 0 && state.matchWinner < seriesWins.length) {
+    seriesWins[state.matchWinner]++;
+  }
+}
+
+function seriesNextMapLabel(): string {
+  return seriesMapRule === 'random' ? 'RANDOM MAP' : `MAP ${getArena(arenaIndex).name}`;
 }
 
 function renderArenaPicker(): void {
@@ -1194,8 +1473,8 @@ function renderGauntletSetup(): void {
 
 /**
  * Campaign entry. Slots come first: an empty slot starts a new run and continues to the
- * bot count and player select; a filled slot resumes the run stored on it. Nothing is
- * playable yet, so a resume press only reports that.
+ * bot count and player select; a filled slot resumes the run stored on it. A completed
+ * BUILD ROOT slot reports that the next levels are still coming soon.
  */
 function openStory(): void {
   soloProgram = 'campaign';
@@ -1223,28 +1502,37 @@ function chooseCampaignBots(count: number): void {
 
 /**
  * Campaign run lifecycle. Slots own the persistence; this module owns the live session.
- * The first node is the only authored level today, so a cleared save replays it until
- * the next node ships. A save is written only when a level completes.
+ * BUILD ROOT is the only live level; REBOOT is authored but parked behind `playable: false`.
+ * A save is written only when a level completes.
  */
 function startNewCampaign(): void {
   campaignSlot = storySlot;
   campaignPlayers = 1;
+  campaignLevelIndex = 0;
   campaignSaved = false;
   campaignPlaySeconds = 0;
   startCampaignLevel();
 }
 
 function resumeCampaign(index: number, save: StorySave): void {
+  storySlot = index;
   campaignSlot = index;
   campaignPlayers = save.players;
   campaignBots = save.bots;
   selectedProgram = clampProgram(save.program);
   campaignSaved = false;
   campaignPlaySeconds = 0;
-  startCampaignLevel();
-  if (save.level >= CAMPAIGN_LEVELS.length) {
-    toast('NEXT NODE NOT BUILT // REPLAYING BUILD ROOT', 'warn');
+  // `level` is the number of completed levels, so it is also the next index.
+  if (save.level >= PLAYABLE_CAMPAIGN_LEVELS.length) {
+    campaignLevelIndex = 0;
+    campaignSaved = true;
+    storyStatusLine.textContent = 'BUILD ROOT CLEAR // MORE LEVELS COMING SOON';
+    toast('BUILD ROOT CLEAR // MORE LEVELS COMING SOON', 'warn');
+    renderStorySlots();
+    return;
   }
+  campaignLevelIndex = Math.max(0, save.level);
+  startCampaignLevel();
 }
 
 function startCampaignLevel(): void {
@@ -1254,7 +1542,8 @@ function startCampaignLevel(): void {
   mode = 'campaign';
   localSlot = 0;
   stress = false;
-  const level = FIRST_CAMPAIGN_LEVEL;
+  campaignLevelIndex = Math.max(0, Math.min(PLAYABLE_CAMPAIGN_LEVELS.length - 1, campaignLevelIndex));
+  const level = PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex];
   const arena = getArena(level.arenaId);
   const drill = Math.max(
     CAMPAIGN.minDrillBots,
@@ -1264,7 +1553,21 @@ function startCampaignLevel(): void {
   names[0] = getCallsign();
   for (let i = 1; i <= drill; i++) names[i] = BOT_NAMES[(i - 1) % BOT_NAMES.length];
   const botPrograms = botProgramList(drill);
-  world = new World('gauntlet', names, 0, arena, false, selectedProgram, drill, botPrograms, true, level.dataCrates);
+  world = new World(
+    'gauntlet',
+    names,
+    0,
+    arena,
+    false,
+    selectedProgram,
+    drill,
+    botPrograms,
+    true,
+    level.dataCrates,
+    false,
+    level.intro,
+    level.clearKills,
+  );
   world.friendlyFire = friendlyFire;
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
@@ -1277,7 +1580,7 @@ function startCampaignLevel(): void {
   campaignSaved = false;
   campaignPlaySeconds = 0;
   resetCounters();
-  lastCampaignPhase = 'drill';
+  lastCampaignPhase = '';
   fx.reset();
   setScreen('game');
   beginLoadSequence(`${level.name} // ${level.code}`);
@@ -1324,8 +1627,9 @@ function renderStorySlots(): void {
     if (save) {
       const sector = SECTORS[save.sector];
       const where = sector ? sector.name : `CAMPAIGN ${save.sector + 1}`;
-      label.textContent = save.level > 0 ? `${where} // LV ${save.level}` : where;
-      value.textContent = `${save.players} PLAYER${save.players === 1 ? '' : 'S'}`;
+      const complete = save.level >= PLAYABLE_CAMPAIGN_LEVELS.length;
+      label.textContent = complete ? `${where} // COMPLETE` : save.level > 0 ? `${where} // LV ${save.level}` : where;
+      value.textContent = complete ? 'MORE LEVELS SOON' : `${save.players} PLAYER${save.players === 1 ? '' : 'S'}`;
       button.setAttribute('aria-label', `Slot ${i + 1}, ${label.textContent}, ${value.textContent}, resume`);
     } else {
       label.textContent = 'START NEW GAME';
@@ -1495,7 +1799,7 @@ function renderBotControls(): void {
     button.addEventListener('click', () => {
       setBotTier(tier);
       if (menuStage !== 'soloTier') return;
-      if (soloProgram === 'bots') startBotMatch();
+      if (soloProgram === 'bots') showMenuStage('soloSeries');
       else startTrainingBots();
     });
     botTierEl.appendChild(button);
@@ -1533,6 +1837,28 @@ function cycleLobbyArena(): void {
   lobbyState = hostNet.getLobbyState();
   renderLobby(lobbyState);
   toast(`ARENA // ${getArena(arenaIndex).name}`);
+}
+
+function cycleLobbySeries(): void {
+  if (mode !== 'host' || !hostNet || busy) return;
+  const current = normalizeSeriesGames(hostNet.getLobbyState().series);
+  const index = SERIES_LENGTHS.indexOf(current as (typeof SERIES_LENGTHS)[number]);
+  const next = SERIES_LENGTHS[(index + 1) % SERIES_LENGTHS.length];
+  hostNet.setSeries(next);
+  lobbyState = hostNet.getLobbyState();
+  seriesGames = next;
+  renderLobby(lobbyState);
+  toast(`SERIES // ${next} ${next === 1 ? 'GAME' : 'GAMES'}`);
+}
+
+function cycleLobbyMapRule(): void {
+  if (mode !== 'host' || !hostNet || busy) return;
+  const next = hostNet.getLobbyState().mapRule === 1 ? 0 : 1;
+  hostNet.setMapRule(next);
+  lobbyState = hostNet.getLobbyState();
+  seriesMapRule = next === 1 ? 'fixed' : 'random';
+  renderLobby(lobbyState);
+  toast(`MAPS // ${seriesMapRule === 'random' ? 'RANDOM' : 'FIXED'}`);
 }
 
 /** Host-only room rule. Guests see the label; the host owns the choice. */
@@ -1627,6 +1953,7 @@ function loop(now: number): void {
   const wasGame = screen === 'game';
   syncTouchUi();
   input.poll();
+  pollLocalSetup();
   const menuEdges = input.readMenuEdges();
   if (
     menuEdges.up ||
@@ -1692,12 +2019,14 @@ function loop(now: number): void {
       if (guestView) guestView.present();
       trackLocalHit(state);
       syncPhaseUi(state);
+      syncTutorialUi();
       fx.update(dt);
       renderer.render(state, Math.min(1, acc / SIM_DT), fx);
       // A split/merge moves every local player's screen position at once. Give the
       // local sim a short dip while the cameras settle, but never slow a networked
       // match or the unattended stress run.
-      const localMode = mode === 'training' || mode === 'bots' || mode === 'gauntlet' || mode === 'campaign';
+      const localMode =
+        mode === 'training' || mode === 'bots' || mode === 'local' || mode === 'gauntlet' || mode === 'campaign';
       if (localMode && !stress) {
         if (renderer.consumeLayoutChange()) slowMoT = CAMERA.layoutSlowTime;
       } else {
@@ -1715,10 +2044,31 @@ function loop(now: number): void {
     else if (now >= autoplayRestartAt) localRematch();
   }
 
+  updatePlaytestAdvance(now);
+
   updatePerf(dt);
 }
 
 function trackLocalHit(state: RenderState): void {
+  if (mode === 'local') {
+    let anyHit = false;
+    for (const slot of localSeats.slots()) {
+      const p = state.players[slot];
+      if (!p || !p.active) {
+        lastLocalSeatHp[slot] = -1;
+        continue;
+      }
+      const prev = lastLocalSeatHp[slot];
+      if (prev >= 0 && p.hp < prev) {
+        anyHit = true;
+        // Venom chips are below half a segment; only a real spent segment thumps.
+        if (prev - p.hp >= 0.5) playRumble(p.hp <= 0 ? 'death' : 'hit', slot);
+      }
+      lastLocalSeatHp[slot] = p.hp;
+    }
+    if (anyHit) fx.triggerHitRotation();
+    return;
+  }
   const local = state.players[state.localSlot];
   if (!local || !local.active) {
     lastLocalHp = -1;
@@ -1740,8 +2090,13 @@ function localAvatar(): { x: number; y: number; alive: boolean } | null {
 }
 
 /** Haptics only while a live local match owns the screen. */
-function playRumble(cue: RumbleCue): void {
+function playRumble(cue: RumbleCue, slot = localSlot): void {
   if (attract || stress || screen !== 'game' || overlayKind !== 'none' || loading) return;
+  if (mode === 'local') {
+    // P1 is the keyboard, so only the pad seats can rumble.
+    if (slot > 0) localSeats.rumble(slot, cue);
+    return;
+  }
   haptics.play(cue);
 }
 
@@ -1756,7 +2111,7 @@ function nearLocalExplosion(x: number, y: number): boolean {
 function stepSession(now: number, dt: number): void {
   const t0 = performance.now();
   const pausedLocal =
-    (mode === 'training' || mode === 'bots' || mode === 'gauntlet' || mode === 'campaign') &&
+    (mode === 'training' || mode === 'bots' || mode === 'local' || mode === 'gauntlet' || mode === 'campaign') &&
     !stress &&
     overlayKind === 'leave';
 
@@ -1820,6 +2175,27 @@ function stepSession(now: number, dt: number): void {
       world.clearEvents();
       fxCursor = 0;
     }
+  } else if (mode === 'local' && world && !pausedLocal) {
+    localSeats.poll();
+    const sig = localSeats.signature();
+    if (sig !== localSeatSignature) {
+      localSeatSignature = sig;
+      renderer.setLocalSlots(localSeats.slots());
+    }
+    localSeats.writeFrames(localFrame, localFrames);
+    acc += dt * layoutSlowScale(dt);
+    let steps = 0;
+    while (acc >= SIM_DT && steps < 4) {
+      world.step(SIM_DT, localFrames);
+      acc -= SIM_DT;
+      steps++;
+    }
+    simMs += (performance.now() - t0 - simMs) * 0.12;
+    if (steps > 0) processWorldEvents(world);
+    if (fxCursor === world.eventCount) {
+      world.clearEvents();
+      fxCursor = 0;
+    }
   } else if (mode === 'bots' && world && !pausedLocal) {
     if (autoplay) botBrains[0]?.think(world, botInputs[0], SIM_DT);
     else botInputs[0] = localFrame;
@@ -1865,20 +2241,21 @@ function processWorldEvents(w: World): void {
 }
 
 function handleGameEvent(e: GameEvent, remote: boolean): void {
+  if (playtestActive && playtestRound && !remote) recordPlaytestEvent(e);
   fx.handle(e);
-  const own = e.slot === localSlot;
+  const own = e.slot === localSlot || (mode === 'local' && localSeats.slots().includes(e.slot));
   // Haptics run before the guest's predicted-action sound skip, so a guest still
   // feels their own swing and dash. Hits are read from the local health change.
   if (own) {
     if (e.kind === EV.SWING || e.kind === EV.DASH) {
-      playRumble('tap');
+      playRumble('tap', e.slot);
     } else if (e.kind === EV.DEFLECT) {
-      playRumble('guard');
+      playRumble('guard', e.slot);
     } else if (e.kind === EV.LASER) {
       // An overcharge beam emits a LASER event on every refill tick. Only cue when a
       // new beam starts, not sixteen times a second while the trigger is held.
       const now = performance.now();
-      if (now - lastLaserRumbleAt > 400) playRumble('heavy');
+      if (now - lastLaserRumbleAt > 400) playRumble('heavy', e.slot);
       lastLaserRumbleAt = now;
     }
   }
@@ -2017,6 +2394,143 @@ function botProgramList(count: number): number[] {
     list[slot] = unused.length > 0 ? unused[(slot - 1) % unused.length] : PROGRAM_ID.PROBE;
   }
   return list;
+}
+
+/** Local couch setup: reset the seats and adopt whatever is already plugged in. */
+function openLocalSetup(): void {
+  localSeats.reset();
+  localSeats.poll();
+  localSeatSignature = localSeats.signature();
+  input.keyboardOnly = false;
+  renderLocalArenaPicker();
+  renderLocalSeats();
+}
+
+/** Seat rows plus the start gate. Rebuilt only when the seat signature changes. */
+function renderLocalSeats(): void {
+  clearChildren(localSeatsEl);
+  const row = (key: string, label: string, value: string, ready: boolean): void => {
+    const line = document.createElement('div');
+    line.className = `local-seat${ready ? ' ready' : ''}`;
+    const k = document.createElement('span');
+    k.className = 'local-seat-key';
+    k.textContent = key;
+    const l = document.createElement('span');
+    l.className = 'local-seat-label';
+    l.textContent = label;
+    const v = document.createElement('b');
+    v.textContent = value;
+    line.append(k, l, v);
+    localSeatsEl.appendChild(line);
+  };
+  row('P1', 'KEYBOARD + MOUSE', 'READY', true);
+  for (const seat of localSeats.seats) {
+    row(
+      `P${seat.slot + 1}`,
+      seat.connected ? seat.padName : 'CONTROLLER DISCONNECTED',
+      seat.connected ? 'READY' : 'RECONNECT',
+      seat.connected,
+    );
+  }
+  for (const slot of localSeats.freeSlots()) {
+    row(`P${slot + 1}`, 'OPEN SLOT', 'DROP IN WITH A PAD', false);
+  }
+  const players = localSeats.activeCount();
+  localStartBtn.disabled = players < 2 || busy;
+  localStatusLine.textContent =
+    players < 2
+      ? 'CONNECT A CONTROLLER TO JOIN // P1 IS KEYBOARD + MOUSE'
+      : `${players} PLAYERS READY // DROP IN ANY TIME DURING THE MATCH`;
+}
+
+function renderLocalArenaPicker(): void {
+  clearChildren(localArenaPickerEl);
+  for (let i = 0; i < ARENAS.length; i++) {
+    const option = ARENAS[i];
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = `console-arena-card${i === arenaIndex ? ' selected' : ''}`;
+    card.dataset.nav = '';
+    card.title = option.tagline;
+    card.setAttribute('aria-pressed', String(i === arenaIndex));
+    card.setAttribute('aria-label', `${option.name}. ${option.tagline}`);
+    const preview = document.createElement('canvas');
+    preview.width = 240;
+    preview.height = 120;
+    preview.setAttribute('aria-hidden', 'true');
+    drawArenaPreview(preview, option);
+    const label = document.createElement('span');
+    label.className = 'console-arena-label';
+    label.textContent = `${String(i + 1).padStart(2, '0')}  ${option.name}`;
+    card.append(preview, label);
+    card.addEventListener('click', () => {
+      selectArena(i);
+      if (menuStage === 'local' && screen === 'title') renderLocalArenaPicker();
+    });
+    localArenaPickerEl.appendChild(card);
+  }
+}
+
+/** A controller plugged in while this stage is open appears without a refresh. */
+function pollLocalSetup(): void {
+  if (screen !== 'title' || menuStage !== 'local') return;
+  localSeats.poll();
+  const sig = localSeats.signature();
+  if (sig === localSeatSignature) return;
+  localSeatSignature = sig;
+  renderLocalSeats();
+}
+
+/** Drop-in: a pad adopted mid-match activates its body in the live world. */
+function handleLocalJoin(seat: LocalSeat): void {
+  if (mode !== 'local' || !world) return;
+  if (world.joinLocalPlayer(seat.slot, seat.name)) {
+    renderer.setLocalSlots(localSeats.slots());
+    localSeatSignature = localSeats.signature();
+    toast(`${seat.name} JOINED // ${seat.padName}`, 'warn');
+  }
+}
+
+function startLocalMatch(): void {
+  if (busy) return;
+  localSeats.poll();
+  if (localSeats.activeCount() < 2) {
+    localStatusLine.textContent = 'NEED ONE CONTROLLER // P1 IS KEYBOARD + MOUSE';
+    return;
+  }
+  teardownSession();
+  hideOverlayInternal();
+  mode = 'local';
+  localSlot = 0;
+  stress = false;
+  autoplay = false;
+  const arena = getArena(arenaIndex);
+  const names = new Array(MAX_PLAYERS).fill('');
+  names[0] = getCallsign();
+  for (const seat of localSeats.seats) names[seat.slot] = seat.name;
+  // Slots 1-3 keep a distinct unused kit, so a pad that joins mid-match still has one.
+  const programs = botProgramList(localSeats.maxSeats - 1);
+  world = new World('match', names, 0, arena, false, selectedProgram, 0, programs);
+  botInputs = [];
+  botBrains = [];
+  localSeats.writeFrames(localFrame, localFrames);
+  trainingInputs = localFrames;
+  input.keyboardOnly = true;
+  localSeatSignature = localSeats.signature();
+  renderer.setLocalSlots(localSeats.slots());
+  resetCounters();
+  fx.reset();
+  setScreen('game');
+  beginLoadSequence(arena.name);
+  audio.unlock();
+  audio.startMusic();
+  console.log(
+    '[DEFLECT-STATE] Local match',
+    localSeats.activeCount(),
+    'players',
+    arena.name,
+    localSeats.seats.map((s) => s.name).join('/'),
+  );
 }
 
 function startTraining(): void {
@@ -2279,16 +2793,385 @@ function startAutoplay(count: number): void {
   toast(`AUTOPLAY // ${botCount + 1} OPERATORS`);
 }
 
-function startBotMatch(aiLocal = false): void {
+// Playtest tour ------------------------------------------------------------------------------
+
+/**
+ * QA-only local playtest. `?playtest=1` starts a VS BOTS match, keeps each arena for
+ * three completed rounds, then advances through the whole arena list. Every round is
+ * logged to the console and localStorage; the completion panel downloads or copies the
+ * JSON session. No network, no token, and no Snapshot fields are involved.
+ */
+function startPlaytest(): void {
+  if (busy) return;
+  playtestActive = true;
+  playtestComplete = false;
+  playtestMaps = [];
+  playtestRound = null;
+  playtestMapIndex = 0;
+  playtestRoundsOnMap = 0;
+  playtestAdvanceAt = 0;
+  playtestStartedAt = new Date().toISOString();
+  playtestFinishedAt = null;
+  playtestProgramId = selectedProgram;
+  playtestBotTier = botTierPrefs.bots;
+  playtestBotCount = 3;
+  botCount = playtestBotCount;
+  botTier = playtestBotTier;
+  console.info('[PLAYTEST] START', {
+    build: BUILD,
+    program: programDef(playtestProgramId).name,
+    botTier: BOT_TIER_LABELS[playtestBotTier],
+    botCount: playtestBotCount,
+    roundsPerMap: PLAYTEST_ROUNDS_PER_MAP,
+    maps: ARENAS.map((arena) => arena.name),
+  });
+  beginPlaytestMap(0);
+}
+
+function beginPlaytestMap(index: number): void {
+  if (!playtestActive || playtestComplete) return;
+  if (index < 0 || index >= ARENAS.length) {
+    completePlaytest();
+    return;
+  }
+  const arena = ARENAS[index];
+  playtestMapIndex = index;
+  playtestRoundsOnMap = 0;
+  playtestRound = null;
+  playtestAdvanceAt = 0;
+  arenaIndex = arena.id;
+  if (!playtestMaps[index]) {
+    playtestMaps[index] = { arenaId: arena.id, arenaName: arena.name, rounds: [] };
+  }
+  startBotMatch(false);
+  // The next world starts in countdown; clear the overlay/history latches so the
+  // first live frame is not mistaken for the previous round.
+  lastPhase = '';
+  lastRound = -1;
+  lastRoundWinner = -2;
+  lastMatchWinner = -2;
+  goUntil = 0;
+  console.info(`[PLAYTEST] MAP ${index + 1}/${ARENAS.length} ${arena.name}`);
+  toast(`PLAYTEST ${index + 1}/${ARENAS.length} // ${arena.name}`, 'warn');
+}
+
+function emptyPlaytestDeflect(): PlaytestDeflectLog {
+  return { guard: 0, swing: 0, beam: 0, atom: 0, net: 0, arm: 0, plow: 0, broom: 0, wave: 0 };
+}
+
+function readPlaytestDeflect(w: World): PlaytestDeflectLog {
+  const telemetry = w.deflectTelemetry;
+  const sum = (values: Uint16Array): number => {
+    let total = 0;
+    for (let i = 0; i < values.length; i++) total += values[i];
+    return total;
+  };
+  return {
+    guard: sum(telemetry.guard),
+    swing: sum(telemetry.swing),
+    beam: sum(telemetry.beam),
+    atom: sum(telemetry.atom),
+    net: sum(telemetry.net),
+    arm: sum(telemetry.arm),
+    plow: sum(telemetry.plow),
+    broom: sum(telemetry.broom),
+    wave: sum(telemetry.wave),
+  };
+}
+
+function diffPlaytestDeflect(now: PlaytestDeflectLog, base: PlaytestDeflectLog): PlaytestDeflectLog {
+  return {
+    guard: now.guard - base.guard,
+    swing: now.swing - base.swing,
+    beam: now.beam - base.beam,
+    atom: now.atom - base.atom,
+    net: now.net - base.net,
+    arm: now.arm - base.arm,
+    plow: now.plow - base.plow,
+    broom: now.broom - base.broom,
+    wave: now.wave - base.wave,
+  };
+}
+
+function beginPlaytestRound(): void {
+  if (!playtestActive || playtestComplete || playtestRound || !world) return;
+  const w = world;
+  const players: PlaytestPlayerLog[] = [];
+  for (let i = 0; i < w.players.length; i++) {
+    const p = w.players[i];
+    if (!p.active) continue;
+    players.push({
+      slot: p.slot,
+      name: p.name || `SLOT ${p.slot + 1}`,
+      program: programDef(p.program).name,
+      hp: p.hp,
+      maxHp: p.maxHp,
+      score: p.score,
+      shots: 0,
+      dashes: 0,
+      swings: 0,
+      deflects: 0,
+      skills: 0,
+      heavies: 0,
+      hits: 0,
+      damage: 0,
+      kills: 0,
+      deaths: 0,
+    });
+  }
+  playtestRound = {
+    log: {
+      arenaId: w.arena.id,
+      arenaName: w.arena.name,
+      round: w.round,
+      duration: 0,
+      winner: -1,
+      winnerName: '',
+      matchWinner: -1,
+      players,
+      deflect: emptyPlaytestDeflect(),
+      fps: 0,
+      simMs: 0,
+    },
+    deflectBase: readPlaytestDeflect(w),
+  };
+}
+
+function recordPlaytestEvent(e: GameEvent): void {
+  const draft = playtestRound;
+  if (!draft) return;
+  const stats = draft.log.players.find((p) => p.slot === e.slot);
+  if (stats) {
+    switch (e.kind) {
+      case EV.SHOOT:
+        stats.shots++;
+        break;
+      case EV.DASH:
+        stats.dashes++;
+        break;
+      case EV.SWING:
+        stats.swings++;
+        break;
+      case EV.DEFLECT:
+        stats.deflects++;
+        break;
+      case EV.BUG:
+        // Probe's armed mine reports a trigger with power 4; that is not a cast.
+        if (e.power !== 4) stats.skills++;
+        break;
+      case EV.LASER:
+        stats.heavies++;
+        break;
+      case EV.HIT:
+        stats.hits++;
+        stats.damage += e.power;
+        break;
+    }
+  }
+  if (e.kind === EV.ELIMINATED && e.power >= 0) {
+    const victim = draft.log.players.find((p) => p.slot === e.power);
+    if (victim) victim.deaths++;
+    if (stats && e.slot !== e.power) stats.kills++;
+  }
+}
+
+function finishPlaytestRound(): void {
+  const draft = playtestRound;
+  if (!draft || !world) return;
+  const w = world;
+  const log = draft.log;
+  log.duration = Number(Math.max(0, ROUND.timeLimit - w.roundTimer).toFixed(2));
+  log.winner = w.roundWinner;
+  log.winnerName = w.roundWinner >= 0 && w.players[w.roundWinner] ? w.players[w.roundWinner].name : 'DRAW';
+  log.matchWinner = w.matchWinner;
+  log.fps = Math.round(fps);
+  log.simMs = Number(simMs.toFixed(3));
+  for (let i = 0; i < log.players.length; i++) {
+    const stats = log.players[i];
+    const p = w.players[stats.slot];
+    if (!p) continue;
+    stats.hp = Number(p.hp.toFixed(2));
+    stats.maxHp = p.maxHp;
+    stats.score = p.score;
+  }
+  log.deflect = diffPlaytestDeflect(readPlaytestDeflect(w), draft.deflectBase);
+  const map = playtestMaps[playtestMapIndex];
+  if (map) map.rounds.push(log);
+  playtestRound = null;
+  playtestRoundsOnMap++;
+  console.info(
+    `[PLAYTEST] ${log.arenaName} R${log.round} ${log.winnerName} ${log.duration.toFixed(1)}s`,
+    log,
+  );
+  persistPlaytestLog();
+  if (playtestRoundsOnMap >= PLAYTEST_ROUNDS_PER_MAP) {
+    playtestAdvanceAt = performance.now() + 2000;
+    toast(`MAP COMPLETE // ${log.arenaName}`, 'warn');
+  }
+}
+
+function summarizePlaytest(): PlaytestSummary {
+  let rounds = 0;
+  let seconds = 0;
+  let wins = 0;
+  let losses = 0;
+  let draws = 0;
+  let shots = 0;
+  let swings = 0;
+  let deflects = 0;
+  let skills = 0;
+  let heavies = 0;
+  let damage = 0;
+  let kills = 0;
+  let deaths = 0;
+  let fpsTotal = 0;
+  for (let m = 0; m < playtestMaps.length; m++) {
+    const map = playtestMaps[m];
+    for (let r = 0; r < map.rounds.length; r++) {
+      const round = map.rounds[r];
+      rounds++;
+      seconds += round.duration;
+      fpsTotal += round.fps;
+      if (round.winner === 0) wins++;
+      else if (round.winner >= 0) losses++;
+      else draws++;
+      for (let p = 0; p < round.players.length; p++) {
+        const player = round.players[p];
+        shots += player.shots;
+        swings += player.swings;
+        deflects += player.deflects;
+        skills += player.skills;
+        heavies += player.heavies;
+        damage += player.damage;
+        kills += player.kills;
+        deaths += player.deaths;
+      }
+    }
+  }
+  return {
+    rounds,
+    seconds: Number(seconds.toFixed(1)),
+    wins,
+    losses,
+    draws,
+    shots,
+    swings,
+    deflects,
+    skills,
+    heavies,
+    damage: Number(damage.toFixed(2)),
+    kills,
+    deaths,
+    avgFps: rounds > 0 ? Number((fpsTotal / rounds).toFixed(1)) : 0,
+  };
+}
+
+function buildPlaytestLog(): PlaytestSessionLog {
+  return {
+    schema: 1,
+    build: BUILD,
+    startedAt: playtestStartedAt,
+    finishedAt: playtestFinishedAt,
+    complete: playtestComplete,
+    mode: 'bots',
+    program: programDef(playtestProgramId).name,
+    botCount: playtestBotCount,
+    botTier: BOT_TIER_LABELS[playtestBotTier],
+    roundsPerMap: PLAYTEST_ROUNDS_PER_MAP,
+    maps: playtestMaps,
+    summary: summarizePlaytest(),
+  };
+}
+
+function persistPlaytestLog(): void {
+  try {
+    localStorage.setItem(PLAYTEST_STORAGE_KEY, JSON.stringify(buildPlaytestLog()));
+  } catch {
+    // Private browsing or a full quota must not interrupt the match.
+  }
+}
+
+function downloadPlaytestLog(): void {
+  const text = JSON.stringify(buildPlaytestLog(), null, 2);
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `deflect-playtest-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast('PLAYTEST LOG DOWNLOADED');
+}
+
+async function copyPlaytestLog(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(buildPlaytestLog(), null, 2));
+    toast('PLAYTEST LOG COPIED');
+  } catch {
+    toast('COULD NOT COPY LOG', 'warn');
+  }
+}
+
+function completePlaytest(): void {
+  if (playtestComplete) return;
+  playtestComplete = true;
+  playtestAdvanceAt = 0;
+  playtestFinishedAt = new Date().toISOString();
+  persistPlaytestLog();
+  const log = buildPlaytestLog();
+  console.info('[PLAYTEST] COMPLETE', log);
+  const summary = log.summary;
+  setOverlay(
+    'runover',
+    'PLAYTEST COMPLETE',
+    `${summary.rounds} ROUNDS // ${log.maps.length} MAPS`,
+    `${summary.wins}W ${summary.losses}L ${summary.draws}D // ${summary.deflects} CATCHES // ${summary.avgFps} FPS`,
+    [
+      { label: 'DOWNLOAD LOG', primary: true, onClick: downloadPlaytestLog },
+      { label: 'COPY LOG', onClick: copyPlaytestLog },
+      { label: 'TITLE', onClick: leaveToTitle },
+    ],
+  );
+  toast('PLAYTEST COMPLETE // LOG READY', 'warn');
+}
+
+function updatePlaytestAdvance(now: number): void {
+  if (!playtestActive || playtestComplete || playtestAdvanceAt === 0 || now < playtestAdvanceAt) return;
+  if (overlayKind === 'leave' || loading) return;
+  playtestAdvanceAt = 0;
+  if (playtestMapIndex + 1 < ARENAS.length) beginPlaytestMap(playtestMapIndex + 1);
+  else completePlaytest();
+}
+
+function clearPlaytestState(): void {
+  playtestActive = false;
+  playtestComplete = false;
+  playtestMaps = [];
+  playtestRound = null;
+  playtestAdvanceAt = 0;
+}
+
+function startBotMatch(aiLocal = false, useSeriesRules = false): void {
   if (busy) return;
   if (botCount < 1) botCount = 1;
+  if (!useSeriesRules) {
+    seriesGames = 1;
+    seriesRun = false;
+    seriesGame = 1;
+    seriesWins.fill(0);
+    seriesResultRecorded = false;
+    seriesLastArenaId = -1;
+  }
   teardownSession();
+  hideOverlayInternal();
   mode = 'bots';
   localSlot = 0;
   stress = false;
   autoplay = aiLocal;
   autoplayRestartAt = 0;
-  const arena = getArena(arenaIndex);
+  const arena = useSeriesRules ? chooseSeriesArena(false) : getArena(arenaIndex);
   const names = new Array(MAX_PLAYERS).fill('');
   names[0] = getCallsign();
   for (let i = 1; i <= botCount; i++) names[i] = BOT_NAMES[(i - 1) % BOT_NAMES.length];
@@ -2306,6 +3189,7 @@ function startBotMatch(aiLocal = false): void {
   } else {
     botInputs[0] = localFrame;
   }
+  seriesResultRecorded = false;
   resetCounters();
   fx.reset();
   setScreen('game');
@@ -2407,9 +3291,9 @@ function joinRoom(): void {
       if (lobbyState && screen === 'lobby') renderLobby(lobbyState);
       setLobbyStatus(`CONNECTED AS OPERATOR ${slot + 1}`);
     },
-    onStart: (arenaId, gameMode) => {
+    onStart: (arenaId, gameMode, seriesTotal, gameNumber) => {
       if (guestNet !== net) return;
-      startGuestGame(arenaId, gameMode);
+      startGuestGame(arenaId, gameMode, seriesTotal, gameNumber);
     },
     onSnapshot: (snap: Snapshot) => {
       if (guestNet !== net || !guestView) return;
@@ -2444,14 +3328,17 @@ function joinRoom(): void {
   net.connect(code);
 }
 
-function startGuestGame(arenaId: number, gameMode = 0): void {
+function startGuestGame(arenaId: number, gameMode = 0, seriesTotal = 1, gameNumber = 1): void {
   if (!guestNet) return;
   localSlot = guestNet.slot >= 0 ? guestNet.slot : 0;
   const arena = getArena(arenaId);
   arenaIndex = arena.id;
+  guestSeriesTotal = seriesTotal;
+  guestSeriesGame = gameNumber;
   infectionRun = gameMode === 1;
   guestView = new NetView(localSlot, arena, infectionRun);
   guestView.names = namesFromLobby();
+  hideOverlayInternal();
   resetCounters();
   fx.reset();
   setScreen('game');
@@ -2475,8 +3362,13 @@ function startHostMatch(): void {
     names[p.slot] = p.name;
   }
   lobbyState = state;
-  const arena = getArena(onlineArenaIndex(hostNet.getArenaIndex()));
   const infection = state.mode === 1;
+  const mapRule = normalizeSeriesMapRule(state.mapRule);
+  seriesGames = infection ? 1 : normalizeSeriesGames(state.series);
+  seriesMapRule = infection ? 'random' : mapRule;
+  arenaIndex = onlineArenaIndex(state.arenaId);
+  beginSeriesState(seriesGames, seriesMapRule, !infection && seriesGames > 1);
+  const arena = infection ? getArena(arenaIndex) : chooseSeriesArena(true);
   arenaIndex = arena.id;
   infectionRun = infection;
   world = infection
@@ -2484,7 +3376,7 @@ function startHostMatch(): void {
     : new World('match', names, 0, arena);
   if (infection) world.friendlyFire = false;
   hostNet.inputs[0] = localFrame;
-  hostNet.startMatch(arena.id);
+  hostNet.startMatch(arena.id, seriesGames, seriesMapRule === 'fixed' ? 1 : 0);
   localSlot = 0;
   stress = false;
   resetCounters();
@@ -2494,6 +3386,32 @@ function startHostMatch(): void {
   audio.unlock();
   audio.startMusic();
   console.log('[DEFLECT-STATE] Host', infection ? 'infection' : 'match', 'start with', connected.length, 'operators');
+}
+
+function hostNextSeriesGame(): void {
+  if (mode !== 'host' || !hostNet || !seriesRun || seriesGame >= seriesGames) return;
+  seriesGame++;
+  seriesResultRecorded = false;
+  const state = hostNet.getLobbyState();
+  const names = new Array(MAX_PLAYERS).fill('');
+  for (let i = 0; i < state.players.length; i++) {
+    const p = state.players[i];
+    if (p.connected) names[p.slot] = p.name;
+  }
+  const arena = chooseSeriesArena(true);
+  world = new World('match', names, 0, arena);
+  arenaIndex = arena.id;
+  hostNet.inputs[0] = localFrame;
+  hostNet.startNextMatch(arena.id);
+  localSlot = 0;
+  stress = false;
+  hideOverlayInternal();
+  resetCounters();
+  fx.reset();
+  setScreen('game');
+  beginLoadSequence(arena.name);
+  audio.startMusic();
+  toast(`GAME ${seriesGame}/${seriesGames} // ${arena.name}`);
 }
 
 function startStress(count: number): void {
@@ -2546,6 +3464,9 @@ function endMatchToLobby(message: string): void {
   if (!hostNet) return;
   world = null;
   infectionRun = false;
+  seriesRun = false;
+  guestSeriesTotal = 1;
+  guestSeriesGame = 1;
   hostNet.setInMatch(false);
   setScreen('lobby');
   audio.stopMusic();
@@ -2558,6 +3479,9 @@ function returnToLobby(): void {
   if (mode !== 'host' || !hostNet) return;
   world = null;
   infectionRun = false;
+  seriesRun = false;
+  guestSeriesTotal = 1;
+  guestSeriesGame = 1;
   hostNet.setInMatch(false);
   lobbyState = hostNet.getLobbyState();
   setScreen('lobby');
@@ -2610,7 +3534,7 @@ function hostRematch(): void {
 }
 
 function localRematch(): void {
-  if (mode !== 'bots' || !world) return;
+  if ((mode !== 'bots' && mode !== 'local') || !world) return;
   world.clearEvents();
   world.resetMatch();
   for (let i = 0; i < botBrains.length; i++) botBrains[i]?.reset();
@@ -2626,7 +3550,7 @@ function localRematch(): void {
   hideOverlayInternal();
   setScreen('game');
   audio.startMusic();
-  toast('SIMULATION RESET');
+  toast(mode === 'local' ? `${localSeats.activeCount()} PLAYER REMATCH` : 'SIMULATION RESET');
 }
 
 function toggleReady(): void {
@@ -2646,7 +3570,11 @@ function leaveLobby(): void {
 }
 
 function leaveToTitle(): void {
+  clearPlaytestState();
   teardownSession();
+  seriesRun = false;
+  guestSeriesTotal = 1;
+  guestSeriesGame = 1;
   showMenuStage('hub');
   setScreen('title');
   busy = false;
@@ -2655,6 +3583,11 @@ function leaveToTitle(): void {
 }
 
 function teardownSession(): void {
+  if (mode === 'local') {
+    input.keyboardOnly = false;
+    localSeats.reset();
+    renderer.setLocalSlots([0]);
+  }
   if (hostNet) {
     hostNet.close();
     hostNet = null;
@@ -2703,6 +3636,7 @@ function resetCounters(): void {
   goUntil = 0;
   lastCountdownText = '';
   lastLocalHp = -1;
+  lastLocalSeatHp.fill(-1);
   gauntletRecorded = false;
   infectionRecorded = false;
   lastCampaignPhase = '';
@@ -2812,6 +3746,30 @@ function syncCountdownFlash(now: number): void {
 const DEATH_HOLD_MS = 1100;
 let deathHoldUntil = 0;
 
+let tutorialUiKey = '';
+
+/** Draws the live story box. Hidden by the pause/result overlay, never paused itself. */
+function syncTutorialUi(): void {
+  const runner = mode === 'campaign' && world ? world.tutorial : null;
+  const show = !!runner && !runner.done && screen === 'game' && overlayKind === 'none' && !loading;
+  const step = runner?.current ?? null;
+  if (!show || !step) {
+    if (!tutorialEl.hidden) tutorialEl.hidden = true;
+    tutorialUiKey = '';
+    return;
+  }
+  const key = `${runner!.index}:${step.id}`;
+  if (key === tutorialUiKey) return;
+  tutorialUiKey = key;
+  tutorialEl.hidden = false;
+  tutorialMark.textContent = step.speaker === 'SCRIPT_KITTY' ? '🐱' : '👮';
+  tutorialSpeaker.textContent = step.speaker === 'SCRIPT_KITTY' ? 'SCRIPT_KITTY' : 'THE WARDEN';
+  tutorialLine.textContent = step.line;
+  tutorialPrompt.textContent = step.prompt ?? '';
+  tutorialPrompt.hidden = !step.prompt;
+  tutorialStep.textContent = `${Math.min(runner!.index + 1, runner!.steps.length)}/${runner!.steps.length}`;
+}
+
 function syncPhaseUi(state: RenderState): void {
   // The attract demo owns the screen: no result overlays and no run records.
   if (attract) {
@@ -2821,6 +3779,11 @@ function syncPhaseUi(state: RenderState): void {
   if (stress) {
     if (overlayKind !== 'leave') hideOverlayInternal();
     return;
+  }
+  if (playtestActive) {
+    if (playtestComplete) return;
+    if (state.phase === 'live' && !playtestRound) beginPlaytestRound();
+    else if (state.phase === 'roundover' && playtestRound) finishPlaytestRound();
   }
   if (infectionRun) {
     if (!state.infectionOver) {
@@ -3037,17 +4000,20 @@ function scoreCampaign(w: World): { score: number; clean: boolean } {
 function showCampaignClearOverlay(w: World): void {
   if (overlayKind === 'leave' || overlayKind === 'runover') return;
   const { score, clean } = scoreCampaign(w);
+  const cleared = PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex] ?? FIRST_CAMPAIGN_LEVEL;
+  const next = PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex + 1] ?? null;
+  const complete = next === null;
   let bestLine = '';
   if (!campaignSaved && campaignSlot >= 0) {
-    const level = FIRST_CAMPAIGN_LEVEL;
     const prev = loadStorySlots()[campaignSlot];
     const bestScore = Math.max(prev?.bestScore ?? 0, score);
     const cleanSweeps = (prev?.cleanSweeps ?? 0) + (clean ? 1 : 0);
+    // `level` is the completed count; no next level means the slot is complete.
     saveStoryProgress(campaignSlot, {
       program: selectedProgram,
-      sector: level.sector,
-      nodeId: level.nodeId,
-      level: 1,
+      sector: next?.sector ?? cleared.sector,
+      nodeId: next?.nodeId ?? cleared.nodeId,
+      level: next ? campaignLevelIndex + 1 : PLAYABLE_CAMPAIGN_LEVELS.length,
       players: campaignPlayers,
       bots: campaignBots,
       playSeconds: Math.floor(campaignPlaySeconds),
@@ -3056,21 +4022,35 @@ function showCampaignClearOverlay(w: World): void {
     });
     campaignSaved = true;
     bestLine = ` // BEST ${bestScore}`;
+    if (complete) storyStatusLine.textContent = 'BUILD ROOT CLEAR // MORE LEVELS COMING SOON';
   } else if (campaignSlot >= 0) {
     bestLine = ` // BEST ${loadStorySlots()[campaignSlot]?.bestScore ?? score}`;
   }
   const dataLine = w.dataTotal > 0 ? `DATA ${w.dataKept}/${w.dataTotal}` : 'NO DATA AT RISK';
+  const actions: OverlayAction[] = [];
+  if (next) {
+    actions.push({
+      label: 'NEXT ARENA',
+      primary: true,
+      onClick: () => {
+        campaignLevelIndex += 1;
+        startCampaignLevel();
+      },
+    });
+    actions.push({ label: 'REPLAY', onClick: startCampaignLevel });
+    actions.push({ label: 'SLOTS', onClick: returnToStory });
+  } else {
+    actions.push({ label: 'STORY SLOTS', primary: true, onClick: returnToStory });
+    actions.push({ label: 'REPLAY', onClick: startCampaignLevel });
+  }
   setOverlay(
     'runover',
-    'CAMPAIGN // NODE CLEARED',
-    'BUILD ROOT SECURED',
-    `${w.gauntletKills} KILLS // ${formatGauntletTime(campaignPlaySeconds)} // ${w.campaignDamage} DAMAGE TAKEN // ${dataLine}${
+    complete ? 'CAMPAIGN // LEVEL 1 CLEAR' : 'CAMPAIGN // NODE CLEARED',
+    complete ? 'MORE LEVELS COMING SOON' : `${cleared.name} SECURED`,
+    `${cleared.name} SECURED // ${w.gauntletKills} KILLS // ${formatGauntletTime(campaignPlaySeconds)} // ${w.campaignDamage} DAMAGE TAKEN // ${dataLine}${
       clean ? ' // CLEAN SWEEP' : ''
-    } // SCORE ${score}${bestLine}`,
-    [
-      { label: 'CONTINUE', primary: true, onClick: returnToStory },
-      { label: 'REPLAY', onClick: startCampaignLevel },
-    ],
+    } // SCORE ${score}${bestLine}${complete ? ' // PROGRESS SAVED' : ''}`,
+    actions,
   );
 }
 
@@ -3080,7 +4060,9 @@ function showCampaignFailOverlay(w: World): void {
     'runover',
     'CAMPAIGN // SIGNAL LOST',
     'RING BROKEN',
-    `${w.gauntletKills} / ${CAMPAIGN.killsToClear} THREATS DELETED // ${FIRST_CAMPAIGN_LEVEL.name}`,
+    `${w.gauntletKills} / ${w.campaignKillsToClear} THREATS DELETED // ${
+      (PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex] ?? FIRST_CAMPAIGN_LEVEL).name
+    }`,
     [
       { label: 'RETRY', primary: true, onClick: startCampaignLevel },
       { label: 'SLOTS', onClick: returnToStory },
@@ -3091,6 +4073,53 @@ function showCampaignFailOverlay(w: World): void {
 function showMatchOverlay(state: RenderState): void {
   if (overlayKind === 'leave') return;
   const winner = state.matchWinner;
+
+  // A guest follows the host's series automatically; the next START hides this panel.
+  if (mode === 'guest' && guestSeriesTotal > 1) {
+    const final = guestSeriesGame >= guestSeriesTotal;
+    setOverlay(
+      'match',
+      final ? 'SERIES COMPLETE' : 'GAME COMPLETE',
+      final ? 'WAITING FOR HOST' : `GAME ${guestSeriesGame}/${guestSeriesTotal} COMPLETE`,
+      final ? 'THE HOST HAS FINISHED THE SERIES // RETURN TO THE LOBBY' : 'THE HOST WILL START THE NEXT GAME',
+      [{ label: 'LEAVE ROOM', onClick: leaveToTitle }],
+    );
+    return;
+  }
+
+  if (seriesRun && (mode === 'bots' || mode === 'host')) {
+    recordSeriesResult(state);
+    const final = seriesGame >= seriesGames;
+    const score = seriesScoreLine(state);
+    const actions: OverlayAction[] = [];
+    let title: string;
+    let sub: string;
+    if (final) {
+      const champion = seriesWinner(seriesWins);
+      title = champion >= 0 ? `${nameOf(state, champion)} WINS SERIES` : 'SERIES DRAW';
+      sub = `${score} // GAME ${seriesGame}/${seriesGames} // ${seriesMapRule === 'random' ? 'RANDOM MAPS' : 'FIXED MAP'}`;
+      if (mode === 'host') {
+        actions.push({ label: 'RETURN TO LOBBY', primary: true, onClick: returnToLobby });
+      } else {
+        actions.push({ label: 'NEW SERIES', primary: true, onClick: () => startBotSeries(seriesGames) });
+        actions.push({ label: 'CHANGE SETUP', onClick: returnToSeriesSetup });
+      }
+      actions.push({ label: 'TITLE', onClick: leaveToTitle });
+    } else {
+      title = winner >= 0 ? `${nameOf(state, winner)} TAKES GAME ${seriesGame}` : `GAME ${seriesGame} DRAW`;
+      sub = `${score} // GAME ${seriesGame}/${seriesGames} // NEXT: ${seriesNextMapLabel()}`;
+      if (mode === 'host') {
+        actions.push({ label: 'NEXT GAME', primary: true, onClick: hostNextSeriesGame });
+        actions.push({ label: 'RETURN TO LOBBY', onClick: returnToLobby });
+      } else {
+        actions.push({ label: 'NEXT GAME', primary: true, onClick: startNextBotSeriesGame });
+        actions.push({ label: 'CHANGE SETUP', onClick: returnToSeriesSetup });
+      }
+    }
+    setOverlay('match', final ? 'SERIES COMPLETE' : 'GAME COMPLETE', title, sub, actions);
+    return;
+  }
+
   const title = winner >= 0 ? `${nameOf(state, winner)} WINS` : 'MATCH COMPLETE';
   const sub = `${scoreLine(state)} // FIRST TO ${ROUND.winsNeeded}${
     mode === 'guest' ? ' // WAITING FOR HOST TO REMATCH' : ''
@@ -3101,7 +4130,7 @@ function showMatchOverlay(state: RenderState): void {
     actions.push({ label: 'RETURN TO LOBBY', onClick: returnToLobby });
   } else if (mode === 'guest') {
     actions.push({ label: 'LEAVE ROOM', onClick: leaveToTitle });
-  } else if (mode === 'bots') {
+  } else if (mode === 'bots' || mode === 'local') {
     actions.push({ label: 'REMATCH', primary: true, onClick: localRematch });
     actions.push({ label: 'RETURN TO TITLE', onClick: leaveToTitle });
   }
@@ -3157,7 +4186,7 @@ function openLeave(): void {
   const training = mode === 'training' && !stress;
   const botMatch = mode === 'bots';
   const gauntlet = mode === 'gauntlet';
-  const paused = training || botMatch || gauntlet || campaignRun;
+  const paused = training || botMatch || mode === 'local' || gauntlet || campaignRun;
   setOverlay(
     'leave',
     paused ? 'SYSTEM // PAUSED' : 'SYSTEM // LIVE',
@@ -3227,6 +4256,12 @@ function renderLobby(state: LobbyState | null, connectingCode: string | null = n
   const lobbyMode = state?.mode ?? 0;
   lobbyModeBtn.textContent = `MODE: ${lobbyMode === 1 ? 'INFECTION' : 'VERSUS'}`;
   lobbyModeBtn.disabled = mode !== 'host' || busy;
+  const lobbySeries = state?.series ?? seriesGames;
+  const lobbyMapRule = (state?.mapRule ?? (seriesMapRule === 'fixed' ? 1 : 0)) === 1 ? 'fixed' : 'random';
+  lobbySeriesBtn.textContent = `SERIES: ${lobbySeries === 1 ? '1 GAME' : `${lobbySeries} GAMES`}`;
+  lobbySeriesBtn.disabled = mode !== 'host' || busy || lobbyMode === 1;
+  lobbyMapRuleBtn.textContent = `MAPS: ${lobbyMapRule === 'random' ? 'RANDOM' : 'FIXED'}`;
+  lobbyMapRuleBtn.disabled = mode !== 'host' || busy || lobbyMode === 1;
 
   const players = state?.players ?? [];
   lobbyCount.textContent = `${players.length} / ${MAX_PLAYERS}`;
@@ -3646,7 +4681,16 @@ if (import.meta.env.DEV) {
     startGauntlet,
     startInfection,
     startCampaignLevel,
-    getCampaign: () => ({ slot: campaignSlot, players: campaignPlayers, bots: campaignBots, saved: campaignSaved }),
+    getCampaign: () => ({
+      slot: campaignSlot,
+      level: campaignLevelIndex,
+      players: campaignPlayers,
+      bots: campaignBots,
+      saved: campaignSaved,
+    }),
+    setCampaignLevel: (index: number) => {
+      campaignLevelIndex = Math.max(0, Math.min(PLAYABLE_CAMPAIGN_LEVELS.length - 1, Math.floor(index)));
+    },
     startBotMatch,
     startAutoplay,
     startStress,

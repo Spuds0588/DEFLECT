@@ -1,4 +1,4 @@
-import { AIMBOT, ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { AimMark, CopyMark } from './types';
 import {
   discArmAngle,
@@ -9,13 +9,24 @@ import {
   discCenterY,
   discHoleX,
   discHoleY,
+  holdingCellLayout,
+  KEYPAD_STATE,
+  scannerLaserY,
+  scannerPhaseAt,
+  SCANNER_STATE,
+  ROOM_THEME_COLORS,
   type ArenaDef,
+  type ArenaKeypadDef,
+  type ArenaRoomDef,
+  type ArenaScannerDef,
+  type HoldingCellLayout,
 } from './arenas';
 import { Fx } from './fx';
-import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourglassMark, drawPinballMark, drawProgramMark, drawSymbol, pathFileIcon, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
+import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourglassMark, drawProgramMark, drawSymbol, pathFileIcon, pathPinballFlipper, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
 import { P_COLOR_DANGER, P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
+import { drawDroppedFiles, drawRegularProgram, regularFace, regularProgram, type RegularMood, type RegularProgramDef } from './regulars';
 import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type Sentry, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
 import { beamReach } from './collision';
@@ -66,9 +77,13 @@ export interface RenderState {
   campaignPhase?: CampaignPhase;
   campaignBannerT?: number;
   campaignBannerDur?: number;
-  /** 0 drill, 1 breach/inbound, 2 cleared, 3 failed. */
+  /** 0 drill, 1 breach/inbound, 2 cleared, 3 failed, 4 calibration, 5 awake, 6 cell release. */
   campaignBannerKind?: number;
-  /** Breakable file boxes. Local content; guests never receive these. */
+  /** Campaign-only presentation state for the holding room. */
+  campaignCiviliansLost?: boolean;
+  campaignBarsFlashT?: number;
+  campaignBarsOpen?: boolean;
+  /** Breakable file boxes. Live boxes travel in Snapshot; physics stays host-side. */
   props?: readonly Prop[];
   /** NETWORK SWITCH feed pipes. Local arena content. */
   pipes?: readonly Pipe[];
@@ -82,6 +97,19 @@ export interface RenderState {
   pusherActive?: boolean;
   /** Rotating platter phase. Absent freezes the disc at its authored resting pose. */
   discT?: number;
+  /** Phone-pad phase and per-key state. The shared clock travels in Snapshot. */
+  keypadT?: number;
+  keypadStates?: ArrayLike<number>;
+  /** Document-scanner page clock and phase. Snapshot carries both. */
+  scannerT?: number;
+  scannerPage?: number;
+  scannerPhase?: number;
+  /** Forum browser page, cursor and click flash. Guests derive these from Snapshot. */
+  browserPage?: number;
+  browserPhase?: number;
+  browserCursorX?: number;
+  browserCursorY?: number;
+  browserClickT?: number;
   /** Bad Lag's time dilation, in seconds of real time left, and who cast it. */
   timeSlowT?: number;
   timeSlowOwner?: number;
@@ -93,9 +121,39 @@ export interface RenderState {
   bumperFlash?: ArrayLike<number>;
 }
 
+/** Presentation-only civilian state. It never enters World or a snapshot. */
+interface CivilianActor {
+  def: RegularProgramDef;
+  homeX: number;
+  homeY: number;
+  x: number;
+  y: number;
+  scale: number;
+  phase: number;
+  baseMood: RegularMood;
+  mood: RegularMood;
+  carry: number;
+  fleeing: boolean;
+  gone: boolean;
+  exitX: number;
+  exitY: number;
+  exitLeaves: boolean;
+  dropT: number;
+  dropX: number;
+  dropY: number;
+  dropCount: number;
+}
+
+const CIVILIAN_FLEE_RADIUS = 230;
+const CIVILIAN_FLEE_SPEED = 82;
+const CIVILIAN_DROP_LIFE = 2.8;
+const CIVILIAN_EXIT_RADIUS = 20;
+
 const FONT_TINY = '700 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const FONT_SMALL = '700 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const FONT_MID = '700 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+const FONT_KEYPAD = '700 52px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+const FONT_PAGE_TITLE = '700 19px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
 /** Cached ASCII broom rows. Keyed by column count; built once per size, never per frame. */
 const BROOM_HEAD_ROWS = new Map<number, string>();
@@ -286,6 +344,19 @@ export class Renderer {
   private director = new CameraDirector();
   private lastWave = -1;
   private lastCampaignKind = -1;
+  /** Campaign-only presentation state for the holding room's scripted beats. */
+  private campaignCiviliansLost = false;
+  private campaignBarsFlashT = 0;
+  private campaignBarsOpen = false;
+  private campaignActive = false;
+  /** Local civilian monitors and their presentation-only flight/drop state. */
+  private civilians: CivilianActor[] = [];
+  private civilianArenaId = -1;
+  private civilianThreatX = 0;
+  private civilianThreatY = 0;
+  private civilianExitX = 0;
+  private civilianExitY = 0;
+  private civilianExitLeaves = false;
   /** Local slots to render as split panes. `null` is the normal single view. */
   private splitSlots: readonly number[] | null = null;
   /** Per-frame camera pull scratch: total weight and weighted offset from the anchor. */
@@ -373,6 +444,8 @@ export class Renderer {
   beginIntro(): void {
     this.introT = 0;
     this.introActive = true;
+    this.civilians.length = 0;
+    this.civilianArenaId = -1;
     this.director.clear();
     this.lastWave = -1;
     this.lastCampaignKind = -1;
@@ -408,6 +481,10 @@ export class Renderer {
     const t = performance.now() * 0.001;
     const dt = Math.min(0.05, Math.max(0.001, t - this.lastRenderT));
     this.lastRenderT = t;
+    this.campaignCiviliansLost = state.campaignCiviliansLost === true;
+    this.campaignBarsFlashT = state.campaignBarsFlashT ?? 0;
+    this.campaignBarsOpen = state.campaignBarsOpen === true;
+    this.campaignActive = state.campaign === true;
     if (this.introActive) {
       this.introT += dt;
       if (this.introT >= INTRO_LEN) this.introActive = false;
@@ -417,6 +494,7 @@ export class Renderer {
     this.layoutViews(state);
     this.updateCameraCues(state);
     this.director.update(dt);
+    this.updateCivilians(state, dt);
 
     // Effects that advance per-frame state run once, never once per pane. Drawing them
     // per pane would double the dust and trail samples in a split match.
@@ -464,6 +542,9 @@ export class Renderer {
       this.drawArena(t, state.arena, intro, state.discT ?? 0);
       this.drawFeedRun(state.arena, t);
       this.drawBumpers(state.arena, t, state.bumperFlash);
+      if (state.arena.keypad) this.drawKeypad(state, t);
+      if (state.arena.scanner) this.drawScanner(state, t);
+      if (state.arena.browser) this.drawBrowser(state);
       if (introDone) {
         if (state.props) this.drawProps(state.props);
         if (state.pipes) this.drawPipes(state.pipes, state.arena, t);
@@ -1504,6 +1585,526 @@ export class Renderer {
     }
   }
 
+  /**
+   * The ten-key floor. An up key is a recessed socket; a warning key lifts and glows;
+   * a slammed/down key is a solid cap that blocks bodies and shots. The digit stays
+   * readable in every state because it is the map's whole identity.
+   */
+  private drawKeypad(state: RenderState, t: number): void {
+    const kp = state.arena.keypad;
+    if (!kp) return;
+    const ctx = this.ctx;
+    const states = state.keypadStates;
+    ctx.save();
+
+    // Housing. A dark recess around the caps makes the pad read as one object instead
+    // of ten unrelated blocks dropped on the floor.
+    ctx.globalAlpha = 0.98;
+    ctx.fillStyle = '#070c10';
+    ctx.fillRect(kp.x, kp.y, kp.w, kp.h);
+    ctx.strokeStyle = state.arena.accentSoft;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(kp.x + 0.5, kp.y + 0.5, kp.w - 1, kp.h - 1);
+    ctx.globalAlpha = 0.56;
+    ctx.strokeStyle = state.arena.accent;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(kp.x + 8.5, kp.y + 8.5, kp.w - 17, kp.h - 17);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = FONT_SMALL;
+    ctx.fillStyle = 'rgba(255, 224, 142, 0.62)';
+    ctx.fillText('10-KEY // FLOOR', kp.x + kp.w * 0.5, kp.y + 27);
+
+    for (let i = 0; i < kp.keys.length; i++) {
+      const key = kp.keys[i];
+      const keyState = states?.[i] ?? KEYPAD_STATE.up;
+      const x = key.x;
+      const y = key.y;
+      const w = key.w;
+      const h = key.h;
+
+      // Socket under every cap, so an up key still has a visible footprint.
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#03070a';
+      ctx.fillRect(x + 3, y + 5, w - 6, h - 5);
+      ctx.strokeStyle = 'rgba(255, 207, 92, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 3.5, y + 5.5, w - 7, h - 6);
+
+      if (keyState === KEYPAD_STATE.up) {
+        ctx.globalAlpha = 0.34;
+        ctx.fillStyle = 'rgba(255, 207, 92, 0.25)';
+        ctx.fillRect(x + 15, y + 15, w - 30, h - 30);
+        ctx.globalAlpha = 0.34;
+        ctx.fillStyle = '#ffe7a0';
+        ctx.font = FONT_KEYPAD;
+        ctx.fillText(key.digit, x + w * 0.5, y + h * 0.54);
+        ctx.globalAlpha = 1;
+        continue;
+      }
+
+      const warning = keyState === KEYPAD_STATE.warn;
+      const slamming = keyState === KEYPAD_STATE.slam;
+      const rising = keyState === KEYPAD_STATE.rise;
+      const lift = warning ? 7 + Math.sin(t * 22 + i) * 2 : rising ? 3 : 0;
+      const capY = y - lift;
+      const hot = slamming || warning;
+
+      // Cap body and its dark under-edge. The down face covers the socket exactly.
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = slamming ? '#8a5a12' : warning ? '#3a2b12' : '#20251a';
+      ctx.fillRect(x, capY, w, h);
+      ctx.fillStyle = '#080d0f';
+      ctx.fillRect(x, capY + h - 11, w, 11);
+
+      // Recessed top face.
+      ctx.fillStyle = slamming ? '#ffcf5c' : warning ? '#4b3716' : '#2a3020';
+      ctx.fillRect(x + 8, capY + 8, w - 16, h - 24);
+      ctx.strokeStyle = hot ? '#ffb04a' : rising ? 'rgba(255, 207, 92, 0.45)' : state.arena.accent;
+      ctx.lineWidth = hot ? 3 : 2;
+      ctx.globalAlpha = hot ? 0.95 : 0.8;
+      ctx.strokeRect(x + 8.5, capY + 8.5, w - 17, h - 25);
+
+      // Down caps are cover: the center panel, corner bolts and a hard bright rim.
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = slamming ? '#1b1608' : '#171c12';
+      ctx.fillRect(x + 19, capY + 20, w - 38, h - 48);
+      ctx.strokeStyle = hot ? '#fff0b0' : 'rgba(255, 224, 142, 0.42)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 20.5, capY + 21.5, w - 41, h - 50);
+      ctx.fillStyle = hot ? '#fff3bb' : 'rgba(255, 224, 142, 0.6)';
+      for (let c = 0; c < 4; c++) {
+        ctx.fillRect(x + (c < 2 ? 13 : w - 17), capY + (c % 2 === 0 ? 13 : h - 17), 4, 4);
+      }
+
+      if (warning) {
+        // A falling three-bar hazard mark, not a text label: readable at a glance while
+        // the player is moving across the pad.
+        ctx.fillStyle = '#ffb04a';
+        for (let bar = 0; bar < 3; bar++) {
+          const by = capY + 23 + bar * 9 + Math.sin(t * 15 + i + bar) * 2;
+          ctx.fillRect(x + w * 0.5 - 26 + bar * 8, by, 52 - bar * 8, 3);
+        }
+      }
+
+      ctx.globalAlpha = slamming ? 1 : 0.92;
+      ctx.fillStyle = slamming ? '#100d05' : '#ffe7a0';
+      ctx.font = FONT_KEYPAD;
+      ctx.fillText(key.digit, x + w * 0.5, capY + h * 0.55);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * The document bed. Pages rise from a feed slot, sit under a glass platen, then
+   * drop away. The read head is the arena hazard: it travels down the sheet and
+   * snaps back up before the page swap. The clock/page travel in Snapshot; damage
+   * stays host-side.
+   */
+  private drawScanner(state: RenderState, t: number): void {
+    const sc = state.arena.scanner;
+    if (!sc) return;
+    const ctx = this.ctx;
+    const clock = state.scannerT ?? 0;
+    const phase = state.scannerPhase ?? scannerPhaseAt(clock);
+    const cycle = SCANNER.load + SCANNER.warn + SCANNER.down + SCANNER.up + SCANNER.unload;
+    const local = ((clock % cycle) + cycle) % cycle;
+    let slide = 0;
+    if (local < SCANNER.load) {
+      slide = (1 - local / SCANNER.load) * sc.h;
+    } else if (local > cycle - SCANNER.unload) {
+      slide = ((local - (cycle - SCANNER.unload)) / SCANNER.unload) * sc.h;
+    }
+    const pageIndex = state.scannerPage ?? 0;
+    const page = sc.documents.length > 0
+      ? sc.documents[((pageIndex % sc.documents.length) + sc.documents.length) % sc.documents.length]
+      : 'UNTITLED';
+
+    ctx.save();
+    // Heavy platen housing, with bolts at the corners.
+    ctx.fillStyle = '#070d11';
+    ctx.fillRect(sc.x - 34, sc.y - 38, sc.w + 68, sc.h + 76);
+    ctx.strokeStyle = 'rgba(216, 230, 255, 0.32)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sc.x - 33.5, sc.y - 37.5, sc.w + 67, sc.h + 75);
+    ctx.strokeStyle = 'rgba(216, 230, 255, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sc.x - 23.5, sc.y - 27.5, sc.w + 47, sc.h + 55);
+    ctx.fillStyle = 'rgba(216, 230, 255, 0.42)';
+    for (let i = 0; i < 4; i++) {
+      const bx = i % 2 === 0 ? sc.x - 23 : sc.x + sc.w + 18;
+      const by = i < 2 ? sc.y - 24 : sc.y + sc.h + 17;
+      ctx.fillRect(bx, by, 5, 5);
+    }
+
+    // Recessed glass and page. The clip is what makes load/unload read as a slot.
+    ctx.fillStyle = '#0d1418';
+    ctx.fillRect(sc.x - 10, sc.y - 10, sc.w + 20, sc.h + 20);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(sc.x, sc.y, sc.w, sc.h);
+    ctx.clip();
+    ctx.translate(0, slide);
+    this.drawScannerPage(sc, page, pageIndex);
+    ctx.restore();
+
+    // Glass reflection and the feed slot below the platen.
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = '#d9f1ff';
+    ctx.fillRect(sc.x, sc.y, sc.w, 3);
+    ctx.fillRect(sc.x, sc.y, 3, sc.h);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#060b0e';
+    ctx.fillRect(sc.x - 6, sc.y + sc.h + 8, sc.w + 12, 17);
+    ctx.strokeStyle = 'rgba(216, 230, 255, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sc.x - 5.5, sc.y + sc.h + 8.5, sc.w + 11, 16);
+    ctx.fillStyle = 'rgba(216, 230, 255, 0.38)';
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect(sc.x + 31 + i * (sc.w - 62) * 0.2, sc.y + sc.h + 13, 24, 7);
+    }
+
+    const line = scannerLaserY(sc, clock);
+    if (line >= 0) {
+      const hot = phase === SCANNER_STATE.down || phase === SCANNER_STATE.up;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = THREAT_COLORS.firewall;
+      ctx.lineCap = 'butt';
+      ctx.beginPath();
+      ctx.moveTo(sc.x + 7, line);
+      ctx.lineTo(sc.x + sc.w - 7, line);
+      ctx.globalAlpha = 0.1 * (hot ? 1 : 0.5);
+      ctx.lineWidth = SCANNER.width + 20;
+      ctx.stroke();
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = SCANNER.width;
+      ctx.stroke();
+      ctx.globalAlpha = 0.58;
+      ctx.lineWidth = 7;
+      ctx.stroke();
+      ctx.globalAlpha = 0.95;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.strokeStyle = '#fff2d8';
+      ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+      // Carriage blocks make the beam read as a read head, not a free-floating line.
+      ctx.fillStyle = THREAT_COLORS.firewall;
+      ctx.fillRect(sc.x - 19, line - 13, 9, 26);
+      ctx.fillRect(sc.x + sc.w + 10, line - 13, 9, 26);
+    } else if (phase === SCANNER_STATE.warn) {
+      const blink = 0.4 + 0.6 * Math.abs(Math.sin(t * 18));
+      ctx.save();
+      ctx.globalAlpha = 0.18 + 0.18 * blink;
+      ctx.strokeStyle = THREAT_COLORS.firewall;
+      ctx.lineWidth = SCANNER.width + 10;
+      ctx.beginPath();
+      ctx.moveTo(sc.x + 7, sc.y + 3);
+      ctx.lineTo(sc.x + sc.w - 7, sc.y + 3);
+      ctx.stroke();
+      ctx.globalAlpha = 0.7 * blink;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([10, 8]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Status is kept in the housing margins, clear of the page copy.
+    let status = 'READY';
+    if (phase === SCANNER_STATE.load) status = 'LOADING NEXT SHEET';
+    else if (phase === SCANNER_STATE.warn) status = 'SCAN STARTING';
+    else if (phase === SCANNER_STATE.down) status = 'READING DOWN';
+    else if (phase === SCANNER_STATE.up) status = 'RETURNING';
+    else if (phase === SCANNER_STATE.unload) status = 'UNLOADING';
+    ctx.globalAlpha = 0.7;
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = state.arena.accent;
+    ctx.fillText('PLATEN 02 // ' + status, sc.x - 4, sc.y - 17);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(216, 230, 255, 0.55)';
+    ctx.fillText(`SHEET ${String(pageIndex + 1).padStart(2, '0')}`, sc.x + sc.w + 5, sc.y - 17);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /** One page of simulated corporate paper. Text is fixed decoration, not content. */
+  private drawScannerPage(sc: ArenaScannerDef, title: string, index: number): void {
+    const ctx = this.ctx;
+    const x = sc.x + 16;
+    const y = sc.y + 16;
+    const w = sc.w - 32;
+    const h = sc.h - 32;
+    const redacted = title.includes('REDACTED') || index % 3 === 1;
+
+    ctx.save();
+    ctx.fillStyle = '#d2dad8';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#b8c3c1';
+    ctx.fillRect(x, y, w, 72);
+    ctx.fillStyle = '#a4b0ae';
+    ctx.fillRect(x, y + 72, w, 2);
+    ctx.fillStyle = '#5d696b';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('LOCALHOST // INTERNAL REVIEW // NOT FOR DISTRIBUTION', x + 20, y + 22);
+    ctx.fillStyle = '#1d282b';
+    ctx.font = FONT_PAGE_TITLE;
+    ctx.fillText(title, x + 20, y + 49);
+    ctx.fillStyle = 'rgba(29, 40, 43, 0.52)';
+    ctx.font = FONT_SMALL;
+    ctx.fillText(`FILED ${String(index + 4).padStart(2, '0')} / REV 03:12 / COPY ${index % 3 + 1}`, x + 20, y + 67);
+
+    // Fake body copy. Varying rule lengths keep every page from reading as a form.
+    const bodyW = w - 40;
+    for (let i = 0; i < 11; i++) {
+      const lineY = y + 100 + i * 24;
+      const lineW = bodyW * (0.56 + ((i * 37) % 44) * 0.01);
+      if (redacted && (i === 3 || i === 6)) {
+        ctx.fillStyle = '#111719';
+        ctx.fillRect(x + 20, lineY - 3, lineW + 12, 8);
+        ctx.fillStyle = 'rgba(190, 70, 58, 0.72)';
+        ctx.font = FONT_SMALL;
+        ctx.fillText('REDACTED', x + 24, lineY + 1);
+        continue;
+      }
+      ctx.fillStyle = i % 4 === 0 ? '#8d999a' : '#aeb8b7';
+      ctx.fillRect(x + 20, lineY, lineW, 2);
+      if (i % 3 === 1) {
+        ctx.fillStyle = 'rgba(94, 108, 108, 0.55)';
+        ctx.fillRect(x + 20 + lineW + 12, lineY, Math.max(8, bodyW - lineW - 18), 2);
+      }
+    }
+
+    // A revision stamp and a redaction bar make the b-story visible without a cutscene.
+    ctx.save();
+    ctx.translate(x + w - 106, y + h - 46);
+    ctx.rotate(-0.06);
+    ctx.strokeStyle = redacted ? 'rgba(155, 50, 42, 0.7)' : 'rgba(66, 91, 96, 0.58)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, 90, 28);
+    ctx.fillStyle = redacted ? 'rgba(155, 50, 42, 0.7)' : 'rgba(66, 91, 96, 0.58)';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'center';
+    ctx.fillText(redacted ? 'REDACTED' : 'REVIEWED', 45, 15);
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(50, 63, 65, 0.52)';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.fillText(`SHEET ${String(index + 1).padStart(2, '0')} // COLD STORAGE`, x + 20, y + h - 20);
+    ctx.textAlign = 'right';
+    ctx.fillText('DO NOT ARCHIVE', x + w - 20, y + h - 20);
+    ctx.restore();
+  }
+
+  /**
+   * Browser-window dressing: tab strip, URL bar, the active forum page and its cursor.
+   * The chrome is static cover; the active page's cards and link are local simulation
+   * state, so a hosted room never reaches this map.
+   */
+  private drawBrowser(state: RenderState): void {
+    const b = state.arena.browser;
+    if (!b || b.pages.length === 0) return;
+    const ctx = this.ctx;
+    const arena = state.arena;
+    const page = b.page;
+    const chrome = b.chrome;
+    const pageIndex = ((state.browserPage ?? 0) % b.pages.length + b.pages.length) % b.pages.length;
+    const forum = b.pages[pageIndex];
+
+    ctx.save();
+    // Page body. This intentionally covers the generic pillar fill below it; the
+    // browser cards and chrome are redrawn with their own faces in this pass.
+    ctx.fillStyle = '#091116';
+    ctx.fillRect(page.x, page.y, page.w, page.h);
+    ctx.strokeStyle = 'rgba(89, 216, 255, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(page.x + 0.5, page.y + 0.5, page.w - 1, page.h - 1);
+    ctx.globalAlpha = 0.13;
+    ctx.fillStyle = arena.accent;
+    for (let i = 0; i < 15; i++) {
+      const lineY = page.y + 52 + i * 48;
+      ctx.fillRect(page.x + 36, lineY, page.w - 92, 1);
+    }
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = 'rgba(200, 236, 246, 0.35)';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(forum.title, page.x + 36, page.y + 276);
+    ctx.fillText(`PAGE ${pageIndex + 1} / ${b.pages.length} // CLICK TO NAVIGATE`, page.x + 36, page.y + 324);
+    ctx.globalAlpha = 1;
+
+    // Chrome band: tabs first, then the URL row.
+    ctx.fillStyle = '#070c11';
+    ctx.fillRect(chrome.x, chrome.y, chrome.w, chrome.h);
+    ctx.fillStyle = 'rgba(89, 216, 255, 0.18)';
+    ctx.fillRect(chrome.x, chrome.y + chrome.h - 2, chrome.w, 2);
+    ctx.strokeStyle = 'rgba(89, 216, 255, 0.34)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(chrome.x + 0.5, chrome.y + 0.5, chrome.w - 1, chrome.h - 1);
+
+    let tabX = chrome.x + 22;
+    for (let i = 0; i < b.tabs.length; i++) {
+      const tab = b.tabs[i];
+      const active = i === b.activeTab;
+      ctx.fillStyle = active ? '#1a2b35' : '#101820';
+      ctx.fillRect(tabX, chrome.y + 12, tab.w, 43);
+      ctx.strokeStyle = active ? 'rgba(89, 216, 255, 0.65)' : 'rgba(160, 200, 215, 0.18)';
+      ctx.strokeRect(tabX + 0.5, chrome.y + 12.5, tab.w - 1, 42);
+      if (active) {
+        ctx.fillStyle = arena.accent;
+        ctx.fillRect(tabX + 1, chrome.y + 51, tab.w - 2, 3);
+      }
+      ctx.fillStyle = active ? '#dff7ff' : 'rgba(184, 220, 232, 0.55)';
+      ctx.font = FONT_SMALL;
+      ctx.textAlign = 'left';
+      ctx.fillText(tab.label, tabX + 14, chrome.y + 34);
+      // Close mark on every tab; purely decorative, the strip is solid cover.
+      ctx.fillStyle = active ? 'rgba(223, 247, 255, 0.62)' : 'rgba(184, 220, 232, 0.28)';
+      ctx.fillText('x', tabX + tab.w - 18, chrome.y + 34);
+      tabX += tab.w + 8;
+    }
+    if (tabX < chrome.x + chrome.w - 30) {
+      ctx.fillStyle = 'rgba(89, 216, 255, 0.45)';
+      ctx.fillRect(tabX + 8, chrome.y + 28, 9, 2);
+      ctx.fillRect(tabX + 11.5, chrome.y + 24.5, 2, 9);
+    }
+
+    // URL row and its large navigation buttons.
+    ctx.fillStyle = '#0b151c';
+    ctx.fillRect(chrome.x + 22, chrome.y + 68, chrome.w - 44, 48);
+    ctx.strokeStyle = 'rgba(160, 210, 225, 0.22)';
+    ctx.strokeRect(chrome.x + 22.5, chrome.y + 68.5, chrome.w - 45, 47);
+    ctx.fillStyle = 'rgba(89, 216, 255, 0.72)';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'center';
+    ctx.fillText('‹', chrome.x + 48, chrome.y + 92);
+    ctx.fillText('›', chrome.x + 78, chrome.y + 92);
+    ctx.fillText('↻', chrome.x + 108, chrome.y + 92);
+    ctx.fillStyle = '#dff7ff';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.fillText(forum.url, chrome.x + 132, chrome.y + 92);
+    ctx.fillStyle = 'rgba(120, 210, 160, 0.85)';
+    ctx.fillText('LOCK', chrome.x + chrome.w - 74, chrome.y + 92);
+
+    // Forum cards: cover with a browser title bar and a close control.
+    for (let i = 0; i < forum.elements.length; i++) {
+      const p = forum.elements[i];
+      ctx.fillStyle = 'rgba(4, 9, 12, 0.55)';
+      ctx.fillRect(p.x + 5, p.y + 5, p.w, p.h);
+      ctx.fillStyle = '#0e1a21';
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.strokeStyle = i % 2 === 0 ? 'rgba(89, 216, 255, 0.52)' : 'rgba(160, 220, 232, 0.34)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(p.x + 0.5, p.y + 0.5, p.w - 1, p.h - 1);
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(89, 216, 255, 0.16)' : 'rgba(160, 220, 232, 0.1)';
+      ctx.fillRect(p.x + 1, p.y + 1, p.w - 2, 30);
+      ctx.fillStyle = '#cceff8';
+      ctx.font = FONT_SMALL;
+      ctx.textAlign = 'left';
+      ctx.fillText(p.title, p.x + 12, p.y + 16);
+      ctx.fillStyle = 'rgba(200, 236, 246, 0.5)';
+      ctx.fillText('x', p.x + p.w - 16, p.y + 16);
+      ctx.fillStyle = 'rgba(174, 213, 224, 0.18)';
+      for (let line = 0; line < 4; line++) {
+        ctx.fillRect(p.x + 16, p.y + 50 + line * 16, p.w - 32 - (line % 2) * 28, 2);
+      }
+      ctx.fillStyle = 'rgba(89, 216, 255, 0.48)';
+      ctx.fillRect(p.x + p.w - 58, p.y + p.h - 24, 42, 12);
+    }
+
+    // Navigation link. The cursor aims at its centre before the page swaps.
+    const link = forum.link;
+    ctx.fillStyle = 'rgba(7, 17, 23, 0.94)';
+    ctx.fillRect(link.x, link.y, link.w, link.h);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(link.x + 0.5, link.y + 0.5, link.w - 1, link.h - 1);
+    ctx.fillStyle = '#dff7ff';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'center';
+    ctx.fillText(link.label, link.x + link.w * 0.5, link.y + 28);
+    ctx.fillStyle = 'rgba(89, 216, 255, 0.72)';
+    ctx.fillText('CLICK', link.x + link.w * 0.5, link.y + 50);
+
+    // Big pointer. It idles over the page, then drops its click on the link.
+    const cx = state.browserCursorX ?? page.x + page.w * 0.5;
+    const cy = state.browserCursorY ?? page.y + page.h * 0.34;
+    const click = state.browserClickT ?? 0;
+    const phase = state.browserPhase ?? 0;
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (click > 0) ctx.scale(1, 0.88);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(8, 48);
+    ctx.lineTo(20, 34);
+    ctx.lineTo(35, 50);
+    ctx.lineTo(44, 41);
+    ctx.lineTo(29, 26);
+    ctx.lineTo(48, 22);
+    ctx.closePath();
+    ctx.fillStyle = '#f3fbff';
+    ctx.fill();
+    ctx.strokeStyle = '#071015';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    // Telegraph the click around the pointer; the page swaps after the slam.
+    if (phase === 2 || phase === 3 || click > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = arena.accent;
+      ctx.globalAlpha = 0.45 + (click > 0 ? 0.4 : 0);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 54 + (click > 0 ? (1 - click / BROWSER.slam) * 52 : 0), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = arena.accent;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 102, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Scrollbar lane on the right edge.
+    const sb = b.scrollbar;
+    ctx.fillStyle = '#060b0e';
+    ctx.fillRect(sb.x, sb.y, sb.w, sb.h);
+    ctx.strokeStyle = 'rgba(89, 216, 255, 0.24)';
+    ctx.strokeRect(sb.x + 0.5, sb.y + 0.5, sb.w - 1, sb.h - 1);
+    ctx.fillStyle = 'rgba(89, 216, 255, 0.62)';
+    ctx.fillRect(sb.x + 5, sb.y + 52, sb.w - 10, Math.min(190, sb.h * 0.28));
+
+    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = arena.accent;
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.fillText(`BROWSER // ${forum.title}`, page.x + 4, page.y + page.h - 8);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(200, 236, 246, 0.55)';
+    ctx.fillText(`${b.pages.length} PAGES // CLICK TO NAVIGATE`, page.x + page.w - 4, page.y + page.h - 8);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   /** Round posts and lit kickers. Flash timers come from the local world. */
   private drawBumpers(arena: ArenaDef, t: number, flashes?: ArrayLike<number>): void {
     const bumpers = arena.bumpers;
@@ -2276,6 +2877,8 @@ export class Renderer {
     ctx.restore();
 
     this.drawTraversal(arena, t, frameA);
+    this.drawTutorialRooms(arena, t, frameA);
+    this.drawRegularPrograms(arena, t, frameA);
 
     // Border. An open arena has no wall, so the lip is dashed and the grid outside it is
     // swallowed by the void. Corner brackets are dropped: nothing here stops a body.
@@ -2495,6 +3098,789 @@ export class Renderer {
     ctx.stroke();
     ctx.restore();
     if (!arena.traverse) this.drawArenaSignature(arena, t, frameA);
+    if (arena.port) this.drawArenaPort(arena, t, frameA);
+  }
+
+  /**
+   * The connected tutorial rooms. These are inset floor plates and place labels over the
+   * arena's own floor; collision stays in `traverse` (the gaps) and `pillars`. The bridge
+   * decks are drawn over the traversal deck so the crossing reads as one authored route.
+   */
+  private drawTutorialRooms(arena: ArenaDef, t: number, alpha: number): void {
+    const rooms = arena.rooms;
+    if (!rooms) return;
+    const ctx = this.ctx;
+    ctx.save();
+    for (let i = 0; i < rooms.length; i++) {
+      const room = rooms[i];
+      const theme = ROOM_THEME_COLORS[room.theme];
+      const cx = room.x + room.w * 0.5;
+      const cy = room.y + room.h * 0.5;
+      const radius = Math.min(room.w, room.h) * 0.5;
+      ctx.save();
+      ctx.beginPath();
+      if (room.shape === 'circle') ctx.arc(cx, cy, radius, 0, TWO_PI);
+      else ctx.rect(room.x, room.y, room.w, room.h);
+      ctx.clip();
+
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = theme.floor;
+      ctx.fillRect(room.x, room.y, room.w, room.h);
+
+      // A finer working grid over the room floor. The shared arena grid is 48px; this
+      // one is 24px, so each room reads at a tighter, more enclosed scale.
+      ctx.globalAlpha = 0.7 * alpha;
+      ctx.strokeStyle = theme.line;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = room.x + 24; x < room.x + room.w; x += 24) {
+        ctx.moveTo(x + 0.5, room.y);
+        ctx.lineTo(x + 0.5, room.y + room.h);
+      }
+      for (let y = room.y + 24; y < room.y + room.h; y += 24) {
+        ctx.moveTo(room.x, y + 0.5);
+        ctx.lineTo(room.x + room.w, y + 0.5);
+      }
+      ctx.stroke();
+
+      if (room.theme === 'office') this.drawOfficeRoom(room, cx, cy, radius, alpha);
+      else if (room.theme === 'holding') this.drawHoldingRoom(room, t, alpha);
+      else if (room.theme === 'board') this.drawBoardRoom(arena, room, alpha);
+      else this.drawRouterRoom(room, t, alpha);
+      ctx.restore();
+
+      // Hard rim plus a dashed containment line. The rim is the room's silhouette; the
+      // dash keeps it from reading as another solid wall.
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = theme.accent;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      if (room.shape === 'circle') ctx.arc(cx, cy, radius - 2, 0, TWO_PI);
+      else ctx.rect(room.x + 2, room.y + 2, room.w - 4, room.h - 4);
+      ctx.stroke();
+      ctx.globalAlpha = 0.32 * alpha;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      if (room.shape === 'circle') ctx.arc(cx, cy, radius - 12, 0, TWO_PI);
+      else ctx.rect(room.x + 12, room.y + 12, room.w - 24, room.h - 24);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Place label above the plate. This is a name, not an objective marker.
+      ctx.globalAlpha = alpha;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = '600 15px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.fillStyle = theme.accent;
+      ctx.fillText(room.label, cx, room.y - 22);
+      ctx.globalAlpha = 0.62 * alpha;
+      ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.fillStyle = '#dff7ff';
+      ctx.fillText(room.sub, cx, room.y - 7);
+    }
+
+    const bridges = arena.bridges;
+    if (bridges) {
+      for (let i = 0; i < bridges.length; i++) {
+        const bridge = bridges[i];
+        const x = bridge.x;
+        const y = bridge.y;
+        const w = bridge.w;
+        const h = bridge.h;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+        ctx.clip();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#0c131b';
+        ctx.fillRect(x, y, w, h);
+        ctx.globalAlpha = 0.55 * alpha;
+        ctx.strokeStyle = 'rgba(150, 210, 235, 0.22)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let bx = x + 12; bx < x + w; bx += 20) {
+          ctx.moveTo(bx + 0.5, y + 10);
+          ctx.lineTo(bx + 0.5, y + h - 10);
+        }
+        ctx.stroke();
+        ctx.globalAlpha = 0.9 * alpha;
+        ctx.strokeStyle = arena.accent;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(x, y + 8);
+        ctx.lineTo(x + w, y + 8);
+        ctx.moveTo(x, y + h - 8);
+        ctx.lineTo(x + w, y + h - 8);
+        ctx.stroke();
+        // A data thread runs toward the port, so the bridge has a direction.
+        ctx.globalAlpha = 0.72 * alpha;
+        ctx.strokeStyle = '#d8fbff';
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([16, 18]);
+        ctx.lineDashOffset = -t * 54;
+        ctx.beginPath();
+        ctx.moveTo(x + 2, y + h * 0.5);
+        ctx.lineTo(x + w - 2, y + h * 0.5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+
+        ctx.globalAlpha = 0.75 * alpha;
+        ctx.strokeStyle = arena.accentSoft;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+        if (bridge.label) {
+          ctx.globalAlpha = 0.65 * alpha;
+          ctx.fillStyle = arena.accent;
+          ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'alphabetic';
+          ctx.fillText(`LINK ${bridge.label}`, x + w * 0.5, y - 7);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Intake floor: carpet seams, lamp cones and a walk line. The first lesson happens
+   *  in the bare circle, before the holding office introduces the cell block. */
+  private drawOfficeRoom(room: ArenaRoomDef, cx: number, cy: number, _radius: number, alpha: number): void {
+    const ctx = this.ctx;
+    const theme = ROOM_THEME_COLORS.office;
+    const bottom = room.y + room.h;
+
+    ctx.globalAlpha = 0.26 * alpha;
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([12, 10]);
+    ctx.beginPath();
+    ctx.moveTo(cx + 30, cy);
+    ctx.lineTo(room.x + room.w + 8, cy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Two warm pools from the ceiling fixtures over the desk rows.
+    ctx.globalAlpha = 0.05 * alpha;
+    ctx.fillStyle = '#ffd89a';
+    for (let i = 0; i < 2; i++) {
+      const lx = cx + (i === 0 ? -1 : 1) * 108;
+      ctx.beginPath();
+      ctx.moveTo(lx - 16, room.y + 46);
+      ctx.lineTo(lx + 16, room.y + 46);
+      ctx.lineTo(lx + 76, bottom - 66);
+      ctx.lineTo(lx - 76, bottom - 66);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.globalAlpha = 0.17 * alpha;
+    ctx.fillStyle = theme.accent;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = '700 28px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillText('INTAKE // 01', cx, cy - 58);
+
+    // Loose intake paper. Cosmetic, deliberately smaller than a breakable prop.
+    ctx.globalAlpha = 0.18 * alpha;
+    ctx.fillStyle = '#e8edf2';
+    for (let i = 0; i < 7; i++) {
+      const px = room.x + 116 + ((i * 83) % 250);
+      const py = room.y + 132 + ((i * 61) % 210);
+      ctx.fillRect(px, py, 10, 7);
+    }
+  }
+
+  /**
+   * Holding office: a square floor with a three-cell block along the back wall. Script
+   * Kitty waits in the middle cell. When the calibration class is cleared the bars flash
+   * amber, retract, and the released threats take over the office floor.
+   */
+  private drawHoldingRoom(room: ArenaRoomDef, t: number, alpha: number): void {
+    const ctx = this.ctx;
+    const theme = ROOM_THEME_COLORS.holding;
+    const layout = holdingCellLayout(room);
+    const left = layout.left;
+    const cellW = layout.cellW;
+    const cellTop = layout.top;
+    const cellBottom = layout.bottom;
+    const cx = room.x + room.w * 0.5;
+
+    // Two office desks sit at the front of the room, clear of the cell block and the
+    // central wake arc. They are visual furniture, not cover pillars.
+    ctx.globalAlpha = 0.55 * alpha;
+    ctx.fillStyle = 'rgba(8, 12, 17, 0.78)';
+    ctx.strokeStyle = theme.line;
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 2; i++) {
+      const dx = room.x + 42 + i * (room.w - 120);
+      const dy = room.y + room.h - 70;
+      ctx.fillRect(dx, dy, 78, 34);
+      ctx.strokeRect(dx + 0.5, dy + 0.5, 77, 33);
+      ctx.globalAlpha = 0.25 * alpha;
+      ctx.fillStyle = theme.accent;
+      ctx.fillRect(dx + 10, dy + 8, 20, 2);
+      ctx.fillRect(dx + 10, dy + 14, 12, 2);
+      ctx.globalAlpha = 0.55 * alpha;
+      ctx.fillStyle = 'rgba(8, 12, 17, 0.78)';
+    }
+
+    // Cell block: dark recesses, bunks and a small service label per cell.
+    for (let i = 0; i < 3; i++) {
+      const x = left + i * cellW;
+      ctx.globalAlpha = 0.62 * alpha;
+      ctx.fillStyle = theme.deep;
+      ctx.fillRect(x + 2, cellTop, cellW - 4, cellBottom - cellTop);
+      ctx.globalAlpha = 0.35 * alpha;
+      ctx.strokeStyle = theme.line;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 2.5, cellTop + 0.5, cellW - 5, cellBottom - cellTop - 1);
+      ctx.globalAlpha = 0.22 * alpha;
+      ctx.fillStyle = '#a8c0cb';
+      ctx.fillRect(x + 12, cellTop + 42, cellW - 24, 4);
+      ctx.fillRect(x + 12, cellTop + 54, cellW - 32, 3);
+      ctx.globalAlpha = 0.28 * alpha;
+      ctx.fillStyle = theme.accent;
+      ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(`CELL 0${i + 1}`, x + cellW * 0.5, cellTop + 13);
+    }
+
+    // Kitty is inside the middle cell, drawn before the bars so the bars occlude her.
+    drawRegularProgram(this.ctx, regularProgram('script-kitty'), cx, cellBottom - 12, t, 0.66, alpha, 0.35);
+    ctx.globalAlpha = 0.42 * alpha;
+    ctx.fillStyle = theme.accent;
+    ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('KITTY', cx, cellBottom + 13);
+
+    // Wave 2 waits behind the bars: the worm in the left cell, the virus pair in the
+    // right. These are painted silhouettes; the real bodies spawn on the power-down.
+    if (this.campaignActive && !this.campaignBarsOpen) {
+      this.drawHoldingCagedThreats(layout, t, alpha);
+    }
+
+    // The bars are the readable jail signal. A flash runs the whole block amber before
+    // they retract; the cell frames stay so the room still reads as holding.
+    const flash = this.campaignBarsFlashT > 0;
+    const pulse = 0.55 + 0.45 * Math.sin(t * 26);
+    const open = this.campaignBarsOpen;
+    ctx.globalAlpha = (flash ? 0.85 + 0.15 * pulse : 0.58) * alpha;
+    ctx.strokeStyle = flash ? '#ffd27a' : '#d5e5ea';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      const x = left + i * cellW;
+      ctx.strokeRect(x + 2, cellTop + 1, cellW - 4, cellBottom - cellTop - 2);
+      ctx.beginPath();
+      const barTop = open ? cellTop + 4 : cellTop + 5;
+      const barBottom = open ? cellTop + 22 : cellBottom - 4;
+      for (let bx = x + 10; bx <= x + cellW - 8; bx += 13) {
+        ctx.moveTo(bx, barTop);
+        ctx.lineTo(bx, barBottom);
+      }
+      if (!open) {
+        ctx.moveTo(x + 6, cellTop + 38);
+        ctx.lineTo(x + cellW - 6, cellTop + 38);
+        ctx.moveTo(x + 6, cellTop + 72);
+        ctx.lineTo(x + cellW - 6, cellTop + 72);
+      }
+      ctx.stroke();
+    }
+
+    // Floor stencil, set below the cell block so it does not compete with the bars.
+    ctx.globalAlpha = 0.16 * alpha;
+    ctx.fillStyle = theme.accent;
+    ctx.font = '700 22px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('HOLDING // 02', cx, room.y + room.h - 26);
+    ctx.globalAlpha = 0.28 * alpha;
+    ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillText('CELL BLOCK // CONTAINMENT', cx, room.y + room.h - 12);
+  }
+
+  /** Painted wave-2 silhouettes behind the sealed cell bars. */
+  private drawHoldingCagedThreats(layout: HoldingCellLayout, t: number, alpha: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    // Worm: a short red chain with a dark eye, moving just enough to read as alive.
+    const wx = layout.left + layout.cellW * 0.5;
+    const wy = layout.top + 58;
+    ctx.globalAlpha = 0.9 * alpha;
+    ctx.fillStyle = THREAT_COLORS.worm;
+    ctx.strokeStyle = 'rgba(17, 9, 12, 0.9)';
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 4; i++) {
+      const s = i === 0 ? 10 : 8 - i * 0.4;
+      const x = wx + Math.sin(t * 1.8 + i * 0.65) * 2.5 - i * 1.5;
+      const y = wy + i * 8 - 8;
+      ctx.fillRect(x - s * 0.5, y - s * 0.5, s, s);
+      ctx.strokeRect(x - s * 0.5, y - s * 0.5, s, s);
+    }
+    ctx.fillStyle = '#241217';
+    ctx.fillRect(wx - 3, wy - 10, 2, 2);
+    ctx.fillRect(wx + 1, wy - 10, 2, 2);
+
+    // Viruses: a pair of magenta diamonds in the right cell.
+    const vx = layout.left + layout.cellW * 2.5;
+    const vy = layout.top + 59;
+    ctx.strokeStyle = 'rgba(34, 8, 30, 0.9)';
+    for (let i = 0; i < 2; i++) {
+      const x = vx + (i === 0 ? -15 : 15) + Math.sin(t * 1.5 + i * 2.1) * 2.5;
+      const y = vy + (i === 0 ? -2 : 12) + Math.cos(t * 1.2 + i) * 2;
+      const r = i === 0 ? 7 : 6;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(t * 1.2 + i * 0.9);
+      ctx.beginPath();
+      ctx.moveTo(0, -r);
+      ctx.lineTo(r * 0.72, 0);
+      ctx.lineTo(0, r);
+      ctx.lineTo(-r * 0.72, 0);
+      ctx.closePath();
+      ctx.fillStyle = THREAT_COLORS.virus;
+      ctx.globalAlpha = 0.9 * alpha;
+      ctx.fill();
+      ctx.globalAlpha = 0.65 * alpha;
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  /** Mainboard floor: copper traces, chip pads and a board stencil. */
+  private drawBoardRoom(arena: ArenaDef, room: ArenaRoomDef, alpha: number): void {
+    const ctx = this.ctx;
+    const theme = ROOM_THEME_COLORS.board;
+    const lanes = [0.18, 0.32, 0.68, 0.82];
+
+    ctx.globalAlpha = 0.3 * alpha;
+    ctx.strokeStyle = '#d58a4a';
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < lanes.length; i++) {
+      const y = room.y + room.h * lanes[i];
+      const bend = i < 2 ? -1 : 1;
+      ctx.beginPath();
+      ctx.moveTo(room.x + 14, y);
+      ctx.lineTo(room.x + room.w * 0.28, y);
+      ctx.lineTo(room.x + room.w * 0.28 + 26, y + bend * 24);
+      ctx.lineTo(room.x + room.w - 14, y + bend * 24);
+      ctx.stroke();
+      // A via at each end and one at the bend.
+      ctx.beginPath();
+      ctx.arc(room.x + room.w * 0.28, y, 3, 0, TWO_PI);
+      ctx.stroke();
+    }
+
+    // Pad rings sit outside the chip pillars so cover reads as a component.
+    ctx.globalAlpha = 0.4 * alpha;
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 1.3;
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const p = arena.pillars[i];
+      if (p.x < room.x || p.y < room.y || p.x + p.w > room.x + room.w || p.y + p.h > room.y + room.h) continue;
+      ctx.strokeRect(p.x - 8, p.y - 8, p.w + 16, p.h + 16);
+      ctx.beginPath();
+      for (let tx = p.x - 4; tx <= p.x + p.w + 4; tx += 12) {
+        ctx.moveTo(tx, p.y - 12);
+        ctx.lineTo(tx, p.y - 8);
+        ctx.moveTo(tx, p.y + p.h + 8);
+        ctx.lineTo(tx, p.y + p.h + 12);
+      }
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 0.14 * alpha;
+    ctx.fillStyle = theme.accent;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = '700 26px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillText('MAINBOARD', room.x + room.w * 0.5, room.y + room.h * 0.5 + 9);
+    ctx.globalAlpha = 0.3 * alpha;
+    ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillText('BUS 02 // DATA PLANE', room.x + room.w * 0.5, room.y + room.h * 0.5 + 28);
+  }
+
+  /** Router floor: port banks, blinking link LEDs and an antenna arc. */
+  private drawRouterRoom(room: ArenaRoomDef, t: number, alpha: number): void {
+    const ctx = this.ctx;
+    const theme = ROOM_THEME_COLORS.router;
+    const cols = 10;
+
+    ctx.globalAlpha = 0.5 * alpha;
+    ctx.strokeStyle = theme.line;
+    ctx.lineWidth = 1;
+    for (let row = 0; row < 2; row++) {
+      const py = row === 0 ? room.y + 20 : room.y + room.h - 34;
+      for (let i = 0; i < cols; i++) {
+        const px = room.x + 24 + i * 42;
+        ctx.fillStyle = 'rgba(3, 7, 12, 0.9)';
+        ctx.fillRect(px, py, 26, 14);
+        ctx.globalAlpha = 0.42 * alpha;
+        ctx.strokeRect(px + 0.5, py + 0.5, 25, 13);
+        const lit = Math.sin(t * 2.4 + i * 0.9 + row * 1.7) > 0.2;
+        ctx.globalAlpha = (lit ? 0.95 : 0.18) * alpha;
+        ctx.fillStyle = lit ? '#7dffcf' : '#3b7f76';
+        ctx.fillRect(px + 3, py + 3, 3, 3);
+        ctx.globalAlpha = 0.5 * alpha;
+      }
+    }
+
+    // Antenna sweep in the upper-right corner. It is only a place signal; no gameplay.
+    ctx.globalAlpha = 0.22 * alpha;
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(room.x + room.w - 58, room.y + 58, 24 + i * 18, -1.25, 0.45);
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 0.14 * alpha;
+    ctx.fillStyle = theme.accent;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = '700 26px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillText('ROUTER', room.x + room.w * 0.5, room.y + room.h * 0.5 + 9);
+    ctx.globalAlpha = 0.3 * alpha;
+    ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillText('PORT 03 // UPLINK', room.x + room.w * 0.5, room.y + room.h * 0.5 + 28);
+  }
+
+  /** The final uplink. It is a wall fixture until the campaign exit is scripted. */
+  private drawArenaPort(arena: ArenaDef, t: number, alpha: number): void {
+    const port = arena.port;
+    if (!port) return;
+    const ctx = this.ctx;
+    const cx = port.x;
+    const cy = port.y;
+    const r = port.radius;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#040a10';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 12, 0, TWO_PI);
+    ctx.fill();
+    ctx.globalAlpha = 0.3 * alpha;
+    ctx.strokeStyle = '#66c8ff';
+    ctx.lineWidth = 9;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 6, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.5 * alpha;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.68, 0, TWO_PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Three chevrons pointing out, so the port has a direction even without UI.
+    ctx.globalAlpha = 0.9 * alpha;
+    ctx.strokeStyle = '#d8fbff';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const x = cx - 18 + i * 15;
+      ctx.moveTo(x, cy - 9);
+      ctx.lineTo(x + 9, cy);
+      ctx.lineTo(x, cy + 9);
+    }
+    ctx.stroke();
+
+    const pulse = 0.5 + Math.sin(t * 2.2) * 0.2;
+    ctx.globalAlpha = pulse * alpha;
+    ctx.fillStyle = '#a8f4ff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.22, 0, TWO_PI);
+    ctx.fill();
+
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#66c8ff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillText(port.label, cx, cy - r - 24);
+    ctx.globalAlpha = 0.64 * alpha;
+    ctx.fillStyle = '#dff7ff';
+    ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillText(port.sub, cx, cy - r - 10);
+    ctx.restore();
+  }
+
+  /** Ordinary program monitors, painted before cover so a desk can occlude one. */
+  private drawRegularPrograms(_arena: ArenaDef, t: number, alpha: number): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < this.civilians.length; i++) {
+      const a = this.civilians[i];
+      if (a.dropT > 0 && a.dropCount > 0) {
+        const fade = Math.min(1, a.dropT / 0.5);
+        drawDroppedFiles(ctx, a.dropX, a.dropY, t, alpha * fade, a.dropCount, a.phase);
+      }
+      if (a.gone) continue;
+      drawRegularProgram(ctx, a.def, a.x, a.y, t, a.scale, alpha, a.phase, regularFace(a.def, a.mood), a.carry);
+    }
+  }
+
+  /** Rebuild civilian actors only when the arena changes, never per tick. */
+  private syncCivilians(arena: ArenaDef): void {
+    if (arena.id === this.civilianArenaId) return;
+    this.civilianArenaId = arena.id;
+    this.civilians.length = 0;
+    const regulars = arena.regulars;
+    if (!regulars) return;
+    for (let i = 0; i < regulars.length; i++) {
+      const p = regulars[i];
+      const mood = p.mood ?? 'calm';
+      this.civilians.push({
+        def: regularProgram(p.id),
+        homeX: p.x,
+        homeY: p.y,
+        x: p.x,
+        y: p.y,
+        scale: p.scale ?? 1,
+        phase: p.phase ?? i * 1.37,
+        baseMood: mood,
+        mood,
+        carry: Math.max(0, Math.min(3, p.carry ?? 0)),
+        fleeing: false,
+        gone: false,
+        exitX: p.x,
+        exitY: p.y,
+        exitLeaves: false,
+        dropT: 0,
+        dropX: p.x,
+        dropY: p.y,
+        dropCount: 0,
+      });
+    }
+  }
+
+  /**
+   * Presentation-only civilian reaction. A nearby hostile makes an ordinary program
+   * drop its files and head for the port, a pad/lift, or a room farther from the
+   * threat. Nothing here changes collision, health, AI or the snapshot.
+   */
+  private updateCivilians(state: RenderState, dt: number): void {
+    this.syncCivilians(state.arena);
+    if (this.civilians.length === 0) return;
+    const lost = state.campaignCiviliansLost === true;
+    for (let i = 0; i < this.civilians.length; i++) {
+      const a = this.civilians[i];
+      if (a.dropT > 0) a.dropT = Math.max(0, a.dropT - dt);
+      if (lost) {
+        if (!a.gone) {
+          a.gone = true;
+          if (a.dropCount === 0) a.dropCount = a.carry;
+          if (a.dropCount > 0) {
+            a.dropX = a.x;
+            a.dropY = a.y;
+            a.dropT = CIVILIAN_DROP_LIFE;
+          }
+          a.carry = 0;
+        }
+        continue;
+      }
+      if (a.gone) continue;
+      if (this.findCivilianThreat(state, a.x, a.y)) {
+        if (!a.fleeing) {
+          a.fleeing = true;
+          a.mood = 'scared';
+          if (a.carry > 0) {
+            a.dropCount = a.carry;
+            a.dropX = a.x;
+            a.dropY = a.y;
+            a.dropT = CIVILIAN_DROP_LIFE;
+            a.carry = 0;
+          }
+          this.pickCivilianExit(state.arena, a.x, a.y);
+          a.exitX = this.civilianExitX;
+          a.exitY = this.civilianExitY;
+          a.exitLeaves = this.civilianExitLeaves;
+        }
+        const dx = a.exitX - a.x;
+        const dy = a.exitY - a.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= CIVILIAN_EXIT_RADIUS) {
+          if (a.exitLeaves) a.gone = true;
+          else {
+            a.fleeing = false;
+            a.homeX = a.exitX;
+            a.homeY = a.exitY;
+            a.mood = 'calm';
+          }
+          continue;
+        }
+        const step = Math.min(dist, CIVILIAN_FLEE_SPEED * dt);
+        a.x += (dx / dist) * step;
+        a.y += (dy / dist) * step;
+      } else if (!a.fleeing) {
+        a.mood = a.baseMood;
+        const k = 1 - Math.exp(-2.8 * dt);
+        a.x += (a.homeX - a.x) * k;
+        a.y += (a.homeY - a.y) * k;
+      }
+    }
+  }
+
+  /** Finds the nearest live hostile within the civilian fear radius. */
+  private findCivilianThreat(state: RenderState, x: number, y: number): boolean {
+    let best = CIVILIAN_FLEE_RADIUS * CIVILIAN_FLEE_RADIUS;
+    let bx = 0;
+    let by = 0;
+    let found = false;
+    const worms = state.worms;
+    if (worms) {
+      for (let i = 0; i < worms.length; i++) {
+        const w = worms[i];
+        if (!w.active) continue;
+        const dx = w.x - x;
+        const dy = w.y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) {
+          best = d2;
+          bx = w.x;
+          by = w.y;
+          found = true;
+        }
+      }
+    }
+    const viruses = state.viruses;
+    if (viruses) {
+      for (let i = 0; i < viruses.length; i++) {
+        const v = viruses[i];
+        if (!v.active) continue;
+        const dx = v.x - x;
+        const dy = v.y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) {
+          best = d2;
+          bx = v.x;
+          by = v.y;
+          found = true;
+        }
+      }
+    }
+    const errors = state.errors;
+    if (errors) {
+      for (let i = 0; i < errors.length; i++) {
+        const e = errors[i];
+        if (!e.active) continue;
+        const dx = e.x - x;
+        const dy = e.y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) {
+          best = d2;
+          bx = e.x;
+          by = e.y;
+          found = true;
+        }
+      }
+    }
+    const sentries = state.sentries;
+    if (sentries) {
+      for (let i = 0; i < sentries.length; i++) {
+        const s = sentries[i];
+        if (!s.active) continue;
+        // Dormant calibration subjects are set dressing, not a reason to flee.
+        if (s.kind >= 4 && s.kind <= 6 && s.shapeState === 0) continue;
+        const dx = s.x - x;
+        const dy = s.y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) {
+          best = d2;
+          bx = s.x;
+          by = s.y;
+          found = true;
+        }
+      }
+    }
+    this.civilianThreatX = bx;
+    this.civilianThreatY = by;
+    return found;
+  }
+
+  /** Picks the nearest authored escape route, or the room farthest from the threat. */
+  private pickCivilianExit(arena: ArenaDef, x: number, y: number): void {
+    const port = arena.port;
+    if (port) {
+      this.civilianExitX = port.x;
+      this.civilianExitY = port.y;
+      this.civilianExitLeaves = true;
+      return;
+    }
+    const traverse = arena.traverse;
+    if (traverse && traverse.pads.length > 0) {
+      let best = -1;
+      let bestD = Infinity;
+      for (let i = 0; i < traverse.pads.length; i++) {
+        const p = traverse.pads[i];
+        const dx = p.x - x;
+        const dy = p.y - y;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      }
+      if (best >= 0) {
+        this.civilianExitX = traverse.pads[best].x;
+        this.civilianExitY = traverse.pads[best].y;
+        this.civilianExitLeaves = true;
+        return;
+      }
+    }
+    if (traverse && traverse.lifts.length > 0) {
+      let best = -1;
+      let bestD = Infinity;
+      for (let i = 0; i < traverse.lifts.length; i++) {
+        const p = traverse.lifts[i];
+        const dx = p.x - x;
+        const dy = p.y - y;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      }
+      if (best >= 0) {
+        this.civilianExitX = traverse.lifts[best].x;
+        this.civilianExitY = traverse.lifts[best].y;
+        this.civilianExitLeaves = true;
+        return;
+      }
+    }
+    const rooms = arena.rooms;
+    if (rooms && rooms.length > 0) {
+      let best = 0;
+      let bestScore = -1;
+      for (let i = 0; i < rooms.length; i++) {
+        const room = rooms[i];
+        const dx = room.x + room.w * 0.5 - this.civilianThreatX;
+        const dy = room.y + room.h * 0.5 - this.civilianThreatY;
+        const score = dx * dx + dy * dy;
+        if (score > bestScore) {
+          bestScore = score;
+          best = i;
+        }
+      }
+      const room = rooms[best];
+      this.civilianExitX = room.x + room.w * 0.5;
+      this.civilianExitY = room.y + room.h * 0.5;
+      this.civilianExitLeaves = false;
+      return;
+    }
+    const b = arena.bounds;
+    this.civilianExitX = x < (b.left + b.right) * 0.5 ? b.right - 24 : b.left + 24;
+    this.civilianExitY = y < (b.top + b.bottom) * 0.5 ? b.bottom - 24 : b.top + 24;
+    this.civilianExitLeaves = true;
   }
 
   /**
@@ -4542,14 +5928,10 @@ export class Renderer {
       ctx.arc(p.armX, p.armY, PINBALL.armLength, p.armBaseAngle - PINBALL.armArc, p.armBaseAngle + PINBALL.armArc);
       ctx.stroke();
 
-      // Bat body: dark underlay, colour edge, bright inner line. The taper is the
-      // flipper read; a plain stick would look like another barrier.
+      // Bat body: dark underlay, colour edge, bright inner line. It shares the health
+      // hull's tapered paddle, so the deployed arm and the swing read as one device.
       ctx.beginPath();
-      ctx.moveTo(p.armX + nx * baseW, p.armY + ny * baseW);
-      ctx.lineTo(tipX + nx * tipW, tipY + ny * tipW);
-      ctx.lineTo(tipX - nx * tipW, tipY - ny * tipW);
-      ctx.lineTo(p.armX - nx * baseW, p.armY - ny * baseW);
-      ctx.closePath();
+      pathPinballFlipper(ctx, p.armX, p.armY, p.armAngle, PINBALL.armLength, baseW, tipW);
       ctx.globalAlpha = 0.9 * fade;
       ctx.fillStyle = 'rgba(4, 10, 16, 0.92)';
       ctx.fill();
@@ -4781,7 +6163,6 @@ export class Renderer {
         const big = p.type === 15;
         const r = p.radius * (big ? 1.05 : 1.2);
         const heat = Math.min(1, p.hits / 5);
-        const spin = p.spin + p.bounces * 0.55 + t * (big ? 0.8 : 2.6);
         ctx.save();
         ctx.translate(x, y);
         // Motion streak behind the ball, in the owner's colour. A tapered wedge reads
@@ -4798,35 +6179,59 @@ export class Renderer {
         ctx.lineTo(0, r * 0.72);
         ctx.closePath();
         ctx.fill();
-        // Body: a dark disc under a bright rim, so the ball reads as a solid object
-        // even against the additive trails around it.
+        // Solid ball: the whole disc is filled with the owner's colour, with a darker
+        // lower edge and a fixed top reflection. The highlight never spins with the shot,
+        // so it reads as a light source above the table rather than a stamped mark.
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = 1;
-        ctx.fillStyle = 'rgba(4, 9, 14, 0.9)';
+        ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(0, 0, r, 0, TWO_PI);
         ctx.fill();
+        // Outer colour ring; thicker on the super ball so a large solid disc does not
+        // blend into the additive trail behind it.
+        ctx.globalAlpha = big ? 0.24 : 0.16;
         ctx.strokeStyle = color;
-        ctx.globalAlpha = 0.35;
-        ctx.lineWidth = r * 0.5;
+        ctx.lineWidth = big ? 7 : 4.5;
         ctx.beginPath();
-        ctx.arc(0, 0, r, 0, TWO_PI);
+        ctx.arc(0, 0, r + 1, 0, TWO_PI);
         ctx.stroke();
-        ctx.globalAlpha = 1;
-        ctx.lineWidth = big ? 3.4 : 2;
+        // Shade the lower edge so the disc reads as a sphere, not a flat dot.
+        ctx.globalAlpha = 0.42;
+        ctx.strokeStyle = 'rgba(3, 9, 16, 0.9)';
+        ctx.lineWidth = Math.max(1.4, r * 0.18);
         ctx.beginPath();
-        ctx.arc(0, 0, r, 0, TWO_PI);
+        ctx.arc(0, 0, r - Math.max(0.6, r * 0.09), Math.PI * 0.08, Math.PI * 0.92);
         ctx.stroke();
-        ctx.rotate(spin);
-        ctx.fillStyle = heat > 0 ? '#fff0d8' : color;
-        drawPinballMark(ctx, 0, 0, r * (big ? 0.92 : 0.86));
+        // Top reflection: one soft wash and one tight glint. The pair sells the solid,
+        // glossy ball at both projectile sizes.
+        ctx.fillStyle = '#ffffff';
+        ctx.globalAlpha = big ? 0.2 : 0.17;
+        ctx.beginPath();
+        ctx.ellipse(-r * 0.2, -r * 0.36, r * 0.48, r * 0.28, -0.5, 0, TWO_PI);
+        ctx.fill();
+        ctx.globalAlpha = big ? 0.86 : 0.8;
+        ctx.beginPath();
+        ctx.ellipse(-r * 0.27, -r * 0.44, r * 0.24, r * 0.12, -0.5, 0, TWO_PI);
+        ctx.fill();
+        ctx.globalAlpha = 0.32;
+        ctx.beginPath();
+        ctx.ellipse(r * 0.3, -r * 0.3, r * 0.09, r * 0.05, -0.5, 0, TWO_PI);
+        ctx.fill();
         if (heat > 0) {
-          ctx.globalAlpha = 0.35 + heat * 0.5;
+          // Every body struck heats the rim and the reflection, so the damage ladder is
+          // visible before the next bounce lands.
+          ctx.globalAlpha = 0.2 + heat * 0.38;
           ctx.strokeStyle = '#ffd9a0';
-          ctx.lineWidth = 1.4;
+          ctx.lineWidth = Math.max(1.4, r * 0.16);
           ctx.beginPath();
-          ctx.arc(0, 0, r * 0.64, 0, TWO_PI);
+          ctx.arc(0, 0, r * 1.08, 0, TWO_PI);
           ctx.stroke();
+          ctx.globalAlpha = 0.6 + heat * 0.3;
+          ctx.fillStyle = '#fff4df';
+          ctx.beginPath();
+          ctx.ellipse(-r * 0.27, -r * 0.44, r * 0.27, r * 0.15, -0.5, 0, TWO_PI);
+          ctx.fill();
         }
         ctx.restore();
       } else if (p.type === 17) {
@@ -5243,7 +6648,7 @@ export class Renderer {
         ctx.restore();
       } else {
         const arming = p.grace > 0;
-        const blink = p.fuse < 0.55 ? 0.4 + 0.6 * Math.abs(Math.sin(t * 24)) : 0.8;
+        const blink = 0.7 + 0.3 * Math.abs(Math.sin(t * 3 + p.serial));
         const pulse = 0.65 + 0.35 * Math.sin(t * 9 + p.serial);
         ctx.save();
         ctx.translate(x, y);
@@ -5256,6 +6661,12 @@ export class Renderer {
           ctx.setLineDash([3, 6]);
           ctx.beginPath();
           ctx.arc(0, 0, MINE.triggerRadius, 0, TWO_PI);
+          ctx.stroke();
+          // The blast reaches much farther than the trip radius; show its edge faintly
+          // so the larger area is readable before someone steps in.
+          ctx.globalAlpha = 0.045 + 0.02 * pulse;
+          ctx.beginPath();
+          ctx.arc(0, 0, MINE.blastRadius, 0, TWO_PI);
           ctx.stroke();
           ctx.setLineDash([]);
         }
@@ -5281,18 +6692,17 @@ export class Renderer {
         ctx.strokeRect(-p.radius - 5, -p.radius - 5, (p.radius + 5) * 2, (p.radius + 5) * 2);
         ctx.restore();
 
-        // Core plus countdown arc. Arming runs a tight ring; live mines show time left.
+        // Core plus armed ring. There is no countdown: the mine lasts until triggered.
         ctx.fillStyle = arming ? color : '#ffffff';
         ctx.globalAlpha = arming ? 0.55 + 0.4 * Math.abs(Math.sin(t * 22)) : 0.95;
         ctx.beginPath();
         ctx.arc(0, 0, 3, 0, TWO_PI);
         ctx.fill();
-        const fusePct = Math.max(0, Math.min(1, p.fuse / MINE.life));
         ctx.strokeStyle = arming ? '#dff7ff' : '#ff7a3c';
-        ctx.globalAlpha = arming ? 0.5 : 0.9;
+        ctx.globalAlpha = arming ? 0.5 : 0.6 + 0.25 * Math.abs(Math.sin(t * 4 + p.serial));
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(0, 0, p.radius + 5, -Math.PI / 2, -Math.PI / 2 + TWO_PI * fusePct);
+        ctx.arc(0, 0, p.radius + 5, 0, TWO_PI);
         ctx.stroke();
         ctx.restore();
       }
@@ -5951,6 +7361,8 @@ export class Renderer {
       } else if (p.swingPhase !== 0 && p.program === PROGRAM_ID.AIMBOT) {
         const whip = p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP;
         this.drawKnifeSwing(p, x, y, facing, color, whip);
+      } else if (p.swingPhase !== 0 && p.program === PROGRAM_ID.PINBALL) {
+        this.drawPinballSwing(p, x, y, facing, color);
       } else if (p.swingPhase !== 0) {
         const half = p.meleeHalfAngle;
         const dir = p.swingDir < 0 ? -1 : 1;
@@ -6335,7 +7747,7 @@ export class Renderer {
       }
       ctx.restore();
 
-      // Atomize's shield charges: three blue balls sharing one orbit. They persist
+      // Atomize's shield charges: two blue balls sharing one orbit. They persist
       // until spent, so the count is the readout; no timer or bar belongs here.
       if (p.atomBalls > 0) {
         const count = p.atomBalls;
@@ -7469,6 +8881,97 @@ export class Renderer {
   }
 
   /**
+   * Pinball's melee: the two flipper bats hinged at the body's sides snap shut across the
+   * forward arc. They share the flipper outline with the health hull and the deployed
+   * skill arm, so a swing reads as the table's own hardware instead of another lash.
+   */
+  private drawPinballSwing(p: Player, x: number, y: number, facing: number, color: string): void {
+    const ctx = this.ctx;
+    const whip = p.powerupT > 0 && p.powerupKind === POWERUP_KIND.WHIP;
+    const lashColor = whip ? '#ff3e63' : color;
+    const pct = Math.max(0, Math.min(1, p.swingPct));
+    // World sets swingPct to 1 on the first active frame and drains it to 0, so this
+    // opens on startup and snaps shut over the active window.
+    const snap = p.swingPhase === 1 ? 0 : p.swingPhase === 2 ? 1 - pct : 1;
+    const alpha = p.swingPhase === 2 ? 0.95 : p.swingPhase === 3 ? 0.3 : 0.55;
+    const reach = PLAYER.swingReach * p.meleeReachMult * (whip ? POWERUP.whipMultiplier : 1);
+    const pivotR = PLAYER.radius * 0.92;
+    const batLen = Math.max(26, reach - PLAYER.radius * 0.55);
+    const baseW = 4.8;
+    const tipW = 9;
+    const open = 1.12;
+    const shut = 0.3;
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (let side = -1; side <= 1; side += 2) {
+      const swingSide = side * Math.PI * 0.5;
+      const pivotX = x + Math.cos(facing + swingSide) * pivotR;
+      const pivotY = y + Math.sin(facing + swingSide) * pivotR;
+      const angle = facing + side * (open + (shut - open) * snap);
+      // Ghost bats mark the swept lane behind the live arm.
+      for (let g = 2; g >= 1; g--) {
+        const ghostSnap = Math.max(0, snap - g * 0.22);
+        const ghostAngle = facing + side * (open + (shut - open) * ghostSnap);
+        ctx.globalAlpha = alpha * (0.04 + (2 - g) * 0.05);
+        ctx.strokeStyle = lashColor;
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        pathPinballFlipper(ctx, pivotX, pivotY, ghostAngle, batLen, baseW * 0.9, tipW * 0.9);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(4, 10, 16, 0.92)';
+      ctx.strokeStyle = lashColor;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      pathPinballFlipper(ctx, pivotX, pivotY, angle, batLen, baseW, tipW);
+      ctx.fill();
+      ctx.stroke();
+      // Bright hinge edge and a white highlight along the paddle's leading face.
+      ctx.globalAlpha = alpha * 0.55;
+      ctx.strokeStyle = '#eef8ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(
+        pivotX + Math.cos(angle) * 5 - Math.sin(angle) * 2,
+        pivotY + Math.sin(angle) * 5 + Math.cos(angle) * 2,
+      );
+      ctx.lineTo(
+        pivotX + Math.cos(angle) * (batLen - 2) - Math.sin(angle) * 3,
+        pivotY + Math.sin(angle) * (batLen - 2) + Math.cos(angle) * 3,
+      );
+      ctx.stroke();
+      // Pivot housing: the hinge that makes the bat read as a flipper.
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(4, 10, 16, 0.95)';
+      ctx.beginPath();
+      ctx.arc(pivotX, pivotY, 7.5, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = lashColor;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(pivotX, pivotY, 7.5, 0, TWO_PI);
+      ctx.stroke();
+      ctx.fillStyle = '#eef8ff';
+      ctx.beginPath();
+      ctx.arc(pivotX, pivotY, 2.2, 0, TWO_PI);
+      ctx.fill();
+      // The live paddle flashes at the tip during the active window.
+      if (p.swingPhase === 2) {
+        const tipX = pivotX + Math.cos(angle) * (batLen + tipW * 0.55);
+        const tipY = pivotY + Math.sin(angle) * (batLen + tipW * 0.55);
+        const spark = 3.2 + Math.sin(p.swingT * 42 + side) * 1.1;
+        ctx.globalAlpha = alpha * 0.7;
+        ctx.fillStyle = '#eef8ff';
+        ctx.beginPath();
+        ctx.arc(tipX, tipY, Math.max(1.8, spark), 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
    * Sweep's melee. The broom head is held out in front of the avatar, bristles up, and
    * strokes straight up and down across the lane instead of riding a curved arc. The
    * two diagonal combo hits alternate the direction of the stroke; the big third hit
@@ -7849,6 +9352,80 @@ export class Renderer {
       const r = arena.pillars[i];
       ctx.fillRect(x0 + (r.x - b.left) * sx, y0 + (r.y - b.top) * sy, Math.max(2, r.w * sx), Math.max(2, r.h * sy));
     }
+    if (arena.keypad) {
+      const kp = arena.keypad;
+      for (let i = 0; i < kp.keys.length; i++) {
+        const k = kp.keys[i];
+        const st = state.keypadStates?.[i] ?? KEYPAD_STATE.up;
+        const solid = st === KEYPAD_STATE.slam || st === KEYPAD_STATE.down || st === KEYPAD_STATE.rise;
+        ctx.fillStyle = solid ? 'rgba(255, 207, 92, 0.68)' : 'rgba(255, 207, 92, 0.13)';
+        ctx.fillRect(
+          x0 + (k.x - b.left) * sx,
+          y0 + (k.y - b.top) * sy,
+          Math.max(1.5, k.w * sx),
+          Math.max(1.5, k.h * sy),
+        );
+        ctx.strokeStyle = 'rgba(255, 207, 92, 0.32)';
+        ctx.lineWidth = 0.7;
+        ctx.strokeRect(
+          x0 + (k.x - b.left) * sx + 0.5,
+          y0 + (k.y - b.top) * sy + 0.5,
+          Math.max(1, k.w * sx) - 1,
+          Math.max(1, k.h * sy) - 1,
+        );
+      }
+    }
+    if (arena.scanner) {
+      const s = arena.scanner;
+      ctx.fillStyle = 'rgba(222, 232, 238, 0.2)';
+      ctx.fillRect(x0 + (s.x - b.left) * sx, y0 + (s.y - b.top) * sy, s.w * sx, s.h * sy);
+      ctx.strokeStyle = 'rgba(222, 232, 238, 0.4)';
+      ctx.lineWidth = 0.7;
+      ctx.strokeRect(
+        x0 + (s.x - b.left) * sx + 0.5,
+        y0 + (s.y - b.top) * sy + 0.5,
+        s.w * sx - 1,
+        s.h * sy - 1,
+      );
+      const ly = scannerLaserY(s, state.scannerT ?? 0);
+      if (ly >= 0) {
+        ctx.strokeStyle = THREAT_COLORS.firewall;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x0 + (s.x - b.left) * sx, y0 + (ly - b.top) * sy);
+        ctx.lineTo(x0 + (s.x + s.w - b.left) * sx, y0 + (ly - b.top) * sy);
+        ctx.stroke();
+      }
+    }
+    if (arena.browser) {
+      const br = arena.browser;
+      ctx.fillStyle = 'rgba(89, 216, 255, 0.24)';
+      ctx.fillRect(
+        x0 + (br.chrome.x - b.left) * sx,
+        y0 + (br.chrome.y - b.top) * sy,
+        br.chrome.w * sx,
+        Math.max(2, br.chrome.h * sy),
+      );
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(x0 + (br.chrome.x + 6 - b.left) * sx, y0 + (br.chrome.y + br.chrome.h * 0.55 - b.top) * sy);
+      ctx.lineTo(x0 + (br.chrome.x + br.chrome.w - 6 - b.left) * sx, y0 + (br.chrome.y + br.chrome.h * 0.55 - b.top) * sy);
+      ctx.stroke();
+      const page = br.pages[((state.browserPage ?? 0) % br.pages.length + br.pages.length) % br.pages.length];
+      if (page) {
+        ctx.fillStyle = 'rgba(89, 216, 255, 0.34)';
+        for (let i = 0; i < page.elements.length; i++) {
+          const r = page.elements[i];
+          ctx.fillRect(
+            x0 + (r.x - b.left) * sx,
+            y0 + (r.y - b.top) * sy,
+            Math.max(1, r.w * sx),
+            Math.max(1, r.h * sy),
+          );
+        }
+      }
+    }
     if (arena.bumpers) {
       ctx.fillStyle = 'rgba(183, 155, 255, 0.75)';
       for (let i = 0; i < arena.bumpers.length; i++) {
@@ -8131,7 +9708,13 @@ export class Renderer {
         ctx.fillText('SUBJECTS AWAKE', VIEW_W * 0.5, VIEW_H * 0.34);
         ctx.font = FONT_TINY;
         ctx.fillStyle = 'rgba(255, 190, 190, 0.78)';
-        ctx.fillText('CALIBRATION // LIVE FIRE', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
+        ctx.fillText('WAVE 01 // SKILL CHECK', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
+      } else if (kind === 6) {
+        ctx.fillStyle = '#ffd27a';
+        ctx.fillText('CELL BLOCK POWER FAILURE', VIEW_W * 0.5, VIEW_H * 0.34);
+        ctx.font = FONT_TINY;
+        ctx.fillStyle = 'rgba(255, 190, 120, 0.8)';
+        ctx.fillText('WAVE 02 // CONTAINMENT RELEASED', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
       } else {
         ctx.fillStyle = localColor;
         ctx.fillText('SPARRING DRILL', VIEW_W * 0.5, VIEW_H * 0.34);

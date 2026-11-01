@@ -1,5 +1,6 @@
-import { ARENA, type Bounds, type Rect } from './config';
+import { ARENA, BROWSER, KEYPAD, SCANNER, type Bounds, type Rect } from './config';
 import { PROP } from './types';
+import type { RegularMood, RegularProgramId } from './regulars';
 
 export interface SpawnPoint {
   x: number;
@@ -38,11 +39,87 @@ export interface ArenaTraversalDef {
   lifts: ArenaLiftDef[];
 }
 
+/** A tutorial room's visual identity. The floor is presentation; walls stay in `pillars`. */
+export type ArenaRoomTheme = 'office' | 'holding' | 'board' | 'router';
+
+/**
+ * One room in a connected tutorial arena. `x,y,w,h` is the room's footprint; a circle
+ * uses the smaller of `w` and `h` as its diameter. Rooms only change presentation and
+ * labels, never collision: chasms and pillars remain the geometry the sim reads.
+ */
+export interface ArenaRoomDef {
+  shape: 'circle' | 'rect';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  theme: ArenaRoomTheme;
+  label: string;
+  sub: string;
+}
+
+/** Shared geometry for the holding room's three-cell block. The renderer and the
+ *  campaign's bar collision both read this, so the painted bars and the solid front
+ *  cannot drift apart. */
+export interface HoldingCellLayout {
+  left: number;
+  cellW: number;
+  top: number;
+  bottom: number;
+}
+
+export function holdingCellLayout(room: ArenaRoomDef): HoldingCellLayout {
+  return {
+    left: room.x + 18,
+    cellW: (room.w - 36) / 3,
+    top: room.y + 16,
+    bottom: room.y + 124,
+  };
+}
+
+/** A bridge deck spanning a tutorial chasm. The `traverse` record owns its collision. */
+export interface ArenaBridgeDef extends Rect {
+  label?: string;
+}
+
+/** One floating ordinary-program monitor in an arena. Decoration only; no body or collision. */
+export interface ArenaRegularDef {
+  id: RegularProgramId;
+  x: number;
+  y: number;
+  /** Visual scale, defaults to 1. */
+  scale?: number;
+  /** Hover-bob phase offset so a row of heads does not move in lockstep. */
+  phase?: number;
+  /** Files tucked behind the monitor. They drop when the civilian flees or is lost. */
+  carry?: number;
+  /** Baseline expression for an unnamed civilian; threats override it with fear. */
+  mood?: RegularMood;
+}
+
+/** The tutorial's final network port. Presentation only; the level script owns the exit. */
+export interface ArenaPortDef {
+  x: number;
+  y: number;
+  radius: number;
+  label: string;
+  sub: string;
+}
+
+/** Shared palettes so the arena, preview and renderer tell the same visual story. */
+export const ROOM_THEME_COLORS: Record<ArenaRoomTheme, { floor: string; line: string; accent: string; deep: string }> = {
+  office: { floor: '#23262d', line: 'rgba(226, 196, 142, 0.16)', accent: '#ffcf6a', deep: '#15171c' },
+  holding: { floor: '#1d2027', line: 'rgba(255, 192, 110, 0.15)', accent: '#ffbd66', deep: '#11141a' },
+  board: { floor: '#08231d', line: 'rgba(96, 255, 196, 0.15)', accent: '#63ffc4', deep: '#04110e' },
+  router: { floor: '#151b27', line: 'rgba(110, 190, 255, 0.16)', accent: '#66c8ff', deep: '#0a0e16' },
+};
+
 /**
  * A compaction arm. It warns, then descends from the top edge to `stop` over `travel`
  * seconds, carrying every body it catches down with it and dropping them at the line.
  * It is deliberately slower than a player, so the dodge is to stay ahead of it, slide
- * around it, or dash past. Local content; hosted rooms skip arenas that have one.
+ * around it, or dash past. The snapshot carries only its cycle clock; every peer derives
+ * the plate position from this record.
  */
 export interface ArenaPusherDef {
   /** Full cycle: warn + travel + rest. */
@@ -169,6 +246,204 @@ export interface ArenaFirewallSwitchDef {
 }
 
 /**
+ * One key on the phone-pad floor. The digit is drawn on the cap; the rect is the
+ * exact body and projectile footprint while the key is down. `offset` is optional
+ * and lets an authored key sit at a different point in the shared cycle.
+ */
+export interface ArenaKeypadKeyDef extends Rect {
+  digit: string;
+  offset?: number;
+}
+
+/**
+ * A ten-key phone pad. Keys warn, slam, hold as solid cover, then rise. The layout is
+ * arena data; the timing and crush damage live in `KEYPAD` tuning. A hosted match sends
+ * the shared pad clock, so both peers derive the same caps from this record.
+ */
+export interface ArenaKeypadDef {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  keys: ArenaKeypadKeyDef[];
+}
+
+/**
+ * A document bed under a read head. Pages load from the slot below the platen,
+ * scan top to bottom, snap back, unload, and hand off to the next sheet. The
+ * document labels are cosmetic; timing and hazard values live in `SCANNER`.
+ * A hosted match sends the scan clock and page; damage stays on the host.
+ */
+export interface ArenaScannerDef extends Rect {
+  documents: string[];
+}
+
+/** One tab in the browser chrome. Width is data so the strip stays editable. */
+export interface ArenaBrowserTabDef {
+  label: string;
+  w: number;
+}
+
+/** One solid forum element on a browser page. */
+export interface ArenaBrowserElementDef extends Rect {
+  title: string;
+}
+
+/** The link the cursor clicks to move deeper into the forum. */
+export interface ArenaBrowserLinkDef extends Rect {
+  label: string;
+}
+
+/** A complete forum page: URL, cover layout and the navigation link. */
+export interface ArenaBrowserPageDef {
+  title: string;
+  url: string;
+  elements: ArenaBrowserElementDef[];
+  link: ArenaBrowserLinkDef;
+}
+
+/**
+ * Browser-window presentation and page set. The chrome and scrollbar are ordinary
+ * `pillars`; the active page's `elements` are pushed into the collision path as dynamic
+ * cover. A hosted match sends the page index and cycle clock; the cursor, phase and
+ * click are derived from them on every peer.
+ */
+export interface ArenaBrowserDef {
+  chrome: Rect;
+  page: Rect;
+  tabs: ArenaBrowserTabDef[];
+  activeTab: number;
+  pages: ArenaBrowserPageDef[];
+  scrollbar: Rect;
+}
+
+export const BROWSER_STATE = {
+  dwell: 0,
+  seek: 1,
+  hover: 2,
+  slam: 3,
+  transition: 4,
+} as const;
+
+/** Seconds for one complete read, cursor trip, click and page swap. */
+export function browserCycle(): number {
+  return BROWSER.dwell + BROWSER.seek + BROWSER.hover + BROWSER.slam + BROWSER.transition;
+}
+
+/** Current page phase at `t` seconds into the browser cycle. Allocation-free. */
+export function browserPhaseAt(t: number): number {
+  const cycle = browserCycle();
+  const phase = ((t % cycle) + cycle) % cycle;
+  if (phase < BROWSER.dwell) return BROWSER_STATE.dwell;
+  if (phase < BROWSER.dwell + BROWSER.seek) return BROWSER_STATE.seek;
+  if (phase < BROWSER.dwell + BROWSER.seek + BROWSER.hover) return BROWSER_STATE.hover;
+  if (phase < BROWSER.dwell + BROWSER.seek + BROWSER.hover + BROWSER.slam) return BROWSER_STATE.slam;
+  return BROWSER_STATE.transition;
+}
+
+/** Reused cursor point; callers pass their own scratch to stay allocation-free. */
+export interface Point2 {
+  x: number;
+  y: number;
+}
+
+/** Cursor position for a page at `t` seconds into the browser cycle. */
+export function browserCursorAt(
+  browser: ArenaBrowserDef,
+  pageIndex: number,
+  t: number,
+  out: Point2,
+): Point2 {
+  const area = browser.page;
+  const homeX = area.x + area.w * 0.5;
+  const homeY = area.y + area.h * 0.34;
+  const pages = browser.pages;
+  if (pages.length === 0) {
+    out.x = homeX;
+    out.y = homeY;
+    return out;
+  }
+  const page = pages[((pageIndex % pages.length) + pages.length) % pages.length];
+  const linkX = page.link.x + page.link.w * 0.5;
+  const linkY = page.link.y + page.link.h * 0.5;
+  const phase = browserPhaseAt(t);
+  let x = homeX;
+  let y = homeY;
+  if (phase === BROWSER_STATE.dwell) {
+    x += Math.sin(t * 1.7) * 76;
+    y += Math.cos(t * 1.3) * 28;
+  } else if (phase === BROWSER_STATE.seek) {
+    const k = Math.max(0, Math.min(1, (t - BROWSER.dwell) / Math.max(0.01, BROWSER.seek)));
+    const eased = k * k * (3 - 2 * k);
+    x = homeX + (linkX - homeX) * eased;
+    y = homeY + (linkY - homeY) * eased;
+  } else {
+    x = linkX;
+    y = linkY;
+  }
+  out.x = x;
+  out.y = y;
+  return out;
+}
+
+/** Remaining click flash at `t` seconds into the browser cycle. */
+export function browserClickAt(t: number): number {
+  const cycle = browserCycle();
+  const local = ((t % cycle) + cycle) % cycle;
+  const start = BROWSER.dwell + BROWSER.seek + BROWSER.hover;
+  const end = start + BROWSER.slam;
+  return local >= start && local < end ? end - local : 0;
+}
+
+export const SCANNER_STATE = {
+  load: 0,
+  warn: 1,
+  down: 2,
+  up: 3,
+  unload: 4,
+} as const;
+
+/** Seconds for one full load, scan, return and unload cycle. */
+export function scannerCycle(): number {
+  return SCANNER.load + SCANNER.warn + SCANNER.down + SCANNER.up + SCANNER.unload;
+}
+
+/** Current page phase at `t` seconds into the scanner cycle. Allocation-free. */
+export function scannerPhaseAt(t: number): number {
+  const cycle = scannerCycle();
+  const phase = ((t % cycle) + cycle) % cycle;
+  if (phase < SCANNER.load) return SCANNER_STATE.load;
+  if (phase < SCANNER.load + SCANNER.warn) return SCANNER_STATE.warn;
+  if (phase < SCANNER.load + SCANNER.warn + SCANNER.down) return SCANNER_STATE.down;
+  if (phase < SCANNER.load + SCANNER.warn + SCANNER.down + SCANNER.up) return SCANNER_STATE.up;
+  return SCANNER_STATE.unload;
+}
+
+/** World y of the live read line, or -1 while the head is parked or swapping. */
+export function scannerLaserY(scanner: ArenaScannerDef, t: number): number {
+  const cycle = scannerCycle();
+  const phase = ((t % cycle) + cycle) % cycle;
+  const downStart = SCANNER.load + SCANNER.warn;
+  if (phase < downStart) return -1;
+  if (phase < downStart + SCANNER.down) {
+    return scanner.y + scanner.h * ((phase - downStart) / SCANNER.down);
+  }
+  const upStart = downStart + SCANNER.down;
+  if (phase < upStart + SCANNER.up) {
+    return scanner.y + scanner.h * (1 - (phase - upStart) / SCANNER.up);
+  }
+  return -1;
+}
+
+export const KEYPAD_STATE = {
+  up: 0,
+  warn: 1,
+  slam: 2,
+  down: 3,
+  rise: 4,
+} as const;
+
+/**
  * An arena is pure geometry + presentation. Collision, spawns, prediction, rendering and
  * the host snapshot all read this one definition so a guest can never simulate a different map.
  */
@@ -216,8 +491,22 @@ export interface ArenaDef {
   bumpers?: ArenaBumperDef[];
   /** One-shot firewall starter. Local content; hosted rooms skip this arena. */
   firewallSwitch?: ArenaFirewallSwitchDef;
+  /** Ten-key floor. Local content; hosted rooms skip this arena. */
+  keypad?: ArenaKeypadDef;
+  /** Document scanner floor. Local content; hosted rooms skip this arena. */
+  scanner?: ArenaScannerDef;
+  /** Browser-window presentation. Its solid pieces are listed in `pillars`. */
+  browser?: ArenaBrowserDef;
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
+  /** Tutorial room floors and labels. Presentation only; never collision. */
+  rooms?: readonly ArenaRoomDef[];
+  /** Tutorial bridge decks. The matching `traverse.bridges` entries are the walkable spans. */
+  bridges?: readonly ArenaBridgeDef[];
+  /** The tutorial's outbound port, drawn on the final room's wall. */
+  port?: ArenaPortDef;
+  /** Ordinary program carts. Presentation only; no bodies, collision or snapshot data. */
+  regulars?: readonly ArenaRegularDef[];
   /** A round spinning platter with a read arm. Implies an open drop around the rim. */
   disc?: DiscDef;
 }
@@ -243,6 +532,61 @@ const perimeterSpawns: SpawnPoint[] = [
   { x: 339, y: 931 },
   { x: 243, y: 547 },
   { x: 339, y: 195 },
+];
+
+const browserChrome: Rect = { x: 48, y: 48, w: 1846, h: 136 };
+const browserPage: Rect = { x: 56, y: 192, w: 1830, h: 846 };
+const browserScrollbar: Rect = { x: 1840, y: 200, w: 26, h: 800 };
+const browserTabs: ArenaBrowserTabDef[] = [
+  { label: 'INBOX (3)', w: 300 },
+  { label: 'Q4 REVIEW', w: 300 },
+  { label: 'BOARD MINUTES', w: 300 },
+  { label: '+ NEW TAB', w: 240 },
+];
+const browserPages: ArenaBrowserPageDef[] = [
+  {
+    title: 'FORUM / INDEX',
+    url: 'https://localhost/forum',
+    elements: [
+      { x: 180, y: 250, w: 420, h: 180, title: 'STICKY: READ THE RULES' },
+      { x: 700, y: 250, w: 380, h: 160, title: 'THREAD: Q4 REVIEW' },
+      { x: 1180, y: 270, w: 360, h: 180, title: 'THREAD: OFF-SITE' },
+      { x: 700, y: 500, w: 380, h: 150, title: 'THREAD: BOARD MINUTES' },
+    ],
+    link: { x: 760, y: 800, w: 330, h: 70, label: 'OPEN THREAD' },
+  },
+  {
+    title: 'FORUM / THREAD 404',
+    url: 'https://localhost/forum/thread/404',
+    elements: [
+      { x: 210, y: 250, w: 360, h: 230, title: 'OP: ANON' },
+      { x: 650, y: 260, w: 300, h: 160, title: 'REPLY 1' },
+      { x: 1020, y: 250, w: 360, h: 230, title: 'REPLY 2' },
+      { x: 650, y: 520, w: 300, h: 150, title: 'QUOTED POST' },
+    ],
+    link: { x: 820, y: 800, w: 280, h: 70, label: 'NEXT POST' },
+  },
+  {
+    title: 'FORUM / POST 7',
+    url: 'https://localhost/forum/thread/404?post=7',
+    elements: [
+      { x: 240, y: 300, w: 300, h: 180, title: 'ATTACHMENT' },
+      { x: 650, y: 250, w: 340, h: 200, title: 'DELETED POST' },
+      { x: 1080, y: 250, w: 340, h: 200, title: 'MOD NOTE' },
+      { x: 650, y: 520, w: 340, h: 150, title: 'QUOTE CHAIN' },
+    ],
+    link: { x: 800, y: 800, w: 310, h: 70, label: 'VIEW NEXT' },
+  },
+  {
+    title: 'FORUM / LOCKED',
+    url: 'https://localhost/forum/thread/404?locked',
+    elements: [
+      { x: 250, y: 260, w: 380, h: 220, title: 'THREAD LOCKED' },
+      { x: 760, y: 250, w: 340, h: 200, title: 'ARCHIVED' },
+      { x: 1220, y: 280, w: 300, h: 200, title: 'REDACTED' },
+    ],
+    link: { x: 790, y: 800, w: 320, h: 70, label: 'RETURN TO INDEX' },
+  },
 ];
 
 export const ARENAS: readonly ArenaDef[] = [
@@ -671,6 +1015,276 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 520, y: 540 },
     ],
   },
+  {
+    id: 11,
+    name: 'KEYPAD',
+    tagline: 'Ten keys. Mind the press.',
+    hudLabel: 'ARENA // KEYPAD',
+    accent: '#ffcf5c',
+    accentSoft: 'rgba(255, 207, 92, 0.32)',
+    accentFaint: 'rgba(255, 207, 92, 0.032)',
+    signature: 1,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    // The pad sits in the middle of a walled room. Spawns stay on the outer ring so
+    // nobody starts under a key, and the lanes around the bezel remain walkable while
+    // several caps are down at once.
+    keypad: {
+      // Portrait housing, with a slightly wide bottom key for the 0. This is a phone
+      // pad, not a calculator: three columns, four rows, and a deep bezel.
+      x: 655,
+      y: 180,
+      w: 680,
+      h: 730,
+      keys: [
+        { digit: '1', x: 692, y: 229, w: 190, h: 150 },
+        { digit: '2', x: 900, y: 229, w: 190, h: 150 },
+        { digit: '3', x: 1108, y: 229, w: 190, h: 150 },
+        { digit: '4', x: 692, y: 397, w: 190, h: 150 },
+        { digit: '5', x: 900, y: 397, w: 190, h: 150 },
+        { digit: '6', x: 1108, y: 397, w: 190, h: 150 },
+        { digit: '7', x: 692, y: 565, w: 190, h: 150 },
+        { digit: '8', x: 900, y: 565, w: 190, h: 150 },
+        { digit: '9', x: 1108, y: 565, w: 190, h: 150 },
+        { digit: '0', x: 692, y: 733, w: 606, h: 150 },
+      ],
+    },
+    spawns: [
+      { x: 995, y: 130 },
+      { x: 1645, y: 220 },
+      { x: 1750, y: 547 },
+      { x: 1645, y: 880 },
+      { x: 995, y: 965 },
+      { x: 345, y: 880 },
+      { x: 240, y: 547 },
+      { x: 345, y: 220 },
+    ],
+  },
+  {
+    id: 12,
+    name: 'DOCUMENT SCANNER',
+    tagline: 'Read fast. Redact faster.',
+    hudLabel: 'ARENA // DOCUMENT SCANNER',
+    accent: '#d8e6ff',
+    accentSoft: 'rgba(216, 230, 255, 0.32)',
+    accentFaint: 'rgba(216, 230, 255, 0.032)',
+    signature: 1,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    // Filing stacks frame the bed. They are ordinary cover, deliberately outside
+    // the platen so the scan line remains a clean horizontal read.
+    pillars: [
+      { x: 150, y: 180, w: 110, h: 140 },
+      { x: 1634, y: 180, w: 110, h: 140 },
+      { x: 150, y: 726, w: 110, h: 140 },
+      { x: 1634, y: 726, w: 110, h: 140 },
+    ],
+    // The page is the arena's centerpiece. The head starts at the top edge, reads
+    // down, snaps back, then the sheet drops out and the next one rises in.
+    scanner: {
+      x: 320,
+      y: 120,
+      w: 1254,
+      h: 758,
+      documents: [
+        'Q4 SYNERGY REVIEW',
+        'BOARD MEMO 7B',
+        'INCIDENT REPORT // REDACTED',
+        'ACQUISITION TERMS',
+        'COMPLIANCE AUDIT // DRAFT',
+        'OFFSITE CONTINGENCY',
+      ],
+    },
+    // Spawns sit outside the platen and clear of the filing stacks. The scan line
+    // starts on its warning beat, so the opening spawn is never a free hit.
+    spawns: [
+      { x: 995, y: 90 },
+      { x: 1780, y: 190 },
+      { x: 1780, y: 547 },
+      { x: 1780, y: 900 },
+      { x: 995, y: 990 },
+      { x: 280, y: 900 },
+      { x: 280, y: 547 },
+      { x: 280, y: 190 },
+    ],
+  },
+  {
+    id: 13,
+    name: 'BROWSER',
+    tagline: 'Forum pages, cover and one giant cursor.',
+    hudLabel: 'ARENA // BROWSER',
+    accent: '#59d8ff',
+    accentSoft: 'rgba(89, 216, 255, 0.32)',
+    accentFaint: 'rgba(89, 216, 255, 0.032)',
+    signature: 1,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    // The chrome and scrollbar are ordinary static pillars. Each forum page's cards
+    // are dynamic cover: the World swaps them when the cursor navigates, and the guest
+    // rebuilds the same cards from the page index in Snapshot.
+    pillars: [browserChrome, browserScrollbar],
+    browser: {
+      chrome: browserChrome,
+      page: browserPage,
+      tabs: browserTabs,
+      activeTab: 1,
+      pages: browserPages,
+      scrollbar: browserScrollbar,
+    },
+    // Perimeter starts, outside the chrome and clear of every card.
+    spawns: [
+      { x: 995, y: 220 },
+      { x: 1760, y: 230 },
+      { x: 1780, y: 600 },
+      { x: 1680, y: 930 },
+      { x: 995, y: 970 },
+      { x: 190, y: 930 },
+      { x: 170, y: 560 },
+      { x: 300, y: 225 },
+    ],
+  },
+  {
+    id: 14,
+    name: 'QUARANTINE',
+    tagline: 'Intake, holding, mainboard, uplink. One way out.',
+    hudLabel: 'ARENA // QUARANTINE',
+    accent: '#ffcf6a',
+    accentSoft: 'rgba(255, 207, 106, 0.32)',
+    accentFaint: 'rgba(255, 207, 106, 0.032)',
+    signature: 0,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    // Four rooms, opening at the circle and ending at the uplink. The holding office is
+    // deliberately clear in the middle: the calibration class wakes there. Pillars are
+    // furniture first: desks in intake, chips on the board, ports in the router.
+    pillars: [
+      { x: 140, y: 380, w: 96, h: 46 },
+      { x: 384, y: 380, w: 96, h: 46 },
+      { x: 140, y: 670, w: 96, h: 46 },
+      { x: 384, y: 670, w: 96, h: 46 },
+      { x: 1080, y: 340, w: 100, h: 70 },
+      { x: 1260, y: 330, w: 90, h: 96 },
+      { x: 1100, y: 650, w: 120, h: 70 },
+      { x: 1330, y: 640, w: 90, h: 80 },
+      { x: 1600, y: 270, w: 100, h: 64 },
+      { x: 1780, y: 240, w: 80, h: 80 },
+      { x: 1600, y: 690, w: 100, h: 70 },
+      { x: 1780, y: 710, w: 80, h: 60 },
+    ],
+    // Spawn 6 is the campaign's opening slot: centre of the holding office. The rest
+    // ring the room for local play, so nobody opens on a desk.
+    spawns: [
+      { x: 310, y: 360 },
+      { x: 445, y: 440 },
+      { x: 445, y: 640 },
+      { x: 310, y: 735 },
+      { x: 175, y: 640 },
+      { x: 175, y: 440 },
+      { x: 310, y: 547 },
+      { x: 310, y: 455 },
+    ],
+    rooms: [
+      {
+        shape: 'circle',
+        x: 75,
+        y: 312,
+        w: 470,
+        h: 470,
+        theme: 'office',
+        label: 'INTAKE',
+        sub: 'ORIENTATION // NO EXIT',
+      },
+      {
+        shape: 'rect',
+        x: 600,
+        y: 330,
+        w: 360,
+        h: 360,
+        theme: 'holding',
+        label: 'HOLDING',
+        sub: 'CELL BLOCK // CONTAINMENT',
+      },
+      {
+        shape: 'rect',
+        x: 1020,
+        y: 260,
+        w: 460,
+        h: 580,
+        theme: 'board',
+        label: 'MAINBOARD',
+        sub: 'BUS 02 // DATA PLANE',
+      },
+      {
+        shape: 'rect',
+        x: 1540,
+        y: 150,
+        w: 370,
+        h: 800,
+        theme: 'router',
+        label: 'ROUTER',
+        sub: 'PORT 03 // UPLINK',
+      },
+    ],
+    bridges: [
+      { x: 535, y: 492, w: 65, h: 110, label: 'A' },
+      { x: 960, y: 492, w: 60, h: 110, label: 'B' },
+      { x: 1480, y: 492, w: 60, h: 110, label: 'C' },
+    ],
+    // The chasms remove the floor between rooms. Split top and bottom, they leave the
+    // bridge spans walkable while shots and beams still cross the gap.
+    traverse: {
+      chasms: [
+        { x: 545, y: 48, w: 55, h: 444 },
+        { x: 545, y: 602, w: 55, h: 444 },
+        { x: 960, y: 48, w: 60, h: 444 },
+        { x: 960, y: 602, w: 60, h: 444 },
+        { x: 1480, y: 48, w: 60, h: 444 },
+        { x: 1480, y: 602, w: 60, h: 444 },
+      ],
+      bridges: [
+        { x: 535, y: 492, w: 65, h: 110 },
+        { x: 960, y: 492, w: 60, h: 110 },
+        { x: 1480, y: 492, w: 60, h: 110 },
+      ],
+      upperDecks: [],
+      pads: [],
+      lifts: [],
+    },
+    port: {
+      x: 1872,
+      y: 547,
+      radius: 38,
+      label: 'NETWORK PORT',
+      sub: 'WWW // OUTBOUND',
+    },
+    // Three civilians work the holding office. They are painted in the arena pass; the
+    // campaign script hides them after the calibration class wakes. No bodies, no hits.
+    regulars: [
+      { id: 'ticket', x: 650, y: 600, scale: 0.82, phase: 0.4, carry: 1 },
+      { id: 'patch', x: 910, y: 600, scale: 0.82, phase: 2.1 },
+      { id: 'cache', x: 780, y: 648, scale: 0.78, phase: 4.2, carry: 2 },
+    ],
+    // The office gets breakable intake files. The board adds data packets; the router's
+    // lit ports and two wall emitters are the last, busiest room before the exit.
+    props: [
+      { x: 118, y: 442, w: 38, h: 28, kind: PROP.DOC },
+      { x: 414, y: 442, w: 38, h: 28, kind: PROP.ZIP },
+      { x: 118, y: 620, w: 38, h: 28, kind: PROP.AUDIO },
+      { x: 414, y: 620, w: 38, h: 28, kind: PROP.VIDEO },
+      { x: 930, y: 470, w: 38, h: 28, kind: PROP.ZIP },
+      { x: 1180, y: 470, w: 38, h: 28, kind: PROP.DOC },
+      { x: 1100, y: 720, w: 42, h: 30, kind: PROP.AUDIO },
+      { x: 1450, y: 520, w: 36, h: 26, kind: PROP.VIDEO },
+      { x: 1620, y: 200, w: 42, h: 30, kind: PROP.DOC },
+      { x: 1620, y: 820, w: 42, h: 30, kind: PROP.ZIP },
+    ],
+    emitters: [
+      { x: 1552, y: 360, angle: 0, offset: 0.2 },
+      { x: 1552, y: 760, angle: 0, offset: 0.65 },
+    ],
+    bumpers: [
+      { x: 1570, y: 580, radius: 32, kind: 1 },
+      { x: 1800, y: 430, radius: 28, kind: 1 },
+      { x: 1800, y: 700, radius: 28, kind: 0 },
+    ],
+  },
 ];
 
 export function discCenterX(arena: ArenaDef): number {
@@ -712,6 +1326,58 @@ export function discArmPivotY(arena: ArenaDef): number {
 
 export function discArmLength(arena: ArenaDef): number {
   return arena.disc!.radius * arena.disc!.arm.reach;
+}
+
+/** State of one key at `t` seconds into the shared pad cycle. Allocation-free. */
+export function keypadKeyState(keypad: ArenaKeypadDef, index: number, t: number): number {
+  const key = keypad.keys[index];
+  if (!key) return KEYPAD_STATE.up;
+  const phase = (((t + (key.offset ?? index * KEYPAD.offsetStep)) % KEYPAD.period) + KEYPAD.period) % KEYPAD.period;
+  const slamStart = KEYPAD.warn;
+  const slamEnd = slamStart + KEYPAD.slam;
+  const downEnd = slamEnd + KEYPAD.down;
+  const riseEnd = downEnd + KEYPAD.rise;
+  if (phase < slamStart) return KEYPAD_STATE.warn;
+  if (phase < slamEnd) return KEYPAD_STATE.slam;
+  if (phase < downEnd) return KEYPAD_STATE.down;
+  if (phase < riseEnd) return KEYPAD_STATE.rise;
+  return KEYPAD_STATE.up;
+}
+
+/** Compactor presentation derived from its cycle clock. Allocation-free. */
+export interface PusherPhase {
+  warnT: number;
+  y: number;
+  active: boolean;
+  flashT: number;
+}
+
+/**
+ * The arm's warn timer, leading edge, active flag and stop flash at `t` seconds into
+ * its cycle. The host sim and the guest view both read this, so a snapshot only needs
+ * the clock.
+ */
+export function pusherPhaseAt(arena: ArenaDef, t: number, out: PusherPhase): PusherPhase {
+  const top = arena.bounds.top;
+  out.warnT = 0;
+  out.y = top;
+  out.active = false;
+  out.flashT = 0;
+  const cfg = arena.pushers;
+  if (!cfg) return out;
+  const phase = ((t % cfg.period) + cfg.period) % cfg.period;
+  const start = cfg.warn;
+  const end = start + cfg.travel;
+  const back = end + cfg.retract;
+  if (phase < start) out.warnT = start - phase;
+  if (phase >= start && phase < end) {
+    out.active = true;
+    out.y = top + (cfg.stop - top) * ((phase - start) / cfg.travel);
+  } else if (phase >= end && phase < back) {
+    out.y = cfg.stop + (top - cfg.stop) * ((phase - end) / cfg.retract);
+  }
+  if (phase >= end && phase < end + 0.3) out.flashT = 0.3 - (phase - end);
+  return out;
 }
 
 export function getArena(index: number): ArenaDef {
@@ -830,6 +1496,29 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
   }
   ctx.globalAlpha = 1;
 
+  // Tutorial rooms are their own floor plates. The chasms and bridges drawn below cut
+  // between them, so the picker shows the same three-room route as the arena.
+  if (arena.rooms) {
+    for (let i = 0; i < arena.rooms.length; i++) {
+      const room = arena.rooms[i];
+      const theme = ROOM_THEME_COLORS[room.theme];
+      const rx = (room.w * sx) * 0.5;
+      const ry = (room.h * sy) * 0.5;
+      const cx = mapX(room.x + room.w * 0.5);
+      const cy = mapY(room.y + room.h * 0.5);
+      ctx.fillStyle = theme.floor;
+      ctx.strokeStyle = theme.accent;
+      ctx.globalAlpha = 0.85;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (room.shape === 'circle') ctx.ellipse(cx, cy, Math.max(2, rx), Math.max(2, ry), 0, 0, Math.PI * 2);
+      else ctx.rect(cx - rx, cy - ry, Math.max(2, rx * 2), Math.max(2, ry * 2));
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // Multi-deck floor: raised deck tint, open trench, deck plate, then the transit plates.
   if (arena.traverse) {
     const tr = arena.traverse;
@@ -899,6 +1588,81 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
       ctx.arc(mapX(b.x), mapY(b.y), Math.max(1.5, b.radius * Math.min(sx, sy)), 0, Math.PI * 2);
       ctx.fillStyle = b.kind === 1 ? arena.accent : 'rgba(170, 220, 255, 0.75)';
       ctx.fill();
+    }
+  }
+
+  // The uplink port is a bright pip on the last room's wall.
+  if (arena.port) {
+    ctx.strokeStyle = '#66c8ff';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(mapX(arena.port.x), mapY(arena.port.y), 3.4, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // The phone pad is its own silhouette, even in a tiny picker preview.
+  if (arena.keypad) {
+    const kp = arena.keypad;
+    ctx.fillStyle = 'rgba(12, 17, 17, 0.92)';
+    ctx.fillRect(mapX(kp.x), mapY(kp.y), kp.w * sx, kp.h * sy);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(kp.x) + 0.5, mapY(kp.y) + 0.5, kp.w * sx - 1, kp.h * sy - 1);
+    for (let i = 0; i < kp.keys.length; i++) {
+      const k = kp.keys[i];
+      ctx.fillStyle = i % 3 === 1 ? 'rgba(255, 207, 92, 0.3)' : 'rgba(255, 207, 92, 0.16)';
+      ctx.fillRect(mapX(k.x), mapY(k.y), Math.max(1, k.w * sx), Math.max(1, k.h * sy));
+    }
+  }
+
+  // The scanner is a pale sheet with a hot read line even at thumbnail size.
+  if (arena.scanner) {
+    const s = arena.scanner;
+    ctx.fillStyle = 'rgba(222, 232, 238, 0.18)';
+    ctx.fillRect(mapX(s.x), mapY(s.y), s.w * sx, s.h * sy);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(s.x) + 0.5, mapY(s.y) + 0.5, s.w * sx - 1, s.h * sy - 1);
+    ctx.fillStyle = 'rgba(222, 232, 238, 0.48)';
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(mapX(s.x) + 5, mapY(s.y) + 8 + i * 9, Math.max(4, (s.w * sx) * 0.46), 1);
+    }
+    ctx.strokeStyle = '#ff6a4d';
+    ctx.beginPath();
+    ctx.moveTo(mapX(s.x), mapY(s.y) + s.h * sy * 0.42);
+    ctx.lineTo(mapX(s.x) + s.w * sx, mapY(s.y) + s.h * sy * 0.42);
+    ctx.stroke();
+  }
+
+  // Browser chrome and forum cards read as a window even at thumbnail size.
+  if (arena.browser) {
+    const br = arena.browser;
+    ctx.fillStyle = 'rgba(89, 216, 255, 0.16)';
+    ctx.fillRect(mapX(br.chrome.x), mapY(br.chrome.y), br.chrome.w * sx, br.chrome.h * sy);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(
+      mapX(br.chrome.x) + 0.5,
+      mapY(br.chrome.y) + 0.5,
+      br.chrome.w * sx - 1,
+      br.chrome.h * sy - 1,
+    );
+    ctx.fillStyle = 'rgba(89, 216, 255, 0.42)';
+    for (let i = 0; i < br.tabs.length; i++) {
+      ctx.fillRect(mapX(br.chrome.x) + 5 + i * 13, mapY(br.chrome.y) + 4, 9, 3);
+    }
+    ctx.strokeStyle = arena.accent;
+    ctx.beginPath();
+    ctx.moveTo(mapX(br.chrome.x) + 5, mapY(br.chrome.y) + 11);
+    ctx.lineTo(mapX(br.chrome.x + br.chrome.w) - 5, mapY(br.chrome.y) + 11);
+    ctx.stroke();
+    const first = br.pages[0];
+    if (first) {
+      ctx.fillStyle = 'rgba(89, 216, 255, 0.2)';
+      for (let i = 0; i < first.elements.length; i++) {
+        const p = first.elements[i];
+        ctx.fillRect(mapX(p.x), mapY(p.y), Math.max(1, p.w * sx), Math.max(1, p.h * sy));
+      }
     }
   }
 

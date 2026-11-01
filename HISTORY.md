@@ -3584,3 +3584,733 @@ before tuning gauntlet and campaign pressure.
 
 **Next:** human playtest the rail travel time and the mid-game gauntlet pressure; bot duels overstate Aim
 Bot because the bots aim perfectly, so the next read must come from a person.
+
+## 2026-11-01 — README: engine-free runtime and vector avatars explained (docs only)
+
+**Goal:** explain how DEFLECT runs without a game engine and how characters are drawn and animated.
+
+- Added a README section separating the browser platform (rAF, Canvas 2D, Web Audio, DOM, WebRTC) from the
+  purpose-built runtime: fixed-step `World`, collision, kits, bots, camera, renderer, particles and
+  netcode. It also records that enemies are hand-written state machines, not engine behaviours.
+- Documented the immediate-mode single-canvas renderer and fixed draw order, per-program vector hull paths,
+  three-pass additive glow, the hull-as-health readout, vector/text core marks and state-driven animation
+  (hull spin, core pulse, dash afterimages, melee arcs, ASCII brooms, pooled trails and particles).
+- Recorded the costs: per-frame path and stroke work, cached text metrics and gradients, the DPR cap,
+  measured sim tick costs, and the current 643 KB JS / 177 KB gzip plus 49 KB CSS / 11 KB gzip payload.
+  Noted there is no automated render benchmark, only the browser stress path and F3 HUD.
+- No code, tuning or build stamp change.
+
+**Verification:** documentation review only; no build run.
+
+**Next:** keep the section current when the renderer, camera or asset policy changes.
+
+## 2026-11-01 — Reflected shots get a long life (v0.1.79)
+
+**Goal:** implement the decided reflection rule: no practical distance cap, long life, speed gain and +1
+damage on every catch.
+
+- Added `BOLT.reflectTtl` 30 s and reset `proj.fuse` at every projectile catch: guard, lash, bash, net and
+  the Pinball arm. Reflected shots no longer die with the original 0.45 s bolt fuse.
+- The +1 damage rule was already in the code as `BOLT.damage + proj.deflects`; two catches leave a shot at
+  3 damage, so a clean return can delete a three-segment program. Speed gain stays 1.4x per catch up to
+  `BOLT.maxSpeed` 2800.
+- Bombs 8/9 stay outside the rule, and the Pinball arm's bomb punt keeps its shell identity.
+- Updated AGENTS D10, GAME_GUIDE, the tuning README and the version stamps. `.tmp/check-reflect.ts` covers
+  guard and lash catches, cumulative damage, speed, the long fuse and bomb exclusion.
+
+**Verification:** `.tmp/check-reflect.ts` 10/10, `npx tsc --noEmit` clean and `npm run build` clean.
+
+**Next:** boss-fight pass; decide whether 30 s and the 2800 speed cap are the right ceiling once long
+returns are actually dodged and caught.
+
+## 2026-11-01 — Probe's trap mine and cancelable beam (v0.1.80)
+
+**Goal:** make Probe's mine a persistent trap with a larger blast, shorten the heavy warm-up and let the
+player stop firing before the full 3 s root ends.
+
+- `MINE` no longer uses a life timer. `plantMine` stores `fuse = 0`, arms after 0.55 s and leaves the trap
+  until a hostile enters its 58-unit trigger. Added `maxActive: 3`; a fourth mine retires the oldest live
+  trap because mines share the projectile pool.
+- Blast radius 82→132 and knockback 760→900. The renderer drops the countdown arc, keeps a steady armed
+  mark and adds a faint outer ring for the larger blast.
+- `PLAYER.laserChargeTime` 0.63→0.45. Releasing `CANDLE` while Probe's `laserT` is live ends the beam,
+  clears the charge state, frees the body and starts the full 5 s cooldown. Overcharge's beam is unchanged.
+- Updated AGENTS D10, GAME_GUIDE, the program card and the tuning README. Added `.tmp/check-probe-mine.ts`.
+- Clarified that guard and lash reflection are shared by every program, not just Probe; only the
+  charged beam and its release-cancel are Probe-specific. Added `.tmp/check-reflect-all.ts`.
+
+**Verification:** `.tmp/check-probe-mine.ts` 11/11, `.tmp/check-reflect-all.ts` 26/26,
+`npx tsc --noEmit` clean and `npm run build` clean.
+
+**Next:** human playtest trap placement and release timing; watch whether three persistent mines plus a
+shorter beam make Probe's defensive lane too strong in VS BOTS and local PvP.
+
+## 2026-11-01 — PvE map sweep and Bad Lag durability (v0.1.81)
+
+**Goal:** commit the balance harness, test the roster across every arena in gauntlet mode, and make map
+or character changes only where the sweep showed a repeatable outlier.
+
+- Committed `.tmp/balance.ts` as `bf6188c`, then extended it with map id/name/`all` selection, hazard
+  labels, map-average survival, wave starts through 24 and a Bad Lag variant sweep.
+- Fixed the QA/gauntlet pilot's hazard blindness: static voids are baked into the nav grid, idle drift
+  routes through `avoidFurniture`, and emitter lanes get a wider steer away from the beam. This removed
+  the all-program wave-1 wipes on THE RING and RECYCLING BIN.
+- Bad Lag gets a fourth health segment (eight clock faces). Raw hourglass speed/TTL/damage/hit variants
+  did not move survival; the extra segment did: GRID ZERO wave 5→7, RECYCLING BIN 5→10 and duel win
+  rate 15.3%→20.8%.
+- Tuned the NETWORK SWITCH pipes specifically: first feed 2.2→3.4 s, interval 7.4→8.6 s. Its map average
+  rose from wave 7.7 to 9.8 with 9/13 programs reaching the 300 s cap. RECYCLING BIN stayed at 8.3; the
+  remaining Probe/Wedge/Toxic wave-3 deaths are left for a human pass rather than a blind compactor nerf.
+- No wave-composition change was made: wave samples through 24 showed the families arriving on schedule.
+  The next wave pass should follow human testing on the remaining map/character outliers.
+
+**Verification:** 11-map × 13-program gauntlet sweep, focused Network/BIN reruns, GRID ZERO duels,
+`npx tsc --noEmit` clean and `npm run build` clean.
+
+**Next:** human playtest the four-segment Bad Lag hull and RECYCLING BIN; then tune wave composition at
+waves 18–24 instead of adding pressure that the map hazards already supply.
+
+## 2026-11-01 — Attract pilot uses power attacks (v0.1.82)
+
+**Goal:** determine whether Wedge's plow was too slow or too short in demo play, or whether it was not
+being attempted at all.
+
+- Instrumented the headless gauntlet and the pilot state. The gauntlet/attract `engageHostiles` path had
+  no power-attack branch; every visible `CANDLE` start was Wedge's wall skill. Across 60 demo-style runs
+  the plow fired zero times.
+- Added the same held-heavy commitment to `engageHostiles`. It waits for a clean 110–440-unit target,
+  holds through the program's charge, and gives Fisher the longer 2.6 s net draw.
+- After the branch: 13 plows / 18 hits in five CROSSROADS wave-8 runs; 5–13 plows per five-run cell at
+  waves 8/24/72. The timed probe measures 0.567 s charge and 0.517 s active, with a hit at 220 units.
+- Kept `WEDGE` timing unchanged: the data identifies the absent branch as the blocker, not the 0.56 s
+  charge or 0.5 s active window. A human capture is still needed to judge how clearly it reads at the
+  demo's wave-72 opening.
+
+**Verification:** `.tmp/wedge-heavy.ts` demo-style and forced probes, `npx tsc --noEmit` clean, `npm run build` clean and a 60 s all-program gauntlet pass on CROSSROADS.
+
+**Next:** capture the attract loop through a Wedge cycle and watch whether the generic heavy commitment
+crowds the demo or makes other kits harder to read.
+
+## 2026-11-01 — Aim Bot range and close-quarters audit (v0.1.82)
+
+**Goal:** determine whether Aim Bot's 8-damage rail and 12-damage volley make it overpowered in PvE, or
+whether its lack of crowd clear leaves it too vulnerable once waves and close-range programs arrive.
+
+- 300 s gauntlet, all maps: Aim Bot reached the cap on 8/11 maps. It failed on THE LEDGE (wave 9,
+  256.3 s), RECYCLING BIN (wave 1, 10.5 s) and NETWORK SWITCH (wave 6, 159.8 s). The failures are map
+  hazards/first-stroke compactor deaths, not wave damage.
+- Its kill efficiency is high: 47 kills on CROSSROADS and GRID ZERO, 56 on SPACE CADET, and above the
+  map average on 7/11 maps. The rail one-shots ordinary threats and the volley clears packs, so PvE
+  damage is deliberately elite rather than a close-range failure.
+- Close duels: 73.6% on DISK PLATTER, 77.8% on THE RING and 62.5% on SPACE CADET. It was second on two
+  maps and mid-pack on the third, never first, so the knife/volley package is not an all-mode outlier.
+- Added a guard so the new gauntlet heavy branch cannot root a pilot while the compactor is warning or
+  active. It did not rescue RECYCLING BIN: all non-Wedge pilots are carried into the hole by the first
+  stroke, including Probe with no heavy started, so that remains a map/pilot hazard outside Aim Bot's kit.
+- No Aim Bot tuning change was made. The finding is range-skewed power, not universal dominance.
+
+**Verification:** 300 s all-map gauntlet, focused 60 s wave windows, DIGITAL duels on DISK PLATTER /
+THE RING / SPACE CADET, `npm run build` clean and 26/26 reflection checks.
+
+**Next:** decide whether the PvE kill lead is the intended sniper payoff; if not, trim the rail/volley, not
+the close-range knife. Separately, fix the first-stroke compactor route that wipes all non-Wedge pilots.
+
+## 2026-11-01 — KEYPAD arena (v0.1.83)
+
+**Goal:** add a phone-keypad arena whose keys act as a moving hazard and as changing cover, dodgeable by
+players but lethal to enemies that linger under a descending cap.
+
+- Added arena id 11, `KEYPAD`: a walled room with a central 3×4 phone pad (1–9, centered 0), perimeter
+  spawns and no static pillars. The pad geometry lives in `ArenaDef.keypad`; timing and damage live in
+  `KEYPAD` under `tuning/world.json`.
+- Each cap cycles warning → slam → down cover → rise, with a per-key offset. A slam crushes threats
+  through their ordinary damage paths and takes three health segments from a player. `slam`, `down` and
+  `rise` footprints block bodies, projectiles, beams and line-of-sight; dashes still phase them.
+- Bots steer around warning and down caps in `avoidFurniture`. The pad is local-only like the compactor
+  and emitters, so `onlineArenaIndex` skips it and nothing enters `Snapshot`.
+- Added the bezel/socket/cap renderer, digit marks, minimap footprint and picker preview. The arena guide
+  and AGENTS D36 record the behavior and the local-only rule.
+
+**Verification:** `.tmp/keypad-check.ts` confirms ten keys, all five states and a key-0 crush at 0.80 s;
+`npx tsc --noEmit` and `npm run build` clean (653.07 kB JS / 180.30 kB gzip).
+
+**Limitations:** no human pass yet; warning readability at combat speed and bot routing through a pad
+with several caps down are the open feel checks. Online rooms intentionally skip the map.
+
+**Next:** play KEYPAD in training and gauntlet, then tune the warning window or cap timing only if the
+slam reads as unfair or the pad fails to create useful cover.
+
+## 2026-11-01 — DOCUMENT SCANNER arena (v0.1.84)
+
+**Goal:** add a scanner arena where documents load onto a glass bed, a read line scans each one top to
+bottom and returns fast, then the sheet is swapped, turning the page into a timed hazard and a hopscotch
+rhythm.
+
+- Added arena id 12, `DOCUMENT SCANNER`: a walled room with a central 1254×758 platen, filing-stack cover
+  around it, and perimeter spawns outside the bed. The bed and six document labels live in
+  `ArenaDef.scanner`; all timing/damage lives in `SCANNER` under `tuning/world.json`.
+- The cycle is load (0.7 s) → warning (0.45 s) → down scan (3.2 s) → quick return (0.6 s) → unload
+  (0.45 s). The horizontal read line is active on the down and return passes. A player takes one segment
+  and a shove per pass; a dash phases it. Worms, viruses, sentries, errors and the training drone take
+  three per pass, tracked by per-pass bitmasks.
+- The page renderer slides sheets up from the bottom feed slot, draws an internal-report title, fake body
+  copy, redaction bars and a review stamp, then slides the old sheet out before the next page. The labels
+  are cosmetic clues to a corporate cover-up; they are not campaign flags.
+- Added the minimap and picker previews. Scanner phase, page index and hit masks are local only;
+  `onlineArenaIndex` skips the arena, and nothing enters `Snapshot`.
+- Updated AGENTS D37, README/GAME_GUIDE arena counts and the tuning file map.
+
+**Verification:** `.tmp/scanner-check.ts` confirms six document labels, all five phases, the line staying
+inside the 120..878 bed, and a first player hit at 2.63 s; `npx tsc --noEmit` and `npm run build` clean
+(662.44 kB JS / 183.02 kB gzip).
+
+**Limitations:** no human visual/play pass yet. The open feel checks are whether the 0.6 s return telegraphs
+well enough to hop, and whether bots/gauntlet threats crossing the bed read as caught rather than random.
+
+**Next:** play the map in training and gauntlet, then tune the return duration or warning only if the line
+cannot be read while fighting.
+
+## 2026-11-01 — BROWSER arena (v0.1.85)
+
+**Goal:** add a browser-window arena whose forum navigation changes the cover, driven by a giant cursor that
+slams the page link before moving deeper into the thread.
+
+- Added arena id 13, `BROWSER`: a static chrome band and scrollbar, a page floor, and four local forum pages
+  (`FORUM / INDEX`, `FORUM / THREAD 404`, `FORUM / POST 7`, `FORUM / LOCKED`). Each page has its own solid
+  forum cards and navigation link, so the fight's cover changes as the browser navigates.
+- Added the `BROWSER` cycle and `ArenaBrowserPageDef` data. The cursor idles over the page, seeks the active
+  link, hovers, then click-slams for one segment and a shove; the click also starts the page swap. Dash and
+  cloak clear the slam. Threat families take three damage.
+- Active page cards are dynamic cover for players, threats, projectiles, bombs, beams and blast line of sight.
+  Bots steer around the current cards instead of baking them into the nav grid. The minimap and picker preview
+  show the page silhouette; the renderer draws the URL, cards, link and large pointer from world state.
+- The map is local-only: `onlineArenaIndex` skips `browser`, and page/cursor/click state never enters `Snapshot`.
+- Updated AGENTS D38, README/GAME_GUIDE arena counts and payload, tuning file map, TODO and build stamp 0.1.85.
+
+**Verification:** `.tmp/browser-check.ts` confirms four forum pages, all five cursor phases, a click at 5.07 s,
+page 1 after navigation, and a player pushed out of an active card. `npx tsc --noEmit` and `npm run build` clean
+(676.59 kB JS / 186.70 kB gzip).
+
+**Limitations:** no human visual/play pass yet. The open feel checks are whether the cursor reads as a threat
+before the slam, and whether the page-cover swaps create useful routes instead of trapping bots.
+
+**Next:** play BROWSER in training and gauntlet, then tune the cursor warning or page card layout only if the
+click feels unreadable or the active page pinches a spawn/route.
+
+## 2026-11-01 — Series games (v0.1.86)
+
+**Goal:** let VS BOTS groups and online rooms play several matches in a row on different maps, without
+forcing every session through a lobby or inventing a veto/vote ceremony.
+
+- Added `src/game/series.ts`: series lengths `1/3/5`, random/fixed map normalization, no-immediate-repeat
+  map selection and a tie-aware series winner calculation.
+- VS BOTS now leaves difficulty for a series setup stage. `MAPS: RANDOM` is the default; `MAPS: FIXED`
+  keeps the selected arena. Each game remains first to 3 rounds, and the result panel carries `NEXT GAME`
+  with the running game score. Training still goes straight into its endless practice session.
+- Online versus carries the host's `SERIES` and `MAPS` rules in `LobbyState` and `START`. The host advances
+  with `HostNet.startNextMatch()`; guests receive the next arena and game number without rebuilding the
+  room. Infection remains one run.
+- Added AGENTS D39, README/GAME_GUIDE series rules, TODO entry and build stamp 0.1.86.
+
+**Verification:** `.tmp/series-check.ts` passes length normalization, random no-repeat selection, fixed
+arena selection and tie detection. A focused browser flow (PROBE → CROSSROADS → 1 V 1 → MEDIUM) reaches
+`VS BOTS // SERIES` with `MAPS: RANDOM` and the three game lengths. `.tmp/browser-check.ts` still passes.
+`npx tsc --noEmit` and `npm run build` are clean (682.36 kB JS / 188.42 kB gzip).
+
+**Limitations:** no human play pass yet, and no automated two-peer online series test. The open feel checks
+are whether random map variety is enough for a 3/5-game set and whether the between-game panel gives the
+host enough time to start the next map.
+
+**Next:** play a 3-game bot series and a 3-game online room, then tune the series stage copy or between-game
+pause only if the map rule is unclear or the next game starts without enough context.
+
+## 2026-11-01 — Bad Lag: three segments and time-kit retune (v0.1.87)
+
+**Goal:** undo the four-segment experiment and make health an identity value rather than a balance knob,
+then improve Bad Lag's survivability and duel performance through its time kit.
+
+- Reverted Bad Lag to the standard **three** health segments. No other player or enemy health pool changed.
+  `PLAYER.hp` and every `healthSegments` value are now explicitly protected by the global rule in AGENTS
+  D4/D10/§6 and the tuning README.
+- Hourglass: speed 580→700, life 1.7→2.1 s, damage 1→1.5, body hits 4→5, cadence 0.56→0.45 s, cost 12→9.
+- Fast-forward: 2.6→3.4 s at 2.5×→2.8×; its skill cooldown is 10→7.5 s. Time dilation: 5→6.2 s at
+  0.3×→0.25×, charge 0.6→0.45 s and cooldown 9→7.25 s.
+- Corrected the BotBrain's Bad Lag calibration: it now uses the 700-speed, 2.1-second hourglass for lead and
+  engagement range instead of the generic bolt values.
+- Added the global health rule to AGENTS D4/D10/§6 and `tuning/README`; updated the Bad Lag hull references
+  to six clock faces and the guide to the three-segment pool.
+
+**Verification:** `.tmp/badlag-tune.ts` asserts Bad Lag's `healthSegments` fallback is three and compares
+variants. At three segments the baseline was 20.8% duels, 89.0 s average gauntlet survival and 6.0 kills;
+the final package measured 34.7%, 96.5 s and 8.3 kills. The full `.tmp/balance.ts duels 0` matrix put Bad
+Lag at 36.1%, up from the 23.6% three-segment baseline. `npx tsc --noEmit` and `npm run build` are clean
+(682.42 kB JS / 188.45 kB gzip).
+
+**Limitations:** no human play pass yet. The sample is HARD bots on CROSSROADS and three gauntlet maps; the
+1.5-damage hourglass and stronger dilation need a feel pass before they are considered final.
+
+**Next:** play the three-segment Bad Lag in training, a VS BOTS duel and a gauntlet run; tune the hourglass
+or time windows only if the new damage breakpoint or slow field feels unfair.
+
+## 2026-11-01 — Testing/tuning evidence policy (workflow)
+
+**Goal:** make headed/visual testing an explicit part of balance work instead of treating the headless
+harness as the only authority.
+
+- Added the rule to AGENTS §6 and §9: headless runs are the first pass; when results are surprising, noisy,
+  or depend on attack tells, off-screen threats, camera framing, hit feedback, audio, routing or control
+  feel, run a headed `npm run dev` session and play the exact scenario. Report both forms of evidence.
+- Named the existing headed tools: `?autoplay=N`, `?gauntlet=1&arena=N&bot=1` and `F3`, with the normal
+  manual pass.
+
+**Verification:** `git diff --check` clean. No code or build changes.
+
+**Next:** use a headed pass for the pending three-segment Bad Lag feel check and for any future balance
+result that the headless data cannot settle.
+
+## 2026-11-01 — Arena hazards online (v0.1.88)
+
+**Goal:** decide whether the arenas kept local because their fixtures were not in `Snapshot` could be
+played online without a bandwidth or authority problem; implement the safe group and record why the rest
+stay local.
+
+- Added `Snapshot` index 13, a compact hazard block or `null`: `[pusherT, keypadT, scannerT, scannerPage,
+browserT, browserPage, props]`. `props` is `[index, kind, x, y, w, h, hp, hitFlash, dropT]` for live file
+boxes. Clocks are the contract; positions, key states, scan phase, cursor and click flash are derived on
+every peer from the arena record.
+- `NetView` mirrors the derived fixture state and the live boxes. The **host still owns every hazard hit**:
+compactor carry, keypad crush, scanner pass, browser click, prop damage and prop physics stay in `World`,
+and the guest reads the resulting HP from the same player rows. No guest hazard simulation or hit masks
+were added.
+- Guest `LocalPredictor` now uses static cover plus the active forum page's cards and solid key caps,
+and clamps the local body to the compactor's leading face after motion. The plate is a carry surface,
+not a solid rect: a rect would push a body above it out through the top edge. This is prediction feel
+only; the host's position wins on the next snapshot.
+- `isOnlineArena()` now excludes only `pipes`/`firewallSwitch`, so `RECYCLING BIN`, `KEYPAD`, `DOCUMENT
+SCANNER` and `BROWSER` rejoin the online pool. `NETWORK SWITCH` and `SPACE CADET` stay local: their pipes
+spawn hostile files, sentries and viruses, and `NETWORK` carries a firewall switch and sweep, none of
+which is in `Snapshot` (D9).
+- Updated AGENTS D36/D37/D38 and added D40, the performance guardrail, README/GAME_GUIDE online notes, TODO
+and build stamp 0.1.88.
+
+**Verification:** `.tmp/hazard-check.ts` steps match-mode worlds on all four newly eligible arenas for 45 s
+and checks clock round-trip, pusher/key/scan/browser derivation, page advance, live prop counts and the
+`NetView` mirror. The heaviest block measured 180 B packed (7 live boxes on `RECYCLING BIN`); clock-only
+maps measured 16 B; the 48-projectile packet delta on `RECYCLING BIN` was 138 B at 8 s. At 30 Hz that is
++5.4 KB/s per guest at the heavy end. `npx tsc --noEmit` and `npm run build` are clean (687.71 kB JS /
+190.00 kB gzip); `git diff --check` is clean.
+
+**Limitations:** no real two-client online pass yet, so the compactor carry prediction and forum page-swap
+fairness still need a headed room test. The guest treats the descending plate as a solid rectangle; the
+host may correct a body near the trapezoid edge. Hazard damage arrives at snapshot latency, like every
+other host-resolved hit. Pipes and the firewall switch remain local, so those two arenas are still absent
+from hosted rooms; `DISK PLATTER` keeps its parked arm/spin and the wall emitters stay unbuilt online
+because their moving voids/beams would need a separate prediction and protocol decision.
+
+**Next:** run one online match on each of the four newly eligible maps with two clients, then re-measure the
+full 8P/48-projectile snapshot with a hazard block before considering a player-cap change.
+
+## 2026-11-01 — 4-player kit tuning + reflection telemetry (v0.1.89)
+
+**Goal:** answer whether reflection is worth using in four-player duels, or whether skills, projectiles and
+heavies make it irrelevant; then tune the programs that the 4P data actually identifies.
+
+- Added `.tmp/duel4.ts`: balanced four-program lobbies, rotating seats, 260 rounds per seed, with
+per-program placement, damage, shots, lashes, skills, heavy attempts, guard time and catch-source counts.
+- Added `World.deflectTelemetry`, a QA-only local counter block that separates guard, lash, beam, atom, net,
+Pinball arm, plow, broom and legacy wave catches. It is never serialized into `Snapshot`.
+- Reflection is not being suppressed. Across the two baseline seeds it produced 3,856/4,417 catches in 260
+rounds (58.6/58.5 per 100 shots), appeared in 90/89% of player-rounds and averaged 14.8/17.0 catches per
+round. The shared guard/lash action was the dominant source. Heavies were rare in bot play because most
+rounds end before the bot's 6–11 s heavy pacing, not because a heavy outclassed a catch.
+- Tuned the consistent outliers without touching health. Atomize's shield balls 3→2, refill 11→18 s,
+electron 1→0.72 at 0.46 s cadence; Aim Bot's rail 8→5 damage at 2.8 s reload, which no longer deletes a
+six-segment hull in one shot; Ghost cloak 3.5→3.2 s, scare window 3.2→3.0 s, cooldown 9→11 s.
+- Buffed the bottom half through identity-safe numbers: Wedge string damage/speed/cadence, Fisher net and
+lure reach, Sweep broom speed/life, Toxic venom/spray/jet, Kaboom bomb speed/life/blast, Bad Lag hourglass
+and fast-forward, Copy Pasta file damage/clone life, and Probe mine trigger/blast.
+- Updated AGENTS D10/D14/D15/D16/D21/D25/D26/D34, GAME_GUIDE and the build stamp to 0.1.89. No health,
+history or protocol fields changed.
+
+**Verification:** the same 260-round 4P FFA on both seeds gives Atomize 50.0/50.0% (was 67.5/66.3), Ghost
+47.5/47.5% (was 30.0/43.8), Aim Bot 35.0/36.3% (was 46.3/48.8) and the rest 8.8–33.8%. The final pass
+measured 54.7/56.0 shield catches per 100 shots, 89/90% of player-rounds with a catch and 16.0/17.0
+all catches per round. `npx tsc --noEmit`
+and `npm run build` are clean (688.57 kB JS / 190.14 kB gzip); `git diff --check` is clean.
+
+**Limitations:** this is a bot proxy. Atomize and Ghost still lead, and the bottom programs (especially
+Wedge and Bad Lag) are limited by bot piloting: their skills or heavies barely fire, so a human 4P pass is
+still required. The harness measures catches, not whether a catch was a deliberate, readable choice.
+
+**Next:** run a headed four-player FFA, then decide whether the six-segment hulls need a separate 4P
+compensation decision and whether bot heavy pacing should be shortened for future balance samples.
+
+## 2026-11-01 — Playtest tour and no-backend feedback evaluation (v0.1.90)
+
+**Goal:** give the designer one URL that plays three bot rounds on every arena and records a log worth
+reading, then settle whether players can send playtest data to the repository without a backend.
+
+- Added `?playtest=1`. It boots VS BOTS with three bots, the saved callsign, the selected program and the
+  stored bot tier, then plays three completed rounds on each arena in `ARENAS` order. After the third round
+  it waits two seconds and rotates to the next arena. The tour ends on a `PLAYTEST COMPLETE` overlay with
+  DOWNLOAD LOG, COPY LOG and TITLE.
+- Each round records arena, round number, duration, winner and match winner, and per player: program, hp,
+  maxHp, score, shots, dashes, swings, deflects, skills, heavies, hits, damage, kills and deaths. It also
+  carries the exact `World.deflectTelemetry` source split, round FPS and sim ms. A summary totals rounds,
+  win/loss/draw, every action count, damage, kills, deaths and average FPS.
+- The log is written to `localStorage['deflect.playtest.last']` after every round and is downloadable as
+  JSON. `?debug=1` adds `playtestState()` and `playtestLog()`; leaving to the title clears live tour state
+  but not the saved copy.
+- Evaluated the proposed PAT-in-URL auto-issue pipeline and rejected it. A token in a URL or shipped bundle
+  is readable by anyone who receives the link or opens devtools, ciphering only changes the encoding, a
+  GitHub PAT is account-scoped with no per-player revocation, and a public copy invites issue spam and gets
+  revoked. The recommended path is a prefilled issue plus the downloaded JSON attachment, with a small
+  server relay only if automation becomes mandatory. Written up in `PLAYTEST.md`.
+- Added `PLAYTEST.md`, updated AGENTS D6 and the README, and bumped the build stamp to 0.1.90.
+
+**Verification:** browser run against the dev server shows `[PLAYTEST] START` and `MAP 1/14 CROSSROADS`,
+three CROSSROADS rounds recorded, then automatic rotation to GRID ZERO with its first round logged. The
+payload carries schema 1, the header, per-round player and deflect blocks and the summary. `npx tsc
+--noEmit` and `npm run build` are clean; `git diff --check` is clean.
+
+**Limitations:** the full 14-arena tour was not played end to end and the completion overlay was not
+clicked in this pass; the rotation and round logging were verified live, the completion path by reading.
+The log is a local QA artifact and stays out of `Snapshot` and the service worker shell.
+
+**Next:** play one complete tour and read the exported file, then decide whether the prefilled-issue report
+path is worth building.
+
+## 2026-11-01 — Local couch multiplayer (v0.1.91)
+
+**Goal:** build the `LOCAL` multiplayer stage for real, with controllers dropping in whenever they are
+plugged in or detected.
+
+- Added `src/game/localplay.ts`. `LocalSeats` adopts every detected gamepad as P2–P4 with no confirmation
+  step, writes one `InputFrame` per seat, keeps a 0.9 s disconnect grace, and owns a `Haptics` instance per
+  pad so each player rumbles on their own controller.
+- Added `World.joinLocalPlayer`. A pad joining mid-round activates its spare slot, keeps the kit the
+  constructor already assigned from `botPrograms`, and spawns at the arena point farthest from the live
+  field. Joining during `matchend` takes effect on the rematch.
+- Replaced the placeholder local menu with the real setup stage: live seat rows (keyboard plus each pad's
+  name), an arena grid, and a start gate that needs one controller beside P1. A controller plugged in on
+  the stage appears without a refresh.
+- P1 is keyboard + mouse in local play. `Input.keyboardOnly` stops a pad from also driving P1 while still
+  letting that pad navigate menus. Local matches run their own step branch over `localFrames`, use the
+  existing split/shared camera through `setLocalSlots`, draw one readiness dock per seat, and rematch
+  through the ordinary local rematch path. Leaving resets the seats and the camera.
+- Updated AGENTS D11/D18, README, GAME_GUIDE and the build stamp to 0.1.91.
+
+**Verification:** in the dev browser with two injected pads, `MULTIPLAYER > LOCAL` listed P1 keyboard,
+P2 and P3 pads and an open P4; starting produced three active bodies, split slots `[0,1,2]`, and a left
+stick push moved P2 104 units. A third pad added mid-match joined as P4 at a far spawn and the split became
+`[0,1,2,3]`. Marking P3's pad disconnected aged the seat to disconnected after the grace, and reconnecting
+the same index restored it. `npx tsc --noEmit` and `npm run build` are clean; `git diff --check` is clean.
+
+**Limitations:** tested with injected virtual pads, not physical controllers; the couch readability of
+three/four panes and the dock corners still needs a real TV pass. Local gauntlet co-op is not built, and
+online rooms still have no local seats because seats never enter `Snapshot`.
+
+**Next:** run a headed couch pass with real pads, then decide whether gauntlet co-op belongs in this mode.
+
+## 2026-11-01 — Quarantine orientation + script_kitty (v0.1.92)
+
+**Goal:** build the first part of the campaign as a testable quarantine opening: the Warden teaches the
+basics while the primitives sit dormant, then they wake; the next arena introduces script_kitty and the
+kit's skill and power attack.
+
+- Added `src/game/tutorial.ts`: a reusable `TutorialRunner` plus the first two lessons. Narration steps
+  auto-advance; action steps wait for the real input. `SKIP TUTORIAL` ends the lesson without changing the
+  level order.
+- `BUILD ROOT` now opens with `WARDEN_TUTORIAL`. The six calibration subjects stay dormant until move,
+  dash, ranged, lock, cycle, melee and a reflected test shot are done, then wake on the same beat and the
+  existing fight continues. The reflect lesson arms one slow hostile shot with zero damage from a clear
+  lane; the step completes on the first catch.
+- Added the second node, `REBOOT` on `GRID ZERO`. `KITTY_TUTORIAL` has script_kitty teach the skill tap and
+  the power-attack hold in a quiet room, then the breach starts and a four-kill live-fire check clears it.
+- Campaign levels are now indexed: the clear overlay saves the next node and offers `NEXT ARENA`; a resumed
+  slot starts at the saved level. Keyboard lock cycling is `R` / `F` while `Q` is held; pads keep
+  `RB` / right stick.
+- Added the live DOM story box (speaker mark, line, action prompt, step count, skip) and updated AGENTS
+  D13/D17, GAME_GUIDE, README and the build stamp to 0.1.92.
+
+**Verification:** in the dev browser, `BUILD ROOT` opened in `calibration` with the Warden box and six
+subjects dormant. Move, dash, fire, lock and cycle each advanced their step, melee reached `reflect`, and a
+held guard caught the test shot; the `awake` line played and all six subjects woke. `REBOOT` started in
+`briefing` on `GRID ZERO` with the script_kitty box. `npx tsc --noEmit` and `npm run build` are clean;
+`git diff --check` is clean.
+
+**Limitations:** the live tab was rAF-throttled during the script_kitty check, so that path was verified by
+stepping the world directly (skill → power → `kitty-escape` → breach, clear at 4 kills), not by typing into
+the running arena. The story box has skip for the whole lesson but no per-line skip control, and the
+`STORY BEATS` preference is still unbuilt.
+
+**Next:** judge the narration dwell on a real read-through, then author the node after `REBOOT`.
+
+## 2026-11-01 — QUARANTINE tutorial route (v0.1.93)
+
+**Goal:** turn the tutorial into a simple three-room route connected by bridges: a round prison-office
+intake, a motherboard rectangle, then a larger router room that ends at the way out to the web.
+
+- Added arena id 14, `QUARANTINE`: the circular `INTAKE` office, rectangular `MAINBOARD`, and larger
+  `ROUTER` room, linked by two bridge decks. Four chasm halves remove the floor between rooms, so the
+  bridges are the only body crossings; shots and beams still cross the gaps.
+- Added `ArenaDef.rooms`, `bridges` and `port` as presentation data, plus the shared `ROOM_THEME_COLORS`
+  palette. The picker preview and the arena renderer draw the same room plates and route.
+- Added room dressing: intake carpet, cell bars, lamp cones and loose paper; mainboard copper traces and
+  chip pads; router port banks, blinking link LEDs and an antenna sweep; a moving data thread on each
+  bridge; and a pulsing NETWORK PORT at the router's east wall. No gradients, filters or `shadowBlur`.
+- Moved `BUILD ROOT` onto `QUARANTINE`. Spawn 6 opens in the centre of the intake office. Calibration now
+  anchors the six dormant subjects around the `board` room centre when the arena has rooms, so the first
+  bridge crossing is the reveal instead of the class landing on the bridge or in the player's lap.
+- Spread the level's data crates through the three rooms. The port is fiction and a future exit hook for
+  now; the node still clears on the assault kill count.
+- Room arenas are local-only: `isOnlineArena` skips `rooms`, like pipes and firewall fixtures. Room data
+  never enters `Snapshot`.
+- Updated AGENTS D8/D13/D17/D41, CAMPAIGN, README/GAME_GUIDE counts, TODO and the build stamp to 0.1.93.
+
+**Verification:** `.tmp/quarantine-check.ts` passes 15 checks: arena id/index, room shapes and relative
+size, two bridges and four chasm halves, solids including the chasms, campaign spawn in intake, six
+subjects in mainboard, subjects clear of cover and chasms, bridge A into the board, bridge B into the
+router, and the chasm blocking a body outside a deck. In the dev browser the campaign booted in
+`QUARANTINE`/`calibration` at `(310,547)` with all six subjects inside the board room and no console
+errors. `npx tsc --noEmit`, `npm run build` and `git diff --check` are clean.
+
+**Limitations:** no headed visual/feel pass on the rooms, labels or port; the port is decorative; and the
+router room has no unique lesson beat yet. This is one continuous arena, not three separate loadable
+levels.
+
+**Next:** judge the room read in a headed pass, then decide whether the port becomes an exit gate and
+where script_kitty's lesson belongs.
+
+## 2026-11-01 — Ordinary program carts (v0.1.94)
+
+**Goal:** give non-combat programs a shared visual format instead of inventing a new avatar for
+every civilian: a floating monitor cart with a unique shell colour and an emoji face.
+
+- Added `src/game/regulars.ts`: the `REGULAR_PROGRAMS` data rows, id lookup, and a reusable
+  `drawRegularProgram` renderer. The silhouette is fixed (ground shadow, hover ring, cart deck,
+  neck, monitor shell, dark screen, antenna); colour and face carry identity.
+- Defined four civilians: TICKET (teal, intake, neutral), PATCH (amber, maintenance, friendly),
+  CACHE (violet, intern, sleepy) and PING (rose, courier, anxious). The monitor face is a real
+  emoji on the dark screen; the shell, rim and LEDs carry the tint.
+- Added `ArenaDef.regulars` placements and `drawRegularPrograms`. The arena pass draws carts
+  before pillars and border, so a desk can occlude one. Three staff the `QUARANTINE` intake
+  floor: TICKET at the west side, PATCH by the bridge gate, CACHE near the south desks.
+- Regulars are presentation only: no `Player`, collision, health, AI, hit surface or `Snapshot`
+  row. They never enter `PROGRAMS`, the select screen or `World`.
+- Updated AGENTS D42, README code map, GAME_GUIDE, CAMPAIGN, TODO and the build stamp to 0.1.94.
+
+**Verification:** `.tmp/regulars-check.ts` passes four unique definitions, unique ids/colours/faces,
+lookup and fallback, three intake placements, all inside the round room and clear of cover and
+chasms. The dev browser booted `BUILD ROOT` again after HMR; the arena still resolves `QUARANTINE`
+with the three placements, and the console stayed clean. `npx tsc --noEmit`, `npm run build` and
+`git diff --check` are clean.
+
+**Limitations:** no headed visual pass on the carts yet; emoji rendering still depends on the host's
+emoji font. PING is defined but unplaced, and regulars have no ambient behaviour or dialogue. They
+are scenery, not an NPC system.
+
+**Next:** judge cart scale and emoji readability in the intake room, then decide whether story-box
+speakers should share the monitor frame.
+
+## 2026-11-01 — Keyboard target lock toggle (v0.1.95)
+
+**Goal:** make target lock comfortable for keyboard/mouse players who do not want to hold a key while
+moving, aiming with the mouse and firing.
+
+- `Q` now toggles `ACTION.LOCK`; releasing `Q` leaves the toggle on, and the next press clears it.
+- Gamepad `LT` keeps hold-to-lock, and keyboard `R` / `F` cycling works while the toggle is active.
+- Updated the Warden lock prompt, GAME_GUIDE controls and QA copy, README input notes and AGENTS D2.
+- Build stamp 0.1.95.
+
+**Verification:** `.tmp/lock-toggle-check.ts` passes 5/5 by driving the real `Input` class with minimal
+browser stubs. `npx tsc --noEmit`, `npm run build` and `git diff --check` are clean. The live browser debug
+handle exposes no raw frame getter, so this was verified at the input boundary rather than in a headed match.
+
+**Limitations:** no headed feel pass; the gamepad path is deliberately unchanged.
+
+**Next:** use the toggle through a keyboard match and confirm the lock reticle reads correctly through
+reacquisition and cycling.
+
+## 2026-11-01 — Holding tutorial route (v0.1.96)
+
+**Goal:** split the opening lesson by room: learn the basics in the bare circle, then meet the awakened
+primitives, the burning civilian office and the jailed script_kitty before the motherboard and router.
+
+- Rebuilt `QUARANTINE` as four rooms: the intake circle, a square **HOLDING** office with a three-cell
+  block, the mainboard rectangle and the router rectangle. Bridges and chasm halves now repeat three
+  times; pillars, spawns, props and data crates moved to the new room centres.
+- Added the `holding` room theme and `drawHoldingRoom`: three cell recesses, barred fronts that flash amber
+  and retract when opened, office desks, a cell-block stencil and script_kitty in the middle cell. The
+  intake circle lost its old back-wall cage and now reads as the bare orientation room.
+- Moved the three civilian carts (TICKET, PATCH, CACHE) into holding. `wakeCalibration` hides them after a
+  0.65 s beat and emits a short blast at each cart anchor; they still have no bodies, health or snapshot
+  rows. script_kitty is a render-only cameo, not an `ArenaDef.regular`.
+- Split the Warden lesson: `WARDEN_TUTORIAL` now ends with a move-to-holding beat. Reaching holding wakes
+  the six subjects (18 s fallback) and starts `CALIBRATION_TUTORIAL` (skill tap, power hold) while they
+  are live. The wake banner, civilian loss and combat lesson share the same beat.
+- Added `CampaignPhase.release`. When the six subjects and the combat lesson are done, `beginCellRelease`
+  flashes and opens the bars, clears projectiles and old shapes, grants 1.2 s of iframes, and spawns two
+  viruses and a worm in front of the cells. Only those threats update in release; clearing them opens the
+  existing drill. Bars stay open for the rest of the node.
+- `campaignCiviliansLost`, `campaignBarsFlashT` and `campaignBarsOpen` are render-state only. Nothing
+  campaign-shaped entered `Snapshot` or the network protocol.
+- Updated AGENTS D13/D17/D41/D42, CAMPAIGN, GAME_GUIDE, TODO and the build stamp to 0.1.96.
+
+**Verification:** `npx tsc --noEmit` clean. In the dev browser `BUILD ROOT` booted into
+`QUARANTINE`/`calibration` with all four rooms, six dormant subjects and the three holding carts. Forced
+wake hid the carts and showed the skill prompt; forced release retracted the bars and spawned the threat
+group. The clean build and `git diff --check` are recorded in TODO v0.1.96.
+
+**Limitations:** the release was exercised through the debug handle, not a complete human lesson-to-
+release playthrough; the holding cell bars are visual only, so a body can still walk through the cage.
+The 18 s fallback has not been feel-tested, and script_kitty has no dialogue in this beat yet.
+
+**Next:** play the lesson naturally and judge the wake/release spacing, then decide whether the cell bars
+need real body collision or a gate script.
+
+## 2026-11-01 — Floating-head civilians (v0.1.97)
+
+**Goal:** simplify ordinary programs to the emoji face itself, add carried file dressing, and let
+civilians visibly react and flee the room instead of standing in a monitor cart through a breakout.
+
+- Reworked `drawRegularProgram` to a floating head: ground shadow, hover ring, tinted halo, emoji face
+  and a small identity tick. Removed the cart deck, neck, monitor shell, inset screen, scan line and
+  antenna. `screen` is gone from the data rows; `cart` remains the halo colour for continuity.
+- Added `RegularMood` and `CIVILIAN_FACES` (`scared`, `angry`, `sad`); calm keeps the portrait face.
+  `ArenaRegularDef.mood` can set an unnamed civilian's resting expression, and a live threat overrides
+  it with fear.
+- Added `ArenaRegularDef.carry` and `drawDroppedFiles`. TICKET carries one file, PATCH none and CACHE
+  two. Carried papers sit behind the head; a fleeing or destroyed civilian drops them at the anchor and
+  the renderer fades the stack out.
+- Added a local presentation-only flight in `Renderer`: live worms, viruses, errors or sentries within
+  `CIVILIAN_FLEE_RADIUS` make a worker drop its files and move toward the arena port, then a pad/lift,
+  then the room farthest from the threat. Port/pad exits fade the head; a safe room becomes the new idle
+  anchor. Dormant calibration subjects do not trigger it.
+- The behavior never enters `World`, collision, pathfinding or `Snapshot`; ordinary programs remain
+  decoration with no bodies, health or hit surfaces. The campaign's scripted loss still wins over the
+  escape path, so the holding workers vanish and leave their papers.
+- Updated AGENTS D41/D42, CAMPAIGN, README, TODO and the build stamp to 0.1.97.
+
+**Verification:** `npx tsc --noEmit` clean. The dev browser showed the three floating heads, the cat cameo
+and carried papers in holding; a forced wake hid the heads, set `mood = scared`, and left TICKET's one
+file and CACHE's two files on the floor. The same state showed the workers had moved toward the router
+port before the scripted loss. The clean build and `git diff --check` are recorded in TODO v0.1.97.
+
+**Limitations:** no live non-campaign pack was used to watch a worker reach a safe room, and the escape
+route ignores cover and enemies on the way. The camera does not follow civilians. Mood changes are
+renderer-only; a guest or a replay cannot reproduce them from a snapshot.
+
+**Next:** judge the port-first route in a live room, then decide whether safe rooms should take priority
+over exits and whether a generic unnamed civilian row is needed for crowd filler.
+
+## 2026-11-01 — CRT-head civilians (v0.1.98)
+
+**Goal:** keep the emoji face readable as a character while putting it back inside the CRT monitor
+silhouette, with no body or limbs.
+
+- Reworked `drawRegularProgram` again: a floating rounded CRT shell, inset bezel, dark screen, single
+  scan line, power LED and the emoji face on the screen. No stand, neck, cart deck, wheels, arms or legs.
+- Restored `screen` colours per regular and renamed the shell tint field from `cart` to `shell`. The
+  emoji, carried-file stack and drop helper are unchanged.
+- Files still overlap behind the monitor and drop on fear or the scripted holding loss; mood faces and
+  the local port/pad/safe-room flight remain. script_kitty uses the same floating CRT with her cat face.
+- Updated AGENTS D41/D42, CAMPAIGN, GAME_GUIDE, README, TODO and the build stamp to 0.1.98.
+
+**Verification:** `npx tsc --noEmit` clean. The dev browser showed the three holding CRT heads and the
+cat cameo at cell scale, with carried papers visible behind the shells. The clean build and
+`git diff --check` are recorded in TODO v0.1.98.
+
+**Limitations:** no live non-campaign escape pass with the new silhouette; the monitor has no stand, so
+it reads as a floating terminal rather than a desk CRT.
+
+**Next:** judge screen readability and shell scale at couch distance, then decide whether future civilians
+need a second shell silhouette variant.
+
+## 2026-11-01 — BUILD ROOT campaign stop (v0.1.99)
+
+**Goal:** make the campaign entry the access path for the tutorial and first level, save a clear, and stop
+on a clear “more levels coming soon” message instead of flowing into the parked REBOOT node.
+
+- Added `CampaignLevel.playable` and `PLAYABLE_CAMPAIGN_LEVELS`. BUILD ROOT is the only live level;
+  REBOOT remains authored on GRID ZERO but is marked `playable: false`.
+- Routed campaign start, resume, clear, fail and the debug level setter through the playable list. The
+  save records completed-level count; a completed slot no longer starts REBOOT or replays silently.
+- The level-clear overlay now reads `CAMPAIGN // LEVEL 1 CLEAR` / `MORE LEVELS COMING SOON`, writes the
+  slot, and offers `STORY SLOTS` and `REPLAY`. The slot readout becomes `COMPLETE` / `MORE LEVELS SOON`.
+- A completed slot clicked from story slots reports the same coming-soon message instead of launching a
+  node. Campaign access remains the existing SINGLE PLAYER > CAMPAIGN → save slot → bot count → program
+  path, which starts BUILD ROOT with the Warden lesson.
+- Updated GAME_GUIDE, CAMPAIGN, AGENTS D13/D17, README, TODO and build stamp to 0.1.99.
+
+**Verification:** `npx tsc --noEmit` clean. In an incognito dev tab with no prior save,
+`SINGLE PLAYER > CAMPAIGN > SLOT 1 > NO BOTS > PROBE` started BUILD ROOT (`mode: campaign`, slot 0,
+phase `calibration`) and the Warden tutorial drew at step 3/10. A QA-forced clear (assault phase at the
+kill threshold) wrote slot 1 with `level: 1` and `nodeId: build-root`, showed `CAMPAIGN // LEVEL 1 CLEAR` /
+`MORE LEVELS COMING SOON` with `STORY SLOTS` and `REPLAY`, and returned to a `LOCALHOST // COMPLETE`
+slot. Clicking that slot reported `BUILD ROOT CLEAR // MORE LEVELS COMING SOON` without creating a world.
+The forced clear verifies the save/overlay path, not a full playthrough of every beat. Build and
+`git diff --check` results are recorded in TODO v0.1.99.
+
+**Limitations:** only BUILD ROOT is live; REBOOT remains parked and its route is not tested through the
+campaign UI. A full human playthrough of every beat is still needed before calling the level tuned.
+
+**Next:** author the next playable level, flip its `playable` flag, and extend the completed-slot flow to
+point at it.
+
+## 2026-11-01 — Pinball flipper art pass (v0.1.100)
+
+**Goal:** replace Pinball's chrome-ring read with solid glossy balls and pinball flipper hardware.
+
+- Added `pathPinballFlipper`, one tapered bat path shared by the three health segments, the melee pair
+  and the deployed skill arm. The bats wrap the core on a ring, so the hull reads as pinball flippers
+  instead of another circle.
+- Pinball's melee now draws two flipper bats hinged at the body's sides and snapping shut across the
+  forward arc. The swing hitbox, facing lock, guard and reflection rules are unchanged.
+- Types 14 and 15 render as solid cabinet-blue spheres with a shaded lower edge and a fixed top
+  reflection; the circled X stays at the core and is no longer stamped on the ball.
+- Updated AGENTS D4/D31, README, TODO and the build stamp to 0.1.100.
+
+**Verification:** `npx tsc --noEmit` clean. The dev browser showed the full-health bats in the select
+portrait and in a 2x live crop, the two-flipper melee snap, and both ball sizes as solid glossy spheres
+with a top highlight. `npm run build` succeeded at 732.43 kB / 204.17 kB gzip with the existing
+chunk-size warning, and `git diff --check` is clean.
+
+**Limitations:** the hull bats are small at arena distance; judge them at couch distance before changing
+health segment sizes again. The melee change is visual only.
+
+**Next:** judge the hull in a real match and decide whether the bats need a longer blade or wider tip.
+
+## 2026-11-01 — Holding cell wave gate (v0.1.101)
+
+**Goal:** make the holding cell bars a real barrier and use the cell block as the wave control for BUILD ROOT.
+
+- Added `holdingCellLayout` so the holding renderer and the campaign collision read the same cell geometry. The
+  sealed cell block is one body solid; the painted bars no longer leak at the back or sides. The solid is
+  removed on the power-down, making the cells walkable for the rest of the node.
+- Replaced the scattering arc spawn with a fixed two-column formation in the holding room's lower half. All
+  six subjects stay in holding, the centre lane stays open for the bridge entry, and no shape falls back to
+  an arena spawn elsewhere.
+- Split the calibration lesson into wave beats. `CALIBRATION_SKILL_TUTORIAL` runs while the six primitives are
+  live; clearing them and finishing the skill beat powers the cell block down. `CALIBRATION_POWER_TUTORIAL`
+  then runs over wave 2, two viruses and a worm released from the cells. The drill waits for wave 2 and the
+  heavy beat.
+- Drew caged worm/virus silhouettes behind the sealed bars and changed the campaign banners to
+  `WAVE 01 // SKILL CHECK` and `WAVE 02 // CONTAINMENT RELEASED`. The release line now says the cells lost
+  power, not that the Warden caused it.
+- Updated AGENTS D13/D17/D41, CAMPAIGN, GAME_GUIDE, TODO and the build stamp to 0.1.101.
+
+**Verification:** `npx tsc --noEmit` clean. In the dev browser the sealed cell block measured 324x108 at
+(618,346); a body driven north into it stopped at y=476. With all six primitives dead but the skill beat
+unfinished, the phase stayed `calibration`, the bars stayed closed and no wave-2 body existed. Finishing
+the skill beat removed the block, opened the bars and spawned two viruses and a worm in the cells while the
+release line played. The heavy lesson was reached and the drill started only after wave 2 and the heavy beat
+were clear. `npm run build` succeeded at 734.46 kB / 204.77 kB gzip with the existing chunk-size warning, and
+`git diff --check` is clean.
+
+**Limitations:** the collision is a body barrier; dashes still phase it like other cover. The caged wave is
+painted, not simulated, until release. The timing of the heavy prompt and the worm/virus split need a human
+playthrough, not just state probes.
+
+**Next:** play the whole holding sequence without debug hooks, then tune the wave-2 spawn spacing or release
+narration if the worm reaches the viruses before the heavy lesson is read.

@@ -2492,6 +2492,122 @@ body.pointer-live .console-option:hover {
   margin: 8px 0 12px;
 }
 
+/* Local couch seats: one row per player, with an open slot for every free pad. */
+.local-seats {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+
+.local-seat {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  border: 1px solid rgba(46, 230, 255, 0.12);
+  background: rgba(2, 9, 12, 0.55);
+  font-family: var(--ui);
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  color: rgba(140, 211, 222, 0.72);
+}
+
+.local-seat-key {
+  min-width: 34px;
+  color: rgba(120, 248, 255, 0.62);
+}
+
+.local-seat-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.local-seat b {
+  font-weight: 600;
+  color: rgba(255, 200, 135, 0.82);
+}
+
+.local-seat.ready b {
+  color: #7df8ff;
+}
+
+/* Live story/tutorial box. It sits over the arena and never pauses the simulation. */
+.tutorial {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 24;
+  width: min(760px, calc(100vw - 40px));
+  transform: translateX(-50%);
+  padding: 14px 18px 12px;
+  border: 1px solid rgba(46, 230, 255, 0.28);
+  background: rgba(3, 10, 16, 0.92);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 18px 44px rgba(0, 0, 0, 0.55);
+  font-family: var(--ui);
+  color: #d7f6ff;
+}
+
+.tutorial-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.tutorial-mark {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.tutorial-speaker {
+  flex: 1;
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  color: #7df8ff;
+}
+
+.tutorial-step {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: rgba(140, 211, 222, 0.6);
+}
+
+.tutorial-line {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+}
+
+.tutorial-prompt {
+  margin: 9px 0 0;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 200, 135, 0.9);
+}
+
+.tutorial-skip {
+  margin-top: 10px;
+  padding: 5px 10px;
+  border: 1px solid rgba(46, 230, 255, 0.2);
+  background: rgba(46, 230, 255, 0.05);
+  color: rgba(160, 220, 235, 0.7);
+  font-family: var(--ui);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.tutorial-skip:hover,
+.tutorial-skip:focus-visible {
+  border-color: rgba(120, 248, 255, 0.55);
+  color: #e7feff;
+  outline: none;
+}
+
 .console-arena-card {
   display: flex;
   flex-direction: column;

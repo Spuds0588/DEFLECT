@@ -1,7 +1,20 @@
 import Peer from 'peerjs';
 import type { DataConnection } from 'peerjs';
-import { INFECTION, MAX_PLAYERS, MAX_PROJECTILES, NET, PLAYER } from '../game/config';
-import { ARENAS, arenaSolids, type ArenaDef } from '../game/arenas';
+import { FILE_PROP, INFECTION, MAX_PLAYERS, MAX_PROJECTILES, NET, PLAYER, type Rect } from '../game/config';
+import {
+  ARENAS,
+  arenaSolids,
+  browserClickAt,
+  browserCursorAt,
+  browserCycle,
+  browserPhaseAt,
+  keypadKeyState,
+  KEYPAD_STATE,
+  pusherPhaseAt,
+  scannerPhaseAt,
+  type ArenaDef,
+  type PusherPhase,
+} from '../game/arenas';
 import { createPlayer, createProjectile, createVirus, playerFlags } from '../game/entities';
 import { sanitizeName } from '../game/identity';
 import { stepPlayerMotion } from '../game/movement';
@@ -17,6 +30,7 @@ import {
   type Phase,
   type Player,
   type Projectile,
+  type Prop,
   type Virus,
 } from '../game/types';
 
@@ -109,6 +123,10 @@ export class HostNet {
   private arenaIndex = 0;
   /** 0 versus, 1 infection. Infection is a co-op clear on the gauntlet simulation. */
   private modeIndex = 0;
+  /** Series rules, host-owned. Infection ignores the series and starts one run. */
+  private series = 1;
+  private mapRule = 0;
+  private seriesGame = 1;
   private seq = 0;
   private closed = false;
 
@@ -179,6 +197,8 @@ export class HostNet {
       players,
       arenaId: this.arenaIndex,
       mode: this.modeIndex,
+      series: this.series,
+      mapRule: this.mapRule,
     };
   }
 
@@ -188,6 +208,26 @@ export class HostNet {
 
   getMode(): number {
     return this.modeIndex;
+  }
+
+  getSeries(): number {
+    return this.series;
+  }
+
+  getMapRule(): number {
+    return this.mapRule;
+  }
+
+  setSeries(games: number): void {
+    if (this.inMatch) return;
+    this.series = games === 3 || games === 5 ? games : 1;
+    this.emitLobby();
+  }
+
+  setMapRule(rule: number): void {
+    if (this.inMatch) return;
+    this.mapRule = rule === 1 ? 1 : 0;
+    this.emitLobby();
   }
 
   setMode(mode: number): void {
@@ -213,6 +253,8 @@ export class HostNet {
       state.players.map((p) => [p.slot, p.name, p.ready ? 1 : 0, p.connected ? 1 : 0]),
       state.arenaId,
       this.modeIndex,
+      this.series,
+      this.mapRule,
     ];
     this.broadcast(packet);
   }
@@ -222,11 +264,22 @@ export class HostNet {
     if (!inMatch) this.emitLobby();
   }
 
-  startMatch(arenaIndex: number): void {
+  startMatch(arenaIndex: number, series = 1, mapRule = 0): void {
     if (!this.peer || this.inMatch) return;
     this.arenaIndex = ((arenaIndex % ARENAS.length) + ARENAS.length) % ARENAS.length;
+    this.series = series === 3 || series === 5 ? series : 1;
+    this.mapRule = mapRule === 1 ? 1 : 0;
+    this.seriesGame = 1;
     this.inMatch = true;
-    this.broadcast([MSG.START, this.arenaIndex, this.modeIndex]);
+    this.broadcast([MSG.START, this.arenaIndex, this.modeIndex, this.series, this.seriesGame, this.mapRule]);
+  }
+
+  /** Advance a host series without dropping the room back to the lobby. */
+  startNextMatch(arenaIndex: number): void {
+    if (!this.peer || !this.inMatch) return;
+    this.arenaIndex = ((arenaIndex % ARENAS.length) + ARENAS.length) % ARENAS.length;
+    this.seriesGame = Math.min(this.series, this.seriesGame + 1);
+    this.broadcast([MSG.START, this.arenaIndex, this.modeIndex, this.series, this.seriesGame, this.mapRule]);
   }
 
   broadcastRematch(): void {
@@ -304,6 +357,7 @@ export class HostNet {
       }
     }
 
+    const hazards = buildSnapshotHazards(world);
     const packet: unknown[] = [
       MSG.SNAPSHOT,
       this.seq,
@@ -318,6 +372,7 @@ export class HostNet {
       events,
       infection,
       viruses,
+      hazards,
     ];
     this.broadcast(packet);
   }
@@ -447,7 +502,7 @@ export class HostNet {
 export interface GuestCallbacks {
   onLobby: (state: LobbyState) => void;
   onJoined: (slot: number) => void;
-  onStart: (arenaId: number, mode: number) => void;
+  onStart: (arenaId: number, mode: number, series: number, game: number, mapRule: number) => void;
   onSnapshot: (snapshot: Snapshot) => void;
   onRematch: () => void;
   onClosed: (reason: string) => void;
@@ -469,7 +524,64 @@ export interface Snapshot {
   infection: number[] | null;
   /** [id, x, y, phase, radius, spawnT, hitFlash, swarm]. Guest renders these only. */
   viruses: number[][];
+  /** Arena fixture clocks and live file boxes, or null on a quiet floor. */
+  hazards: SnapshotHazards | null;
   time: number;
+}
+
+/**
+ * Arena hazard state carried at 30 Hz. Clocks are authoritative; every peer derives
+ * plate position, key states, scan phase, page cursor and click from them. Hazards
+ * never send damage or hit masks: the host resolves those and the player HP in the
+ * same snapshot is the result.
+ */
+export interface SnapshotHazards {
+  /** Compactor cycle clock, seconds. */
+  pusherT: number;
+  /** Phone-pad shared cycle clock, seconds. */
+  keypadT: number;
+  /** Scanner cycle clock and document index. */
+  scannerT: number;
+  scannerPage: number;
+  /** Browser cycle clock and active forum page. */
+  browserT: number;
+  browserPage: number;
+  /** [index, kind, x, y, w, h, hp, hitFlash, dropT] for each live file box. */
+  props: number[][];
+}
+
+/**
+ * Compact hazard block for the snapshot: six clocks/indices then live props. Empty
+ * fixtures are omitted entirely, so a quiet arena pays only one null.
+ */
+export function buildSnapshotHazards(world: World): unknown[] | null {
+  const arena = world.arena;
+  if (!arena.pushers && !arena.keypad && !arena.scanner && !arena.browser && world.props.length === 0) return null;
+  const props: number[][] = [];
+  for (let i = 0; i < world.props.length; i++) {
+    const b = world.props[i];
+    if (!b.active) continue;
+    props.push([
+      i,
+      b.kind,
+      round1(b.x),
+      round1(b.y),
+      b.w,
+      b.h,
+      b.hp,
+      round2(b.hitFlash),
+      round2(b.dropT),
+    ]);
+  }
+  return [
+    round2(world.pusherT),
+    round2(world.keypadT),
+    round2(world.scannerT),
+    world.scannerPage,
+    round2(world.browserT),
+    world.browserPage,
+    props,
+  ];
 }
 
 export class GuestNet {
@@ -564,7 +676,13 @@ export class GuestNet {
         break;
       }
       case MSG.START: {
-        this.callbacks.onStart(Number(data[1]) | 0, Number(data[2]) | 0);
+        this.callbacks.onStart(
+          Number(data[1]) | 0,
+          Number(data[2]) | 0,
+          Number(data[3]) === 3 || Number(data[3]) === 5 ? Number(data[3]) : 1,
+          Math.max(1, Number(data[4]) | 0),
+          Number(data[5]) === 1 ? 1 : 0,
+        );
         break;
       }
       case MSG.REMATCH: {
@@ -636,6 +754,8 @@ export function parseLobby(data: unknown[]): LobbyState {
     players,
     arenaId: Number(data[5]) | 0,
     mode: Number(data[6]) === 1 ? 1 : 0,
+    series: Number(data[7]) === 3 || Number(data[7]) === 5 ? Number(data[7]) : 1,
+    mapRule: Number(data[8]) === 1 ? 1 : 0,
   };
 }
 
@@ -670,7 +790,25 @@ export function parseSnapshot(data: unknown[]): Snapshot | null {
     events,
     infection: Array.isArray(data[11]) ? (data[11] as number[]) : null,
     viruses: Array.isArray(data[12]) ? (data[12] as number[][]).filter((v) => Array.isArray(v)) : [],
+    hazards: parseHazards(data[13]),
     time: performance.now() / 1000,
+  };
+}
+
+function parseHazards(raw: unknown): SnapshotHazards | null {
+  if (!Array.isArray(raw)) return null;
+  const props: number[][] = [];
+  if (Array.isArray(raw[6])) {
+    for (const p of raw[6] as unknown[]) if (Array.isArray(p)) props.push(p as number[]);
+  }
+  return {
+    pusherT: Number(raw[0]) || 0,
+    keypadT: Number(raw[1]) || 0,
+    scannerT: Number(raw[2]) || 0,
+    scannerPage: Number(raw[3]) | 0,
+    browserT: Number(raw[4]) || 0,
+    browserPage: Number(raw[5]) | 0,
+    props,
   };
 }
 
@@ -703,6 +841,27 @@ export class NetView {
   infectionOver = false;
   gauntletOver = false;
 
+  /** Guest-side arena fixtures. Damage stays on the host; these fields are read-only views. */
+  readonly props: Prop[];
+  readonly keypadStates: Uint8Array;
+  pusherT = 0;
+  pusherWarnT = 0;
+  pusherY = 0;
+  pusherActive = false;
+  pusherFlashT = 0;
+  keypadT = 0;
+  scannerT = 0;
+  scannerPage = 0;
+  scannerPhase = 0;
+  browserT = 0;
+  browserPage = 0;
+  browserPhase = 0;
+  browserCursorX = 0;
+  browserCursorY = 0;
+  browserClickT = 0;
+  private readonly pusherPhase: PusherPhase = { warnT: 0, y: 0, active: false, flashT: 0 };
+  private readonly browserCursorPoint = { x: 0, y: 0 };
+
   readonly predictor: LocalPredictor;
   private snaps: (Snapshot | null)[] = [null, null, null, null];
   private snapWrite = 0;
@@ -721,6 +880,26 @@ export class NetView {
     for (let i = 0; i < MAX_PROJECTILES; i++) this.projectiles[i] = createProjectile();
     this.viruses = new Array(INFECTION.maxViruses);
     for (let i = 0; i < this.viruses.length; i++) this.viruses[i] = createVirus();
+    this.keypadStates = new Uint8Array(arena.keypad?.keys.length ?? 0);
+    const propCount = (arena.props?.length ?? 0) + (arena.pushers ? FILE_PROP.spare : 0);
+    this.props = new Array(propCount);
+    for (let i = 0; i < propCount; i++) {
+      this.props[i] = {
+        active: false,
+        kind: 0,
+        x: 0,
+        y: 0,
+        w: 42,
+        h: 30,
+        hp: FILE_PROP.hp,
+        hitFlash: 0,
+        dropT: 0,
+        vx: 0,
+        vy: 0,
+        tx: 0,
+        ty: 0,
+      };
+    }
     this.predictor = new LocalPredictor(localSlot, arena);
   }
 
@@ -772,6 +951,23 @@ export class NetView {
     this.infectionOver = false;
     this.gauntletOver = false;
     for (let i = 0; i < this.viruses.length; i++) this.viruses[i].active = false;
+    this.pusherT = 0;
+    this.pusherWarnT = 0;
+    this.pusherY = this.arena.bounds.top;
+    this.pusherActive = false;
+    this.pusherFlashT = 0;
+    this.keypadT = 0;
+    this.keypadStates.fill(0);
+    this.scannerT = 0;
+    this.scannerPage = 0;
+    this.scannerPhase = 0;
+    this.browserT = 0;
+    this.browserPage = 0;
+    this.browserPhase = 0;
+    this.browserCursorX = 0;
+    this.browserCursorY = 0;
+    this.browserClickT = 0;
+    for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
     this.snapCount = 0;
     this.snapWrite = 0;
     this.snaps[0] = this.snaps[1] = this.snaps[2] = this.snaps[3] = null;
@@ -813,6 +1009,8 @@ export class NetView {
       this.gauntletTime = a.infection[1] ?? 0;
       this.infectionKills = a.infection[2] ?? 0;
     }
+
+    this.syncHazards(b, renderTime);
 
     for (let i = 0; i < this.players.length; i++) this.players[i].active = false;
 
@@ -984,6 +1182,100 @@ export class NetView {
     }
   }
 
+  /**
+   * Mirror the host's hazard clocks into the render fields and the dynamic cover the
+   * predictor uses. The guest never resolves a hazard hit; a spent HP segment arrives
+   * in the same snapshot as ordinary damage.
+   */
+  private syncHazards(snap: Snapshot, at: number): void {
+    const h = snap.hazards;
+    if (!h) {
+      this.pusherT = 0;
+      this.pusherWarnT = 0;
+      this.pusherY = this.arena.bounds.top;
+      this.pusherActive = false;
+      this.pusherFlashT = 0;
+      this.keypadT = 0;
+      this.keypadStates.fill(0);
+      this.scannerT = 0;
+      this.scannerPage = 0;
+      this.scannerPhase = 0;
+      this.browserT = 0;
+      this.browserPage = 0;
+      this.browserPhase = 0;
+      this.browserCursorX = 0;
+      this.browserCursorY = 0;
+      this.browserClickT = 0;
+      for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
+      this.predictor.setHazards(0, 0, 0);
+      return;
+    }
+
+    // Snapshots arrive at 30 Hz. Advance the clocks to the interpolated render time so
+    // the arm and scan line stay with the bodies on screen, not the wall clock. The host
+    // freezes every hazard during countdown/round-over, so the guest must too. A frame
+    // hitch is capped so a background tab cannot fast-forward a whole compactor stroke.
+    const live = snap.phase === 'live' || snap.phase === 'practice';
+    const age = live ? Math.max(0, Math.min(0.25, at - snap.time)) : 0;
+
+    const pusherT = h.pusherT + age;
+    const arm = pusherPhaseAt(this.arena, pusherT, this.pusherPhase);
+    this.pusherT = pusherT;
+    this.pusherWarnT = arm.warnT;
+    this.pusherY = arm.y;
+    this.pusherActive = arm.active;
+    this.pusherFlashT = arm.flashT;
+
+    const keypadT = h.keypadT + age;
+    this.keypadT = keypadT;
+    const kp = this.arena.keypad;
+    if (kp) {
+      for (let i = 0; i < kp.keys.length && i < this.keypadStates.length; i++) {
+        this.keypadStates[i] = keypadKeyState(kp, i, keypadT);
+      }
+    } else {
+      this.keypadStates.fill(0);
+    }
+
+    const scannerT = h.scannerT + age;
+    this.scannerT = scannerT;
+    this.scannerPage = h.scannerPage;
+    this.scannerPhase = scannerPhaseAt(scannerT);
+
+    const cycle = browserCycle();
+    let browserT = h.browserT + age;
+    browserT = ((browserT % cycle) + cycle) % cycle;
+    this.browserT = browserT;
+    this.browserPage = h.browserPage;
+    this.browserPhase = browserPhaseAt(browserT);
+    const browser = this.arena.browser;
+    if (browser) browserCursorAt(browser, h.browserPage, browserT, this.browserCursorPoint);
+    if (browser) {
+      this.browserCursorX = this.browserCursorPoint.x;
+      this.browserCursorY = this.browserCursorPoint.y;
+    }
+    this.browserClickT = browserClickAt(browserT);
+
+    for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
+    for (let i = 0; i < h.props.length; i++) {
+      const raw = h.props[i];
+      const index = raw[0] | 0;
+      if (index < 0 || index >= this.props.length) continue;
+      const b = this.props[index];
+      b.active = true;
+      b.kind = raw[1] | 0;
+      b.x = raw[2];
+      b.y = raw[3];
+      b.w = raw[4];
+      b.h = raw[5];
+      b.hp = raw[6];
+      b.hitFlash = raw[7] ?? 0;
+      b.dropT = raw[8] ?? 0;
+    }
+
+    this.predictor.setHazards(pusherT, keypadT, h.browserPage);
+  }
+
   predictStep(input: InputFrame, dt: number): void {
     this.predictor.step(input, dt);
   }
@@ -1040,6 +1332,12 @@ export class LocalPredictor {
   private authX = 0;
   private authY = 0;
   private authFacing = 0;
+  /** Static cover plus hazard cover, rebuilt from the newest snapshot. */
+  private readonly solids: Rect[] = [];
+  private readonly dynamicRects: Rect[] = Array.from({ length: 32 }, () => ({ x: 0, y: 0, w: 0, h: 0 }));
+  private readonly pusherPhase: PusherPhase = { warnT: 0, y: 0, active: false, flashT: 0 };
+  private pusherFront = 0;
+  private pusherActive = false;
 
   constructor(
     slot: number,
@@ -1048,6 +1346,68 @@ export class LocalPredictor {
     this.p = createPlayer(slot);
     this.p.active = true;
     this.p.connected = true;
+    this.setHazards(0, 0, 0);
+  }
+
+  /**
+   * Rebuild the body-collision list. Static cover is shared by reference; hazard
+   * rectangles are reused from a fixed pool, so this is safe to call every render frame.
+   */
+  setHazards(pusherT: number, keypadT: number, browserPage: number): void {
+    this.solids.length = 0;
+    const statics = arenaSolids(this.arena);
+    for (let i = 0; i < statics.length; i++) this.solids.push(statics[i]);
+    let d = 0;
+
+    const kp = this.arena.keypad;
+    if (kp) {
+      for (let i = 0; i < kp.keys.length && d < this.dynamicRects.length; i++) {
+        const state = keypadKeyState(kp, i, keypadT);
+        if (state !== KEYPAD_STATE.slam && state !== KEYPAD_STATE.down && state !== KEYPAD_STATE.rise) continue;
+        const src = kp.keys[i];
+        const r = this.dynamicRects[d++];
+        r.x = src.x;
+        r.y = src.y;
+        r.w = src.w;
+        r.h = src.h;
+        this.solids.push(r);
+      }
+    }
+
+    const browser = this.arena.browser;
+    if (browser && browser.pages.length > 0) {
+      const page = browser.pages[((browserPage % browser.pages.length) + browser.pages.length) % browser.pages.length];
+      for (let i = 0; i < page.elements.length && d < this.dynamicRects.length; i++) {
+        const src = page.elements[i];
+        const r = this.dynamicRects[d++];
+        r.x = src.x;
+        r.y = src.y;
+        r.w = src.w;
+        r.h = src.h;
+        this.solids.push(r);
+      }
+    }
+
+    // The compactor is a carry surface, not a normal solid. Resolving it as a rect
+    // would push a body above the plate out through the top edge; the host instead
+    // clamps the body just below the leading face. Keep that rule for prediction.
+    if (this.arena.pushers) {
+      const arm = pusherPhaseAt(this.arena, pusherT, this.pusherPhase);
+      this.pusherActive = arm.active;
+      this.pusherFront = arm.y;
+    } else {
+      this.pusherActive = false;
+      this.pusherFront = 0;
+    }
+  }
+
+  /** Match `World.carryWithArm` for the local prediction body. */
+  private carryWithPusher(): void {
+    if (!this.pusherActive) return;
+    const p = this.p;
+    if (p.y > this.pusherFront + PLAYER.radius) return;
+    p.y = Math.min(this.arena.bounds.bottom - PLAYER.radius, this.pusherFront + PLAYER.radius);
+    p.ky = 0;
   }
 
   adopt(raw: number[]): void {
@@ -1179,7 +1539,7 @@ export class LocalPredictor {
     if (p.laserChargeHeld || p.laserT > 0) {
       p.facing = this.authFacing;
       p.laserFacing = this.authFacing;
-      stepPlayerMotion(p, 0, 0, dt, arenaSolids(this.arena), this.arena.bounds, this.arena.walls === 'open');
+      stepPlayerMotion(p, 0, 0, dt, this.solids, this.arena.bounds, this.arena.walls === 'open');
       const adx = this.authX - p.x;
       const ady = this.authY - p.y;
       const ad2 = adx * adx + ady * ady;
@@ -1188,6 +1548,7 @@ export class LocalPredictor {
         p.x += adx * k;
         p.y += ady * k;
       }
+      this.carryWithPusher();
       return;
     }
 
@@ -1304,7 +1665,7 @@ export class LocalPredictor {
     }
     p.chargeHeld = heldSwing;
 
-    stepPlayerMotion(p, input.mx, input.my, dt, arenaSolids(this.arena), this.arena.bounds, this.arena.walls === 'open');
+    stepPlayerMotion(p, input.mx, input.my, dt, this.solids, this.arena.bounds, this.arena.walls === 'open');
 
     if (moveSq <= 0.0025 && p.swingPhase === 0 && p.dashT <= 0) {
       p.facing = this.authFacing;
@@ -1321,5 +1682,8 @@ export class LocalPredictor {
         p.y += dy * k;
       }
     }
+    // The plate is the last word: a stale authoritative row must not pull the local
+    // body back above a face it has already been carried past.
+    this.carryWithPusher();
   }
 }

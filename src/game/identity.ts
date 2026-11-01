@@ -468,6 +468,34 @@ export function drawPinballMark(
 }
 
 /**
+ * Appends one pinball flipper bat to the current path: a tapered paddle hinged at
+ * `(x, y)` and pointed along `angle`. The caller owns `beginPath`, so the health hull can
+ * append three bats and a melee draw can outline one bat without resetting the others.
+ * The rounded tip is the paddle's live edge; the narrow base is the hinge.
+ */
+export function pathPinballFlipper(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  angle: number,
+  length: number,
+  baseWidth: number,
+  tipWidth: number,
+): void {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const nx = -s;
+  const ny = c;
+  const tipX = x + c * length;
+  const tipY = y + s * length;
+  ctx.moveTo(x + nx * baseWidth, y + ny * baseWidth);
+  ctx.lineTo(tipX + nx * tipWidth, tipY + ny * tipWidth);
+  ctx.arc(tipX, tipY, tipWidth, angle + Math.PI / 2, angle - Math.PI / 2, true);
+  ctx.lineTo(x - nx * baseWidth, y - ny * baseWidth);
+  ctx.closePath();
+}
+
+/**
  * Aim Bot's core: a scope reticle. Two rings and four open crosshair ticks stay
  * direction-neutral, so the mark reads as a target rather than as a facing arrow.
  */
@@ -665,7 +693,7 @@ export function programHullSides(programId: number): number {
   if (programId === 8) return 0;
   // Compress's hull is six Z marks on a ring, one per health segment.
   if (programId === 9) return 0;
-  // Pinball is a circular chrome ring; the shared arc path gives it three clean segments.
+  // Pinball's hull is three flipper bats on a ring; the custom path below owns the shape.
   if (programId === 10) return 0;
   // Copypasta's hull is three upright file icons, one per health segment.
   if (programId === 11) return 0;
@@ -825,6 +853,28 @@ export function pathProgramHealth(
         cx + Math.cos(a1) * inner,
         cy + Math.sin(a1) * inner,
       );
+    }
+    return;
+  }
+  // Pinball's hull is three flipper bats on a ring, one health segment each. Every bat
+  // hinges outside the core disc and points along the ring, so the silhouette reads as a
+  // pinball table's flippers rather than another circle. The pivot pin is part of the same
+  // segment; losing a segment removes its bat and hinge together.
+  if (programId === 10) {
+    const orbit = r * 0.72;
+    const arm = r * 0.52;
+    const baseW = r * 0.06;
+    const tipW = r * 0.12;
+    const pin = r * 0.07;
+    for (let seg = 0; seg < freshSegments; seg++) {
+      const a = spin + seg * (twoPi / 3);
+      const px = cx + Math.cos(a) * orbit;
+      const py = cy + Math.sin(a) * orbit;
+      // The bats sweep along the ring instead of pointing straight out, so three
+      // paddles wrap the core and read as a pinball hull at card and arena scale.
+      pathPinballFlipper(ctx, px, py, a + 1.35, arm, baseW, tipW);
+      ctx.moveTo(px + pin, py);
+      ctx.arc(px, py, pin, 0, twoPi);
     }
     return;
   }

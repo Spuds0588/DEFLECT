@@ -1,9 +1,10 @@
 # CAMPAIGN // route blueprint
 
-Status: design scaffold, not a playable mode. The route blueprint reads authored data from
-`src/game/sectors.ts` but is currently parked with no menu entry while the story flow is built.
+Status: `BUILD ROOT` is playable; the rest of the route is still blueprint. `REBOOT` is authored but
+parked until the next segment ships.
 `SINGLE PLAYER > CAMPAIGN` is the story-mode entry: three local save slots first, then for a new run a bot
-count and player select. The run is meant to save after every completed level via `src/game/saves.ts`.
+count and player select. The run saves after every completed level via `src/game/saves.ts`; after the one
+live level the slot reports `MORE LEVELS COMING SOON`.
 Neither surface enters `World`, `Snapshot`, rooms, or the network. Any networked PvPvE run still needs its
 own protocol work.
 
@@ -15,6 +16,18 @@ whole roster, including the ones that read as utilities — was pulled by antivi
 retraining is the tutorial: it is where the run teaches movement, the four action jobs, guard/reflect and
 dashing. The existing BUILD ROOT beats (calibration subjects, drill squad, breach, assault) are the
 mechanics of the session; its fiction becomes the quarantine stop rather than a neutral sandbox.
+
+The opening blockout is **QUARANTINE**: one arena made of a round **INTAKE** office, a square **HOLDING**
+office with three jail cells, a rectangular **MAINBOARD**, and a larger **ROUTER** rectangle, linked by
+three bridge decks. The holding floor is staffed by floating CRT-monitor ordinary programs (TICKET, PATCH and
+CACHE); they are civilian dressing, not combatants, and are destroyed when the calibration class wakes.
+script_kitty waits behind the middle cell bars. The Warden's basic lesson runs in the intake; the six
+calibration subjects wake in holding as **wave 1** and carry the skill lesson. The sealed cell block is a
+body solid while it is powered. Clearing all six and finishing the skill beat makes the block
+fail: the bars retract unexpectedly and release **wave 2**, two viruses and a worm, for the power-attack
+lesson. Clear that wave and the heavy beat before the drill. The router is the visual approach to a
+**NETWORK PORT**. The port is not a gate yet: BUILD ROOT still clears on the assault kill count. The
+level is local-only and its room data never enters `Snapshot` (see AGENTS D41).
 
 **Inciting incident.** The infection breaks out of quarantine and spreads through the dev system. The
 friendly program gets the players out, and that escape carries the route through LOCALHOST and onto the
@@ -101,7 +114,7 @@ node. Nothing about this geometry enters `Snapshot`; the tests cover local play 
 `SINGLE PLAYER > CAMPAIGN` opens three save slots. An empty slot starts a new run and continues to the bot
 count (`NO BOTS` to 3, saved as `deflect.campaignBots`) and player select; bots take the programs the
 players leave unused. A filled slot resumes the run stored there and skips both steps. Slots show the
-level and player count. Nothing is playable yet, and the blueprint archive is parked until the flow is
+level and player count. The first two nodes are playable; the blueprint archive remains parked until the flow is
 wired.
 
 The illustrated route plate (`src/game/road.ts`) is built for the **between-level transition**: one wide

@@ -9,10 +9,12 @@ const MOVE_KEYS = {
 
 const ACTION_KEYS: Record<string, number> = {
   KeyJ: ACTION.SWING,
-  KeyQ: ACTION.LOCK,
+  // KeyQ is a toggle, not a held action; see onKeyDown.
   KeyK: ACTION.BOLT,
   KeyL: ACTION.CANDLE,
   KeyE: ACTION.CANDLE,
+  KeyR: ACTION.LOCK_NEXT,
+  KeyF: ACTION.LOCK_PREV,
   ShiftLeft: ACTION.DASH,
   ShiftRight: ACTION.DASH,
   Space: ACTION.DASH,
@@ -71,6 +73,8 @@ export class Input {
   private keyHeld = 0;
   private pendingPressed = 0;
   private mouseHeld = 0;
+  /** Keyboard lock is a toggle; the pad keeps its hold-to-lock trigger. */
+  private keyboardLock = false;
 
   private padIndex: number | null = null;
   private padPrev: boolean[] = new Array(16).fill(false);
@@ -95,6 +99,11 @@ export class Input {
 
   lastDevice: 'keyboard' | 'gamepad' = 'keyboard';
   gamepadName = '';
+  /**
+   * Local couch play: P1 is the keyboard even when a pad was the last device. The
+   * pad still drives menus; only `sample()` stops folding it into P1's frame.
+   */
+  keyboardOnly = false;
 
   constructor(private canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -131,6 +140,7 @@ export class Input {
   private clear = (): void => {
     this.keys.clear();
     this.keyHeld = 0;
+    this.keyboardLock = false;
     this.pendingPressed = 0;
     this.mouseHeld = 0;
     this.padHeld = 0;
@@ -156,6 +166,21 @@ export class Input {
     // The most recent real input wins until the other device is touched.
     this.lastDevice = 'keyboard';
 
+    // Keyboard players often keep both hands on movement and actions; holding a lock
+    // key fought that. Q toggles the same ACTION.LOCK bit the pad holds on LT.
+    if (e.code === 'KeyQ') {
+      if (!e.repeat) {
+        this.keyboardLock = !this.keyboardLock;
+        if (this.keyboardLock) {
+          this.keyHeld |= ACTION.LOCK;
+          this.pendingPressed |= ACTION.LOCK;
+        } else {
+          this.keyHeld &= ~ACTION.LOCK;
+        }
+      }
+      return;
+    }
+
     if (
       MOVE_KEYS.up.includes(e.code as never) ||
       MOVE_KEYS.down.includes(e.code as never) ||
@@ -174,6 +199,8 @@ export class Input {
 
   private onKeyUp = (e: KeyboardEvent): void => {
     this.keys.delete(e.code);
+    // Releasing Q must not clear the toggle; the next Q press turns it off.
+    if (e.code === 'KeyQ') return;
     const action = ACTION_KEYS[e.code];
     if (action) this.keyHeld &= ~action;
   };
@@ -422,7 +449,7 @@ export class Input {
 
   /** Builds the local input frame from the most recently used device. */
   sample(): InputFrame {
-    const padActive = this.lastDevice === 'gamepad';
+    const padActive = this.lastDevice === 'gamepad' && !this.keyboardOnly;
     let mx = 0;
     let my = 0;
 

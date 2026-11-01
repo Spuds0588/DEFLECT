@@ -2,7 +2,8 @@
 
 A browser-native, top-down geometric arena duelist. One stick sets both movement and facing; you read a
 volley, lash or guard it back, and turn the rally on whoever fired first. Everything is drawn from vector
-shapes and every sound is synthesized at runtime: no sprites, no audio files, no game engine.
+paths and text glyphs and every sound is synthesized at runtime: no sprites, no SVG assets, no audio
+files, no game engine.
 
 **Play the alpha:** <https://spuds0588.github.io/DEFLECT/>
 **Kiosk demo:** <https://spuds0588.github.io/DEFLECT/?demo=true>
@@ -11,9 +12,9 @@ shapes and every sound is synthesized at runtime: no sprites, no audio files, no
 [![DEFLECT kiosk demo](screenshots/demo-kiosk.png)](https://spuds0588.github.io/DEFLECT/?demo=true)
 
 Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, a
-timed infection clear, the first campaign node, and host/join rooms for up to eight players. Thirteen
-programs, eleven arenas. The alpha
-is deployed from `main` on every push.
+timed infection clear, the first campaign node, and host/join rooms for up to eight players. VS BOTS and
+online versus can run a 1, 3 or 5 game series with random map rotation by default or a fixed custom arena.
+Thirteen programs, fifteen arenas. The alpha is deployed from `main` on every push.
 
 ## Tech stack
 
@@ -30,7 +31,102 @@ is deployed from `main` on every push.
 
 No game engine (Phaser, PixiJS, Godot) is used. The simulation, renderer and netcode are small enough to
 own directly, and the project avoids an engine's asset pipeline and scene model. The full reasoning is in
-[AGENTS.md](AGENTS.md) §2.
+[AGENTS.md](AGENTS.md) §2; the practical version is below.
+
+## What "no game engine" actually means
+
+### The browser is the platform, not the engine
+
+DEFLECT calls the browser directly: `requestAnimationFrame`, Canvas 2D, Web Audio, DOM and WebRTC. There
+is no Phaser, PixiJS, Unity or Godot runtime in the bundle, and no scene graph, prefab system, physics
+middleware or asset pipeline behind the game.
+
+That is not the same as having no engine code. We wrote the parts an engine would otherwise provide:
+
+| The browser provides | DEFLECT owns |
+| --- | --- |
+| `requestAnimationFrame`, Canvas 2D, Web Audio, DOM, WebRTC/PeerJS | the fixed-step loop and accumulator, `World` simulation, collision and knockback, kits and cooldowns, bots and pathfinding, camera framing, renderer, particles, HUD and netcode |
+
+`World` is the simulation. It owns players, projectiles, rounds, pickups and local threats, and `step()`
+advances them at a fixed 1/60 s. The renderer never mutates that state; it reads it and draws. Enemies are
+hand-written state machines in `World` — worms patrol and bite, viruses roam and charge, sentries hold a
+landing zone and fire, cascading errors grow, firewalls sweep — not engine behaviours or prefabs. Bots
+read the same public state and write ordinary `InputFrame`s, so they are bound by the same facing locks,
+energy, dash charges and cooldowns as a person.
+
+The result behaves like a small purpose-built engine, but it is not general or reusable. It has the
+systems this game needs and nothing else, which is where the weight saving actually comes from: no editor,
+no scene serialization, no material or shader system, no third-party runtime.
+
+### One canvas, immediate mode
+
+`src/main.ts` owns the only frame loop. `requestAnimationFrame` collects a delta, clamps it to 100 ms,
+feeds an accumulator, and runs at most four fixed 60 Hz `World.step()` calls. `Renderer.render()` runs
+once with the leftover fraction as interpolation. Physics therefore runs at 60 Hz whether the display is
+30, 60 or 144 Hz, and a slow frame sheds time instead of snowballing.
+
+The game is one `<canvas>` using the 2D context; menus are DOM on top. The backing store is a virtual
+1280×720 world, letterboxed to the window, with device pixel ratio capped at 2. Each frame clears, then
+for each local view sets a camera transform and clips to that pane before drawing in a fixed order: arena
+and floor, cover and traversal fixtures, trails, projectiles, threats, pickups, players, marks and
+particles, then the screen-space HUD. There is no WebGL, render graph, texture atlas or sprite batch.
+
+### Characters are procedural geometry, not sprites or SVG
+
+No character is a bitmap, sprite sheet, SVG DOM node or pre-rendered image. Every body is rebuilt from
+Canvas path commands and text each frame.
+
+- The health hull comes from `pathProgramHealth` in `identity.ts`, and each program owns its geometry:
+  Probe a ring with a compass, Wedge a diamond with corner brackets and a thin frame rim, Fisher a hex
+  reel, Sweep an octagon, Toxic a twelve-edge star, Kaboom three outward fins, Bad Lag six clock faces,
+  Atomize three ellipse orbits, Ghost three outward arcs, Compress six Z marks, Pinball three flipper bats
+  on a ring, Copy Pasta three file icons, Aim Bot three scope brackets with inward ticks.
+- A player hull is stroked three times: a wide faint glow pass, a mid pass and a bright core pass. Glow
+  uses `globalCompositeOperation = 'lighter'`. `shadowBlur`, CSS filters and per-frame gradients are
+  deliberately avoided because they cost far more than an extra stroke.
+- In local play, health is the hull. A damaged body keeps its lost segments as low-alpha ghosts, so the
+  silhouette stays whole and the bright segments are the readout. The centre disc and core mark shrink
+  with health, and the local avatar gets a low-health flicker.
+- The centre mark is either a vector function (`drawCompassMark`, `drawBombMark`, `drawHourglassMark`,
+  `drawAtomMark`, `drawGhostEye`, `drawCompressMark`, `drawPinballMark`, `drawCopyMark`,
+  `drawAimBotMark`) or a font glyph drawn with `fillText` through a monospace/symbol stack. Kaboom uses
+  Wingdings when that family really exists and falls back to a drawn bomb. Text advances, line splits and
+  font strings are measured once and cached, never per frame.
+- Animation is state-driven, not frame-driven. The hull turns with `t * 0.22` and spins up during the
+  level intro; the core pulses on a sine of time; a hit flashes the hull white; a dash draws a rotated
+  triangle afterimage; melee draws the lash, bowie arc or Pinball's two-flipper snap from the current swing
+  phase; Sweep's broom is
+  cached character rows stretched across the lane; projectiles keep ring-buffer trails; particles are
+  pooled. There are no sprite frames, skeletal rigs or tween library. Every effect is a function of
+  simulation state and time.
+
+That is also why there is nothing to import: no PNG, WebP or SVG character assets, no atlas and no audio
+files. The only generated files are the PWA icons and manifest.
+
+### What that costs, and what it saves
+
+The cost is per-frame path generation, fill and stroke work, and state changes between draw passes. There
+is no texture upload or asset decode, but there is also no GPU batching layer: Canvas 2D issues the
+strokes itself. The design keeps that bounded:
+
+- Bodies are few — at most eight players plus local threats — and each hull is tens of path commands, not
+  thousands. The extra glow passes, not the geometry, are the main draw cost.
+- Text metrics, font strings, broom rows and gradients are cached. Gradients are built on resize only.
+- The simulation is allocation-disciplined (preallocated pools, ring buffers, A* scratch) and measures
+  about **0.035 ms** per tick for a 2P duel and **0.465 ms** for the full gauntlet load on the development
+  machine. The detailed table is under [Performance](#performance-on-low-powered-hardware).
+- The device pixel ratio cap stops a high-DPI phone paying for 3× pixels it cannot resolve.
+- The production payload is about **677 KB of JS (187 KB gzipped) plus 49 KB of CSS (11 KB gzipped)**,
+  including PeerJS. There is no engine runtime to download or boot.
+
+The trade is ownership. Collision, camera, netcode, particles and every threat behaviour are ours to
+maintain, and there is no editor, tilemap, skeletal animation or built-in profiler. That is a good trade
+for a game made of a few dozen vector bodies. It would stop being one if DEFLECT needed large tilemaps,
+complex skeletal animation or a level editor — the revisit trigger recorded in AGENTS.md §2.
+
+Rendering targets 144 FPS on integrated graphics, but unlike the simulation there is no automated render
+benchmark. The browser stress path (`?stress=N` with the F3 performance HUD) is how it is measured; the
+headless simulation benchmark is `npm run bench`.
 
 ## Architecture
 
@@ -55,7 +151,7 @@ in the hot path. Particles and projectile trails are pooled ring buffers.
 
 Content is data, not branches:
 
-- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, breakable props, pipe fixtures, wall style and floor signature.
+- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), bridges, breakable props, pipe fixtures, moving keypad caps, wall style and floor signature.
 - `src/game/programs.ts` holds the roster identity and kit tuning; the four action jobs branch in `World`.
 - `src/game/tuning/*.json` holds all gameplay numbers, re-exported through the typed facade in
   `src/game/config.ts`, so most balance changes are a JSON edit with no code change.
@@ -74,6 +170,7 @@ charges, energy and cooldowns, and it keeps AI cost out of the physics loop.
 | Program identity and vector marks | `src/game/identity.ts`, `programs.ts` |
 | Bots and pathfinding | `src/game/bot.ts`, `nav.ts` |
 | Local content | `powerups.ts`, `campaign.ts`, `saves.ts`, `gauntletRecords.ts`, `infectionRecords.ts` |
+| Ordinary program monitors | `regulars.ts` |
 | Networking | `src/net/net.ts` |
 | DOM and touch controls | `src/ui/dom.ts`, `src/ui/touch.ts` |
 | Tuning | `src/game/tuning/*.json` |
@@ -104,8 +201,8 @@ scheduler or garbage-collection outlier, not steady cost; the guardrail is the a
 ### Why it stays fast
 
 - **No assets to load.** Art is paths and text glyphs drawn each frame. Audio is oscillators, noise and
-  filters. The only generated files are PWA icons. The production payload is about 175 KB gzipped
-  (589 KB JS, 49 KB CSS before compression), including PeerJS.
+  filters. The only generated files are PWA icons. The production payload is about 198 KB gzipped
+  (677 KB JS and 49 KB CSS before compression), including PeerJS.
 - **Allocation discipline.** Preallocated entity pools, a pooled particle system, cached label strings,
   preallocated A* scratch. The hot path is written to avoid triggering collections rather than to survive
   them.
@@ -149,13 +246,14 @@ authority:
 - **Bandwidth.** A full 8-player, 48-projectile snapshot measures **2.45 KB** packed (one event included),
   or **73.4 KiB/s per guest** at 30 Hz. Two-way traffic for a typical guest stays well under 100 KiB/s;
   with seven guests the host uploads about **0.50 MiB/s**. That is why the v1 cap is 8 players: it is the
-  host's upload that runs out first, not the protocol.
+  host's upload that runs out first, not the protocol. A hazard arena adds about **180 B** in the measured
+  worst case (v0.1.88), about 5.4 KB/s per guest at 30 Hz.
 - **Failure behavior.** If the host closes the tab the room ends; guests get a disconnect state. A guest
   leaving frees its slot. There is no migration and no dedicated server.
-- **What is not networked yet.** Versus rooms carry match state only; infection co-op adds just its
-  clear readout and virus colony. No programs, kits, pickups, campaign state, most gauntlet threats or
-  arena animation phase cross the wire. Online opponents currently use slot identity and Probe's kit.
-  Server hosting and richer snapshots are separate future work.
+- **What is not networked yet.** Versus rooms carry match state, infection co-op adds its clear readout
+  and virus colony, and hazard arenas add their fixture clocks. No programs, kits, pickups, campaign
+  state, most gauntlet threats or pipe/firewall fixtures cross the wire. Online opponents currently use
+  slot identity and Probe's kit. Server hosting and richer snapshots are separate future work.
 
 The same 4-character room join path is the intended cross-platform layer for native builds (see the
 roadmap): a Tauri app and a browser both speak WebRTC.
@@ -183,9 +281,12 @@ Keyboard/mouse, gamepad and touch all write the same `InputFrame`.
 - **Gamepad** uses the standard mapping, with an analog left stick and a 0.2 deadzone. Controller rumble
   uses the Gamepad API's `vibrationActuator` where available, with the older `hapticActuators.pulse`
   fallback; pads without either are simply silent.
-- **Keyboard** is 8-way; the mouse is buttons only and never sets facing.
+- **Keyboard** is 8-way; `Q` toggles target lock. The mouse is buttons only and never sets facing.
+  Gamepad `LT` remains hold-to-lock.
 - **Touch** puts a stick at the bottom left and shield, skill and dash buttons at the bottom right. Auto
   lock and auto attack are on by default for touch and can be turned off.
+- **Local couch play** (`MULTIPLAYER > LOCAL`): P1 is keyboard + mouse; every detected gamepad is adopted
+  as P2–P4. Plugging in a pad joins on the setup screen or mid-match, up to four players.
 - The most recently used device owns input; there is no on-screen input-mode switch. On a gamepad,
   `View`/`Select` toggles the canvas UI and `Start` opens the in-game menu.
 
@@ -201,12 +302,10 @@ Control tables and the full touch layout are in [GAME_GUIDE.md](GAME_GUIDE.md#co
   renderer.
 - **Cross-platform play.** Browser and native clients would join the same 4-character rooms over PeerJS,
   because the network layer is browser WebRTC. The native build adds packaging, not a parallel netcode.
-- **Local same-screen play.** The multiplayer menu already names `LOCAL`; it needs real local slots and a
-  second input owner rather than a placeholder.
 - **Public room discovery.** Planned around a shared prefix on the room code, with private rooms keeping
   an unprefixed code.
-- **More campaign nodes and sectors.** Only `BUILD ROOT` is authored; the sector graph and layout handoff
-  live in [CAMPAIGN.md](CAMPAIGN.md).
+- **More campaign nodes and sectors.** `BUILD ROOT` is live; `REBOOT` is authored and parked; the rest of the sector graph
+  and layout handoff live in [CAMPAIGN.md](CAMPAIGN.md).
 
 None of the Tauri work is built yet. It is listed because the current stack was chosen to make it a
 packaging step rather than a rewrite.
@@ -228,6 +327,8 @@ Actions**, not the raw branch. Serve `dist/` over HTTPS locally if you need to e
 worker, install flow or offline shell.
 
 - Gameplay numbers: [src/game/tuning](src/game/tuning), typed in `src/game/config.ts`.
+- QA boot hooks (`?playtest=1` arena tour and log export, `?autoplay=N`, `?gauntlet=1&arena=N&bot=1`) and
+  the player-feedback pipeline decision: [PLAYTEST.md](PLAYTEST.md).
 - Architecture, invariants, protocol and performance guardrails: [AGENTS.md](AGENTS.md).
 - Forward plan and open questions: [TODO.md](TODO.md).
 - Session log and measurements: [HISTORY.md](HISTORY.md).

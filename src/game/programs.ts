@@ -49,7 +49,7 @@ export interface ProgramDef {
    * the family is missing, `drawProgramMark` falls back to a drawn bomb.
    */
   symbolFont?: string;
-  /** Maximum health segments. Most programs use the default three; Atomize has six. */
+  /** Maximum health segments. Most programs use the default three; Atomize and Compress have six. */
   healthSegments?: number;
   bugKind: number;
 }
@@ -59,7 +59,7 @@ export const PROGRAMS: readonly ProgramDef[] = [
     id: PROGRAM_ID.PROBE,
     name: 'PROBE.EXE',
     role: 'BALANCED',
-    note: 'FIVE-SHOT BURST // CHARGED BEAM // PROXIMITY MINE',
+    note: 'FIVE-SHOT BURST // CHARGED BEAM // TRAP MINE',
     color: PROGRAM_COLORS.probe,
     /**
      * Compass. The arena draws the vector rose so it stays crisp at the core; this
@@ -150,6 +150,8 @@ export const PROGRAMS: readonly ProgramDef[] = [
     // The hourglass shrinks away from the clock ring so neither hull nor core crowds
     // the other: the mark is half the height of a full-health hull, with real air.
     coreScale: 0.72,
+    // Time is a three-segment program like most of the roster. Survivability is
+    // tuned through the hourglass and the time windows, never a larger health pool.
     bugKind: 9,
   },
   {

@@ -16,9 +16,9 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **VS BOTS:** normal round matches against one to three local bot opponents, first to 3.
 - **GAUNTLET:** a scored, one-life local run against worms, viruses, cascading errors, sentries and
   infected thralls, with a local top-eight table.
-- **CAMPAIGN:** the first story node, `BUILD ROOT`, with three local save slots.
+- **CAMPAIGN:** `BUILD ROOT`, the first playable story level, with three local save slots. More levels are coming soon.
 - **Online:** host or join a room for up to 8 players.
-- Thirteen programs, eleven arenas.
+- Thirteen programs, fifteen arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
@@ -51,6 +51,12 @@ and the session continues until you leave. Training and VS BOTS remember their d
 rounds, first to 3. Bots take the programs you leave unused, so a Wedge pick can face Probe, Fisher and
 Sweep. They use the same movement, facing, melee, dash, skill and heavy rules as you; they cannot aim
 independently of movement.
+
+After difficulty, choose a series length: `1 GAME`, `3 GAMES` or `5 GAMES`. Each game is still first to
+3 rounds; the series tracks games won, and a three-or-more-player series can end in a tie. `MAPS: RANDOM`
+is the default and rotates through the arena pool without repeating the last map; `MAPS: FIXED` is the
+custom choice and keeps the arena you picked. Between games, `NEXT GAME` starts the next map and keeps the
+series score. The final panel reports the series winner and starts a new series or returns to setup.
 
 - `EASY`: slow reactions, loose aim, forgiving fire cadence.
 - `MEDIUM`: reads projectiles, leads movement, uses skills, power attacks and dashes.
@@ -157,20 +163,45 @@ room from the result screen; guests can leave. The host records the clear time l
 bot count (none to three), then your program. A filled slot shows the level and player count and resumes
 the run, skipping both steps. Bots take the programs you leave unused.
 
-The first node, `BUILD ROOT`, opens with a calibration prologue: six dormant shapes wake, open a red eye
-and demonstrate one attack family each: a bouncing blue circle, a floating red mother with a shard cloud,
-and a yellow row of clones that charges together. Clear all six, then spar against the bot squad (a
-`NO BOTS` run still drills against one instructor), survive a `SYSTEM BREACH` warning, then face a live
-threat assault: delete 10 threats to clear it. The clear reports kills, time, damage taken, data crates
-preserved and a score; losing no crates is a clean sweep and pays a bonus, and the best score and sweep
-count stay in the slot. Clearing writes the slot and returns to the save list; a run is never saved
-mid-level. Only one node is authored, so a cleared slot replays it for now. The layout brief and handoff
-checklist live in [CAMPAIGN.md](CAMPAIGN.md).
+`BUILD ROOT` opens in quarantine. The Warden talks you through move, dash, ranged attack, lock and target
+cycling, melee, and reflection in the bare intake circle while six shapes sit dormant in the holding
+office. Finish the lesson (or skip it), cross to holding, and the shapes wake as **wave 1**: a bouncing
+blue circle, a floating red mother with a shard cloud, and a yellow row of clones that charges together.
+The cell block stays solid while it is sealed, so the held wave cannot leave early and you cannot walk
+into the cells. The three civilian monitors in that office are destroyed in the breakout, dropping
+any files they carry, and script_kitty watches from the middle cell. The Warden teaches your **skill**
+while wave 1 is live. Clear all six and finish that lesson to make the cell block lose power: the bars
+retract unexpectedly and release **wave 2**, two viruses and a worm, while the Warden teaches your
+**power attack**. Clear wave 2 and finish the heavy lesson, then spar against the bot squad (a `NO BOTS`
+run still drills against one instructor), survive a `SYSTEM BREACH` warning, then delete 10 threats to
+clear the node. The clear reports
+kills, time, damage taken, data crates preserved and a score; losing no crates is a clean sweep and pays a
+bonus, and the best score and sweep count stay in the slot.
 
-### Multiplayer menu
+Clearing writes the slot, marks it COMPLETE and shows `MORE LEVELS COMING SOON`. `REBOOT` on `GRID ZERO`
+is authored but parked until the next route segment ships; it is not in the live level list. A run is
+never saved mid-level. The layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
 
-`MULTIPLAYER` offers `ONLINE` (host a room or join by code) and `LOCAL` (same-screen play, not built yet).
-Local lists its two modes, `ARENA` and `GAUNTLET`, as placeholders until the setup screen exists. Public
+### Online series
+
+When hosting a versus room, the lobby's `SERIES` control chooses `1`, `3` or `5` games and `MAPS` chooses
+`RANDOM` or `FIXED`. The host owns both rules. A series keeps the room together between games: the host
+starts the next map from the result panel, and guests receive the new arena and game number automatically.
+`RANDOM` rotates through the online-safe arenas without repeating the previous map; `FIXED` uses the
+arena selected in the lobby. Infection ignores the series and remains one shared run.
+
+## Multiplayer menu
+
+`MULTIPLAYER` offers `ONLINE` (host a room or join by code) and `LOCAL` (same-screen arena versus).
+
+### Local
+
+`LOCAL` is arena versus for two to four players on one screen. P1 is the keyboard and mouse; every
+detected controller is adopted as P2, P3 or P4 and appears in the seat list. Plug in a controller on the
+setup screen, or press a button on one during a match, and that player drops in immediately. The match
+starts once at least one controller is seated. A disconnected controller keeps its player and body for a
+moment; reconnect the same pad to take it back. Each local player gets a readiness dock and rumble on
+their own pad. Local gauntlet co-op is not built yet. Public
 room discovery is planned: it will search for game codes with a shared prefix, while private rooms keep
 an unprefixed code.
 
@@ -186,8 +217,8 @@ on-screen input-mode badge. A phone or tablet gets the touch layout automaticall
 | Melee attack / guard | `B` | Left mouse / `J` |
 | Ranged attack | `X` | Right mouse / `K` |
 | Power attack (hold) / skill (tap) | `Y` | `E` or `L` / middle mouse |
-| Lock target | `LT` | `Q` |
-| Cycle lock target (hold `LT`) | `RB` / right stick left-right | — |
+| Lock target | `LT` (hold) | `Q` (toggle) |
+| Cycle lock target (while locked) | `RB` / right stick left-right | `R` / `F` |
 | Dash / charged dash | `A` or `L3` | `Shift` / `Space` |
 | Confirm / menu | `A` / `Start`, D-pad | `Enter`, arrows, focused button + `Space` |
 | In-game menu | `Start` | `Escape` |
@@ -228,11 +259,11 @@ no health or readiness telemetry yet.
 
 | Option | Input | Role |
 | --- | --- | --- |
-| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact, Toxic fires a venom needle, Kaboom lobs a slow bomb, Bad Lag throws a heavy hourglass, Atomize fires an alternating electron that curves toward a target, Ghost throws a wide chomping mouth that hits for two and dazes, Compress fires a slow pressure orb that shrinks the victim and permanently lowers their health cap, Pinball throws a long-lived ricochet ball that gains speed on every bounce or body and climbs from 1 to 5 damage across five hits, Copy Pasta throws a file that tears into two smaller files when it hits a body, and Aim Bot fires a 2000-speed rail round for 8 damage that never bounces and reloads slowly. Holding keeps the fire coming at the program's cadence. |
+| **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact, Toxic fires a venom needle, Kaboom lobs a slow bomb, Bad Lag throws a heavy hourglass, Atomize fires an alternating electron that curves toward a target, Ghost throws a wide chomping mouth that hits for two and dazes, Compress fires a slow pressure orb that shrinks the victim and permanently lowers their health cap, Pinball throws a long-lived ricochet ball that gains speed on every bounce or body and climbs from 1 to 5 damage across five hits, Copy Pasta throws a file that tears into two smaller files when it hits a body, and Aim Bot fires a 2000-speed rail round for 5 damage that never bounces and reloads slowly. Holding keeps the fire coming at the program's cadence. |
 | **MELEE ATTACK** | `B` / left mouse / `J` | **Tap** for a fast spiked lash across the 180° arc in front of you. It shoves what it hits sideways and reflects shots it catches. Aim Bot carries a combat knife instead: a longer, wider sweep with a much harder shove. |
-| **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. Lock on to flatten caught shots toward the target. Pinball's shield is wider and lasts longer. |
-| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear, Compress fires a pressure burst that halves the size and health cap of everything in the ring, crushing anything on its last point, Pinball launches one giant ball that bounces off arena walls only and rolls over bodies for 3 damage, and Copy Pasta seeds every enemy in a ring with a growing stack of red file icons that detonates after a beat. Aim Bot paints up to six red crosshairs in front of himself and fires a 12-damage shot at each in a quick sequence. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
-| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a proximity mine, Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises three orbiting shield balls, Ghost cloaks for a few seconds, Compress folds small and runs fast for 3.5 seconds, Pinball plants a flipper arm for 16 seconds that punts hostile shots and swats bodies toward other enemies, Copy Pasta summons a bot-driven copy of itself that fights for eight seconds, and Aim Bot raises a visible laser sight for 7 seconds and loads a three-shot clip that ignores his normal reload. Every Copy Pasta dash also leaves a one-hit, 1.5-second afterimage that pulls enemy attention. Its mark in the readiness dock shows when the skill is ready. |
+| **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. A catch refills the shot's lifetime and adds 1 damage, so repeat catches become lethal. Every program can do this; reflection is not a Probe-only rule. Lock on to flatten caught shots toward the target. Pinball's shield is wider and lasts longer. |
+| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam in 0.45 s; releasing the heavy while it fires cuts it short, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear, Compress fires a pressure burst that halves the size and health cap of everything in the ring, crushing anything on its last point, Pinball launches one giant ball that bounces off arena walls only and rolls over bodies for 3 damage, and Copy Pasta seeds every enemy in a ring with a growing stack of red file icons that detonates after a beat. Aim Bot paints up to six red crosshairs in front of himself and fires a 12-damage shot at each in a quick sequence. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
+| **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a persistent trap mine that waits until stepped on and detonates in a wide blast (three live max), Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises two orbiting shield balls, Ghost cloaks for a few seconds, Compress folds small and runs fast for 3.5 seconds, Pinball plants a flipper arm for 16 seconds that punts hostile shots and swats bodies toward other enemies, Copy Pasta summons a bot-driven copy of itself that fights for nine seconds, and Aim Bot raises a visible laser sight for 7 seconds and loads a three-shot clip that ignores his normal reload. Every Copy Pasta dash also leaves a one-hit, 1.5-second afterimage that pulls enemy attention. Its mark in the readiness dock shows when the skill is ready. |
 | **DASH** | `A` / `Shift` / `Space` | Two charges, one shared recharge. Tap to phase through enemies and cover in your last movement direction. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. Pinball carries three charges. |
 
 Ranged fire is the pressure tool. Melee is the answer to incoming fire: tap to lash, hold to guard. The
@@ -272,10 +303,33 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `MAINFRAME` | A large multi-district map (four linked combat zones) with a camera that follows you. Cross lanes, pillar cover, a gate ring and a ricochet alley; fights move between districts. |
 | `TRANSIT` | Two decks over a service trench. Cross on the central bridge, ride the paired transporter pads, or take the lift on the east end. The trench blocks bodies but not shots; dashes phase it. |
 | `THE LEDGE` | No outer wall. The floor ends in a dashed lip over the void: a shove that carries a body over it kills, shots fall instead of ricocheting, and a pushed threat is a clear in the gauntlet. |
-| `RECYCLING BIN` | A trapezoid floor with no cover and a big hole in the bottom edge. A 130-unit compaction plate descends every 30 s, stops on the hole's rim and rides everything on the sides down to the ledges. Breakable file boxes are the only clutter, and they are light: shove them, launch them, bat them with a guard. |
+| `RECYCLING BIN` | A trapezoid floor with no cover and a big hole in the bottom edge. A 130-unit compaction plate descends every 30 s, stops on the hole's rim and rides everything on the sides down to the ledges. Breakable file boxes are the only clutter, and they are light: shove them, launch them, bat them with a guard. The compactor clock and live boxes sync online. |
 | `DISK PLATTER` | A round platter with no outer wall. Nine holes turn with the disc, and a read arm sweeps across the face every 11.5 s, shoving anything it catches toward those holes or the rim. No cover: the floor and the arm are the whole fight. |
+| `KEYPAD` | A ten-key phone pad in the middle of the room. Each key warns, slams, holds as solid cover, then rises. A slam crushes threats instantly; a player caught under one loses three segments. Online: the key clock is synced and the host resolves the crush. |
+| `DOCUMENT SCANNER` | A large glass platen where documents load from a floor slot, a read line scans top to bottom, snaps back, and the sheet is replaced. Hop the line or dash over it. Online: the scan clock/page is synced and the host resolves the line. |
+| `BROWSER` | A browser window showing a forum. A giant cursor travels to the page link, hovers, and click-slams the floor before the forum navigates deeper and the cover layout changes. Online: the page/clock is synced and the host resolves the click. |
+| `QUARANTINE` | The campaign tutorial route: a round intake office, a square holding office with three jail cells, a mainboard rectangle and a larger router rectangle linked by three bridge decks. The six calibration subjects wait in holding; the router ends at a network port. Local-only tutorial staging. |
+
+### Ordinary programs
+
+The machine world is not only fighters. Ordinary programs are civilians: floating CRT monitors with an
+emoji face on the screen and a ground ring. They have no body, stand, limbs or wheels. They hover and bob,
+but they have no health, collision or attacks; shots pass through them. They are scenery, not targets.
+Some carry paper files behind the monitor; the stack drops when they run scared or are destroyed. A nearby live threat changes the face to fear and sends them
+toward a network port, a pad or lift, or a room farther from the fight. Three work the holding office on
+`QUARANTINE`: `TICKET` (teal, neutral, one file), `PATCH` (amber, friendly, empty-handed) and `CACHE`
+(violet, sleepy, two files). `PING`, the rose courier, is defined for later rooms. script_kitty keeps her
+cat face and sits in the middle holding cell.
 
 ### Bridges, pads and lifts
+
+`QUARANTINE` is the tutorial route built from four linked rooms rather than a single open floor. The
+round `INTAKE` office is the Warden's lesson room; the square `HOLDING` office holds the six dormant
+calibration subjects and three jail cells; the `MAINBOARD` follows; the larger `ROUTER` room is the
+visual approach to the network port.
+The gaps between the rooms are real chasms for bodies, and each bridge deck is the only walking route.
+The level still clears on the assault kill count, so the port is a destination and future exit hook rather
+than a gate yet. Room arenas are local-only and do not appear in online map rotation.
 
 Traversal is arena geometry, not a separate mode. A floor gap is solid to bodies, bots and gauntlet
 threats, while shots fly over it. The bridge is the only walking route across. Pads and lifts arm on a
@@ -299,6 +353,31 @@ hole is a fall. A dash clears a hole (it is airborne), but landing inside one st
 Hosted matches keep the plate and its holes but park the spin and the arm, because the snapshot carries no
 disc phase; local training, gauntlet and campaign runs get the full moving floor.
 
+`KEYPAD` turns the floor into ten moving cover blocks. The digits 1–9 form the top three rows and the 0
+sits centered below. Every key has the same cycle but a different phase, so the pad is always changing
+shape: a warning cap lifts and glows, then slams down, stays solid for 1.7 s and rises again. A player
+can walk through an up socket, but a down cap blocks bodies and shots and gives the arena temporary
+cover. A body caught in the slam takes the hit: threats are deleted, while a player loses three health
+segments. Dash through a cap before it falls, or leave the lane; do not try to out-walk the down face.
+Online, the host sends the shared key clock; every guest draws the same caps and the host resolves the
+crush. The caps are also predicted as cover, so a guest cannot walk through a down key.
+
+`DOCUMENT SCANNER` is a paper-handling arena. A sheet rises from the slot below the platen, the read line
+sweeps from the top of the page to the bottom, then races back up, and the sheet unloads for the next
+one. The line burns for one health segment and shoves the body in its travel direction; a dash counts as
+airborne and clears it. The safe route is to keep crossing the line, not to try to outrun a full sweep.
+Every sheet has a different internal title, revision stamp and redaction pattern; those are atmosphere
+and a paper trail, not a campaign objective. Online, the host sends the scan clock and page, so guests
+see the same line; the host remains the only side that applies its damage.
+
+`BROWSER` is a whole browser window showing a forum thread. The chrome band and scrollbar are solid; the
+cards on the current forum page are cover. A giant mouse cursor idles over the page, moves to the link,
+hovers, then click-slams the floor for one segment and a shove before the browser navigates. The forum
+moves from the index into the thread, a deeper post, then a locked archive, and each page has a different
+cover layout. A dash clears the click. The cursor's click is also the navigation beat, so the fight keeps
+changing shape. Online, the host sends the page and cycle clock; guests rebuild the cursor, click flash
+and page cards from them, while the host applies the click damage.
+
 ### Laser emitters
 
 `CROSSROADS`, `THE RING` and `MAINFRAME` mount red laser fixtures in local training, gauntlet and campaign
@@ -312,8 +391,10 @@ held target lock sends it straight at the locked enemy; without a lock it goes b
 reflected beam hits harder than the direct one and can cut threats, the training drone or another player.
 It is the intended way to turn an arena emitter into a boss-fight weapon.
 
-A hosted match never arms the emitters: they are local content, like the compactor and file boxes, and
-nothing about them enters a snapshot.
+A hosted match never arms the emitters: they remain local content and nothing about them enters a
+snapshot. The compactor, keypad, scanner and browser are different: their clocks are carried, so those
+maps also open online. The pipe/firewall arenas still stay local because their spawned threats are not
+in the snapshot.
 
 ## Attract demo and kiosk
 
@@ -348,7 +429,7 @@ snapshot.
 
 This build is a test rig as much as a game. A useful pass:
 
-- All nine arenas in training. Learn `THE RING`'s four side gates, `SWITCHBACK`'s ricochet lanes,
+- Every arena in training. Learn `THE RING`'s four side gates, `SWITCHBACK`'s ricochet lanes,
   `MAINFRAME`'s linked districts, `THE LEDGE`'s open lip and `DISK PLATTER`'s moving holes.
 - On `THE LEDGE`, shove a bot over the edge with Sweep's thrown broom. It should de-rez at the lip and the
   round should end; walk over the same edge yourself and you should fall too.
@@ -362,20 +443,24 @@ This build is a test rig as much as a game. A useful pass:
   drop its lure, then step out of the way instead of standing on it.
 - Break line of sight behind cover. Bots should walk a route around the block, not scrape against it.
 - Fight inside `THE RING`'s center. Every entrance is a gate; a charged beam down a gate is a trap.
-- Bank bolts around `SWITCHBACK`'s bars. Deflected bolts gain speed and damage.
+- Bank bolts around `SWITCHBACK`'s bars. Deflected bolts gain speed and damage, and a catch refills their
+  lifetime: a returned shot can cross the whole arena, so keep tracking it after the catch.
 - Hold ranged attack and feel the program's stream and short recharge. Losing health segments should be
   readable from across the arena.
 - Hold `B` and walk into a sentry volley. The 180° shield should catch every shot in front, burn down as
   it eats them, and force a quick cooldown when it breaks. Release early and it drops immediately.
-- Lock on with `LT` and hold the shield. Reflected shots should flatten toward the target instead of
+- Lock on with `LT` (or toggle `Q` on keyboard) and hold the shield. Reflected shots should flatten toward the target instead of
   flying off at the incoming angle. The reticle should acquire pulse squares, triplexes, homing pods,
   flocks and cascading-error blocks as readily as worms.
 - Spend your dodge charges (three as Pinball), then watch the chevrons in the readiness dock refill one at
   a time.
 - Hold `Y` through the full charge. The two orbit dots should meet at your front and the beam should fire
   on its own, root you, sweep slowly, and pierce every target in the line while pillars cut it off.
-- Tap `Y` for the program's skill: Probe's proximity mine, Wedge's bracket wall, Fisher's lure beacon,
-  Sweep's split brooms, Kaboom's lobbed shell, Bad Lag's fast-forward, Atomize's three blue shield balls,
+- Release `Y` after the beam starts: the beam should stop immediately, the root should end and the
+  cooldown ring should begin. Plant a trap, walk away and leave it alone; it should wait until a body
+  enters the trigger, and the faint outer ring should mark the larger blast.
+- Tap `Y` for the program's skill: Probe's persistent trap mine, Wedge's bracket wall, Fisher's lure beacon,
+  Sweep's split brooms, Kaboom's lobbed shell, Bad Lag's fast-forward, Atomize's two blue shield balls,
   Ghost's cloak, or Pinball's flipper arm. The mark in the readiness dock should match the program and
   show readiness. Wedge's wall should stop bodies and reflect shots; a lure should pull local bots off
   you; the split brooms should shove a body out of the lane in front of Sweep; an Atomize ball should eat

@@ -1,4 +1,4 @@
-import { BOLT, FISHER, MINE, CASCADING_ERROR, MAX_PROJECTILES, PLAYER, POWERUP, SENTRY, TRAIL_LEN, TRAINING, VIRUS, WORM } from './config';
+import { BOLT, FISHER, CASCADING_ERROR, MAX_PROJECTILES, PLAYER, POWERUP, SENTRY, TRAIL_LEN, TRAINING, VIRUS, WORM } from './config';
 import { programDef } from './programs';
 import {
   PF,
@@ -692,8 +692,4 @@ export function playerFlags(p: Player): number {
   if (p.wallT > 0) flags |= PF.WALL;
   if (p.slowT > 0) flags |= PF.SLOW;
   return flags;
-}
-
-export function mineFusePct(p: Projectile): number {
-  return Math.max(0, Math.min(1, p.fuse / MINE.life));
 }

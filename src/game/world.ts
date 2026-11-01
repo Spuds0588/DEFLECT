@@ -24,6 +24,9 @@ import {
   WEDGE,
   GAUNTLET,
   KABOOM,
+  KEYPAD,
+  SCANNER,
+  BROWSER,
   FILE_PROP,
   MAX_EVENTS,
   MAX_PLAYERS,
@@ -52,10 +55,25 @@ import {
   discArmPivotY,
   discHoleX,
   discHoleY,
+  holdingCellLayout,
+  keypadKeyState,
+  KEYPAD_STATE,
+  browserCycle,
+  browserCursorAt,
+  browserPhaseAt,
+  BROWSER_STATE,
+  scannerCycle,
+  scannerLaserY,
+  scannerPhaseAt,
+  SCANNER_STATE,
+  type ArenaBrowserDef,
   type ArenaDef,
+  type ArenaKeypadDef,
+  type ArenaScannerDef,
   type DiscDef,
 } from './arenas';
-import type { CampaignDataCrate } from './campaign';
+import type { CampaignDataCrate, CampaignIntro } from './campaign';
+import { CALIBRATION_POWER_TUTORIAL, CALIBRATION_SKILL_TUTORIAL, KITTY_TUTORIAL, TutorialRunner, WARDEN_TUTORIAL } from './tutorial';
 import { beamReach, circleRect, hitScratch } from './collision';
 import {
   clearPlayerForSpawn,
@@ -116,6 +134,23 @@ function phased(p: Player): boolean {
   return p.ghostT > 0 || p.cloakT > 0;
 }
 
+/** The sealed cell block in a tutorial holding room. The block is one body solid while
+ *  the bars are powered; its back and sides are as solid as the front, so a body cannot
+ *  walk around the painted bars into the cells. */
+function campaignCellBarRects(arena: ArenaDef): Rect[] {
+  const room = arena.rooms?.find((candidate) => candidate.theme === 'holding');
+  if (!room) return [];
+  const layout = holdingCellLayout(room);
+  return [
+    {
+      x: layout.left,
+      y: layout.top,
+      w: layout.cellW * 3,
+      h: layout.bottom - layout.top,
+    },
+  ];
+}
+
 /**
  * Authoritative simulation. Hosted locally for training and by the room host online.
  * No allocations inside step(); see AGENTS.md §3.
@@ -126,8 +161,10 @@ export class World {
   readonly online = false;
   readonly arena: ArenaDef;
   /** Cover plus floor gaps. Bodies collide with this; shots only respect cover. */
-  private readonly solids: readonly Rect[];
-  /** Breakable file boxes. Local content; the snapshot never carries them. */
+  private solids: readonly Rect[];
+  /** Campaign cell-block collision while the block is sealed. Removed on release. */
+  private campaignBarSolids: Rect[] = [];
+  /** Breakable file boxes. Live boxes travel in Snapshot; physics stays host-side. */
   readonly props: Prop[];
   /** Destructible feed pipes. Local-only, like the floor fixtures they sit beside. */
   readonly pipes: Pipe[];
@@ -187,15 +224,34 @@ export class World {
    * then the threat assault. Local-only like the rest of the sandbox.
    */
   readonly campaign: boolean;
+  readonly campaignIntro: CampaignIntro;
+  /** Threats needed to clear the assault; a lesson node may shorten it. */
+  campaignKillsToClear: number;
+  /** The node's onboarding lesson. Null when the node opens straight into play. */
+  tutorial: TutorialRunner | null = null;
   campaignPhase: CampaignPhase = 'none';
+  /** Beat between the last lesson and the subjects waking or the breach starting. */
+  private tutorialGrace = 0;
+  private tutorialFinished = false;
+  private tutorialCatchSeen = 0;
+  private tutorialBoltT = 0;
   /** Calibration shapes have woken; they no longer accept a dormant hit. */
   calibrationAwake = false;
+  /** The holding-room civilians have been lost. Presentation-only; never in a snapshot. */
+  campaignCiviliansLost = false;
+  /** Countdown for the bars' release flash, read by the tutorial-room renderer. */
+  campaignBarsFlashT = 0;
+  /** The holding cells have opened; the bars render retracted. */
+  campaignBarsOpen = false;
+  private campaignCivilianLossT = 0;
+  /** After the Warden lesson, wait for the player to reach holding before waking the class. */
+  private campaignHoldingWait = 0;
   /** Seconds inside the current campaign phase. */
   campaignT = 0;
   campaignBannerT = 0;
   /** Starting length of the current campaign banner, for the renderer fade. */
   campaignBannerDur = 0;
-  /** 0 drill, 1 breach/inbound, 2 cleared, 3 failed. Fixed labels live in the renderer. */
+  /** 0 drill, 1 breach/inbound, 2 cleared, 3 failed, 4 calibration, 5 awake, 6 cell release. */
   campaignBannerKind = 0;
   /** Escalation wave in gauntlet mode. Purely local presentation + spawn pacing. */
   wave = 1;
@@ -218,6 +274,23 @@ export class World {
 
   readonly events: GameEvent[];
   eventCount = 0;
+
+  /**
+   * QA-only catch telemetry. Local to this World and never serialized into Snapshot.
+   * Balance harnesses read it to separate shield/lash catches from deflects owned by
+   * a program's kit (beam, atom ball, net, pinball arm, plow, broom, legacy wave).
+   */
+  readonly deflectTelemetry = {
+    guard: new Uint16Array(MAX_PLAYERS),
+    swing: new Uint16Array(MAX_PLAYERS),
+    beam: new Uint16Array(MAX_PLAYERS),
+    atom: new Uint16Array(MAX_PLAYERS),
+    net: new Uint16Array(MAX_PLAYERS),
+    arm: new Uint16Array(MAX_PLAYERS),
+    plow: new Uint16Array(MAX_PLAYERS),
+    broom: new Uint16Array(MAX_PLAYERS),
+    wave: new Uint16Array(MAX_PLAYERS),
+  };
 
   private serial = 0;
   private rng = new Rng(0xd3f1ec7);
@@ -314,6 +387,43 @@ export class World {
   pusherT = 0;
   /** Seconds of warning left before the arm moves; 0 outside the warning window. */
   pusherWarnT = 0;
+  /** Phone-pad floor layout. Timing stays host-side; the shared clock travels in Snapshot. */
+  readonly keypad: ArenaKeypadDef | null;
+  /** Shared phase for all ten keys. Public for the renderer. */
+  keypadT = 0;
+  /** Current KEYPAD_STATE for each key. Public for the renderer. */
+  readonly keypadStates: Uint8Array;
+  private readonly keypadPrevStates: Uint8Array;
+  /** Reused point for worm segment pushes; keeps the pad out of the allocation path. */
+  private readonly keypadBodyScratch = { x: 0, y: 0 };
+  /** Document-scanner bed. Snapshot carries its clock and page. */
+  readonly scanner: ArenaScannerDef | null;
+  /** Page cycle clock, page index and current phase. Public for the renderer. */
+  scannerT = 0;
+  scannerPage = 0;
+  scannerPhase: number = SCANNER_STATE.load;
+  /** Forum browser. Snapshot carries the page and cycle clock; damage stays host-side. */
+  readonly browser: ArenaBrowserDef | null;
+  /** Active forum page and the clock driving its cursor and click. */
+  browserPage = 0;
+  browserT = 0;
+  browserPhase: number = BROWSER_STATE.dwell;
+  /** Large cursor and the current click flash, in world coordinates. */
+  browserCursorX = 0;
+  browserCursorY = 0;
+  browserClickT = 0;
+  /** Active page cover. Swapped when the cursor navigates. */
+  browserSolids: Rect[] = [];
+  private browserClickDone = false;
+  private readonly browserBodyScratch = { x: 0, y: 0 };
+  private readonly browserCursor = { x: 0, y: 0 };
+  /** One bit per body family already read by the current pass. Local-only. */
+  private scannerHitPlayers = 0;
+  private scannerHitWorms = 0;
+  private scannerHitViruses = 0;
+  private scannerHitSentries = 0;
+  private scannerHitErrors = 0;
+  private scannerHitDrone = false;
   /** World y of the arm's leading edge. Public for the renderer. */
   pusherY = 0;
   /** True while the arm is descending. Public for the renderer. */
@@ -374,14 +484,30 @@ export class World {
     campaign = false,
     levelData: readonly CampaignDataCrate[] | null = null,
     infectionMode = false,
+    campaignIntro: CampaignIntro = 'none',
+    campaignClearKills = 0,
   ) {
     this.mode = mode;
+    this.campaignIntro = campaignIntro;
+    this.campaignKillsToClear = campaignClearKills > 0 ? campaignClearKills : CAMPAIGN.killsToClear;
     this.campaign = campaign;
     this.infectionMode = infectionMode;
     this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
-    this.solids = arenaSolids(arena);
+    const staticSolids = arenaSolids(arena);
+    this.campaignBarSolids = campaign ? campaignCellBarRects(arena) : [];
+    this.solids =
+      this.campaignBarSolids.length > 0 ? [...staticSolids, ...this.campaignBarSolids] : staticSolids;
+    this.keypad = arena.keypad ?? null;
+    this.keypadStates = new Uint8Array(this.keypad?.keys.length ?? 0);
+    this.keypadPrevStates = new Uint8Array(this.keypadStates.length);
+    this.refreshKeypadStates();
+    this.keypadPrevStates.set(this.keypadStates);
+    this.scanner = arena.scanner ?? null;
+    this.scannerPhase = this.scanner ? scannerPhaseAt(0) : SCANNER_STATE.load;
+    this.browser = arena.browser ?? null;
+    this.resetBrowser();
     this.bumperFlash = new Float32Array(arena.bumpers?.length ?? 0);
     this.openWalls = arena.walls === 'open';
     this.pusherY = arena.bounds.top;
@@ -548,8 +674,8 @@ export class World {
       p.program = i === 0 ? this.selectedProgram : botProgram !== null ? clampProgram(botProgram) : PROGRAM_ID.PROBE;
       const def = programDef(p.program);
       p.bugKind = def.bugKind;
-      // Atomize is the one program with a six-segment hull. Spawn and respawn both
-      // read maxHp, so setting it with the program is enough to carry the larger pool.
+      // Atomize and Compress use six-segment hulls. Spawn and respawn both read
+      // maxHp, so setting it with the program is enough to carry the larger pool.
       p.maxHp = def.healthSegments ?? PLAYER.hp;
       // Pinball carries a third dodge charge and a wider, longer shield. These are
       // stored on the body so respawn, the dock and the guard share one source.
@@ -733,14 +859,29 @@ export class World {
    */
   private setupCampaign(): void {
     this.setupGauntlet();
-    this.campaignPhase = 'calibration';
     this.calibrationAwake = false;
     this.campaignT = 0;
+    this.wave = CAMPAIGN.waveStart;
+    this.waveBannerT = 0;
+    this.campaignCiviliansLost = false;
+    this.campaignBarsFlashT = 0;
+    this.campaignBarsOpen = false;
+    this.campaignCivilianLossT = 0;
+    this.campaignHoldingWait = 0;
+    // The kitty node is a quiet briefing room: no subjects, no threats, just the lesson.
+    if (this.campaignIntro === 'kitty') {
+      this.campaignPhase = 'briefing';
+      this.tutorial = new TutorialRunner(KITTY_TUTORIAL);
+      this.tutorialCatchSeen = this.tutorialCatchTotal();
+      this.campaignBannerT = 0;
+      return;
+    }
+    this.campaignPhase = 'calibration';
+    this.tutorial = this.campaignIntro === 'warden' ? new TutorialRunner(WARDEN_TUTORIAL) : null;
+    this.tutorialCatchSeen = this.tutorialCatchTotal();
     this.campaignBannerKind = 4;
     this.campaignBannerT = CALIBRATION.bannerTime;
     this.campaignBannerDur = CALIBRATION.bannerTime;
-    this.wave = CAMPAIGN.waveStart;
-    this.waveBannerT = 0;
     // Bots stay parked until the calibration subjects are cleared. The drill squad
     // then logs in on the existing ring with the player, before the breach removes it.
     this.spawnCalibrationShapes();
@@ -791,16 +932,84 @@ export class World {
     }
   }
 
+  /** Wave 1 is down. The cell block loses power, the bars retract and the held worms
+   *  and viruses become wave 2 for the heavy lesson. */
+  private beginCellRelease(): void {
+    this.campaignPhase = 'release';
+    this.calibrationAwake = false;
+    this.campaignT = 0;
+    this.openCampaignCellBars();
+    this.campaignBarsOpen = true;
+    this.campaignBarsFlashT = 2.8;
+    this.campaignBannerKind = 6;
+    this.campaignBannerT = 2.6;
+    this.campaignBannerDur = 2.6;
+    this.clearTrainingShapes();
+    for (let i = 0; i < this.projectiles.length; i++) this.projectiles[i].active = false;
+    if (!this.campaignCiviliansLost) {
+      this.campaignCivilianLossT = 0;
+      this.loseCampaignCivilians();
+    }
+    if (this.campaignIntro === 'warden') {
+      this.tutorial = new TutorialRunner(CALIBRATION_POWER_TUTORIAL);
+      this.tutorialFinished = false;
+      this.tutorialGrace = 0;
+    }
+    const room = this.arena.rooms?.find((candidate) => candidate.theme === 'holding');
+    const cells = room ? holdingCellLayout(room) : null;
+    const cx = cells ? cells.left + cells.cellW * 1.5 : this.players[0].x;
+    const cy = cells ? cells.top + (cells.bottom - cells.top) * 0.58 : this.players[0].y - 40;
+    // The release is a scripted cut, not a cheap hit: give the player a beat to see the
+    // bars go before the first virus can touch them.
+    for (let i = 0; i < this.players.length; i++) {
+      if (this.players[i].active) this.players[i].iframes = Math.max(this.players[i].iframes, 1.2);
+    }
+    if (cells) {
+      // Left cell holds the worm; the right cell holds the virus pair. The real bodies
+      // appear only now, so nothing behind the bars can be shot or targeted early.
+      this.spawnWorm(cells.left + cells.cellW * 0.5, cy);
+      this.spawnVirus(cells.left + cells.cellW * 2.2, cy - 8);
+      this.spawnVirus(cells.left + cells.cellW * 2.8, cy + 14);
+    } else {
+      this.spawnWorm(cx, cy);
+      this.spawnVirus(cx - 90, cy + 40);
+      this.spawnVirus(cx + 90, cy + 40);
+    }
+  }
+
+  /** Removes the sealed cell-block solid on the power-down beat. */
+  private openCampaignCellBars(): void {
+    if (this.campaignBarSolids.length === 0) return;
+    const bars = this.campaignBarSolids;
+    this.campaignBarSolids = [];
+    this.solids = this.solids.filter((solid) => !bars.includes(solid));
+  }
+
   /** Six calibration subjects, two of each primary, laid out in front of the player. */
   private spawnCalibrationShapes(): void {
+    const focus = this.arena.rooms?.find((room) => room.theme === 'holding');
+    if (focus) {
+      // The holding room gets a fixed two-column class formation. The centre lane stays
+      // clear for the player entering from the bridge, and all six remain in front of the
+      // sealed cell block instead of falling back to arena spawns elsewhere.
+      const kinds = [4, 5, 6, 4, 5, 6] as const;
+      const columns = [focus.x + focus.w * 0.24, focus.x + focus.w * 0.76];
+      const rows = [
+        focus.y + focus.h * 0.52,
+        focus.y + focus.h * 0.70,
+        focus.y + focus.h * 0.88,
+      ];
+      for (let i = 0; i < kinds.length; i++) {
+        this.spawnCalibrationShape(kinds[i], columns[i >= 3 ? 1 : 0], rows[i % 3]);
+      }
+      return;
+    }
+
     const player = this.players[0];
     const base = Math.atan2(this.centerY - player.y, this.centerX - player.x);
     const kinds = [4, 5, 6, 4, 5, 6] as const;
     for (let i = 0; i < kinds.length; i++) {
       const kind = kinds[i];
-      // A single arc of six, not two tight rows: adjacent bodies stay clear of each
-      // other at this spacing, so none falls back to a spawn point in the player's lap
-      // and wakes the class before the dormant beat has been read.
       const angle = base + (i - (kinds.length - 1) * 0.5) * CALIBRATION.layoutSpread;
       const baseDist = CALIBRATION.layoutRadius + (i % 2) * CALIBRATION.layoutLift;
       let x = player.x + Math.cos(angle) * baseDist;
@@ -941,6 +1150,28 @@ export class World {
     this.campaignBannerKind = 5;
     this.campaignBannerT = CALIBRATION.wakeBannerTime;
     this.campaignBannerDur = CALIBRATION.wakeBannerTime;
+    // The class wakes in the holding office. The civilians are gone a beat later, and
+    // the player gets the skill/heavy lesson while the subjects are live.
+    this.campaignHoldingWait = 0;
+    this.campaignCivilianLossT = 0.65;
+    if (this.campaignIntro === 'warden') {
+      this.tutorial = new TutorialRunner(CALIBRATION_SKILL_TUTORIAL);
+      this.tutorialFinished = false;
+      this.tutorialGrace = 0;
+    }
+  }
+
+  /** Hides the holding-office civilians after the class wakes and marks the loss with a
+   *  short burst at each cart. They stay decorative: no bodies, hits or snapshot rows. */
+  private loseCampaignCivilians(): void {
+    if (this.campaignCiviliansLost) return;
+    this.campaignCiviliansLost = true;
+    const regulars = this.arena.regulars;
+    if (!regulars) return;
+    for (let i = 0; i < regulars.length; i++) {
+      const p = regulars[i];
+      this.emit(EV.EXPLODE, -1, p.x, p.y, 70);
+    }
   }
 
   /**
@@ -1496,11 +1727,33 @@ export class World {
   }
 
   /** Advances the campaign script. The threat simulation waits for the assault phase. */
-  private updateCampaign(dt: number): void {
+  private updateCampaign(dt: number, inputs: (InputFrame | null)[]): void {
     if (this.campaignBannerT > 0) this.campaignBannerT = Math.max(0, this.campaignBannerT - dt);
+    if (this.campaignBarsFlashT > 0) this.campaignBarsFlashT = Math.max(0, this.campaignBarsFlashT - dt);
+    if (this.campaignCivilianLossT > 0) {
+      this.campaignCivilianLossT = Math.max(0, this.campaignCivilianLossT - dt);
+      if (this.campaignCivilianLossT <= 0) this.loseCampaignCivilians();
+    }
+    this.updateTutorial(dt, inputs[0] ?? null);
     if (this.campaignPhase === 'calibration') {
       this.campaignT += dt;
-      if (!this.calibrationAwake) {
+      if (this.tutorial) {
+        // The Warden holds the subjects dormant until the orientation is finished, so
+        // the lesson is never interrupted by the pack waking on the old six-second timer.
+        if (!this.tutorial.done) return;
+        if (this.tutorialGrace > 0) {
+          this.tutorialGrace = Math.max(0, this.tutorialGrace - dt);
+          return;
+        }
+        if (!this.calibrationAwake) {
+          const holding = this.arena.rooms?.find((room) => room.theme === 'holding');
+          const player = this.players[0];
+          const inHolding = !!holding && player.x >= holding.x && player.x <= holding.x + holding.w && player.y >= holding.y && player.y <= holding.y + holding.h;
+          if (this.campaignHoldingWait <= 0) this.campaignHoldingWait = CALIBRATION.entryWait;
+          this.campaignHoldingWait = Math.max(0, this.campaignHoldingWait - dt);
+          if (inHolding || this.campaignHoldingWait <= 0) this.wakeCalibration();
+        }
+      } else if (!this.calibrationAwake) {
         const player = this.players[0];
         let nearSubject = false;
         if (player.alive) {
@@ -1515,7 +1768,34 @@ export class World {
         }
         if (nearSubject || this.campaignT >= CALIBRATION.wakeDelay) this.wakeCalibration();
       }
-      if (this.calibrationAwake && !this.trainingParentsActive()) this.beginDrill();
+      if (
+        this.calibrationAwake &&
+        !this.trainingParentsActive() &&
+        (!this.tutorial || this.tutorial.done)
+      ) {
+        this.beginCellRelease();
+      }
+      return;
+    }
+    if (this.campaignPhase === 'release') {
+      this.campaignT += dt;
+      if (
+        this.campaignT > 0.9 &&
+        !this.campaignThreatsActive() &&
+        (!this.tutorial || this.tutorial.done)
+      ) {
+        this.beginDrill();
+      }
+      return;
+    }
+    if (this.campaignPhase === 'briefing') {
+      this.campaignT += dt;
+      if (this.tutorial && !this.tutorial.done) return;
+      if (this.tutorialGrace > 0) {
+        this.tutorialGrace = Math.max(0, this.tutorialGrace - dt);
+        return;
+      }
+      this.beginBreach();
       return;
     }
     if (this.campaignPhase === 'drill') {
@@ -1530,8 +1810,160 @@ export class World {
     }
     if (this.campaignPhase === 'assault') {
       this.campaignT += dt;
-      if (this.gauntletKills >= CAMPAIGN.killsToClear) this.clearCampaign();
+      if (this.gauntletKills >= this.campaignKillsToClear) this.clearCampaign();
     }
+  }
+
+  /** Move only the threat families the cell release put on the floor. The normal
+   *  gauntlet wave timers stay parked until the assault. */
+  private updateCampaignThreats(dt: number): void {
+    for (let i = 0; i < this.viruses.length; i++) {
+      if (this.viruses[i].active) this.updateVirus(this.viruses[i], dt);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      if (this.worms[i].active) this.updateWorm(this.worms[i], dt);
+    }
+  }
+
+  private campaignThreatsActive(): boolean {
+    for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) return true;
+    for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) return true;
+    return false;
+  }
+
+  /**
+   * Drives the onboarding lesson. A reflect step arms one slow, harmless test shot every
+   * couple of seconds; every other step reads the ordinary frame, so the lesson never
+   * grants an action the player does not have.
+   */
+  private updateTutorial(dt: number, frame: InputFrame | null): void {
+    const runner = this.tutorial;
+    if (!runner || runner.done) return;
+    const player = this.players[0];
+    if (runner.current?.action === 'reflect') {
+      this.tutorialBoltT -= dt;
+      if (this.tutorialBoltT <= 0) {
+        this.spawnTutorialBolt();
+        this.tutorialBoltT = 2.1;
+      }
+    }
+    const catches = this.tutorialCatchTotal();
+    const reflected = catches > this.tutorialCatchSeen;
+    this.tutorialCatchSeen = catches;
+    runner.update({
+      dt,
+      frame,
+      lockActive: player.alive && player.lockActive,
+      reflected,
+    });
+    if (runner.done) this.finishTutorial();
+  }
+
+  private tutorialCatchTotal(): number {
+    const t = this.deflectTelemetry;
+    return (
+      t.guard[0] +
+      t.swing[0] +
+      t.beam[0] +
+      t.atom[0] +
+      t.net[0] +
+      t.arm[0] +
+      t.plow[0] +
+      t.broom[0] +
+      t.wave[0]
+    );
+  }
+
+  private finishTutorial(): void {
+    if (this.tutorialFinished) return;
+    this.tutorialFinished = true;
+    this.tutorialGrace = 1.15;
+    this.tutorialBoltT = 0;
+  }
+
+  /** Skips the rest of the lesson. The level still continues in the same order. */
+  skipTutorial(): void {
+    if (!this.tutorial || this.tutorial.done) return;
+    this.tutorial.skip();
+    this.finishTutorial();
+  }
+
+  /** One slow hostile shot that cannot spend a health segment, for the reflect lesson. */
+  private spawnTutorialBolt(): void {
+    const p = this.players[0];
+    if (!p.alive) return;
+    let proj: Projectile | null = null;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      if (!this.projectiles[i].active) {
+        proj = this.projectiles[i];
+        break;
+      }
+    }
+    if (!proj) return;
+
+    // Find a clear lane first. A test shot eaten by a pillar would leave the lesson
+    // waiting with nothing to catch.
+    const b = this.arena.bounds;
+    const base = this.rng.range(0, Math.PI * 2);
+    let ox = 0;
+    let oy = 0;
+    let found = false;
+    for (let i = 0; i < 8; i++) {
+      const a = base + (i / 8) * Math.PI * 2;
+      const x = p.x + Math.cos(a) * 360;
+      const y = p.y + Math.sin(a) * 360;
+      if (x < b.left + 40 || x > b.right - 40 || y < b.top + 40 || y > b.bottom - 40) continue;
+      if (!this.pointClearOfCover(x, y, 9)) continue;
+      if (this.lineBlocked(x, y, p.x, p.y)) continue;
+      ox = x;
+      oy = y;
+      found = true;
+      break;
+    }
+    if (!found) return;
+    const angle = Math.atan2(p.y - oy, p.x - ox);
+
+    proj.active = true;
+    proj.serial = ++this.serial;
+    proj.type = 3;
+    proj.owner = -1;
+    proj.srcKind = SRC.NONE;
+    proj.srcId = -1;
+    proj.x = ox;
+    proj.y = oy;
+    proj.prevX = ox;
+    proj.prevY = oy;
+    proj.vx = Math.cos(angle) * 250;
+    proj.vy = Math.sin(angle) * 250;
+    proj.radius = 7;
+    // Harmless on purpose: this shot teaches the catch, it does not grade it.
+    proj.damage = 0;
+    proj.deflects = 0;
+    proj.bounces = 0;
+    proj.fuse = 7;
+    proj.grace = 0;
+    proj.armed = false;
+    proj.blastRadius = 0;
+    proj.blastKnockback = 0;
+    proj.arcDur = 0;
+    proj.homing = false;
+    proj.pathAxis = 0;
+    proj.hits = 0;
+    proj.spin = 0;
+    proj.spinDir = 1;
+    proj.variant = 0;
+    proj.orbOwner = -1;
+    proj.orbA = 0;
+    proj.orbR = 0;
+    proj.orbDir = 1;
+    proj.hitPlayers = 0;
+    proj.hitWorms = 0;
+    proj.hitViruses = 0;
+    proj.hitErrors = 0;
+    proj.hitSentries = 0;
+    proj.hitDrone = false;
+    proj.trailHead = 0;
+    proj.trailCount = 0;
   }
 
   /** Adds the level's authored data crates to the floor, once, on the breach beat. */
@@ -1740,9 +2172,61 @@ export class World {
     this.beginRound();
   }
 
+  /**
+   * Couch drop-in. A pad claims a slot that was empty when the match was created.
+   * The kit was already assigned in the constructor from `botPrograms`, so this only
+   * activates the body and, mid-round, places it at the arena point farthest from
+   * the live field rather than dropping it on top of a fight.
+   */
+  joinLocalPlayer(slot: number, name: string): boolean {
+    const p = this.players[slot];
+    if (!p || p.active) return false;
+    p.active = true;
+    p.connected = true;
+    p.name = name;
+    p.score = 0;
+    p.thrall = false;
+    p.copyClone = false;
+    if (this.mode === 'match' && (this.phase === 'live' || this.phase === 'countdown' || this.phase === 'roundover')) {
+      const spawn = this.farthestSpawn();
+      this.spawnX[slot] = spawn.x;
+      this.spawnY[slot] = spawn.y;
+      const facing = Math.atan2(this.centerY - spawn.y, this.centerX - spawn.x);
+      clearPlayerForSpawn(p, spawn.x, spawn.y, facing);
+    }
+    return true;
+  }
+
+  /** Reply spawn point with the largest distance to any active body. */
+  private farthestSpawn(): { x: number; y: number } {
+    const spawns = this.arena.spawns;
+    let best: { x: number; y: number } = spawns[0] ?? { x: this.centerX, y: this.centerY };
+    let bestD = -1;
+    for (let i = 0; i < spawns.length; i++) {
+      const s = spawns[i];
+      let nearest = Infinity;
+      for (let j = 0; j < this.players.length; j++) {
+        const p = this.players[j];
+        if (!p.active) continue;
+        const dx = p.x - s.x;
+        const dy = p.y - s.y;
+        const d = dx * dx + dy * dy;
+        if (d < nearest) nearest = d;
+      }
+      if (nearest > bestD) {
+        bestD = nearest;
+        best = s;
+      }
+    }
+    return best;
+  }
+
   beginRound(): void {
     this.clearCopyClones();
     this.clearAimMarks();
+    if (this.keypad) this.resetKeypad();
+    if (this.scanner) this.resetScanner();
+    if (this.browser) this.resetBrowser();
     const active = this.activeCount();
     if (active === 0) return;
     computeSpawns(active, this.arena, this.spawnTmpX, this.spawnTmpY);
@@ -1780,7 +2264,7 @@ export class World {
       this.clearPressed(inputs);
       return;
     }
-    if (this.campaign) this.updateCampaign(dt);
+    if (this.campaign) this.updateCampaign(dt, inputs);
     if (this.mode === 'match') {
       if (this.phase === 'matchend') {
         this.clearPressed(inputs);
@@ -1826,6 +2310,13 @@ export class World {
     if (this.mode === 'gauntlet') this.driveThrall(dt);
     this.updateCopyClone(dt);
     if (this.arena.pushers && canAct) this.tickPusher(dt);
+    // The pad clock travels in Snapshot. Advance it before the bodies move so a key
+    // that starts its slam this frame resolves against the position the players were
+    // standing on when the warning ended.
+    if (this.keypad && canAct) this.tickKeypad(dt);
+    // The browser page and its cursor are local state. Advance them before bodies move,
+    // so a page swap is already reflected in this frame's cover.
+    if (this.browser && canAct) this.tickBrowser(dt);
     // A hosted match keeps the plate still: the snapshot has no disc phase, so a guest
     // could not agree with the host about which hole is underfoot. Local modes spin.
     if (this.arena.disc && canAct && this.mode !== 'match') this.tickDisc(dt);
@@ -2285,7 +2776,21 @@ export class World {
           if (p.laserT > 0) laserBusy = true;
         }
       } else if (p.laserT > 0) {
-        if (p.program === PROGRAM_ID.TOXIC) {
+        // Probe's beam is a commitment, not a prison: releasing the heavy button cuts
+        // it short and starts the full cooldown so the body can move again.
+        if (
+          p.program === PROGRAM_ID.PROBE &&
+          !overcharged &&
+          canAct &&
+          (!input || (input.held & ACTION.CANDLE) === 0)
+        ) {
+          p.laserT = 0;
+          p.laserTickT = 0;
+          p.laserCd = PLAYER.laserCooldown;
+          p.chargeT = 0;
+          p.chargeHeld = false;
+          p.laserChargeHeld = false;
+        } else if (p.program === PROGRAM_ID.TOXIC) {
           // The jet is aimable while rooted. It turns faster than the heavy beam so a
           // water-like stream can be walked onto a moving body, but it is still limited
           // so a flick cannot wash the whole screen in venom.
@@ -2475,6 +2980,8 @@ export class World {
         this.arena.bounds,
         this.openWalls,
       );
+      if (this.keypad) this.resolveKeypadPlayer(p);
+      if (this.browser) this.resolveBrowserPlayer(p);
       if (this.openWalls || this.arena.voids || this.arena.disc) {
         this.checkFall(p);
         if (!p.alive) continue;
@@ -2517,7 +3024,14 @@ export class World {
     // Campaign threats stay parked until the breach warning hands the room over.
     if (this.mode === 'gauntlet' && (!this.campaign || this.campaignPhase === 'assault')) {
       this.updateGauntlet(threatDt);
+    } else if (this.campaign && this.campaignPhase === 'release') {
+      this.updateCampaignThreats(threatDt);
     }
+    // The read head runs after the bodies have moved, so a dash that crosses the
+    // line this frame is already airborne when the scan resolves.
+    if (this.scanner && canAct && !calibrationHold) this.tickScanner(dt);
+    if (this.browser) this.pushThreatsOffBrowser();
+    if (this.keypad) this.pushThreatsOffKeypad();
     this.bumpThreats();
     // Keep the roaming families on the plate without saving them from the arm: this
     // clamps the rim only, so a hole still takes them. Run after every family update.
@@ -2953,9 +3467,11 @@ export class World {
       proj.owner = p.slot;
       proj.deflects++;
       proj.damage = BOLT.damage + proj.deflects;
+      proj.fuse = BOLT.reflectTtl;
       proj.bounces = 0;
       proj.armed = false;
       proj.grace = 0;
+      this.deflectTelemetry.wave[p.slot]++;
       this.emit(EV.DEFLECT, p.slot, proj.x, proj.y, proj.deflects);
     }
   }
@@ -2998,7 +3514,7 @@ export class World {
 
   /** Distance the beam travels before a solid surface ends it. */
   private laserReach(p: Player): number {
-    return beamReach(
+    const solidReach = beamReach(
       this.arena,
       this.barriers,
       this.pusherActive,
@@ -3008,6 +3524,14 @@ export class World {
       Math.cos(p.laserFacing),
       Math.sin(p.laserFacing),
       PLAYER.laserRange,
+    );
+    const browserReach = this.browser
+      ? this.browserRayReach(p.x, p.y, Math.cos(p.laserFacing), Math.sin(p.laserFacing), PLAYER.laserRange)
+      : PLAYER.laserRange;
+    return Math.min(
+      solidReach,
+      this.keypadRayReach(p.x, p.y, Math.cos(p.laserFacing), Math.sin(p.laserFacing), PLAYER.laserRange),
+      browserReach,
     );
   }
 
@@ -3056,6 +3580,7 @@ export class World {
       guard.beamReflectT = PLAYER.laserReflectFlash;
       guard.beamReflectFacing = out;
       guard.beamReflectDist = reflectReach;
+      this.deflectTelemetry.beam[guard.slot]++;
       this.emit(EV.DEFLECT, guard.slot, guard.x, guard.y, 1, rx, ry);
 
       // One pass of the deflected shaft, skipping both the guard and the caster.
@@ -3287,6 +3812,7 @@ export class World {
       guard.beamReflectT = PLAYER.laserReflectFlash;
       guard.beamReflectFacing = out;
       guard.beamReflectDist = reflectReach;
+      this.deflectTelemetry.beam[guard.slot]++;
       this.emit(EV.DEFLECT, guard.slot, guard.x, guard.y, 2, rx, ry);
       this.damageBeamLine(
         guard.slot,
@@ -3817,7 +4343,7 @@ export class World {
 
     if (p.program === PROGRAM_ID.AIMBOT) {
       // One rail round. The clip bypasses the normal long reload for three shots, but
-      // the round itself is the whole commitment: extreme speed, 8 damage, no bounce.
+      // the round itself is the whole commitment: extreme speed, 5 damage, no bounce.
       const clip = p.aimSightT > 0 && p.aimClip > 0;
       if (!clip && p.autoFireT > 0) return;
       if (p.energy < AIMBOT.shotCost) return;
@@ -4238,10 +4764,12 @@ export class World {
       proj.owner = p.slot;
       proj.deflects++;
       proj.damage = BOLT.damage + proj.deflects;
+      proj.fuse = BOLT.reflectTtl;
       proj.bounces = 0;
       proj.armed = false;
       proj.grace = 0;
       p.swingHit = true;
+      this.deflectTelemetry.plow[p.slot]++;
       this.emit(EV.DEFLECT, p.slot, proj.x, proj.y, proj.deflects);
     }
   }
@@ -4395,9 +4923,11 @@ export class World {
       proj.owner = p.slot;
       proj.deflects++;
       proj.damage = BOLT.damage + proj.deflects;
+      proj.fuse = BOLT.reflectTtl;
       proj.bounces = 0;
       proj.armed = false;
       proj.grace = 0;
+      this.deflectTelemetry.broom[p.slot]++;
       this.emit(EV.DEFLECT, p.slot, proj.x, proj.y, proj.deflects);
     }
   }
@@ -5223,9 +5753,11 @@ export class World {
       proj.owner = net.owner;
       proj.deflects++;
       proj.damage = BOLT.damage + proj.deflects;
+      proj.fuse = BOLT.reflectTtl;
       proj.bounces = 0;
       proj.armed = false;
       proj.grace = 0;
+      this.deflectTelemetry.net[net.owner]++;
       this.emit(EV.DEFLECT, net.owner, proj.x, proj.y, proj.deflects);
       return true;
     }
@@ -5800,7 +6332,7 @@ export class World {
       if (proj.type !== 8 && proj.type !== 9) {
         proj.type = 0;
         proj.damage = BOLT.damage + proj.deflects;
-        proj.fuse = Math.max(proj.fuse, BOLT.ttl * 2);
+        proj.fuse = BOLT.reflectTtl;
       } else {
         proj.damage = Math.max(1, proj.damage);
       }
@@ -5817,6 +6349,7 @@ export class World {
       }
       proj.x = this.pinNearX + nx * (half + proj.radius + 2);
       proj.y = this.pinNearY + ny * (half + proj.radius + 2);
+      this.deflectTelemetry.arm[p.slot]++;
       this.emit(EV.DEFLECT, p.slot, proj.x, proj.y, proj.deflects);
     }
 
@@ -5915,6 +6448,7 @@ export class World {
   /** Finish one body swat: start the cooldown and stamp a deflect flash on the paddle. */
   private swatPinballArm(p: Player): void {
     p.armHitCd = PINBALL.armHitCooldown;
+    this.deflectTelemetry.arm[p.slot]++;
     this.emit(EV.DEFLECT, p.slot, p.armX, p.armY, 1);
   }
 
@@ -6185,7 +6719,7 @@ export class World {
   }
 
   /**
-   * Atomize's skill: three blue balls take up an orbit around the body. They have no
+   * Atomize's skill: two blue balls take up an orbit around the body. They have no
    * timer; each one is spent either on the first hostile it touches or on the first
    * full hit the avatar takes. The mark is the same in the arena and the readiness dock.
    */
@@ -6309,6 +6843,7 @@ export class World {
   private consumeAtomBall(p: Player): void {
     p.atomBalls = Math.max(0, p.atomBalls - 1);
     p.atomFlashT = ATOMIZE.ballBlockFlash;
+    this.deflectTelemetry.atom[p.slot]++;
     this.emit(EV.DEFLECT, p.slot, p.x, p.y, 2);
   }
 
@@ -6736,8 +7271,20 @@ export class World {
     this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
   }
 
-  /** Drops a timed proximity mine at the player's feet. No throw, no travel. */
+  /** Drops a persistent trap mine at the player's feet. No throw, no travel. */
   private plantMine(p: Player): void {
+    // Mines now last until triggered, so cap the owner's live traps. The oldest one
+    // retires when a fourth is planted, keeping the shared projectile pool finite.
+    let owned = 0;
+    let oldest: Projectile | null = null;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const other = this.projectiles[i];
+      if (!other.active || other.type !== 1 || other.owner !== p.slot) continue;
+      owned++;
+      if (!oldest || other.serial < oldest.serial) oldest = other;
+    }
+    if (owned >= MINE.maxActive && oldest) oldest.active = false;
+
     let proj: Projectile | null = null;
     for (let i = 0; i < this.projectiles.length; i++) {
       if (!this.projectiles[i].active) {
@@ -6761,7 +7308,8 @@ export class World {
     proj.damage = MINE.blastDamage;
     proj.deflects = 0;
     proj.bounces = 0;
-    proj.fuse = MINE.life;
+    // No fuse: the mine arms and then waits until a hostile steps into it.
+    proj.fuse = 0;
     proj.grace = MINE.armTime;
     proj.armed = false;
     proj.homing = false;
@@ -6958,12 +7506,14 @@ export class World {
       proj.owner = p.slot;
       proj.deflects++;
       proj.damage = (BOLT.damage + proj.deflects) * whipMult;
+      proj.fuse = BOLT.reflectTtl;
       proj.bounces = 0;
       proj.armed = false;
       proj.grace = 0;
       p.swingHit = true;
       p.guardT = Math.max(0, p.guardT - PLAYER.guardReflectCost);
       if (p.guardT === 0) p.guardCd = PLAYER.guardCooldown;
+      this.deflectTelemetry.guard[p.slot]++;
       this.emit(EV.DEFLECT, p.slot, proj.x, proj.y, proj.deflects);
     }
   }
@@ -7016,10 +7566,12 @@ export class World {
       proj.owner = p.slot;
       proj.deflects++;
       proj.damage = (BOLT.damage + proj.deflects) * whipMult;
+      proj.fuse = BOLT.reflectTtl;
 
       proj.bounces = 0;
       proj.armed = false;
       proj.grace = 0;
+      this.deflectTelemetry.swing[p.slot]++;
       this.emit(EV.DEFLECT, p.slot, proj.x, proj.y, proj.deflects);
       this.markSwingHit(p);
       return;
@@ -7049,19 +7601,14 @@ export class World {
           : dt;
 
       if (proj.type === 1) {
-        // Mines never travel. They arm, wait for a hostile in range, then detonate
-        // on a timer if nothing walks into them.
+        // Mines never travel. They arm and then wait until a hostile steps in; there
+        // is no timed detonation. The owner's live count is capped in plantMine.
         if (proj.grace > 0) {
           proj.grace = Math.max(0, proj.grace - dt);
           if (proj.grace === 0) proj.armed = true;
           continue;
         }
-        proj.fuse -= dt;
-        if (this.mineTriggered(proj)) {
-          this.explodeMine(proj, proj.owner);
-          continue;
-        }
-        if (proj.fuse <= 0) this.explodeMine(proj, proj.owner);
+        if (this.mineTriggered(proj)) this.explodeMine(proj, proj.owner);
         continue;
       }
 
@@ -7123,6 +7670,14 @@ export class World {
           if (!proj.active) break;
           this.bounceBarriers(proj);
           if (!proj.active) break;
+          if (this.keypadCoverAt(proj.x, proj.y, proj.radius)) {
+            this.detonateBomb(proj);
+            break;
+          }
+          if (this.browserCoverAt(proj.x, proj.y, proj.radius)) {
+            this.detonateBomb(proj);
+            break;
+          }
           this.netBlocksProjectile(proj);
           if (this.wallBlocksProjectile(proj)) break;
           if (this.bombTouchesBody(proj)) break;
@@ -7185,6 +7740,8 @@ export class World {
         if (!proj.active) break;
         this.bounceBarriers(proj);
         if (!proj.active) break;
+        if (this.keypadStopsProjectile(proj)) break;
+        if (this.browserStopsProjectile(proj)) break;
         if (this.netBlocksProjectile(proj)) break;
         if (this.wallBlocksProjectile(proj)) break;
         if (this.projectileHits(proj)) break;
@@ -8165,6 +8722,7 @@ export class World {
       p.atomFlashT = ATOMIZE.ballBlockFlash;
       p.kx += dirX * force * 0.25;
       p.ky += dirY * force * 0.25;
+      this.deflectTelemetry.atom[p.slot]++;
       this.emit(EV.DEFLECT, p.slot, p.x, p.y, 2);
       return;
     }
@@ -8301,8 +8859,563 @@ export class World {
     this.emit(EV.RESPAWN, p.slot, sx, sy, 0);
   }
 
+  /** Recompute each key from the shared clock. Allocation-free. */
+  private refreshKeypadStates(): void {
+    const kp = this.keypad;
+    if (!kp) return;
+    for (let i = 0; i < kp.keys.length; i++) this.keypadStates[i] = keypadKeyState(kp, i, this.keypadT);
+  }
+
+  private resetBrowser(): void {
+    const b = this.browser;
+    if (!b) return;
+    this.browserPage = 0;
+    this.browserT = 0;
+    this.browserPhase = BROWSER_STATE.dwell;
+    this.browserClickDone = false;
+    this.browserClickT = 0;
+    this.browserSolids = b.pages.length > 0 ? b.pages[0].elements : [];
+    browserCursorAt(b, this.browserPage, this.browserT, this.browserCursor);
+    this.browserCursorX = this.browserCursor.x;
+    this.browserCursorY = this.browserCursor.y;
+  }
+
+  private advanceBrowserPage(): void {
+    const b = this.browser;
+    if (!b || b.pages.length === 0) return;
+    this.browserPage = (this.browserPage + 1) % b.pages.length;
+    const page = b.pages[this.browserPage];
+    this.browserSolids = page.elements;
+    this.browserT = 0;
+    this.browserPhase = BROWSER_STATE.dwell;
+    this.browserClickDone = false;
+    this.browserClickT = 0;
+    browserCursorAt(b, this.browserPage, this.browserT, this.browserCursor);
+    this.browserCursorX = this.browserCursor.x;
+    this.browserCursorY = this.browserCursor.y;
+  }
+
+  private tickBrowser(dt: number): void {
+    const b = this.browser;
+    if (!b || b.pages.length === 0) return;
+    this.browserT += dt;
+    const cycle = browserCycle();
+    let wrapped = false;
+    while (this.browserT >= cycle) {
+      this.browserT -= cycle;
+      wrapped = true;
+    }
+    if (wrapped) this.advanceBrowserPage();
+
+    const phase = browserPhaseAt(this.browserT);
+    if (phase !== this.browserPhase) {
+      this.browserPhase = phase;
+      if (phase === BROWSER_STATE.slam && !this.browserClickDone) {
+        this.browserClickDone = true;
+        this.browserClickT = BROWSER.slam;
+        this.burnBrowserClick();
+      }
+    }
+    this.updateBrowserCursor();
+    if (this.browserClickT > 0) this.browserClickT = Math.max(0, this.browserClickT - dt);
+  }
+
+  /** The cursor idles over the page, then travels to the link for its click. */
+  private updateBrowserCursor(): void {
+    const b = this.browser;
+    if (!b || b.pages.length === 0) return;
+    browserCursorAt(b, this.browserPage, this.browserT, this.browserCursor);
+    this.browserCursorX = this.browserCursor.x;
+    this.browserCursorY = this.browserCursor.y;
+  }
+
+  /** One click per page. A dash or cloak clears the slam just like every other hazard. */
+  private burnBrowserClick(): void {
+    const b = this.browser;
+    if (!b || b.pages.length === 0) return;
+    const link = b.pages[this.browserPage].link;
+    const cx = link.x + link.w * 0.5;
+    const cy = link.y + link.h * 0.5;
+    const r = BROWSER.clickRadius;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.dashT > 0 || phased(p)) continue;
+      const dx = p.x - cx;
+      const dy = p.y - cy;
+      const d = Math.hypot(dx, dy);
+      if (d > r + PLAYER.radius * p.shrink) continue;
+      this.damagePlayer(p, BROWSER.clickDamage, -1, dx / (d || 1), dy / (d || 1), BROWSER.knockback, SRC.BROWSER, -1);
+    }
+    if (this.mode === 'training' && this.drone.active) {
+      if (Math.hypot(this.drone.x - cx, this.drone.y - cy) <= r + this.drone.radius) {
+        this.damageDrone(BROWSER.enemyDamage, -1);
+      }
+    }
+    if (this.mode !== 'gauntlet') return;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active && Math.hypot(s.x - cx, s.y - cy) <= r + s.radius) {
+        this.damageSentry(s, BROWSER.enemyDamage, -1, 0, 0);
+      }
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (v.active && Math.hypot(v.x - cx, v.y - cy) <= r + v.radius) {
+        this.damageVirus(v, BROWSER.enemyDamage, -1, 0, 0);
+      }
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      if (Math.hypot(e.x - cx, e.y - cy) <= r + CASCADING_ERROR.blockSize * 0.5) {
+        this.damageError(e, BROWSER.enemyDamage, -1, 0, 0);
+      }
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      let hit = Math.hypot(w.x - cx, w.y - cy) <= r + WORM.headRadius;
+      for (let s = 0; s < w.segCount && !hit; s++) {
+        hit = Math.hypot(w.segX[s] - cx, w.segY[s] - cy) <= r + WORM.segmentRadius;
+      }
+      if (hit) this.damageWorm(w, BROWSER.enemyDamage, -1, 0, 0);
+    }
+  }
+
+  private browserCoverAt(x: number, y: number, radius: number): boolean {
+    for (let i = 0; i < this.browserSolids.length; i++) {
+      if (circleRect(x, y, radius, this.browserSolids[i], hitScratch)) return true;
+    }
+    return false;
+  }
+
+  private resolveBrowserPlayer(p: Player): void {
+    if (!this.browser || p.dashT > 0) return;
+    const radius = PLAYER.radius * p.shrink;
+    for (let i = 0; i < this.browserSolids.length; i++) {
+      if (!circleRect(p.x, p.y, radius, this.browserSolids[i], hitScratch)) continue;
+      p.x = hitScratch.px;
+      p.y = hitScratch.py;
+      const vn = p.vx * hitScratch.nx + p.vy * hitScratch.ny;
+      if (vn < 0) {
+        p.vx -= vn * hitScratch.nx;
+        p.vy -= vn * hitScratch.ny;
+      }
+    }
+  }
+
+  private pushBodyOutOfBrowser(body: { x: number; y: number }, radius: number): void {
+    if (!this.browser) return;
+    for (let i = 0; i < this.browserSolids.length; i++) {
+      if (!circleRect(body.x, body.y, radius, this.browserSolids[i], hitScratch)) continue;
+      body.x = hitScratch.px;
+      body.y = hitScratch.py;
+    }
+  }
+
+  private pushThreatsOffBrowser(): void {
+    if (!this.browser) return;
+    if (this.mode === 'training' && this.drone.active) this.pushBodyOutOfBrowser(this.drone, this.drone.radius);
+    for (let i = 0; i < this.sentries.length; i++) {
+      if (this.sentries[i].active) this.pushBodyOutOfBrowser(this.sentries[i], this.sentries[i].radius);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      if (this.viruses[i].active) this.pushBodyOutOfBrowser(this.viruses[i], this.viruses[i].radius);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      if (this.errors[i].active) this.pushBodyOutOfBrowser(this.errors[i], CASCADING_ERROR.blockSize * 0.5);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      this.pushBodyOutOfBrowser(w, WORM.headRadius);
+      for (let s = 0; s < w.segCount; s++) {
+        const body = this.browserBodyScratch;
+        body.x = w.segX[s];
+        body.y = w.segY[s];
+        this.pushBodyOutOfBrowser(body, WORM.segmentRadius);
+        w.segX[s] = body.x;
+        w.segY[s] = body.y;
+      }
+    }
+  }
+
+  private browserStopsProjectile(proj: Projectile): boolean {
+    if (!this.browserCoverAt(proj.x, proj.y, proj.radius)) return false;
+    proj.active = false;
+    this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
+    return true;
+  }
+
+  private browserRayReach(ox: number, oy: number, dx: number, dy: number, max: number): number {
+    if (!this.browser) return max;
+    let best = max;
+    for (let i = 0; i < this.browserSolids.length; i++) {
+      const r = this.browserSolids[i];
+      let tmin = 0;
+      let tmax = best;
+      if (Math.abs(dx) < 1e-6) {
+        if (ox < r.x || ox > r.x + r.w) continue;
+      } else {
+        let t1 = (r.x - ox) / dx;
+        let t2 = (r.x + r.w - ox) / dx;
+        if (t1 > t2) {
+          const tmp = t1;
+          t1 = t2;
+          t2 = tmp;
+        }
+        if (t1 > tmin) tmin = t1;
+        if (t2 < tmax) tmax = t2;
+        if (tmin > tmax) continue;
+      }
+      if (Math.abs(dy) < 1e-6) {
+        if (oy < r.y || oy > r.y + r.h) continue;
+      } else {
+        let t1 = (r.y - oy) / dy;
+        let t2 = (r.y + r.h - oy) / dy;
+        if (t1 > t2) {
+          const tmp = t1;
+          t1 = t2;
+          t2 = tmp;
+        }
+        if (t1 > tmin) tmin = t1;
+        if (t2 < tmax) tmax = t2;
+        if (tmin > tmax) continue;
+      }
+      if (tmin >= 0 && tmin < best) best = tmin;
+    }
+    return best;
+  }
+
+  private browserLineBlocked(x1: number, y1: number, x2: number, y2: number): boolean {
+    return this.browserRayReach(x1, y1, x2 - x1, y2 - y1, 1) < 1;
+  }
+
+  private resetKeypad(): void {
+    if (!this.keypad) return;
+    this.keypadT = 0;
+    this.refreshKeypadStates();
+    this.keypadPrevStates.set(this.keypadStates);
+  }
+
+  /** Advance the pad and resolve only the frame a key starts its downward slam. */
+  private tickKeypad(dt: number): void {
+    const kp = this.keypad;
+    if (!kp) return;
+    this.keypadPrevStates.set(this.keypadStates);
+    this.keypadT += dt;
+    for (let i = 0; i < kp.keys.length; i++) {
+      const next = keypadKeyState(kp, i, this.keypadT);
+      this.keypadStates[i] = next;
+      if (next === KEYPAD_STATE.slam && this.keypadPrevStates[i] !== KEYPAD_STATE.slam) {
+        this.crushUnderKey(i);
+      }
+    }
+  }
+
+  private resetScanner(): void {
+    this.scannerT = 0;
+    this.scannerPage = 0;
+    this.scannerPhase = SCANNER_STATE.load;
+    this.clearScannerHits();
+  }
+
+  private clearScannerHits(): void {
+    this.scannerHitPlayers = 0;
+    this.scannerHitWorms = 0;
+    this.scannerHitViruses = 0;
+    this.scannerHitSentries = 0;
+    this.scannerHitErrors = 0;
+    this.scannerHitDrone = false;
+  }
+
+  /** Advance the document cycle, then resolve the read line against live bodies. */
+  private tickScanner(dt: number): void {
+    const sc = this.scanner;
+    if (!sc) return;
+    const cycle = scannerCycle();
+    this.scannerT += dt;
+    let wrapped = false;
+    while (this.scannerT >= cycle) {
+      this.scannerT -= cycle;
+      wrapped = true;
+    }
+    if (wrapped) {
+      const pages = Math.max(1, sc.documents.length);
+      this.scannerPage = (this.scannerPage + 1) % pages;
+      this.clearScannerHits();
+    }
+    const phase = scannerPhaseAt(this.scannerT);
+    if (phase !== this.scannerPhase) {
+      this.scannerPhase = phase;
+      if (phase === SCANNER_STATE.down || phase === SCANNER_STATE.up) this.clearScannerHits();
+    }
+    this.burnScanner();
+  }
+
+  private scannerHits(
+    x: number,
+    y: number,
+    radius: number,
+    sc: ArenaScannerDef,
+    line: number,
+    half: number,
+  ): boolean {
+    if (x < sc.x - radius || x > sc.x + sc.w + radius) return false;
+    return Math.abs(y - line) <= half + radius;
+  }
+
+  /**
+   * One damage tick per pass per body. The line is thin and moving, so a standing
+   * body is caught once; a dodge reads as a hop because the dash is airborne.
+   */
+  private burnScanner(): void {
+    const sc = this.scanner;
+    if (!sc) return;
+    const line = scannerLaserY(sc, this.scannerT);
+    if (line < 0) return;
+    const half = SCANNER.width * 0.5;
+    const dirY = this.scannerPhase === SCANNER_STATE.up ? -1 : 1;
+
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.dashT > 0 || phased(p)) continue;
+      const bit = 1 << p.slot;
+      if (this.scannerHitPlayers & bit) continue;
+      if (!this.scannerHits(p.x, p.y, PLAYER.radius * p.shrink, sc, line, half)) continue;
+      this.scannerHitPlayers |= bit;
+      this.damagePlayer(p, SCANNER.damage, -1, 0, dirY, SCANNER.knockback, SRC.SCANNER, -1);
+    }
+
+    if (this.mode === 'training' && this.drone.active && !this.scannerHitDrone) {
+      if (this.scannerHits(this.drone.x, this.drone.y, this.drone.radius, sc, line, half)) {
+        this.scannerHitDrone = true;
+        this.damageDrone(SCANNER.enemyDamage, -1);
+      }
+    }
+    if (this.mode !== 'gauntlet') return;
+
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const bit = 1 << i;
+      if (this.scannerHitWorms & bit) continue;
+      let hit = this.scannerHits(w.x, w.y, WORM.headRadius, sc, line, half);
+      for (let s = 0; s < w.segCount && !hit; s++) {
+        hit = this.scannerHits(w.segX[s], w.segY[s], WORM.segmentRadius, sc, line, half);
+      }
+      if (!hit) continue;
+      this.scannerHitWorms |= bit;
+      this.damageWorm(w, SCANNER.enemyDamage, -1, 0, dirY);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const bit = 1 << i;
+      if (this.scannerHitViruses & bit) continue;
+      if (!this.scannerHits(v.x, v.y, v.radius, sc, line, half)) continue;
+      this.scannerHitViruses |= bit;
+      this.damageVirus(v, SCANNER.enemyDamage, -1, 0, dirY);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const bit = 1 << i;
+      if (this.scannerHitSentries & bit) continue;
+      if (!this.scannerHits(s.x, s.y, s.radius, sc, line, half)) continue;
+      this.scannerHitSentries |= bit;
+      this.damageSentry(s, SCANNER.enemyDamage, -1, 0, dirY);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const bit = 1 << i;
+      if (this.scannerHitErrors & bit) continue;
+      if (!this.scannerHits(e.x, e.y, CASCADING_ERROR.blockSize * 0.5, sc, line, half)) continue;
+      this.scannerHitErrors |= bit;
+      this.damageError(e, SCANNER.enemyDamage, -1, 0, dirY);
+    }
+  }
+
+  private keypadStateSolid(state: number): boolean {
+    return state === KEYPAD_STATE.slam || state === KEYPAD_STATE.down || state === KEYPAD_STATE.rise;
+  }
+
+  /** A key cap is harmless in the air, then deletes whatever is under it on the slam. */
+  private crushUnderKey(index: number): void {
+    const kp = this.keypad;
+    if (!kp) return;
+    const key = kp.keys[index];
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive) continue;
+      if (!circleRect(p.x, p.y, PLAYER.radius * p.shrink, key, hitScratch)) continue;
+      this.damagePlayer(p, KEYPAD.playerDamage, -1, 0, -1, KEYPAD.knockback, SRC.KEYPAD, index);
+    }
+    if (this.mode === 'training' && this.drone.active && circleRect(this.drone.x, this.drone.y, this.drone.radius, key, hitScratch)) {
+      this.damageDrone(KEYPAD.threatDamage, -1);
+    }
+    if (this.mode !== 'gauntlet') return;
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active && circleRect(s.x, s.y, s.radius, key, hitScratch)) {
+        this.damageSentry(s, KEYPAD.threatDamage, -1, 0, -1);
+      }
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (v.active && circleRect(v.x, v.y, v.radius, key, hitScratch)) {
+        this.damageVirus(v, KEYPAD.threatDamage, -1, 0, -1);
+      }
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      if (circleRect(e.x, e.y, CASCADING_ERROR.blockSize * 0.5, key, hitScratch)) {
+        this.damageError(e, KEYPAD.threatDamage, -1, 0, -1);
+      }
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      let hit = circleRect(w.x, w.y, WORM.headRadius, key, hitScratch);
+      for (let s = 0; s < w.segCount && !hit; s++) {
+        hit = circleRect(w.segX[s], w.segY[s], WORM.segmentRadius, key, hitScratch);
+      }
+      if (hit) this.damageWorm(w, KEYPAD.threatDamage, -1, 0, -1);
+    }
+  }
+
+  /** Push a body out of the solid footprint of a down key. */
+  private pushBodyOutOfKeypad(body: { x: number; y: number }, radius: number): void {
+    const kp = this.keypad;
+    if (!kp) return;
+    for (let i = 0; i < kp.keys.length; i++) {
+      if (!this.keypadStateSolid(this.keypadStates[i])) continue;
+      if (!circleRect(body.x, body.y, radius, kp.keys[i], hitScratch)) continue;
+      body.x = hitScratch.px;
+      body.y = hitScratch.py;
+    }
+  }
+
+  /** The player cannot stand inside a key that is already down; a dash still phases it. */
+  private resolveKeypadPlayer(p: Player): void {
+    const kp = this.keypad;
+    if (!kp || p.dashT > 0) return;
+    const radius = PLAYER.radius * p.shrink;
+    for (let i = 0; i < kp.keys.length; i++) {
+      if (!this.keypadStateSolid(this.keypadStates[i])) continue;
+      if (!circleRect(p.x, p.y, radius, kp.keys[i], hitScratch)) continue;
+      p.x = hitScratch.px;
+      p.y = hitScratch.py;
+      const vn = p.vx * hitScratch.nx + p.vy * hitScratch.ny;
+      if (vn < 0) {
+        p.vx -= vn * hitScratch.nx;
+        p.vy -= vn * hitScratch.ny;
+      }
+    }
+  }
+
+  /** Down caps are cover for threats too, unless they were already crushed on the slam. */
+  private pushThreatsOffKeypad(): void {
+    const kp = this.keypad;
+    if (!kp) return;
+    if (this.mode === 'training' && this.drone.active) this.pushBodyOutOfKeypad(this.drone, this.drone.radius);
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active) this.pushBodyOutOfKeypad(s, s.radius);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (v.active) this.pushBodyOutOfKeypad(v, v.radius);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (e.active) this.pushBodyOutOfKeypad(e, CASCADING_ERROR.blockSize * 0.5);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      this.pushBodyOutOfKeypad(w, WORM.headRadius);
+      for (let s = 0; s < w.segCount; s++) {
+        const body = this.keypadBodyScratch;
+        body.x = w.segX[s];
+        body.y = w.segY[s];
+        this.pushBodyOutOfKeypad(body, WORM.segmentRadius);
+        w.segX[s] = body.x;
+        w.segY[s] = body.y;
+      }
+    }
+  }
+
+  /** True while a shot or bomb is inside a cap that is currently solid cover. */
+  private keypadCoverAt(x: number, y: number, radius: number): boolean {
+    const kp = this.keypad;
+    if (!kp) return false;
+    for (let i = 0; i < kp.keys.length; i++) {
+      if (!this.keypadStateSolid(this.keypadStates[i])) continue;
+      if (circleRect(x, y, radius, kp.keys[i], hitScratch)) return true;
+    }
+    return false;
+  }
+
+  private keypadStopsProjectile(proj: Projectile): boolean {
+    if (!this.keypadCoverAt(proj.x, proj.y, proj.radius)) return false;
+    proj.active = false;
+    this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
+    return true;
+  }
+
+  /** Ray distance to the first solid key cap. Used by beams and line-of-sight tests. */
+  private keypadRayReach(ox: number, oy: number, dx: number, dy: number, max: number): number {
+    const kp = this.keypad;
+    if (!kp) return max;
+    let best = max;
+    for (let i = 0; i < kp.keys.length; i++) {
+      if (!this.keypadStateSolid(this.keypadStates[i])) continue;
+      const r = kp.keys[i];
+      let tmin = 0;
+      let tmax = best;
+      if (Math.abs(dx) < 1e-6) {
+        if (ox < r.x || ox > r.x + r.w) continue;
+      } else {
+        let t1 = (r.x - ox) / dx;
+        let t2 = (r.x + r.w - ox) / dx;
+        if (t1 > t2) {
+          const tmp = t1;
+          t1 = t2;
+          t2 = tmp;
+        }
+        if (t1 > tmin) tmin = t1;
+        if (t2 < tmax) tmax = t2;
+        if (tmin > tmax) continue;
+      }
+      if (Math.abs(dy) < 1e-6) {
+        if (oy < r.y || oy > r.y + r.h) continue;
+      } else {
+        let t1 = (r.y - oy) / dy;
+        let t2 = (r.y + r.h - oy) / dy;
+        if (t1 > t2) {
+          const tmp = t1;
+          t1 = t2;
+          t2 = tmp;
+        }
+        if (t1 > tmin) tmin = t1;
+        if (t2 < tmax) tmax = t2;
+        if (tmin > tmax) continue;
+      }
+      if (tmin >= 0 && tmin < best) best = tmin;
+    }
+    return best;
+  }
+
+  private keypadLineBlocked(x1: number, y1: number, x2: number, y2: number): boolean {
+    return this.keypadRayReach(x1, y1, x2 - x1, y2 - y1, 1) < 1;
+  }
+
   /** True when a pillar intersects the line between two points. Used by blast cover. */
   private lineBlocked(x1: number, y1: number, x2: number, y2: number): boolean {
+    if (this.browser && this.browserLineBlocked(x1, y1, x2, y2)) return true;
     const dx = x2 - x1;
     const dy = y2 - y1;
     for (let i = 0; i < this.arena.pillars.length; i++) {
@@ -8339,6 +9452,7 @@ export class World {
       }
       return true;
     }
+    if (this.keypadLineBlocked(x1, y1, x2, y2)) return true;
     return false;
   }
 
@@ -10980,7 +12094,7 @@ export class World {
     return best;
   }
 
-  private spawnWorm(): void {
+  private spawnWorm(x?: number, y?: number): void {
     let w: Worm | null = null;
     for (let i = 0; i < this.worms.length; i++) {
       if (!this.worms[i].active) {
@@ -10989,7 +12103,7 @@ export class World {
       }
     }
     if (!w) return;
-    const spawn = this.arena.spawns[this.wormAnchorIndex()];
+    const spawn = x !== undefined && y !== undefined ? { x, y } : this.arena.spawns[this.wormAnchorIndex()];
     w.active = true;
     w.x = spawn.x;
     w.y = spawn.y;

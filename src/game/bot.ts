@@ -1,7 +1,7 @@
-import { AIMBOT, ATOMIZE, BOLT, BUG, COMPRESS, COPYPASTA, FISHER, GHOST, KABOOM, PINBALL, PLAYER, TOXIC, WEDGE, type Rect } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BUFFER, BUG, COMPRESS, COPYPASTA, EMITTER, FISHER, GHOST, KABOOM, PINBALL, PLAYER, SIM_DT, TOXIC, WEDGE, type Rect } from './config';
 import { PROGRAM_ID } from './programs';
 import { POWERUP_KIND } from './powerups';
-import { arenaSolids, discCenterX, discCenterY, discHoleX, discHoleY, type ArenaDef } from './arenas';
+import { arenaSolids, discCenterX, discCenterY, discHoleX, discHoleY, KEYPAD_STATE, type ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
 import { Rng } from './rng';
 import { arenaNav, NAV_MAX_PATH } from './nav';
@@ -664,14 +664,18 @@ export class BotBrain {
         ? COPYPASTA.shotSpeed
         : me.program === PROGRAM_ID.AIMBOT
           ? AIMBOT.shotSpeed
-          : BOLT.speed) * BOLT.enemySpeedMult;
+          : me.program === PROGRAM_ID.BUFFER
+            ? BUFFER.shotSpeed
+            : BOLT.speed) * BOLT.enemySpeedMult;
     const boltRange = me.program === PROGRAM_ID.PINBALL
       ? boltSpeed * PINBALL.shotTtl
       : me.program === PROGRAM_ID.COPYPASTA
         ? boltSpeed * COPYPASTA.shotTtl
         : me.program === PROGRAM_ID.AIMBOT
           ? AIMBOT.volleyRange
-          : boltSpeed * BOLT.ttl;
+          : me.program === PROGRAM_ID.BUFFER
+            ? boltSpeed * BUFFER.shotTtl
+            : boltSpeed * BOLT.ttl;
     // Keep every style inside the distance its slowed shot can actually reach.
     // The siege style used to hold at 355 while its bolt died at ~310.
     // Wedge wants to be closer for the bracket and plow; Fisher's spear reaches farther.
@@ -915,26 +919,18 @@ export class BotBrain {
       if (d > 30) {
         let mx = (dx / d) * 0.55;
         let my = (dy / d) * 0.55;
-        // The idle drift never reaches avoidFurniture, so a moving hole could swallow
-        // the pilot before the first pack lands. Steer off the nearest rims here.
-        const disc = world.arena.disc;
-        if (disc) {
-          for (let i = 0; i < disc.holes.length; i++) {
-            const hx = discHoleX(world.arena, i, world.discT);
-            const hy = discHoleY(world.arena, i, world.discT);
-            const ax = me.x - hx;
-            const ay = me.y - hy;
-            const ad = Math.hypot(ax, ay) || 1;
-            const reach = disc.holes[i].radius + 96;
-            if (ad >= reach) continue;
-            mx += (ax / ad) * ((reach - ad) / 20);
-            my += (ay / ad) * ((reach - ad) / 20);
-          }
-          const m = Math.hypot(mx, my);
-          if (m > 1) {
-            mx /= m;
-            my /= m;
-          }
+        // The idle drift used to bypass avoidFurniture, so a hole or an emitter lane
+        // could swallow the pilot before the first pack landed. Route its steering
+        // through the same hazard layer as the chase.
+        this.steerX = mx;
+        this.steerY = my;
+        this.avoidFurniture(me, mx, my, world);
+        mx = this.steerX;
+        my = this.steerY;
+        const m = Math.hypot(mx, my);
+        if (m > 1) {
+          mx /= m;
+          my /= m;
         }
         out.mx = mx;
         out.my = my;
@@ -953,6 +949,48 @@ export class BotBrain {
     // Lock holds facing on the hostile, so the pilot can orbit and keep shooting
     // instead of stepping in to aim and backing out again. Cover still stops the shot.
     if (!blocked) out.held |= ACTION.LOCK;
+
+    // The attract demo runs this gauntlet pilot with no human opponent, so it needs
+    // its own power-attack branch. Without it, Wedge's plow and every other heavy are
+    // absent from the kiosk loop even though the duel pilot can use them. Commit when
+    // the target is inside a plow lane; the program owns the charge and active shape.
+    // A heavy roots the body, so never hold it under the compactor: that branch turned
+    // the Recycling Bin into a wave-1 wipe when every pilot rooted into the arm.
+    if (this.heavyHold > 0) {
+      if (world.pusherActive || world.pusherWarnT > 0) {
+        this.heavyHold = 0;
+      } else {
+        this.heavyHold -= SIM_DT;
+        out.mx = ux * 0.5;
+        out.my = uy * 0.5;
+        out.held |= ACTION.CANDLE;
+        return true;
+      }
+    }
+    if (
+      this.heavyCd <= 0 &&
+      !blocked &&
+      !world.pusherActive &&
+      world.pusherWarnT <= 0 &&
+      me.laserCd <= 0 &&
+      me.laserT <= 0 &&
+      me.wedgeT <= 0 &&
+      me.waveT <= 0 &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.energy >= 50 &&
+      dist > 110 &&
+      dist < 440
+    ) {
+      out.mx = ux * 0.5;
+      out.my = uy * 0.5;
+      out.pressed |= ACTION.CANDLE;
+      out.held |= ACTION.CANDLE;
+      this.heavyCount++;
+      this.heavyHold = me.program === PROGRAM_ID.FISHER ? 2.6 : 1.4;
+      this.heavyCd = this.rng.range(11, 17);
+      return true;
+    }
 
     // Overcharge turns ranged fire into a held beam. A one-frame tap barely shows, so
     // hold the button for a burst and strafe the line across the target.
@@ -1492,6 +1530,32 @@ export class BotBrain {
       }
     }
 
+    // Emitter lanes are readable before they fire. Step out of the corridor instead of
+    // standing in the crossing while the gather ring completes.
+    if (world.emitters.length > 0) {
+      for (let i = 0; i < world.emitters.length; i++) {
+        const e = world.emitters[i];
+        if (e.phase === 0) continue;
+        const ax = Math.cos(e.angle);
+        const ay = Math.sin(e.angle);
+        const dx = me.x - e.x;
+        const dy = me.y - e.y;
+        const forward = dx * ax + dy * ay;
+        const reach = e.phase === 2 ? e.beamDist : EMITTER.range;
+        if (forward < -PLAYER.radius || forward > reach + 40) continue;
+        const lateral = dx * ay - dy * ax;
+        const clearance = EMITTER.halfWidth + PLAYER.radius + 138;
+        if (Math.abs(lateral) > clearance) continue;
+        // Move away from the beam line, not toward it. `lateral` is the signed
+        // cross product; its sign is the side of the lane the body is on. Give the
+        // fighter enough lead time to clear the corridor while the lens gathers.
+        const side = lateral >= 0 ? 1 : -1;
+        const urgency = e.phase === 2 ? 3 : 1.4 + e.charge * 2;
+        sx += ay * side * urgency;
+        sy += -ax * side * urgency;
+      }
+    }
+
     // Round furniture is not in the grid, so add a soft radial steer. A kicker gets a
     // wider berth than a passive post because its launch is stronger than a wall slide.
     if (arena.bumpers) {
@@ -1503,6 +1567,57 @@ export class BotBrain {
         const reach = b.radius + PLAYER.radius + (b.kind === 1 ? 76 : 48);
         if (d >= reach) continue;
         const push = (reach - d) / 20;
+        sx += (dx / d) * push;
+        sy += (dy / d) * push;
+      }
+    }
+
+    // A keypad cap is a moving wall. The grid cannot know which cap is down, so the
+    // pilot steers around the current state; warnings get a wider berth because the
+    // slam is lethal and the key is not yet solid.
+    const keypad = world.keypad;
+    if (keypad) {
+      for (let i = 0; i < keypad.keys.length; i++) {
+        const k = keypad.keys[i];
+        const ks = world.keypadStates[i];
+        if (
+          ks !== KEYPAD_STATE.warn &&
+          ks !== KEYPAD_STATE.slam &&
+          ks !== KEYPAD_STATE.down &&
+          ks !== KEYPAD_STATE.rise
+        ) {
+          continue;
+        }
+        const cx = k.x + k.w * 0.5;
+        const cy = k.y + k.h * 0.5;
+        const dx = me.x - cx;
+        const dy = me.y - cy;
+        const d = Math.hypot(dx, dy) || 1;
+        const reach = Math.max(k.w, k.h) * 0.5 + PLAYER.radius + (ks === KEYPAD_STATE.warn ? 78 : 26);
+        if (d >= reach) continue;
+        const push = ((reach - d) / 22) * (ks === KEYPAD_STATE.warn ? 1.5 : 1);
+        sx += (dx / d) * push;
+        sy += (dy / d) * push;
+      }
+    }
+
+    // Browser page cards swap with the current forum page, so the grid cannot represent
+    // them. Steer around the nearest point on each active card instead.
+    if (world.browser) {
+      for (let i = 0; i < world.browserSolids.length; i++) {
+        const r = world.browserSolids[i];
+        const nx = Math.max(r.x, Math.min(me.x, r.x + r.w));
+        const ny = Math.max(r.y, Math.min(me.y, r.y + r.h));
+        let dx = me.x - nx;
+        let dy = me.y - ny;
+        if (dx * dx + dy * dy < 0.01) {
+          dx = me.x - (r.x + r.w * 0.5);
+          dy = me.y - (r.y + r.h * 0.5);
+        }
+        const d = Math.hypot(dx, dy) || 1;
+        const reach = PLAYER.radius + 34;
+        if (d >= reach) continue;
+        const push = (reach - d) / 16;
         sx += (dx / d) * push;
         sy += (dy / d) * push;
       }

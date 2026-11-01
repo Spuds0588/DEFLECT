@@ -40,7 +40,7 @@
     "comboWindow": 0.62,
     "lockRange": 1600,
     "lockAcquire": 0.12,
-    "laserChargeTime": 0.63,
+    "laserChargeTime": 0.45,
     "heavyTapMax": 0.16,
     "laserDuration": 3,
     "laserCooldown": 5,
@@ -80,6 +80,7 @@
     "autoInterval": 0.1,
     "deflectMult": 1.4,
     "maxSpeed": 2800,
+    "reflectTtl": 30,
     "enemySpeedMult": 0.8,
     "spawnOffset": 26,
     "knockback": 680
@@ -96,7 +97,7 @@
       6,
       7,
       7.5,
-      10,
+      7.5,
       9,
       9,
       7,
@@ -121,10 +122,10 @@
     "radius": 9,
     "cost": 35,
     "armTime": 0.55,
-    "life": 2.8,
-    "triggerRadius": 52,
-    "blastRadius": 82,
-    "blastDamage": 1,
-    "knockback": 760
+    "maxActive": 3,
+    "triggerRadius": 64,
+    "blastRadius": 132,
+    "blastDamage": 1.25,
+    "knockback": 900
   }
 }

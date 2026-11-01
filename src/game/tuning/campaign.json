@@ -28,6 +28,7 @@
     "wakeBannerTime": 2.6,
     "wakeDelay": 6,
     "wakeRadius": 175,
+    "entryWait": 18,
     "wakeTime": 1.05,
     "layoutRadius": 300,
     "layoutLift": 58,

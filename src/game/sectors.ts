@@ -70,6 +70,7 @@ export interface SectorDef {
 const CROSSROADS = 0;
 const GRID_ZERO = 1;
 const RING = 2;
+const QUARANTINE = 14;
 const SWITCHBACK = 3;
 const MAINFRAME = 4;
 
@@ -90,7 +91,7 @@ export const SECTORS: readonly SectorDef[] = [
     entry: 'build-root',
     exit: 'modem',
     nodes: [
-      { id: 'build-root', label: 'BUILD ROOT', kind: 'entry', x: 140, y: 270, arenaId: CROSSROADS },
+      { id: 'build-root', label: 'BUILD ROOT', kind: 'entry', x: 140, y: 270, arenaId: QUARANTINE },
       { id: 'unit-test', label: 'UNIT TEST', kind: 'arena', x: 330, y: 108, arenaId: GRID_ZERO },
       { id: 'cache', label: 'DEP CACHE', kind: 'server', x: 330, y: 432, arenaId: SWITCHBACK },
       {
