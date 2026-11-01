@@ -546,17 +546,19 @@ export interface SnapshotHazards {
   /** Browser cycle clock and active forum page. */
   browserT: number;
   browserPage: number;
+  /** USB drive cycle clock, seconds. Drive positions carry no authority. */
+  usbT: number;
   /** [index, kind, x, y, w, h, hp, hitFlash, dropT] for each live file box. */
   props: number[][];
 }
 
 /**
- * Compact hazard block for the snapshot: six clocks/indices then live props. Empty
+ * Compact hazard block for the snapshot: seven clocks/indices then live props. Empty
  * fixtures are omitted entirely, so a quiet arena pays only one null.
  */
 export function buildSnapshotHazards(world: World): unknown[] | null {
   const arena = world.arena;
-  if (!arena.pushers && !arena.keypad && !arena.scanner && !arena.browser && world.props.length === 0) return null;
+  if (!arena.pushers && !arena.keypad && !arena.scanner && !arena.browser && !arena.usb && world.props.length === 0) return null;
   const props: number[][] = [];
   for (let i = 0; i < world.props.length; i++) {
     const b = world.props[i];
@@ -580,6 +582,7 @@ export function buildSnapshotHazards(world: World): unknown[] | null {
     world.scannerPage,
     round2(world.browserT),
     world.browserPage,
+    round2(world.usbT),
     props,
   ];
 }
@@ -798,8 +801,12 @@ export function parseSnapshot(data: unknown[]): Snapshot | null {
 function parseHazards(raw: unknown): SnapshotHazards | null {
   if (!Array.isArray(raw)) return null;
   const props: number[][] = [];
-  if (Array.isArray(raw[6])) {
-    for (const p of raw[6] as unknown[]) if (Array.isArray(p)) props.push(p as number[]);
+  // The pre-USB wire shape kept props at index 6. Accept that shape during a rolling
+  // reload, but new hosts always send the USB clock at 6 and props at 7.
+  const legacyProps = Array.isArray(raw[6]);
+  const propRaw = legacyProps ? raw[6] : raw[7];
+  if (Array.isArray(propRaw)) {
+    for (const p of propRaw as unknown[]) if (Array.isArray(p)) props.push(p as number[]);
   }
   return {
     pusherT: Number(raw[0]) || 0,
@@ -808,6 +815,7 @@ function parseHazards(raw: unknown): SnapshotHazards | null {
     scannerPage: Number(raw[3]) | 0,
     browserT: Number(raw[4]) || 0,
     browserPage: Number(raw[5]) | 0,
+    usbT: legacyProps ? 0 : Number(raw[6]) || 0,
     props,
   };
 }
@@ -858,6 +866,7 @@ export class NetView {
   browserPhase = 0;
   browserCursorX = 0;
   browserCursorY = 0;
+  usbT = 0;
   browserClickT = 0;
   private readonly pusherPhase: PusherPhase = { warnT: 0, y: 0, active: false, flashT: 0 };
   private readonly browserCursorPoint = { x: 0, y: 0 };
@@ -967,6 +976,7 @@ export class NetView {
     this.browserCursorX = 0;
     this.browserCursorY = 0;
     this.browserClickT = 0;
+    this.usbT = 0;
     for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
     this.snapCount = 0;
     this.snapWrite = 0;
@@ -1206,6 +1216,7 @@ export class NetView {
       this.browserCursorX = 0;
       this.browserCursorY = 0;
       this.browserClickT = 0;
+      this.usbT = 0;
       for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
       this.predictor.setHazards(0, 0, 0);
       return;
@@ -1255,6 +1266,7 @@ export class NetView {
       this.browserCursorY = this.browserCursorPoint.y;
     }
     this.browserClickT = browserClickAt(browserT);
+    this.usbT = h.usbT + age;
 
     for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
     for (let i = 0; i < h.props.length; i++) {
@@ -1332,8 +1344,10 @@ export class LocalPredictor {
   private authX = 0;
   private authY = 0;
   private authFacing = 0;
-  /** Static cover plus hazard cover, rebuilt from the newest snapshot. */
+  /** Static cover, floor gaps and hazard cover, rebuilt from the newest snapshot. */
   private readonly solids: Rect[] = [];
+  /** Cover and hazard cover only; a dash clears floor gaps but still stops on these. */
+  private readonly dashSolids: Rect[] = [];
   private readonly dynamicRects: Rect[] = Array.from({ length: 32 }, () => ({ x: 0, y: 0, w: 0, h: 0 }));
   private readonly pusherPhase: PusherPhase = { warnT: 0, y: 0, active: false, flashT: 0 };
   private pusherFront = 0;
@@ -1355,8 +1369,10 @@ export class LocalPredictor {
    */
   setHazards(pusherT: number, keypadT: number, browserPage: number): void {
     this.solids.length = 0;
+    this.dashSolids.length = 0;
     const statics = arenaSolids(this.arena);
     for (let i = 0; i < statics.length; i++) this.solids.push(statics[i]);
+    for (let i = 0; i < this.arena.pillars.length; i++) this.dashSolids.push(this.arena.pillars[i]);
     let d = 0;
 
     const kp = this.arena.keypad;
@@ -1371,6 +1387,7 @@ export class LocalPredictor {
         r.w = src.w;
         r.h = src.h;
         this.solids.push(r);
+        this.dashSolids.push(r);
       }
     }
 
@@ -1385,6 +1402,7 @@ export class LocalPredictor {
         r.w = src.w;
         r.h = src.h;
         this.solids.push(r);
+        this.dashSolids.push(r);
       }
     }
 
@@ -1539,7 +1557,16 @@ export class LocalPredictor {
     if (p.laserChargeHeld || p.laserT > 0) {
       p.facing = this.authFacing;
       p.laserFacing = this.authFacing;
-      stepPlayerMotion(p, 0, 0, dt, this.solids, this.arena.bounds, this.arena.walls === 'open');
+      stepPlayerMotion(
+        p,
+        0,
+        0,
+        dt,
+        this.solids,
+        this.arena.bounds,
+        this.arena.walls === 'open',
+        this.dashSolids,
+      );
       const adx = this.authX - p.x;
       const ady = this.authY - p.y;
       const ad2 = adx * adx + ady * ady;
@@ -1665,7 +1692,16 @@ export class LocalPredictor {
     }
     p.chargeHeld = heldSwing;
 
-    stepPlayerMotion(p, input.mx, input.my, dt, this.solids, this.arena.bounds, this.arena.walls === 'open');
+    stepPlayerMotion(
+      p,
+      input.mx,
+      input.my,
+      dt,
+      this.solids,
+      this.arena.bounds,
+      this.arena.walls === 'open',
+      this.dashSolids,
+    );
 
     if (moveSq <= 0.0025 && p.swingPhase === 0 && p.dashT <= 0) {
       p.facing = this.authFacing;

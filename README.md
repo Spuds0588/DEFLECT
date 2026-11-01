@@ -14,7 +14,7 @@ files, no game engine.
 Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, a
 timed infection clear, the first campaign node, and host/join rooms for up to eight players. VS BOTS and
 online versus can run a 1, 3 or 5 game series with random map rotation by default or a fixed custom arena.
-Thirteen programs, fifteen arenas. The alpha is deployed from `main` on every push.
+Thirteen programs, sixteen arenas. The alpha is deployed from `main` on every push.
 
 ## Tech stack
 
@@ -151,7 +151,7 @@ in the hot path. Particles and projectile trails are pooled ring buffers.
 
 Content is data, not branches:
 
-- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), bridges, breakable props, pipe fixtures, moving keypad caps, wall style and floor signature.
+- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), bridges, breakable props, pipe fixtures, moving keypad caps, USB drive geometry, wall style and floor signature.
 - `src/game/programs.ts` holds the roster identity and kit tuning; the four action jobs branch in `World`.
 - `src/game/tuning/*.json` holds all gameplay numbers, re-exported through the typed facade in
   `src/game/config.ts`, so most balance changes are a JSON edit with no code change.

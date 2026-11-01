@@ -2,7 +2,121 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-01 (v0.1.101 holding cell wave gate)
+Last updated: 2026-11-01 (USB HUB online state + longer reach)
+
+---
+
+## USB HUB arena (2026-11-01)
+
+- [x] Round 300-radius hub with four radial 420×240 drives, a shared dock/extend/out/retract cycle
+- [x] Real 230-unit gaps at full extension; a dash can cross during travel but not at full out; no outer wall
+- [x] Outward current on extension, inward current on retraction, plus drive-delta carry
+- [x] Hub/drive floor checks in `checkFall`, `offFloor` and player ride/current; threat shifts in gauntlet and infection
+- [x] Arena renderer and picker preview using the shared USB geometry helpers
+- [x] Local-only online filter; infection opening colony and opening sentry pack placed on real floor
+- [x] Bot dash landing checks and off-floor recovery steer
+- [x] Headless probe (`.tmp/usb-hub-check.ts`): dock/out geometry, gap, both currents, carry, dash crossing, fall
+- [x] `npx tsc --noEmit`, `npm run build` and `git diff --check` clean
+- [x] Headed training pass: walked onto a drive, rode the extension, checked full inward steering and the return current
+- [x] Tuned the cycle to hold out 3.3 s and extend/retract 1.15 s; kept the 95 u/s flow after the control test
+- [x] Increased extension to 300 for a 230-unit full-out gap; added the clock to `SnapshotHazards` and guest `NetView`
+- [x] `isOnlineArena` accepts USB HUB; host authority covers rides, currents and falls
+- [x] Headless guest check: `parseSnapshot` carries `usbT` through to `NetView`
+- [ ] Headed gauntlet/infection pass: threat ride/push readability and bot island use
+- [ ] Two-client playtest: verify drive sync, reconnect/rematch and a guest dash into the open gap
+
+---
+
+## Balance lab — INFECTION all-program sweep (2026-11-01)
+
+### Tested
+- [x] `.tmp/infection-balance.ts`: 585 headless runs per arm (13 programs × 3 non-damaging maps (GRID ZERO / SWITCHBACK / TRANSIT) × 3 styles × 5 seeds), DIGITAL bots, no friendly fire
+- [x] Skill arm: same 585 runs with a test-only on-cooldown Y tap while a virus is within 440 units
+- [x] PvP reference on the current build: 468 ordered 1v1 games and 260 four-player FFA rounds on CROSSROADS
+- [x] Headed Chromium: all 13 programs on GRID ZERO, one run each; normal boot for Probe/Wedge/Fisher/Sweep/Toxic/Aim Bot, live-page restart for the rest
+
+### Found
+- [x] Infection base: 70.4% clears; Compress 100%, Wedge/Kaboom 97.8%, Pinball 95.6%, Probe 93.3%, Toxic 91.1%, Sweep 84.4%, Bad Lag 82.2%, Ghost 80%, Atomize 42.2%, Copy Pasta 37.8%, Fisher 13.3%, Aim Bot 0%
+- [x] Skill arm: 72.3% clears; Atomize 42.2→93.3% but still ~74 s, Aim Bot still 0%, Fisher 6.7%
+- [x] PvP ordering does not transfer: 4P top Atomize/Aim Bot are infection 10th/13th; 4P bottom Wedge/Bad Lag are infection 2nd/8th
+- [x] Headed direction matches: 11/13 clear, Fisher and Aim Bot fail; one Toxic restart failed but the normal boot cleared
+
+### Next
+- [ ] Human infection pass on Aim Bot, Fisher, Atomize and Copy Pasta; separate pilot limits from kit limits before tuning
+- [ ] Decide whether infection-specific kit changes are warranted; do not use health as the knob
+- [ ] Make the gauntlet autopilot use each program's Y skill before treating bot clear rates as full-kit balance
+
+---
+
+## v0.1.105 — KEYPAD fills the frame (2026-11-01)
+
+### Built
+- [x] KEYPAD bounds are now exactly the 2400×2640 housing: no exterior floor, side room or spawn gutter
+- [x] Caps scaled to 680×528; the 0 spans 2160; key face raised to 156px and the cap details scaled with it
+- [x] Spawns moved onto the housing bezel, clear of every cap; all eight remain inside the bounds
+- [x] Cycle slowed to 30 s: 4 s warning, 1.2 s sink, 8 s down, 1.6 s rise, 3 s stagger
+- [x] Cap travel scaled to 7.5% of key height (~40 units), with a slower warning pulse and larger hazard bars
+- [x] AGENTS D36, GAME_GUIDE, TODO and build stamp 0.1.105
+
+### Verification
+- [x] `.tmp/keypad-check.ts`: 2400×2640 pad = bounds, 680×528 keys, 8 bezel spawns clear, all five states, 4 s warning, 1.2 s sink, crush at 4.02 s
+- [x] `npx tsc --noEmit`, `npm run build`, `git diff --check` — clean; build 736.55 kB / 205.47 kB gzip with the existing chunk-size warning
+
+### Next
+- [ ] Human pass on KEYPAD: judge whether one screen-filling key is too close at normal camera zoom, and whether the 4 s warning gives a fair exit from a cap
+
+---
+
+## v0.1.104 — KEYPAD is the arena (2026-11-01)
+
+### Built
+- [x] KEYPAD bounds are now 1100×1160: the 900×960 housing plus a 100-unit perimeter spawn gutter, with no outer side room
+- [x] Caps scaled to 250×198 (the 0 spans 802) and the digit face enlarged to 68px
+- [x] Cycle slowed from 6.2 s to 12 s: 1.4 s warning, 0.45 s sink, 3 s down, 0.7 s rise, 1.12 s stagger
+- [x] Renderer interpolates cap travel from `keypadKeyPhase`; warning pulse and hazard bars also slowed
+- [x] Spawns stay in the gutter; AGENTS D36, GAME_GUIDE, TODO and build stamp 0.1.104
+
+### Verification
+- [x] `.tmp/keypad-check.ts`: 10 keys, 900×960 pad in 1100×1160 bounds, 100-unit gutter, all five states, 0.45 s sink, crush at 1.40 s
+- [x] `npx tsc --noEmit`, `npm run build`, `git diff --check` — clean; build 736.34 kB / 205.38 kB gzip with the existing chunk-size warning
+
+### Next
+- [ ] Human pass on KEYPAD: judge the pad scale, the 100-unit gutter and the 1.4 s warning; tune only the gutter or warning if the room reads cramped or unfair
+
+---
+
+## v0.1.103 — Dash respects solid cover (2026-11-01)
+
+### Built
+- [x] Dash collision uses a cover-only list: floor gaps are cleared and enemies are passed through, but solid cover and sealed cell bars stop both dash kinds
+- [x] Deployed Wedge walls, keypad caps and browser page cards no longer phase; a thin wall uses the approach side so a charged dash cannot resolve through it
+- [x] Guest `LocalPredictor` builds the same cover-only list; dash movement is substepped at sub-radius intervals so a fast dash cannot skip a thin pillar
+- [x] Tutorial/help wording, AGENTS D8/D10/D20/D36/D37, GAME_GUIDE, TODO and build stamp 0.1.103
+
+### Verification
+- [x] `.tmp/dash-rule-check.ts` 6/6: pillar stop, charged thin-pillar no-tunnel, gap clear, walking gap stop, sealed campaign bars stop, thin Wedge wall stop
+- [x] `npx tsc --noEmit`, `npm run build`, `git diff --check` — clean; build 736.14 kB / 205.28 kB gzip with the existing chunk-size warning
+
+### Next
+- [ ] Human dash pass on CROSSROADS, TRANSIT and the campaign cell release; judge whether a stop against solid cover should cancel the committed dash early or leave it pressed against the surface
+
+---
+
+## v0.1.102 — Held wave 2 (2026-11-01)
+
+### Built
+- [x] Wave-2 worm and viruses are created with BUILD ROOT and wait behind the bars in `held` state
+- [x] Held bodies skip AI, damage, target lock and the normal threat render; caged silhouettes are their presentation
+- [x] `beginCellRelease` clears `held` on the existing pool slots; it does not spawn replacements
+- [x] AGENTS D41, CAMPAIGN, GAME_GUIDE, TODO and build stamp 0.1.102
+
+### Verification
+- [x] Dev browser: 1 held worm (hp 5) and 2 held viruses (hp 1) exist before release; 120 stepped frames left them in place, the player at 3 HP, and no projectiles active
+- [x] Damage probes left held HP unchanged; the release gate cleared `held` on the same pool slots, preserved HP, and moved all three bodies over 60 steps
+- [x] `npx tsc --noEmit`, `npm run build`, `git diff --check` — clean; build 735.55 kB / 205.09 kB gzip with the existing chunk-size warning
+
+### Next
+- [ ] Human playthrough of the release beat and heavy lesson; judge the moment the caged silhouettes become live bodies
 
 ---
 

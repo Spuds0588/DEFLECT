@@ -350,6 +350,7 @@ export function createDrone(): Drone {
 export function createWorm(): Worm {
   return {
     active: false,
+    held: false,
     x: 0,
     y: 0,
     prevX: 0,
@@ -391,6 +392,7 @@ export function createWorm(): Worm {
 export function createVirus(): Virus {
   return {
     active: false,
+    held: false,
     x: 0,
     y: 0,
     prevX: 0,

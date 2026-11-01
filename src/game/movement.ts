@@ -6,8 +6,10 @@ import type { Player } from './types';
 /**
  * Shared kinematic step used by the authoritative world and the guest's local prediction.
  * Facing is derived from movement (single-stick), locked while swinging or dashing.
- * `solids` is cover plus any floor gaps; a dodge phases both. `openWalls` drops the
- * arena wall so a body can be carried over the lip; the world turns that into a fall.
+ * `solids` is cover plus any floor gaps. A dash is airborne over the gaps, but it is
+ * not a phase through solid cover: `dashSolids` is the hard-cover subset that still
+ * stops it. `openWalls` drops the arena wall so a body can be carried over the lip;
+ * the world turns that into a fall.
  */
 export function stepPlayerMotion(
   p: Player,
@@ -17,6 +19,7 @@ export function stepPlayerMotion(
   solids: readonly Rect[],
   bounds: Bounds,
   openWalls = false,
+  dashSolids: readonly Rect[] = solids,
 ): void {
   const movingSq = mx * mx + my * my;
 
@@ -59,14 +62,30 @@ export function stepPlayerMotion(
     p.vy += (ty - p.vy) * k;
   }
 
-  p.x += (p.vx + p.kx) * dt;
-  p.y += (p.vy + p.ky) * dt;
+  const r = PLAYER.radius;
+  const moveX = (p.vx + p.kx) * dt;
+  const moveY = (p.vy + p.ky) * dt;
+  // A dash is fast enough to skip a thin pillar in one frame. While it is airborne,
+  // advance it in sub-radius steps and resolve the cover-only list after each one so
+  // the first contact is always on the near side. A floor gap is absent from that list.
+  if (p.dashT > 0 && dashSolids.length > 0) {
+    const steps = Math.max(1, Math.ceil(Math.hypot(moveX, moveY) / (r * 0.5)));
+    const stepX = moveX / steps;
+    const stepY = moveY / steps;
+    for (let i = 0; i < steps; i++) {
+      p.x += stepX;
+      p.y += stepY;
+      pushOutOfSolids(p, dashSolids, r);
+    }
+  } else {
+    p.x += moveX;
+    p.y += moveY;
+  }
   p.kx *= Math.exp(-PLAYER.knockDrag * dt);
   p.ky *= Math.exp(-PLAYER.knockDrag * dt);
 
   // Arena bounds. An open arena has no wall to stop at, so the body is left past the
   // lip for the world to read as a fall.
-  const r = PLAYER.radius;
   if (!openWalls) {
     const minX = bounds.left + r;
     const maxX = bounds.right - r;
@@ -88,17 +107,21 @@ export function stepPlayerMotion(
     }
   }
 
-  // Both dodge kinds phase through cover; the charged dash is the damaging one.
-  if (p.dashT <= 0) {
-    for (let i = 0; i < solids.length; i++) {
-      if (circleRect(p.x, p.y, r, solids[i], hitScratch)) {
-        p.x = hitScratch.px;
-        p.y = hitScratch.py;
-        const vn = p.vx * hitScratch.nx + p.vy * hitScratch.ny;
-        if (vn < 0) {
-          p.vx -= vn * hitScratch.nx;
-          p.vy -= vn * hitScratch.ny;
-        }
+  // Both dodge kinds clear floor gaps, but neither goes through solid cover. The
+  // caller supplies the cover-only list; ordinary walking still collides with both.
+  pushOutOfSolids(p, p.dashT > 0 ? dashSolids : solids, r);
+}
+
+/** Resolve a body against a cover list without allocating. */
+function pushOutOfSolids(p: Player, solids: readonly Rect[], r: number): void {
+  for (let i = 0; i < solids.length; i++) {
+    if (circleRect(p.x, p.y, r, solids[i], hitScratch)) {
+      p.x = hitScratch.px;
+      p.y = hitScratch.py;
+      const vn = p.vx * hitScratch.nx + p.vy * hitScratch.ny;
+      if (vn < 0) {
+        p.vx -= vn * hitScratch.nx;
+        p.vy -= vn * hitScratch.ny;
       }
     }
   }

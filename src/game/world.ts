@@ -66,10 +66,15 @@ import {
   scannerLaserY,
   scannerPhaseAt,
   SCANNER_STATE,
+  usbDriveRect,
+  usbExtensionAt,
+  usbFloorAt,
+  usbFlowAt,
   type ArenaBrowserDef,
   type ArenaDef,
   type ArenaKeypadDef,
   type ArenaScannerDef,
+  type ArenaUsbDef,
   type DiscDef,
 } from './arenas';
 import type { CampaignDataCrate, CampaignIntro } from './campaign';
@@ -162,6 +167,8 @@ export class World {
   readonly arena: ArenaDef;
   /** Cover plus floor gaps. Bodies collide with this; shots only respect cover. */
   private solids: readonly Rect[];
+  /** Cover only: a dash clears floor gaps, but these still stop the body. */
+  private dashSolids: Rect[];
   /** Campaign cell-block collision while the block is sealed. Removed on release. */
   private campaignBarSolids: Rect[] = [];
   /** Breakable file boxes. Live boxes travel in Snapshot; physics stays host-side. */
@@ -436,6 +443,15 @@ export class World {
    * snapshot carries no disc phase.
    */
   discT = 0;
+  /** USB hub layout. The shared `usbT` clock travels in SnapshotHazards online. */
+  readonly usb: ArenaUsbDef | null;
+  /** Shared drive cycle clock. Public for the renderer and bot safety checks. */
+  usbT = 0;
+  /** Current drive rectangles, rebuilt every tick from `usbT`. */
+  readonly usbRects: Rect[] = [];
+  private readonly usbDX = new Float32Array(4);
+  private readonly usbDY = new Float32Array(4);
+  private readonly usbFlowVec = { x: 0, y: 0 };
   /** Current world angle of the read arm, from its pivot. Public for the renderer. */
   armAngle = 0;
   /** Read-arm pivot, fixed for the life of the arena. Public for the renderer. */
@@ -499,6 +515,7 @@ export class World {
     this.campaignBarSolids = campaign ? campaignCellBarRects(arena) : [];
     this.solids =
       this.campaignBarSolids.length > 0 ? [...staticSolids, ...this.campaignBarSolids] : staticSolids;
+    this.dashSolids = [...arena.pillars, ...this.campaignBarSolids];
     this.keypad = arena.keypad ?? null;
     this.keypadStates = new Uint8Array(this.keypad?.keys.length ?? 0);
     this.keypadPrevStates = new Uint8Array(this.keypadStates.length);
@@ -515,6 +532,11 @@ export class World {
       this.armPivotX = discArmPivotX(arena);
       this.armPivotY = discArmPivotY(arena);
       this.armAngle = discArmAngle(arena, 0);
+    }
+    this.usb = arena.usb ?? null;
+    if (this.usb) {
+      for (let i = 0; i < this.usb.drives.length; i++) this.usbRects.push({ x: 0, y: 0, w: 0, h: 0 });
+      this.refreshUsb(0);
     }
     this.gauntletPractice = gauntletPractice;
     this.localSlot = localSlot;
@@ -739,6 +761,7 @@ export class World {
     this.firewallSwitchT = 0;
     this.firewallSwitchDwell = 0;
     this.firewallSwitchFlash = 0;
+    if (this.usb) this.resetUsb();
     for (let i = 0; i < this.pipes.length; i++) {
       const pipe = this.pipes[i];
       pipe.active = true;
@@ -820,8 +843,13 @@ export class World {
     // A single left-side launch line. Everyone enters together, facing the colony;
     // no operator starts behind the swarm or on the far side of the room.
     const b = this.arena.bounds;
-    const leftX = b.left + Math.max(64, (b.right - b.left) * INFECTION.leftSpawnFrac);
-    const rowSpan = Math.min((b.bottom - b.top) * 0.54, Math.max(0, active.length - 1) * 78);
+    const usb = this.arena.usb;
+    const leftX = usb
+      ? this.centerX - usb.hubRadius * 0.52
+      : b.left + Math.max(64, (b.right - b.left) * INFECTION.leftSpawnFrac);
+    const rowSpan = usb
+      ? usb.hubRadius * 1.12
+      : Math.min((b.bottom - b.top) * 0.54, Math.max(0, active.length - 1) * 78);
     for (let i = 0; i < active.length; i++) {
       const p = active[i];
       const sy = this.centerY - rowSpan * 0.5 + (active.length === 1 ? 0 : (rowSpan * i) / (active.length - 1));
@@ -840,12 +868,24 @@ export class World {
     this.waveBannerT = 0;
 
     // The colony enters from the right edge in a vertical queue. The players see the
-    // tide arrive from one side instead of a ring closing around them.
+    // tide arrive from one side instead of a ring closing around them. USB HUB has no
+    // right-edge floor, so its opening swarm loads onto the east drive in a small grid.
     let spawned = 0;
     const rows = Math.max(1, INFECTION.startViruses);
-    for (let i = 0; i < rows; i++) {
-      const y = b.top + 80 + ((i + 0.5) / rows) * (b.bottom - b.top - 160);
-      if (this.spawnVirus(b.right - 120, y)) spawned++;
+    if (usb) {
+      const east = this.usbRects[0];
+      for (let i = 0; i < rows; i++) {
+        const col = i % 4;
+        const row = Math.floor(i / 4);
+        const x = east.x + east.w - 28 - col * 42;
+        const y = east.y + 34 + row * 34;
+        if (this.spawnVirus(x, y, false, false)) spawned++;
+      }
+    } else {
+      for (let i = 0; i < rows; i++) {
+        const y = b.top + 80 + ((i + 0.5) / rows) * (b.bottom - b.top - 160);
+        if (this.spawnVirus(b.right - 120, y)) spawned++;
+      }
     }
     // A failed spawn is only possible on a degenerate arena; the run still starts and
     // the first growth beat seeds the colony.
@@ -885,6 +925,9 @@ export class World {
     // Bots stay parked until the calibration subjects are cleared. The drill squad
     // then logs in on the existing ring with the player, before the breach removes it.
     this.spawnCalibrationShapes();
+    // Wave 2 is already alive in the cells. These are the same bodies release wakes;
+    // nothing is spawned on the power-down beat.
+    this.spawnHeldCellThreats();
   }
 
   /** Starts the sparring drill once the calibration subjects are gone. */
@@ -932,8 +975,8 @@ export class World {
     }
   }
 
-  /** Wave 1 is down. The cell block loses power, the bars retract and the held worms
-   *  and viruses become wave 2 for the heavy lesson. */
+  /** Wave 1 is down. The cell block loses power and the already-held wave-2 bodies
+   *  are released for the heavy lesson. */
   private beginCellRelease(): void {
     this.campaignPhase = 'release';
     this.calibrationAwake = false;
@@ -955,25 +998,82 @@ export class World {
       this.tutorialFinished = false;
       this.tutorialGrace = 0;
     }
-    const room = this.arena.rooms?.find((candidate) => candidate.theme === 'holding');
-    const cells = room ? holdingCellLayout(room) : null;
-    const cx = cells ? cells.left + cells.cellW * 1.5 : this.players[0].x;
-    const cy = cells ? cells.top + (cells.bottom - cells.top) * 0.58 : this.players[0].y - 40;
     // The release is a scripted cut, not a cheap hit: give the player a beat to see the
     // bars go before the first virus can touch them.
     for (let i = 0; i < this.players.length; i++) {
       if (this.players[i].active) this.players[i].iframes = Math.max(this.players[i].iframes, 1.2);
     }
-    if (cells) {
-      // Left cell holds the worm; the right cell holds the virus pair. The real bodies
-      // appear only now, so nothing behind the bars can be shot or targeted early.
-      this.spawnWorm(cells.left + cells.cellW * 0.5, cy);
-      this.spawnVirus(cells.left + cells.cellW * 2.2, cy - 8);
-      this.spawnVirus(cells.left + cells.cellW * 2.8, cy + 14);
-    } else {
-      this.spawnWorm(cx, cy);
-      this.spawnVirus(cx - 90, cy + 40);
-      this.spawnVirus(cx + 90, cy + 40);
+    this.releaseHeldCellThreats();
+  }
+
+  /**
+   * Wave 2 is created with the level, not on the release frame. The bodies sit in
+   * their cells with `held` set: AI, damage and targeting are skipped until the bars
+   * lose power. The renderer draws the caged silhouettes in the same cells.
+   */
+  private spawnHeldCellThreats(): void {
+    const room = this.arena.rooms?.find((candidate) => candidate.theme === 'holding');
+    const cells = room ? holdingCellLayout(room) : null;
+    if (!cells) {
+      const player = this.players[0];
+      this.spawnWorm(player.x, player.y - 40, true);
+      this.spawnVirus(player.x - 90, player.y, true);
+      this.spawnVirus(player.x + 90, player.y, true);
+      return;
+    }
+    const worm = this.spawnWorm(cells.left + cells.cellW * 0.5, cells.top + 50, true);
+    if (worm) {
+      // Face up so the chain runs down the cell behind the painted caged silhouette.
+      worm.angle = -Math.PI / 2;
+      worm.biteDirX = 0;
+      worm.biteDirY = -1;
+      const ca = Math.cos(worm.angle);
+      const sa = Math.sin(worm.angle);
+      for (let i = 0; i < WORM.maxSegments; i++) {
+        const sx = worm.x - ca * WORM.spacing * (i + 1);
+        const sy = worm.y - sa * WORM.spacing * (i + 1);
+        worm.segX[i] = sx;
+        worm.segY[i] = sy;
+        worm.segPrevX[i] = sx;
+        worm.segPrevY[i] = sy;
+        worm.segAngle[i] = worm.angle;
+      }
+    }
+    const vx = cells.left + cells.cellW * 2.5;
+    this.spawnVirus(vx - 15, cells.top + 57, true);
+    this.spawnVirus(vx + 15, cells.top + 71, true);
+  }
+
+  /** Wakes the existing wave-2 bodies; it never creates replacements. */
+  private releaseHeldCellThreats(): void {
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active || !v.held) continue;
+      v.held = false;
+      v.spawnT = 0;
+      v.prevX = v.x;
+      v.prevY = v.y;
+      v.vx = 0;
+      v.vy = 0;
+      v.chargeT = 0;
+      v.pinT = 0;
+      v.contactCd = 0.4;
+      this.pickVirusRoam(v);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active || !w.held) continue;
+      w.held = false;
+      w.spawnT = 0;
+      w.prevX = w.x;
+      w.prevY = w.y;
+      w.vx = 0;
+      w.vy = 0;
+      w.aggroT = 0;
+      w.biteT = 0;
+      w.biteCd = WORM.biteCooldown * 0.5;
+      w.pinT = 0;
+      this.pickWormPatrol(w);
     }
   }
 
@@ -983,6 +1083,7 @@ export class World {
     const bars = this.campaignBarSolids;
     this.campaignBarSolids = [];
     this.solids = this.solids.filter((solid) => !bars.includes(solid));
+    this.dashSolids = this.dashSolids.filter((solid) => !bars.includes(solid));
   }
 
   /** Six calibration subjects, two of each primary, laid out in front of the player. */
@@ -1818,16 +1919,16 @@ export class World {
    *  gauntlet wave timers stay parked until the assault. */
   private updateCampaignThreats(dt: number): void {
     for (let i = 0; i < this.viruses.length; i++) {
-      if (this.viruses[i].active) this.updateVirus(this.viruses[i], dt);
+      if (this.viruses[i].active && !this.viruses[i].held) this.updateVirus(this.viruses[i], dt);
     }
     for (let i = 0; i < this.worms.length; i++) {
-      if (this.worms[i].active) this.updateWorm(this.worms[i], dt);
+      if (this.worms[i].active && !this.worms[i].held) this.updateWorm(this.worms[i], dt);
     }
   }
 
   private campaignThreatsActive(): boolean {
-    for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) return true;
-    for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) return true;
+    for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active && !this.viruses[i].held) return true;
+    for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active && !this.worms[i].held) return true;
     return false;
   }
 
@@ -2227,6 +2328,7 @@ export class World {
     if (this.keypad) this.resetKeypad();
     if (this.scanner) this.resetScanner();
     if (this.browser) this.resetBrowser();
+    if (this.usb) this.resetUsb();
     const active = this.activeCount();
     if (active === 0) return;
     computeSpawns(active, this.arena, this.spawnTmpX, this.spawnTmpY);
@@ -2320,6 +2422,7 @@ export class World {
     // A hosted match keeps the plate still: the snapshot has no disc phase, so a guest
     // could not agree with the host about which hole is underfoot. Local modes spin.
     if (this.arena.disc && canAct && this.mode !== 'match') this.tickDisc(dt);
+    if (this.usb && canAct) this.tickUsb(dt);
     for (let i = 0; i < this.bumperFlash.length; i++) {
       if (this.bumperFlash[i] > 0) this.bumperFlash[i] = Math.max(0, this.bumperFlash[i] - dt);
     }
@@ -2366,6 +2469,7 @@ export class World {
       p.prevX = p.x;
       p.prevY = p.y;
       p.prevFacing = p.facing;
+      if (this.usb) this.applyUsbPlayer(p, dt);
 
       // Time effects. Fast-forward burns every per-player timer and attack at 2.5x;
       // a slowed body (Bad Lag's dilation, everyone but the caster) runs at 0.3x.
@@ -2979,6 +3083,7 @@ export class World {
         this.solids,
         this.arena.bounds,
         this.openWalls,
+        this.dashSolids,
       );
       if (this.keypad) this.resolveKeypadPlayer(p);
       if (this.browser) this.resolveBrowserPlayer(p);
@@ -3897,7 +4002,7 @@ export class World {
       }
       for (let i = 0; i < this.worms.length; i++) {
         const target = this.worms[i];
-        if (!target.active) continue;
+        if (!target.active || target.held) continue;
         const dx = target.x - p.x;
         const dy = target.y - p.y;
         const d2 = dx * dx + dy * dy;
@@ -3910,7 +4015,7 @@ export class World {
       }
       for (let i = 0; i < this.viruses.length; i++) {
         const target = this.viruses[i];
-        if (!target.active) continue;
+        if (!target.active || target.held) continue;
         const dx = target.x - p.x;
         const dy = target.y - p.y;
         const d2 = dx * dx + dy * dy;
@@ -4016,14 +4121,14 @@ export class World {
       }
     } else if (p.lockKind === 2) {
       const target = this.worms[p.lockId];
-      if (target && target.active) {
+      if (target && target.active && !target.held) {
         this.lockTX = target.x;
         this.lockTY = target.y;
         return true;
       }
     } else if (p.lockKind === 3) {
       const target = this.viruses[p.lockId];
-      if (target && target.active) {
+      if (target && target.active && !target.held) {
         this.lockTX = target.x;
         this.lockTY = target.y;
         return true;
@@ -4076,11 +4181,11 @@ export class World {
     }
     for (let i = 0; i < this.worms.length; i++) {
       const t = this.worms[i];
-      if (t.active) this.offerCycle(2, i, t.x, t.y);
+      if (t.active && !t.held) this.offerCycle(2, i, t.x, t.y);
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const t = this.viruses[i];
-      if (t.active) this.offerCycle(3, i, t.x, t.y);
+      if (t.active && !t.held) this.offerCycle(3, i, t.x, t.y);
     }
     for (let i = 0; i < this.sentries.length; i++) {
       const t = this.sentries[i];
@@ -4584,9 +4689,8 @@ export class World {
     );
   }
 
-  /** Pushes a body out of a deployed wall. Dodges still phase through it. */
+  /** Pushes a body out of a deployed wall. A dash stops at the wall too. */
   private resolveBarrier(p: Player): void {
-    if (p.dashT > 0) return;
     const r = PLAYER.radius;
     const rr = r + WEDGE.wallThickness * 0.5;
     for (let i = 0; i < this.barriers.length; i++) {
@@ -4602,7 +4706,17 @@ export class World {
       const dy = p.y - py;
       const d2 = dx * dx + dy * dy;
       if (d2 > rr * rr) continue;
-      const side = dx * wall.nx + dy * wall.ny >= 0 ? 1 : -1;
+      // A dash can cross the thin wall's centreline in one frame. Choose the side it
+      // came from, not the side its final centre landed on, so it cannot pop through.
+      const approach = p.dashDirX * wall.nx + p.dashDirY * wall.ny;
+      const side =
+        p.dashT > 0 && Math.abs(approach) > 0.001
+          ? approach > 0
+            ? -1
+            : 1
+          : dx * wall.nx + dy * wall.ny >= 0
+            ? 1
+            : -1;
       const nx = wall.nx * side;
       const ny = wall.ny * side;
       p.x = px + nx * (rr + 0.01);
@@ -8204,6 +8318,99 @@ export class World {
     return false;
   }
 
+  /** Rebuild the four drive rectangles from the shared USB clock. */
+  private refreshUsb(t: number): void {
+    const usb = this.usb;
+    if (!usb) return;
+    this.usbT = t;
+    for (let i = 0; i < this.usbRects.length; i++) usbDriveRect(this.arena, i, t, this.usbRects[i]);
+  }
+
+  /** Start every local round with the drives docked. */
+  private resetUsb(): void {
+    if (!this.usb) return;
+    this.usbDX.fill(0);
+    this.usbDY.fill(0);
+    this.refreshUsb(0);
+  }
+
+  /** Advance the shared cycle and retain each drive's per-tick ride delta. */
+  private tickUsb(dt: number): void {
+    const usb = this.usb;
+    if (!usb) return;
+    const previous = usbExtensionAt(usb, this.usbT);
+    this.usbT += dt;
+    const next = usbExtensionAt(usb, this.usbT);
+    const travel = next - previous;
+    for (let i = 0; i < usb.drives.length; i++) {
+      const angle = usb.drives[i].angle;
+      this.usbDX[i] = Math.cos(angle) * travel;
+      this.usbDY[i] = Math.sin(angle) * travel;
+      usbDriveRect(this.arena, i, this.usbT, this.usbRects[i]);
+    }
+  }
+
+  /**
+   * Carry a body with its plate, then add the active current. The current is a direct
+   * position drift rather than knockback: the player can still steer against it.
+   */
+  private shiftUsbBody(body: { x: number; y: number }, dt: number, flow: boolean): boolean {
+    const usb = this.usb;
+    if (!usb) return false;
+    let moved = false;
+    for (let i = 0; i < this.usbRects.length; i++) {
+      const r = this.usbRects[i];
+      if (body.x <= r.x || body.x >= r.x + r.w || body.y <= r.y || body.y >= r.y + r.h) continue;
+      body.x += this.usbDX[i];
+      body.y += this.usbDY[i];
+      moved = true;
+      break;
+    }
+    if (flow && usbFlowAt(this.arena, body.x, body.y, this.usbT, this.usbFlowVec)) {
+      body.x += this.usbFlowVec.x * usb.flowSpeed * dt;
+      body.y += this.usbFlowVec.y * usb.flowSpeed * dt;
+      moved = true;
+    }
+    return moved;
+  }
+
+  /** The player's ride and current. A dash owns its own committed line. */
+  private applyUsbPlayer(p: Player, dt: number): void {
+    if (p.dashT > 0 || p.fallT > 0 || p.travelT > 0) return;
+    this.shiftUsbBody(p, dt, true);
+  }
+
+  /** Push every local threat family with the same plate motion and current. */
+  private applyUsbThreats(dt: number): void {
+    if (!this.usb) return;
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active || w.held) continue;
+      const px = w.x;
+      const py = w.y;
+      if (!this.shiftUsbBody(w, dt, true)) continue;
+      const dx = w.x - px;
+      const dy = w.y - py;
+      for (let s = 0; s < w.segCount; s++) {
+        w.segX[s] += dx;
+        w.segY[s] += dy;
+      }
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (v.active && !v.held && v.spawnT <= 0) this.shiftUsbBody(v, dt, true);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active) this.shiftUsbBody(s, dt, true);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (e.active) this.shiftUsbBody(e, dt, true);
+    }
+    if (this.drone.active) this.shiftUsbBody(this.drone, dt, true);
+  }
+
   /**
    * Open-wall arenas: the lip is the edge of the floor. A body whose centre crosses it
    * is gone, so a shove that carries someone over the line is a kill, not a nudge.
@@ -8217,6 +8424,11 @@ export class World {
       const dx = p.x - this.centerX;
       const dy = p.y - this.centerY;
       pastLip = dx * dx + dy * dy > disc.radius * disc.radius;
+    }
+    // The hub's gaps are interior floor holes. A dash is airborne over them; a walk
+    // that ends over one starts the ordinary hang-and-fall.
+    if (!pastLip && this.usb && p.dashT <= 0 && !usbFloorAt(this.arena, p.x, p.y, this.usbT)) {
+      pastLip = true;
     }
     // A dash is airborne, so a short hole can be jumped. Land inside one and the fall
     // starts then, which is the point of a hole.
@@ -8239,6 +8451,7 @@ export class World {
       const dy = y - this.centerY;
       if (dx * dx + dy * dy > disc.radius * disc.radius) return true;
     }
+    if (this.usb && !usbFloorAt(this.arena, x, y, this.usbT)) return true;
     const slant = this.arena.slant;
     if (slant) {
       const k = (y - b.top) / (b.bottom - b.top);
@@ -8990,7 +9203,7 @@ export class World {
   }
 
   private resolveBrowserPlayer(p: Player): void {
-    if (!this.browser || p.dashT > 0) return;
+    if (!this.browser) return;
     const radius = PLAYER.radius * p.shrink;
     for (let i = 0; i < this.browserSolids.length; i++) {
       if (!circleRect(p.x, p.y, radius, this.browserSolids[i], hitScratch)) continue;
@@ -9298,10 +9511,10 @@ export class World {
     }
   }
 
-  /** The player cannot stand inside a key that is already down; a dash still phases it. */
+  /** The player cannot stand inside a key that is already down, even mid-dash. */
   private resolveKeypadPlayer(p: Player): void {
     const kp = this.keypad;
-    if (!kp || p.dashT > 0) return;
+    if (!kp) return;
     const radius = PLAYER.radius * p.shrink;
     for (let i = 0; i < kp.keys.length; i++) {
       if (!this.keypadStateSolid(this.keypadStates[i])) continue;
@@ -9895,8 +10108,8 @@ export class World {
         }
       }
       if (blocked) continue;
-      // A disc arena's corners are void; never send the drone to one.
-      if (this.arena.disc && this.offFloor(x, y)) continue;
+      // A disc or USB arena's outer corners are void; never send the drone to one.
+      if ((this.arena.disc || this.arena.usb) && this.offFloor(x, y)) continue;
       const p = this.players[0];
       if (p && Math.hypot(x - p.x, y - p.y) < 190) continue;
       d.targetX = x;
@@ -10769,6 +10982,7 @@ export class World {
     for (let i = 0; i < this.viruses.length; i++) {
       if (this.viruses[i].active) this.updateVirus(this.viruses[i], dt);
     }
+    if (this.usb) this.applyUsbThreats(dt);
     if (this.openWalls || this.arena.voids || this.arena.disc) this.cullVoidThreats();
   }
 
@@ -10878,6 +11092,7 @@ export class World {
     for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) this.updateSentry(this.sentries[i], dt);
     for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) this.updateFirewall(this.firewalls[i], dt);
     this.updateErrors(dt);
+    if (this.usb) this.applyUsbThreats(dt);
     if (this.openWalls || this.arena.voids || this.arena.disc) this.cullVoidThreats();
   }
 
@@ -11363,6 +11578,13 @@ export class World {
       this.arena.bounds.top + margin,
       Math.min(this.arena.bounds.bottom - margin, p.y + Math.sin(angle) * spreadY),
     );
+    if (this.usb) {
+      // Keep the opening pack on the hub. A view-sized spawn offset on this map lands
+      // in the drop and the whole queue would cull before it fired once.
+      const radius = this.usb.hubRadius * 0.72;
+      this.sentryQueueX = this.centerX + Math.cos(angle) * radius;
+      this.sentryQueueY = this.centerY + Math.sin(angle) * radius;
+    }
     const pack = this.sentryPack++;
     let n = 0;
     if (!this.gauntletPractice && this.wave <= SENTRY.openingWaves) {
@@ -12094,7 +12316,7 @@ export class World {
     return best;
   }
 
-  private spawnWorm(x?: number, y?: number): void {
+  private spawnWorm(x?: number, y?: number, held = false): Worm | null {
     let w: Worm | null = null;
     for (let i = 0; i < this.worms.length; i++) {
       if (!this.worms[i].active) {
@@ -12102,9 +12324,10 @@ export class World {
         break;
       }
     }
-    if (!w) return;
+    if (!w) return null;
     const spawn = x !== undefined && y !== undefined ? { x, y } : this.arena.spawns[this.wormAnchorIndex()];
     w.active = true;
+    w.held = held;
     w.x = spawn.x;
     w.y = spawn.y;
     w.prevX = w.x;
@@ -12127,14 +12350,20 @@ export class World {
     w.hitFlash = 0;
     w.infected = false;
     w.phase = this.rng.range(0, Math.PI * 2);
-    w.spawnT = WORM.spawnTime;
+    w.spawnT = held ? 0 : WORM.spawnTime;
     w.pinT = 0;
     w.biteT = 0;
     w.biteCd = WORM.biteCooldown * 0.5;
     w.biteHit = false;
     w.biteDirX = Math.cos(w.angle);
     w.biteDirY = Math.sin(w.angle);
-    this.pickWormPatrol(w);
+    if (held) {
+      w.patrolX = w.x;
+      w.patrolY = w.y;
+      w.retargetT = 0;
+    } else {
+      this.pickWormPatrol(w);
+    }
     const ca = Math.cos(w.angle);
     const sa = Math.sin(w.angle);
     for (let i = 0; i < WORM.maxSegments; i++) {
@@ -12148,6 +12377,7 @@ export class World {
       w.segPrevY[i] = cy;
       w.segAngle[i] = w.angle;
     }
+    return w;
   }
 
   private wormAnchorIndex(): number {
@@ -12435,7 +12665,7 @@ export class World {
   }
 
   private damageWorm(w: Worm, amount: number, sourceSlot: number, dirX: number, dirY: number, force = 0): void {
-    if (!w.active) return;
+    if (!w.active || w.held) return;
     w.hp -= amount;
     w.hitFlash = 0.2;
     // Only the player provokes a worm. Crossfire between rival factions should not
@@ -12477,7 +12707,7 @@ export class World {
     this.emit(EV.EAT, -1, x, y, w.segCount);
   }
 
-  private spawnVirus(x: number, y: number): Virus | null {
+  private spawnVirus(x: number, y: number, held = false, edge = true): Virus | null {
     let v: Virus | null = null;
     for (let i = 0; i < this.viruses.length; i++) {
       if (!this.viruses[i].active) {
@@ -12487,6 +12717,7 @@ export class World {
     }
     if (!v) return null;
     v.active = true;
+    v.held = held;
     v.x = Math.max(this.arena.bounds.left + VIRUS.radius, Math.min(this.arena.bounds.right - VIRUS.radius, x));
     v.y = Math.max(this.arena.bounds.top + VIRUS.radius, Math.min(this.arena.bounds.bottom - VIRUS.radius, y));
     v.prevX = v.x;
@@ -12508,7 +12739,7 @@ export class World {
     v.phase = this.rng.range(0, Math.PI * 2);
     v.contactCd = this.rng.range(0, 0.5);
     v.hitFlash = 0;
-    v.spawnT = VIRUS.spawnTime;
+    v.spawnT = held ? 0 : VIRUS.spawnTime;
     v.pinT = 0;
     v.orbitOwner = -1;
     v.orbitA = 0;
@@ -12522,17 +12753,35 @@ export class World {
     v.chargeDirY = 0;
     v.swarm = 0;
     if (this.infectionMode) {
-      // Reuse the pooled slot as a one-way arrival. It starts just past the right lip
-      // and glides in while the ordinary spawn build plays; no new entity is created.
-      v.x = this.arena.bounds.right + v.radius + 8;
-      v.prevX = v.x;
-      v.vx = -VIRUS.speed * INFECTION.entrySpeedMult;
-      v.vy = this.rng.range(-INFECTION.entryJitter, INFECTION.entryJitter);
-      v.spawnT = VIRUS.spawnTime;
-      v.swarm = this.rng.next() < INFECTION.swarmChance ? 2 : 0;
+      // Reuse the pooled slot as a one-way arrival. The hub has no right lip with floor,
+      // so arrivals queue at the east drive tip instead and the opening grid stays put.
+      if (edge) {
+        if (this.usb) {
+          const east = this.usbRects[0];
+          v.x = east.x + east.w + v.radius + 8;
+          v.y = Math.max(east.y + v.radius + 8, Math.min(east.y + east.h - v.radius - 8, y));
+          v.vx = -VIRUS.speed * INFECTION.entrySpeedMult;
+          v.vy = this.rng.range(-INFECTION.entryJitter, INFECTION.entryJitter);
+        } else {
+          v.x = this.arena.bounds.right + v.radius + 8;
+          v.vx = -VIRUS.speed * INFECTION.entrySpeedMult;
+          v.vy = this.rng.range(-INFECTION.entryJitter, INFECTION.entryJitter);
+        }
+        v.prevX = v.x;
+        v.spawnT = VIRUS.spawnTime;
+        v.swarm = this.rng.next() < INFECTION.swarmChance ? 2 : 0;
+      } else {
+        v.vx = 0;
+        v.vy = 0;
+      }
     }
-    this.nudgeVirusFromCover(v);
-    this.pickVirusRoam(v);
+    if (held) {
+      v.vx = 0;
+      v.vy = 0;
+    } else {
+      this.nudgeVirusFromCover(v);
+      this.pickVirusRoam(v);
+    }
     return v;
   }
 
@@ -13052,7 +13301,7 @@ export class World {
   }
 
   private damageVirus(v: Virus, amount: number, sourceSlot: number, dirX: number, dirY: number, force = 0): void {
-    if (!v.active) return;
+    if (!v.active || v.held) return;
     v.hp -= amount;
     v.hitFlash = 0.18;
     v.kx += dirX * force;

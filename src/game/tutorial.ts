@@ -169,8 +169,7 @@ export const WARDEN_TUTORIAL: readonly TutorialStep[] = [
   },
   {
     id: 'dash',
-    speaker: 'WARDEN',
-    line: 'DASH. PHASE THROUGH WHAT BLOCKS YOU. TWO CHARGES, THEN YOU WAIT.',
+    speaker: 'WARDEN',      line: 'DASH THROUGH FIRE AND ENEMIES, BUT NOT SOLID COVER. TWO CHARGES, THEN YOU WAIT.',
     prompt: 'DASH WITH SHIFT / A',
     action: 'dash',
   },

@@ -21,6 +21,23 @@ These files keep us from re-litigating decisions or rebuilding old work:
 Before starting: read `HISTORY.md` (last entry) and `TODO.md`. Do not start a phase that a newer
 HISTORY entry says was deliberately deferred without calling that out.
 
+### Dev environment cleanup (required)
+
+This is a limited-memory development environment. A finished task must leave it idle:
+
+- Stop every process you started for the task: `npm run dev`, Vite, preview servers, watchers, `tsx`
+  harnesses, and background shells. Stop the PID or process tree you recorded; never use broad
+  `pkill -f` or `killall`, which can match and kill the agent's own process.
+- Close browser or preview tabs you opened for the task after capturing the evidence. Do not close the
+  user's tabs.
+- Remove scratch files and generated caches created only for the task. Keep tracked files and the
+  reusable `.tmp` QA probes; do not blanket-delete `.tmp`.
+- Remove build output you generated unless it is the task's deliverable or needed for the handoff.
+- Check the running-process list before the final response, not only processes started in this task.
+  Stop any Vite, preview or test-harness process owned by this chat that was left by earlier work, and
+  confirm no task-owned listener remains. Do not leave a dev server running "for next time"; start it
+  again when the next task needs it.
+
 ---
 
 ## 2. Decisions already made
@@ -227,7 +244,8 @@ and never enters host/guest room selection. See D41.
 An arena may also carry a `traverse` record: chasms, bridge decks, upper-deck treatment, paired pads and
 linked lift plates. Chasms are **body** blockers, not cover: `arenaSolids()` adds them to `pillars` for
 bodies, bot pathing, spawns and placement, while projectiles and lasers keep using `pillars` alone and fly
-over the gap. A dodge still phases solids, so a charged dash can cross a trench. Pads and lifts arm on a
+over the gap. A dash is not a phase through solids: it stops on cover, but it is airborne over a chasm,
+so a short gap can be cleared. Pads and lifts arm on a
 still body after their dwell window, cancel attacks and damage for the ride, and use per-player state
 (`travelKind`/`travelT`); they never write geometry into `Snapshot`. A pad holds the body at the source
 for the unload half, swaps to the mate at the midpoint, and rebuilds it during the reload half; a lift
@@ -374,7 +392,7 @@ bolt:
   hostiles out of the lane before walking through the gap. Wedge plants his bracket shape as
   a solid barrier one body-length behind him (`WEDGE.wall*`): it blocks bodies and reflects shots, so it
   closes the lane he just left and pairs with a backward dash and a flip. It is not a shove and not a free
-  projectile delete; dodge still phases through it. A wall that would land in cover is refused and the
+  projectile delete; a dash still stops at it. A wall that would land in cover is refused and the
   energy is handed back. Legacy kinds `1` trap, `2` wall shield and `3` ghost remain implemented
   prototypes for future programs; do not expose them as a random roll again. The host owns each player's
   skill; guests read it from the snapshot. Atomize's skill raises two blue orbital shield balls: each
@@ -395,8 +413,9 @@ bolt:
   crosshairs in a forward cone and fires a 12-damage shot at each in a quick sequence; no volley
   projectile is spawned (see D34). Cooldown starts when the heavy ends. Releasing before the charge
   completes cancels; a release inside `heavyTapMax` uses the skill instead.
-- **Dash**: two stored charges (`PLAYER.dashCharges`), one shared 1.8 s recharge. Tap phases through
-  geometry and enemies; hold after the tap for the charged triangle dash that damages what it crosses.
+- **Dash**: two stored charges (`PLAYER.dashCharges`), one shared 1.8 s recharge. Tap passes through
+  enemies and clears floor gaps, but solid cover, deployed walls and sealed cell bars stop it. Hold after
+  the tap for the charged triangle dash that damages what it crosses.
 
 Health is a fixed segment pool on the local avatar's program outline (`Player.maxHp`: three for most
 programs, six for Atomize and Compress). Bad Lag uses the standard three. One ordinary hit removes one
@@ -1699,19 +1718,24 @@ values live in `world.json` under `SPACE_CADET`.
 
 ### D36 — KEYPAD: moving keycaps as an online-safe arena hazard (built 2026-11-01)
 
-`KEYPAD` (arena id 11) is a ten-key phone pad in the middle of a walled room. The layout in
-`ArenaDef.keypad` is a 3×4 grid: digits 1–9 in the top three rows and a centered 0 on the bottom. The
-ten caps cycle from a recessed socket to a warning lift, a downward slam, solid cover, and a rise. Every
-key has a phase offset from `KEYPAD.offsetStep`, so the pad is a rolling pattern instead of ten caps
-moving together. Timing, crush damage and offset live in `tuning/world.json` under `KEYPAD`.
+`KEYPAD` (arena id 11) is a ten-key phone pad that **is** the arena. Bounds equal the housing
+edge-to-edge: there is no exterior floor, side room or spawn gutter. The eight spawns stand on the
+housing's own bezel, clear of every cap. The layout in `ArenaDef.keypad` is a 3×4 grid: digits 1–9 in
+the top three rows and a centered 0 on the bottom. The caps are deliberately enormous (680×528; one key
+fills most of the camera view at normal zoom) so they read as industrial keys under a player-sized
+body. The ten caps cycle from a recessed socket to a warning lift, a slow downward slam, solid cover, and
+a rise. Every key has a phase offset from `KEYPAD.offsetStep`, so the pad is a rolling pattern instead of
+ten caps moving together. Timing, crush damage and offset live in `tuning/world.json` under `KEYPAD`.
+Do not add an exterior lane back: if a spawn needs clearance, move it onto the bezel or adjust the
+housing, not the bounds.
 
 - A cap is harmless while up or warning. On the first frame of `SLAM`, every body whose circle overlaps
 the cap is crushed. Players take `KEYPAD.playerDamage` (3 segments); training drones, worms, viruses,
 sentries and error blocks take `KEYPAD.threatDamage` (99), which deletes them through the normal damage
 paths. This is deliberately lethal to threats, not a second combat system.
 - `SLAM`, `DOWN` and `RISE` footprints are solid cover. They block players, local threats and projectiles;
-the player is pushed out after the shared motion step, and a dash still phases them. A down cap also
-blocks beams and line-of-sight reads, so it is true cover while it is on the floor.
+the player is pushed out after the shared motion step, including mid-dash. A down cap also blocks beams
+and line-of-sight reads, so it is true cover while it is on the floor.
 - Key timing is **online-safe**: `Snapshot` carries the shared `keypadT` clock and every peer derives the
 ten states with `keypadKeyState()`. The host still owns the crush; a guest mirrors HP and uses the solid
 caps only for prediction. `onlineArenaIndex` no longer skips a keypad arena. Do not add per-key state rows
@@ -1719,8 +1743,9 @@ to the snapshot; the clock is the contract (D40).
 - Bots steer around warning and down caps through the same furniture-avoidance path as bumpers. The
 keypad must not add per-tick pathfinding or a second grid; the dynamic caps are not baked into `nav.ts`.
 - The renderer draws the socket, warning bars, solid cap, digit and minimap footprint from the same
-`World.keypadStates` array. Keep the digit readable in every state: the phone-pad silhouette is the
-map's identity, not decoration.
+`World.keypadStates` array. It also reads `keypadKeyPhase()` to interpolate the cap's travel through the
+slam and rise; do not snap the drawing back to a single lifted/down pose. Keep the digit readable in
+every state: the phone-pad silhouette is the map's identity, not decoration.
 
 ### D37 — DOCUMENT SCANNER: page churn and a sweeping read line (built 2026-11-01)
 
@@ -1734,7 +1759,7 @@ walking behind it once and settling.
 
 - The line is active on the down and up passes, never during load, warning or unload. It is a
 firewall-class hazard: `SCANNER.damage` (1 segment) and `SCANNER.knockback` for players,
-`SCANNER.enemyDamage` (3) for worms, viruses, sentries and error blocks. A dash is airborne and phases
+`SCANNER.enemyDamage` (3) for worms, viruses, sentries and error blocks. A dash is airborne and clears
 the line; the scanner must not damage a body with `dashT > 0` or a phased cloak.
 - Damage is **once per pass per body**, tracked with the same bitmask pattern as a beam pass. Do not
 replace it with a per-tick tick timer: a body standing in the line would eat several segments on one
@@ -1860,13 +1885,14 @@ without a separate transition system.
   health, AI or snapshot rows are added for them. The kitty is a render-only cameo in the cell block, not
   an `ArenaDef.regular`.
 - The holding cell block is solid body collision while it is sealed; `holdingCellLayout` owns the shared
-  geometry. The painted worm and virus silhouettes wait behind the bars, and their real bodies spawn only
-  on release.
+  geometry. The wave-2 worm and viruses are created with the level and wait behind the bars with `held`
+  set: AI, damage and target lock are skipped, and the caged silhouettes are their presentation. No
+  replacement body is created on release.
 - `CALIBRATION_SKILL_TUTORIAL` starts on wake and asks for the skill while wave 1 (the six subjects) is
   live. After the class is down and the skill beat is done, `beginCellRelease` removes the cell-block
-  solid, flashes the bars, marks them open, spawns two viruses and a worm in the cells, and gives the
-  player 1.2 s of iframes for the cut. `CALIBRATION_POWER_TUTORIAL` then asks for the heavy while wave 2
-  is live. `campaignPhase === 'release'` updates only those viruses/worms; the gauntlet timers stay parked.
+  solid, flashes the bars, marks them open, releases the existing held bodies, and gives the player 1.2 s
+  of iframes for the cut. `CALIBRATION_POWER_TUTORIAL` then asks for the heavy while wave 2 is live.
+  `campaignPhase === 'release'` updates only those viruses/worms; the gauntlet timers stay parked.
   Clear wave 2 and finish the heavy beat to start the drill. The bars stay open for the rest of the node.
 - Data crates are spread through the four rooms. The port is a visual endpoint for now: the node still
   clears on the assault kill count, and no room, cell or port state enters `Snapshot`.
@@ -1910,6 +1936,43 @@ new playable hull and not a threat family.
   and CACHE (violet, two files). They are hidden when the calibration class wakes. PING (rose,
   anxious courier) is defined but unplaced. They are local presentation only, like the tutorial
   rooms themselves.
+
+### D43 — USB HUB is a host-authoritative moving-floor arena (built 2026-11-01; online 2026-11-01)
+
+`USB HUB` (arena id 15) is a round hub with four radial thumb-drive islands. It is content in
+`arenas.ts`, not a second traversal or physics system.
+
+- The hub is a 300-radius circle centred in a 1900×1900 camera box. Four 420×240 drives point east,
+  south, west and north. Their dock overlap is 70, so the docked silhouette is one connected plus
+  shape; the only floor is the hub plus the four drive rectangles. The corners are void.
+- All four drives share one cycle: hold in 2.8 s, extend 1.15 s, hold out 3.3 s, retract 1.15 s.
+  At full extension the inner lip is 530 from centre and the tip is 950, leaving a **230-unit** gap
+  between the hub and each island. A dash is airborne over the gap, but 230 exceeds the 180-unit
+  dash, so the fully separated island is not dashable; during the extension travel the gap can still
+  be crossed. A walk starts the normal fall. `usbFloorAt` is the shared floor query, and
+  `World.checkFall` accepts it only while the body is dashing. Do not add a second gap or dash rule
+  for this map.
+- Currents are deliberate body drift, not knockback. During extension the lane on every drive
+  points outward; during retraction it points inward. The lane is 48 units wider than the drive on
+  each side and starts 48 units inside the moving lip, at `usb.flowSpeed` (95 u/s). A body riding a
+  drive also receives that drive's per-tick delta, so the plate carries it and the current pushes
+  it further. Do not convert this to the shared `kx`/`ky` slide: that would stack knockback with
+  the ride and change the felt route.
+- `World.usbT` owns the cycle clock and `World.usbRects` owns the current drive rectangles. The
+  renderer receives `usbT` in `RenderState` and rebuilds the same geometry through `usbDriveRect`;
+  no drive positions are cached in render state. The picker preview uses the same helpers.
+- USB HUB is **host-authoritative online**. `SnapshotHazards` carries the shared `usbT` clock at
+  index 6 (props move to index 7); the host owns drive movement, carry, currents and falls, and
+  guests derive the plates and current overlay from that clock. Do not send drive rectangles or
+  current vectors, and do not let a guest simulate or mutate a drive. `isOnlineArena` accepts `usb`
+  now; the parser keeps a pre-USB wire shape readable during a rolling reload.
+- Local threat content has two explicit adjustments. Infection loads its opening colony onto the
+  east drive instead of the missing right-edge floor, and later arrivals queue past that drive tip.
+  The opening sentry pack is placed on the hub rather than at the normal view-sized offset, which
+  would land in the void. Gauntlet worms and viruses still use the ordinary hub spawn ring.
+- Bots use `usbFloorAt` for dash landing checks and an off-floor recovery steer. The static A*
+  grid cannot represent a gap that opens and closes, so it is not a complete route model; keep the
+  direct edge check in the movement layer instead of baking a fake all-floor grid.
 
 ## 8. Performance guardrails
 

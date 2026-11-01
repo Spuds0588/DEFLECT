@@ -1,4 +1,4 @@
-import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, KEYPAD, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { AimMark, CopyMark } from './types';
 import {
   discArmAngle,
@@ -10,10 +10,18 @@ import {
   discHoleX,
   discHoleY,
   holdingCellLayout,
+  keypadKeyPhase,
   KEYPAD_STATE,
   scannerLaserY,
   scannerPhaseAt,
   SCANNER_STATE,
+  usbCenterX,
+  usbCenterY,
+  usbDriveRect,
+  usbExtensionAt,
+  usbFlowDirAt,
+  USB_STATE,
+  usbPhaseAt,
   ROOM_THEME_COLORS,
   type ArenaDef,
   type ArenaKeypadDef,
@@ -97,6 +105,8 @@ export interface RenderState {
   pusherActive?: boolean;
   /** Rotating platter phase. Absent freezes the disc at its authored resting pose. */
   discT?: number;
+  /** USB drive cycle phase. The host clock is synced in SnapshotHazards. */
+  usbT?: number;
   /** Phone-pad phase and per-key state. The shared clock travels in Snapshot. */
   keypadT?: number;
   keypadStates?: ArrayLike<number>;
@@ -152,7 +162,12 @@ const CIVILIAN_EXIT_RADIUS = 20;
 const FONT_TINY = '700 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const FONT_SMALL = '700 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const FONT_MID = '700 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-const FONT_KEYPAD = '700 52px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+const FONT_KEYPAD = '700 156px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+const FONT_KEYPAD_LABEL = '700 24px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
 const FONT_PAGE_TITLE = '700 19px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
 /** Cached ASCII broom rows. Keyed by column count; built once per size, never per frame. */
@@ -539,7 +554,7 @@ export class Renderer {
         ctx.translate(-pivotX, -pivotY);
       }
 
-      this.drawArena(t, state.arena, intro, state.discT ?? 0);
+      this.drawArena(t, state.arena, intro, state.discT ?? 0, state.usbT ?? 0);
       this.drawFeedRun(state.arena, t);
       this.drawBumpers(state.arena, t, state.bumperFlash);
       if (state.arena.keypad) this.drawKeypad(state, t);
@@ -1595,6 +1610,7 @@ export class Renderer {
     if (!kp) return;
     const ctx = this.ctx;
     const states = state.keypadStates;
+    const padT = state.keypadT ?? t;
     ctx.save();
 
     // Housing. A dark recess around the caps makes the pad read as one object instead
@@ -1612,9 +1628,9 @@ export class Renderer {
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = FONT_SMALL;
+    ctx.font = FONT_KEYPAD_LABEL;
     ctx.fillStyle = 'rgba(255, 224, 142, 0.62)';
-    ctx.fillText('10-KEY // FLOOR', kp.x + kp.w * 0.5, kp.y + 27);
+    ctx.fillText('10-KEY // FLOOR', kp.x + kp.w * 0.5, kp.y + 74);
 
     for (let i = 0; i < kp.keys.length; i++) {
       const key = kp.keys[i];
@@ -1623,19 +1639,21 @@ export class Renderer {
       const y = key.y;
       const w = key.w;
       const h = key.h;
+      const s = Math.min(w / 250, h / 198);
+      const keyPhase = keypadKeyPhase(kp, i, padT);
 
       // Socket under every cap, so an up key still has a visible footprint.
       ctx.globalAlpha = 1;
       ctx.fillStyle = '#03070a';
-      ctx.fillRect(x + 3, y + 5, w - 6, h - 5);
+      ctx.fillRect(x + 3 * s, y + 5 * s, w - 6 * s, h - 5 * s);
       ctx.strokeStyle = 'rgba(255, 207, 92, 0.2)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(x + 3.5, y + 5.5, w - 7, h - 6);
+      ctx.strokeRect(x + 3.5 * s, y + 5.5 * s, w - 7 * s, h - 6 * s);
 
       if (keyState === KEYPAD_STATE.up) {
         ctx.globalAlpha = 0.34;
         ctx.fillStyle = 'rgba(255, 207, 92, 0.25)';
-        ctx.fillRect(x + 15, y + 15, w - 30, h - 30);
+        ctx.fillRect(x + 15 * s, y + 15 * s, w - 30 * s, h - 30 * s);
         ctx.globalAlpha = 0.34;
         ctx.fillStyle = '#ffe7a0';
         ctx.font = FONT_KEYPAD;
@@ -1647,7 +1665,20 @@ export class Renderer {
       const warning = keyState === KEYPAD_STATE.warn;
       const slamming = keyState === KEYPAD_STATE.slam;
       const rising = keyState === KEYPAD_STATE.rise;
-      const lift = warning ? 7 + Math.sin(t * 22 + i) * 2 : rising ? 3 : 0;
+      // The cap travels through its slam and rise instead of snapping between poses;
+      // the state still flips at the same sim boundary, so cover and damage are unchanged.
+      const slamProgress = clamp01((keyPhase - KEYPAD.warn) / KEYPAD.slam);
+      const riseProgress = clamp01(
+        (keyPhase - KEYPAD.warn - KEYPAD.slam - KEYPAD.down) / KEYPAD.rise,
+      );
+      const capDepth = Math.max(10, h * 0.075);
+      const lift = warning
+        ? capDepth + Math.sin(t * 3 + i) * capDepth * 0.18
+        : slamming
+          ? capDepth * (1 - slamProgress)
+          : rising
+            ? capDepth * riseProgress
+            : 0;
       const capY = y - lift;
       const hot = slamming || warning;
 
@@ -1656,26 +1687,31 @@ export class Renderer {
       ctx.fillStyle = slamming ? '#8a5a12' : warning ? '#3a2b12' : '#20251a';
       ctx.fillRect(x, capY, w, h);
       ctx.fillStyle = '#080d0f';
-      ctx.fillRect(x, capY + h - 11, w, 11);
+      ctx.fillRect(x, capY + h - 11 * s, w, 11 * s);
 
       // Recessed top face.
       ctx.fillStyle = slamming ? '#ffcf5c' : warning ? '#4b3716' : '#2a3020';
-      ctx.fillRect(x + 8, capY + 8, w - 16, h - 24);
+      ctx.fillRect(x + 8 * s, capY + 8 * s, w - 16 * s, h - 24 * s);
       ctx.strokeStyle = hot ? '#ffb04a' : rising ? 'rgba(255, 207, 92, 0.45)' : state.arena.accent;
       ctx.lineWidth = hot ? 3 : 2;
       ctx.globalAlpha = hot ? 0.95 : 0.8;
-      ctx.strokeRect(x + 8.5, capY + 8.5, w - 17, h - 25);
+      ctx.strokeRect(x + 8.5 * s, capY + 8.5 * s, w - 17 * s, h - 25 * s);
 
       // Down caps are cover: the center panel, corner bolts and a hard bright rim.
       ctx.globalAlpha = 1;
       ctx.fillStyle = slamming ? '#1b1608' : '#171c12';
-      ctx.fillRect(x + 19, capY + 20, w - 38, h - 48);
+      ctx.fillRect(x + 19 * s, capY + 20 * s, w - 38 * s, h - 48 * s);
       ctx.strokeStyle = hot ? '#fff0b0' : 'rgba(255, 224, 142, 0.42)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(x + 20.5, capY + 21.5, w - 41, h - 50);
+      ctx.strokeRect(x + 20.5 * s, capY + 21.5 * s, w - 41 * s, h - 50 * s);
       ctx.fillStyle = hot ? '#fff3bb' : 'rgba(255, 224, 142, 0.6)';
       for (let c = 0; c < 4; c++) {
-        ctx.fillRect(x + (c < 2 ? 13 : w - 17), capY + (c % 2 === 0 ? 13 : h - 17), 4, 4);
+        ctx.fillRect(
+          x + (c < 2 ? 13 * s : w - 17 * s),
+          capY + (c % 2 === 0 ? 13 * s : h - 17 * s),
+          4 * s,
+          4 * s,
+        );
       }
 
       if (warning) {
@@ -1683,8 +1719,8 @@ export class Renderer {
         // the player is moving across the pad.
         ctx.fillStyle = '#ffb04a';
         for (let bar = 0; bar < 3; bar++) {
-          const by = capY + 23 + bar * 9 + Math.sin(t * 15 + i + bar) * 2;
-          ctx.fillRect(x + w * 0.5 - 26 + bar * 8, by, 52 - bar * 8, 3);
+          const by = capY + 23 * s + bar * 9 * s + Math.sin(t * 2 + i + bar) * 2 * s;
+          ctx.fillRect(x + w * 0.5 - 26 * s + bar * 8 * s, by, 52 * s - bar * 8 * s, 3 * s);
         }
       }
 
@@ -2479,6 +2515,211 @@ export class Renderer {
   }
 
   /**
+   * The USB hub: a round board with four thumb drives that pull out along the cardinals.
+   * The hub and the drives are the only floor; the dark ring between them is the drop.
+   * Flow arrows show the current that runs while a drive is moving.
+   */
+  private drawUsbArena(arena: ArenaDef, groundA: number, frameA: number, usbT: number): void {
+    const usb = arena.usb;
+    if (!usb) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const cx = usbCenterX(arena);
+    const cy = usbCenterY(arena);
+    const phase = usbPhaseAt(usb, usbT);
+    const travel = usbExtensionAt(usb, usbT);
+    const pulse = 0.5 + 0.5 * Math.sin(usbT * 8.5);
+    const driven = phase === USB_STATE.extend || phase === USB_STATE.retract;
+    const flowDir = usbFlowDirAt(usb, usbT);
+
+    // The empty board around the hardware. Fill the whole camera box so the outer lip
+    // reads as a drop instead of the edge of a rectangular plate.
+    ctx.save();
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#02060b';
+    ctx.fillRect(b.left - 180, b.top - 180, b.right - b.left + 360, b.bottom - b.top + 360);
+    ctx.fillStyle = arena.accentFaint;
+    ctx.fillRect(b.left - 180, b.top - 180, b.right - b.left + 360, b.bottom - b.top + 360);
+    ctx.restore();
+
+    // Hub face.
+    ctx.save();
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = this.floorGradient ?? '#050b12';
+    ctx.beginPath();
+    ctx.arc(cx, cy, usb.hubRadius, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = arena.accentFaint;
+    ctx.beginPath();
+    ctx.arc(cx, cy, usb.hubRadius, 0, TWO_PI);
+    ctx.fill();
+    if (this.floorPattern) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, usb.hubRadius, 0, TWO_PI);
+      ctx.clip();
+      ctx.globalAlpha = groundA * 0.55;
+      ctx.fillStyle = this.floorPattern;
+      ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+      ctx.restore();
+    }
+    // Concentric port tracks and a central controller square.
+    ctx.strokeStyle = arena.accent;
+    ctx.globalAlpha = 0.16 * groundA;
+    ctx.lineWidth = 1.5;
+    for (let r = 86; r < usb.hubRadius - 24; r += 62) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, TWO_PI);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.65 * frameA;
+    ctx.fillStyle = '#07141d';
+    ctx.fillRect(cx - 74, cy - 74, 148, 148);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(cx - 74, cy - 74, 148, 148);
+    ctx.globalAlpha = 0.24 * frameA;
+    ctx.lineWidth = 5;
+    ctx.strokeRect(cx - 65, cy - 65, 130, 130);
+    ctx.globalAlpha = 0.85 * frameA;
+    ctx.fillStyle = arena.accent;
+    ctx.fillRect(cx - 5, cy - 5, 10, 10);
+    ctx.fillRect(cx - 30, cy - 2, 18, 4);
+    ctx.fillRect(cx + 12, cy - 2, 18, 4);
+    ctx.restore();
+
+    // Static sockets on the hub rim: the drives leave four empty ports when out.
+    ctx.save();
+    ctx.globalAlpha = 0.7 * frameA;
+    for (let i = 0; i < usb.drives.length; i++) {
+      const drive = usb.drives[i];
+      const ux = Math.cos(drive.angle);
+      const uy = Math.sin(drive.angle);
+      const nx = -uy;
+      const ny = ux;
+      const px = cx + ux * (usb.hubRadius - 20);
+      const py = cy + uy * (usb.hubRadius - 20);
+      const half = drive.width * 0.34;
+      ctx.fillStyle = '#030a10';
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px + nx * half, py + ny * half);
+      ctx.lineTo(px + ux * 18 + nx * half, py + uy * 18 + ny * half);
+      ctx.lineTo(px + ux * 18 - nx * half, py + uy * 18 - ny * half);
+      ctx.lineTo(px - nx * half, py - ny * half);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Drives.
+    const r = { x: 0, y: 0, w: 0, h: 0 };
+    for (let i = 0; i < usb.drives.length; i++) {
+      const drive = usb.drives[i];
+      usbDriveRect(arena, i, usbT, r);
+      const horizontal = Math.abs(Math.cos(drive.angle)) >= Math.abs(Math.sin(drive.angle));
+      const ux = Math.cos(drive.angle);
+      const uy = Math.sin(drive.angle);
+      const innerX = horizontal ? (ux > 0 ? r.x : r.x + r.w) : r.x + r.w * 0.5;
+      const innerY = horizontal ? r.y + r.h * 0.5 : (uy > 0 ? r.y : r.y + r.h);
+      const outerX = horizontal ? (ux > 0 ? r.x + r.w : r.x) : r.x + r.w * 0.5;
+      const outerY = horizontal ? r.y + r.h * 0.5 : (uy > 0 ? r.y + r.h : r.y);
+      ctx.save();
+      ctx.globalAlpha = groundA;
+      ctx.fillStyle = '#0b202b';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(103, 232, 255, 0.08)' : 'rgba(103, 232, 255, 0.035)';
+      ctx.fillRect(r.x + 5, r.y + 5, r.w - 10, r.h - 10);
+      // The connector end sits at the hub; the body has a thin metal shell and a cap.
+      const connectorW = 38;
+      ctx.fillStyle = '#071016';
+      if (horizontal) {
+        ctx.fillRect(ux > 0 ? r.x : r.x + r.w - connectorW, r.y + r.h * 0.3, connectorW, r.h * 0.4);
+        ctx.strokeStyle = arena.accentSoft;
+        ctx.lineWidth = 1.4;
+        ctx.strokeRect(ux > 0 ? r.x : r.x + r.w - connectorW, r.y + r.h * 0.3, connectorW, r.h * 0.4);
+      } else {
+        ctx.fillRect(r.x + r.w * 0.3, uy > 0 ? r.y : r.y + r.h - connectorW, r.w * 0.4, connectorW);
+        ctx.strokeStyle = arena.accentSoft;
+        ctx.lineWidth = 1.4;
+        ctx.strokeRect(r.x + r.w * 0.3, uy > 0 ? r.y : r.y + r.h - connectorW, r.w * 0.4, connectorW);
+      }
+      // Edge light and an LED / capacity pips, so each drive reads as hardware.
+      ctx.globalAlpha = (0.62 + pulse * 0.2) * frameA;
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      ctx.globalAlpha = 0.45 * frameA;
+      ctx.strokeStyle = '#dffbff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r.x + 5, r.y + 5, r.w - 10, r.h - 10);
+      ctx.globalAlpha = driven ? 0.65 + pulse * 0.3 : 0.35;
+      ctx.fillStyle = arena.accent;
+      const ledX = outerX + (horizontal ? -ux * 26 : 0);
+      const ledY = outerY + (horizontal ? 0 : -uy * 26);
+      ctx.beginPath();
+      ctx.arc(ledX, ledY, 4.5, 0, TWO_PI);
+      ctx.fill();
+      // Small pips along the body.
+      ctx.globalAlpha = 0.28 * frameA;
+      for (let k = 0; k < 4; k++) {
+        const t = 0.2 + k * 0.14;
+        const px = innerX + (outerX - innerX) * t;
+        const py = innerY + (outerY - innerY) * t;
+        ctx.fillRect(px - 3, py - 3, 6, 6);
+      }
+      ctx.restore();
+
+      // Flow chevrons on the moving drive. They point with the current: out on the
+      // extension, back toward the hub on the retract.
+      if (flowDir !== 0) {
+        const from = usb.hubRadius - usb.dockOverlap + travel;
+        const to = from + drive.length;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(drive.angle);
+        ctx.strokeStyle = arena.accent;
+        ctx.lineWidth = 2;
+        for (let k = 0; k < 5; k++) {
+          const along = from + 34 + k * 74 + ((usbT * usb.flowSpeed * 0.8) % 74);
+          if (along > to - 24) continue;
+          const dir = flowDir;
+          ctx.globalAlpha = (0.2 + 0.22 * (k / 5)) * frameA;
+          ctx.beginPath();
+          ctx.moveTo(along - dir * 7, -10);
+          ctx.lineTo(along + dir * 7, 0);
+          ctx.lineTo(along - dir * 7, 10);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    // Round rim. The drives sit on top of it when docked.
+    ctx.save();
+    ctx.strokeStyle = arena.accent;
+    ctx.globalAlpha = 0.12 * frameA;
+    ctx.lineWidth = 24;
+    ctx.beginPath();
+    ctx.arc(cx, cy, usb.hubRadius, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = (0.65 + pulse * 0.18) * frameA;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, usb.hubRadius - 2, 0, TWO_PI);
+    ctx.stroke();
+    ctx.globalAlpha = 0.55 * frameA;
+    ctx.strokeStyle = '#eaffff';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, usb.hubRadius - 7, 0, TWO_PI);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
    * A round platter instead of a rectangular plate. The floor, its concentric tracks and
    * every hole turn with the disc; the read arm pivots outside the rim and sweeps across
    * the face. Nothing here simulates: the world owns the phase and the holes it tests.
@@ -2816,7 +3057,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawArena(t: number, arena: ArenaDef, intro = INTRO_LEN, discT = 0): void {
+  private drawArena(t: number, arena: ArenaDef, intro = INTRO_LEN, discT = 0, usbT = 0): void {
     const ctx = this.ctx;
     const b = arena.bounds;
     this.ensureFloorPattern(arena);
@@ -2828,6 +3069,10 @@ export class Renderer {
     const pillarDrop = (1 - pillarA) * 30;
     if (arena.disc) {
       this.drawDiscArena(t, arena, groundA, frameA, discT);
+      return;
+    }
+    if (arena.usb) {
+      this.drawUsbArena(arena, groundA, frameA, usbT);
       return;
     }
     if (this.dustArena !== arena.id) {
@@ -3357,7 +3602,8 @@ export class Renderer {
     ctx.fillText('KITTY', cx, cellBottom + 13);
 
     // Wave 2 waits behind the bars: the worm in the left cell, the virus pair in the
-    // right. These are painted silhouettes; the real bodies spawn on the power-down.
+    // right. The real bodies exist already but are hidden from the normal threat pass;
+    // these silhouettes are their caged presentation until the power-down releases them.
     if (this.campaignActive && !this.campaignBarsOpen) {
       this.drawHoldingCagedThreats(layout, t, alpha);
     }
@@ -4316,7 +4562,7 @@ export class Renderer {
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < worms.length; i++) {
       const w = worms[i];
-      if (!w.active) continue;
+      if (!w.active || w.held) continue;
       const base = w.infected ? THREAT_COLORS.virus : THREAT_COLORS.worm;
       const build = w.spawnT > 0 ? 1 - w.spawnT / WORM.spawnTime : 1;
       const builtSegments = 1 + Math.floor(build * w.segCount);
@@ -4464,7 +4710,7 @@ export class Renderer {
     ctx.fillStyle = THREAT_COLORS.virus;
     for (let i = 0; i < viruses.length; i++) {
       const v = viruses[i];
-      if (!v.active) continue;
+      if (!v.active || v.held) continue;
       const x = lerp(v.prevX, v.x, alpha);
       const y = lerp(v.prevY, v.y, alpha);
       const spin = t * 1.1 + v.phase;

@@ -18,7 +18,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
   infected thralls, with a local top-eight table.
 - **CAMPAIGN:** `BUILD ROOT`, the first playable story level, with three local save slots. More levels are coming soon.
 - **Online:** host or join a room for up to 8 players.
-- Thirteen programs, fifteen arenas.
+- Thirteen programs, sixteen arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
@@ -172,7 +172,8 @@ into the cells. The three civilian monitors in that office are destroyed in the 
 any files they carry, and script_kitty watches from the middle cell. The Warden teaches your **skill**
 while wave 1 is live. Clear all six and finish that lesson to make the cell block lose power: the bars
 retract unexpectedly and release **wave 2**, two viruses and a worm, while the Warden teaches your
-**power attack**. Clear wave 2 and finish the heavy lesson, then spar against the bot squad (a `NO BOTS`
+**power attack**. They are already in the cells behind the bars; the power-down releases them instead of
+spawning replacements. Clear wave 2 and finish the heavy lesson, then spar against the bot squad (a `NO BOTS`
 run still drills against one instructor), survive a `SYSTEM BREACH` warning, then delete 10 threats to
 clear the node. The clear reports
 kills, time, damage taken, data crates preserved and a score; losing no crates is a clean sweep and pays a
@@ -264,7 +265,7 @@ no health or readiness telemetry yet.
 | **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. A catch refills the shot's lifetime and adds 1 damage, so repeat catches become lethal. Every program can do this; reflection is not a Probe-only rule. Lock on to flatten caught shots toward the target. Pinball's shield is wider and lasts longer. |
 | **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam in 0.45 s; releasing the heavy while it fires cuts it short, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear, Compress fires a pressure burst that halves the size and health cap of everything in the ring, crushing anything on its last point, Pinball launches one giant ball that bounces off arena walls only and rolls over bodies for 3 damage, and Copy Pasta seeds every enemy in a ring with a growing stack of red file icons that detonates after a beat. Aim Bot paints up to six red crosshairs in front of himself and fires a 12-damage shot at each in a quick sequence. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
 | **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a persistent trap mine that waits until stepped on and detonates in a wide blast (three live max), Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises two orbiting shield balls, Ghost cloaks for a few seconds, Compress folds small and runs fast for 3.5 seconds, Pinball plants a flipper arm for 16 seconds that punts hostile shots and swats bodies toward other enemies, Copy Pasta summons a bot-driven copy of itself that fights for nine seconds, and Aim Bot raises a visible laser sight for 7 seconds and loads a three-shot clip that ignores his normal reload. Every Copy Pasta dash also leaves a one-hit, 1.5-second afterimage that pulls enemy attention. Its mark in the readiness dock shows when the skill is ready. |
-| **DASH** | `A` / `Shift` / `Space` | Two charges, one shared recharge. Tap to phase through enemies and cover in your last movement direction. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. Pinball carries three charges. |
+| **DASH** | `A` / `Shift` / `Space` | Two charges, one shared recharge. Tap to pass through enemies and clear floor gaps in your last movement direction; solid cover and deployed walls stop the dash. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. Pinball carries three charges. |
 
 Ranged fire is the pressure tool. Melee is the answer to incoming fire: tap to lash, hold to guard. The
 power/skill button is the commitment button: tap for your program's skill, hold to charge and run the
@@ -301,14 +302,15 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `THE RING` | A hollow central box with a gate on each side. Close control fights and blind flanks. |
 | `SWITCHBACK` | Staggered bars form serpentine lanes. Long sightlines and heavy ricochets. |
 | `MAINFRAME` | A large multi-district map (four linked combat zones) with a camera that follows you. Cross lanes, pillar cover, a gate ring and a ricochet alley; fights move between districts. |
-| `TRANSIT` | Two decks over a service trench. Cross on the central bridge, ride the paired transporter pads, or take the lift on the east end. The trench blocks bodies but not shots; dashes phase it. |
+| `TRANSIT` | Two decks over a service trench. Cross on the central bridge, ride the paired transporter pads, or take the lift on the east end. The trench blocks bodies but not shots; a dash can clear it, while solid cover still stops the body. |
 | `THE LEDGE` | No outer wall. The floor ends in a dashed lip over the void: a shove that carries a body over it kills, shots fall instead of ricocheting, and a pushed threat is a clear in the gauntlet. |
 | `RECYCLING BIN` | A trapezoid floor with no cover and a big hole in the bottom edge. A 130-unit compaction plate descends every 30 s, stops on the hole's rim and rides everything on the sides down to the ledges. Breakable file boxes are the only clutter, and they are light: shove them, launch them, bat them with a guard. The compactor clock and live boxes sync online. |
 | `DISK PLATTER` | A round platter with no outer wall. Nine holes turn with the disc, and a read arm sweeps across the face every 11.5 s, shoving anything it catches toward those holes or the rim. No cover: the floor and the arm are the whole fight. |
-| `KEYPAD` | A ten-key phone pad in the middle of the room. Each key warns, slams, holds as solid cover, then rises. A slam crushes threats instantly; a player caught under one loses three segments. Online: the key clock is synced and the host resolves the crush. |
+| `KEYPAD` | The entire arena is a ten-key phone pad. There is no outside floor: spawns stand on the bezel. Each 680×528 key warns for 4 s, sinks for 1.2 s, holds as solid cover for 8 s, then rises for 1.6 s. A slam crushes threats instantly; a player caught under one loses three segments. Online: the key clock is synced and the host resolves the crush. |
 | `DOCUMENT SCANNER` | A large glass platen where documents load from a floor slot, a read line scans top to bottom, snaps back, and the sheet is replaced. Hop the line or dash over it. Online: the scan clock/page is synced and the host resolves the line. |
 | `BROWSER` | A browser window showing a forum. A giant cursor travels to the page link, hovers, and click-slams the floor before the forum navigates deeper and the cover layout changes. Online: the page/clock is synced and the host resolves the click. |
 | `QUARANTINE` | The campaign tutorial route: a round intake office, a square holding office with three jail cells, a mainboard rectangle and a larger router rectangle linked by three bridge decks. The six calibration subjects wait in holding; the router ends at a network port. Local-only tutorial staging. |
+| `USB HUB` | A round hub with four thumb-drive islands pushing out on a shared cycle. Only the hub and drives are floor; the gap grows to 230 units, so a dash can cross while the drives are travelling but not at full extension. While a drive extends, its current pushes outward; while it retracts, the current pulls inward, carrying players and threats off or onto the islands. Online: the drive clock is synced and the host resolves the ride. |
 
 ### Ordinary programs
 
@@ -327,7 +329,7 @@ cat face and sits in the middle holding cell.
 round `INTAKE` office is the Warden's lesson room; the square `HOLDING` office holds the six dormant
 calibration subjects and three jail cells; the `MAINBOARD` follows; the larger `ROUTER` room is the
 visual approach to the network port.
-The gaps between the rooms are real chasms for bodies, and each bridge deck is the only walking route.
+The gaps between the rooms are real chasms for bodies, and each bridge deck is the only walking route; a dash can clear a narrow gap.
 The level still clears on the assault kill count, so the port is a destination and future exit hook rather
 than a gate yet. Room arenas are local-only and do not appear in online map rotation.
 
@@ -353,14 +355,17 @@ hole is a fall. A dash clears a hole (it is airborne), but landing inside one st
 Hosted matches keep the plate and its holes but park the spin and the arm, because the snapshot carries no
 disc phase; local training, gauntlet and campaign runs get the full moving floor.
 
-`KEYPAD` turns the floor into ten moving cover blocks. The digits 1–9 form the top three rows and the 0
-sits centered below. Every key has the same cycle but a different phase, so the pad is always changing
-shape: a warning cap lifts and glows, then slams down, stays solid for 1.7 s and rises again. A player
-can walk through an up socket, but a down cap blocks bodies and shots and gives the arena temporary
-cover. A body caught in the slam takes the hit: threats are deleted, while a player loses three health
-segments. Dash through a cap before it falls, or leave the lane; do not try to out-walk the down face.
-Online, the host sends the shared key clock; every guest draws the same caps and the host resolves the
-crush. The caps are also predicted as cover, so a guest cannot walk through a down key.
+`KEYPAD` turns the floor into ten moving cover blocks, and the keypad **is** the arena. There is no
+floor around it: the housing is the playable bounds, and the eight entries stand on its own bezel.The keys are enormous: one 680×528 cap fills most of the screen at normal zoom, with the 0 spanning the
+full bottom row. The digits 1–9 form the top three rows and the 0 sits centered below. Every key has the
+same cycle but a different phase, so the pad is always changing shape: a warning cap lifts and glows for
+4 s, sinks over 1.2 s, stays solid for 8 s and rises over 1.6 s. That warning is deliberately long: a
+player paying attention can walk off a key before it commits. A player can walk through an up socket,
+but a down cap blocks bodies and shots and gives the arena temporary cover. A body caught when the slam
+starts takes the hit: threats are deleted, while a player loses three health segments. Cross while the
+cap is up, or dash clear before it falls; a down cap stops the dash. Online, the host sends the shared
+key clock; every guest draws the same caps and the host resolves the crush. The caps are also predicted
+as cover, so a guest cannot walk through a down key.
 
 `DOCUMENT SCANNER` is a paper-handling arena. A sheet rises from the slot below the platen, the read line
 sweeps from the top of the page to the bottom, then races back up, and the sheet unloads for the next

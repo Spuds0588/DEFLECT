@@ -47,12 +47,12 @@
     "bottom": 672
   },
   "KEYPAD": {
-    "period": 6.2,
-    "warn": 0.8,
-    "slam": 0.1,
-    "down": 1.7,
-    "rise": 0.35,
-    "offsetStep": 0.58,
+    "period": 30,
+    "warn": 4,
+    "slam": 1.2,
+    "down": 8,
+    "rise": 1.6,
+    "offsetStep": 3,
     "playerDamage": 3,
     "threatDamage": 99,
     "knockback": 0

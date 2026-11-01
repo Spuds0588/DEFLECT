@@ -1,7 +1,18 @@
 import { AIMBOT, ATOMIZE, BOLT, BUFFER, BUG, COMPRESS, COPYPASTA, EMITTER, FISHER, GHOST, KABOOM, PINBALL, PLAYER, SIM_DT, TOXIC, WEDGE, type Rect } from './config';
 import { PROGRAM_ID } from './programs';
 import { POWERUP_KIND } from './powerups';
-import { arenaSolids, discCenterX, discCenterY, discHoleX, discHoleY, KEYPAD_STATE, type ArenaDef } from './arenas';
+import {
+  arenaSolids,
+  discCenterX,
+  discCenterY,
+  discHoleX,
+  discHoleY,
+  usbCenterX,
+  usbCenterY,
+  usbFloorAt,
+  KEYPAD_STATE,
+  type ArenaDef,
+} from './arenas';
 import { circleRect, hitScratch } from './collision';
 import { Rng } from './rng';
 import { arenaNav, NAV_MAX_PATH } from './nav';
@@ -281,7 +292,7 @@ export class BotBrain {
 
     // Reflex layer: deflect the closest bolt, or dash out of its line.
     if (this.threatSerial >= 0 && this.reactT <= 0) {
-      if (this.handleThreat(me, out, world.arena)) return;
+      if (this.handleThreat(me, out, world.arena, world.usbT)) return;
     }
 
     const target = this.target >= 0 ? world.players[this.target] : null;
@@ -790,7 +801,7 @@ export class BotBrain {
       me.swingPhase === 0 &&
       this.threatSerial < 0 &&
       dist > 330 &&
-      this.dashSafe(world.arena, me.x, me.y, dx / dist, dy / dist) &&
+      this.dashSafe(world.arena, me.x, me.y, dx / dist, dy / dist, world.usbT) &&
       this.rng.next() < 0.004 * this.rule.dashBias
     ) {
       out.mx = dx / dist;
@@ -1187,7 +1198,7 @@ export class BotBrain {
     this.threatDist = pdist;
   }
 
-  private handleThreat(me: Player, out: InputFrame, arena: ArenaDef): boolean {
+  private handleThreat(me: Player, out: InputFrame, arena: ArenaDef, usbT = 0): boolean {
     if (this.threatSerial < 0) return false;
     const dx = this.threatX - me.x;
     const dy = this.threatY - me.y;
@@ -1279,8 +1290,8 @@ export class BotBrain {
       let side = (this.strafeDir >= 0 ? 1 : -1) * (this.rng.next() < 0.5 ? -1 : 1);
       // Dodge away from the bolt, but never off the lip: flip the slide if that side is
       // void, and if both sides are void take the walk instead of the dash.
-      if (!this.dashSafe(arena, me.x, me.y, (-vy / vm) * side, (vx / vm) * side)) {
-        if (this.dashSafe(arena, me.x, me.y, (vy / vm) * side, (-vx / vm) * side)) side = -side;
+      if (!this.dashSafe(arena, me.x, me.y, (-vy / vm) * side, (vx / vm) * side, usbT)) {
+        if (this.dashSafe(arena, me.x, me.y, (vy / vm) * side, (-vx / vm) * side, usbT)) side = -side;
         else side = 0;
       }
       if (side !== 0) {
@@ -1436,7 +1447,7 @@ export class BotBrain {
    * A dash commits the body for `dashSpeed * dashTime` units. On a walled arena the wall
    * collects it; on an open one that is a fall, so refuse the ones that end in the void.
    */
-  private dashSafe(arena: ArenaDef, x: number, y: number, dx: number, dy: number): boolean {
+  private dashSafe(arena: ArenaDef, x: number, y: number, dx: number, dy: number, usbT = 0): boolean {
     if (arena.walls !== 'open') return true;
     const reach = PLAYER.dashSpeed * PLAYER.dashTime + PLAYER.radius + 24;
     const ex = x + dx * reach;
@@ -1457,6 +1468,7 @@ export class BotBrain {
         if (ex > r.x - 8 && ex < r.x + r.w + 8 && ey > r.y - 8 && ey < r.y + r.h + 8) return false;
       }
     }
+    if (arena.usb && !usbFloorAt(arena, ex, ey, usbT)) return false;
     return true;
   }
 
@@ -1480,6 +1492,17 @@ export class BotBrain {
       if (me.x > b.right - lip) sx -= (me.x - (b.right - lip)) / 45;
       if (me.y < b.top + lip) sy += (b.top + lip - me.y) / 45;
       if (me.y > b.bottom - lip) sy -= (me.y - (b.bottom - lip)) / 45;
+    }
+
+    if (arena.usb) {
+      // The drive gaps are live. The grid cannot represent them, so a bot already off
+      // the plates gets a hard pull toward the hub; this is a recovery steer, not a route.
+      if (!usbFloorAt(arena, me.x, me.y, world.usbT)) {
+        const cx = usbCenterX(arena);
+        const cy = usbCenterY(arena);
+        sx += (cx - me.x) / 18;
+        sy += (cy - me.y) / 18;
+      }
     }
 
     const disc = arena.disc;

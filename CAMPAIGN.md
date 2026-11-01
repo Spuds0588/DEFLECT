@@ -25,7 +25,8 @@ script_kitty waits behind the middle cell bars. The Warden's basic lesson runs i
 calibration subjects wake in holding as **wave 1** and carry the skill lesson. The sealed cell block is a
 body solid while it is powered. Clearing all six and finishing the skill beat makes the block
 fail: the bars retract unexpectedly and release **wave 2**, two viruses and a worm, for the power-attack
-lesson. Clear that wave and the heavy beat before the drill. The router is the visual approach to a
+lesson. The bodies are already in the cells, frozen and untargetable while the block is powered; the
+power-down wakes them instead of spawning replacements. Clear that wave and the heavy beat before the drill. The router is the visual approach to a
 **NETWORK PORT**. The port is not a gate yet: BUILD ROOT still clears on the assault kill count. The
 level is local-only and its room data never enters `Snapshot` (see AGENTS D41).
 

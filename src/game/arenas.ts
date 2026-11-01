@@ -201,6 +201,51 @@ export interface DiscDef {
   arm: DiscArmDef;
 }
 
+/** One thumb-drive platform. The drive is a floor plate, not cover. */
+export interface UsbDriveDef {
+  /** Radial direction from the hub centre, radians. */
+  angle: number;
+  /** Length along the radial, from the inner edge to the tip. */
+  length: number;
+  /** Width across the drive. */
+  width: number;
+}
+
+/**
+ * Four retracting floor plates around a round hub. The hub and the plates are the only
+ * floor; the gaps between them are a drop. The cycle is deterministic, so the renderer
+ * and the world derive the same position from `usbT`; SnapshotHazards carries that clock
+ * to guests.
+ */
+export interface ArenaUsbDef {
+  hubRadius: number;
+  drives: UsbDriveDef[];
+  /** How far a drive's inner edge sits inside the hub while docked. */
+  dockOverlap: number;
+  /** Radial travel from the docked position to the out position. */
+  extension: number;
+  holdIn: number;
+  extend: number;
+  holdOut: number;
+  retract: number;
+  /** Current speed, units per second, while the plates are moving. */
+  flowSpeed: number;
+  /** Extra lane width on either side of a drive where the current catches bodies. */
+  flowWidth: number;
+}
+
+export const USB_STATE = {
+  docked: 0,
+  extend: 1,
+  out: 2,
+  retract: 3,
+} as const;
+
+export interface UsbFlowVector {
+  x: number;
+  y: number;
+}
+
 /**
  * A breakable file box. Bodies step over it; shots and lashes delete it in one or two
  * hits. Kind is a `PROP` id, which picks the mark on the box.
@@ -497,6 +542,8 @@ export interface ArenaDef {
   scanner?: ArenaScannerDef;
   /** Browser-window presentation. Its solid pieces are listed in `pillars`. */
   browser?: ArenaBrowserDef;
+  /** Four retracting USB-drive floor plates. Local-only; no snapshot phase. */
+  usb?: ArenaUsbDef;
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
   /** Tutorial room floors and labels. Presentation only; never collision. */
@@ -543,6 +590,17 @@ const browserTabs: ArenaBrowserTabDef[] = [
   { label: 'BOARD MINUTES', w: 300 },
   { label: '+ NEW TAB', w: 240 },
 ];
+const usbSpawns: SpawnPoint[] = [
+  { x: 998, y: 808 },
+  { x: 1132, y: 864 },
+  { x: 1192, y: 998 },
+  { x: 1132, y: 1132 },
+  { x: 998, y: 1188 },
+  { x: 864, y: 1132 },
+  { x: 804, y: 998 },
+  { x: 864, y: 864 },
+];
+
 const browserPages: ArenaBrowserPageDef[] = [
   {
     title: 'FORUM / INDEX',
@@ -1024,40 +1082,39 @@ export const ARENAS: readonly ArenaDef[] = [
     accentSoft: 'rgba(255, 207, 92, 0.32)',
     accentFaint: 'rgba(255, 207, 92, 0.032)',
     signature: 1,
-    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    // The keypad is the whole arena. Bounds equal the housing edge-to-edge; there is
+    // no exterior floor, room or spawn gutter. Spawns stand on the pad's own bezel.
+    bounds: { left: 48, top: 48, right: 2448, bottom: 2688 },
     pillars: [],
-    // The pad sits in the middle of a walled room. Spawns stay on the outer ring so
-    // nobody starts under a key, and the lanes around the bezel remain walkable while
-    // several caps are down at once.
+    // Portrait housing, with a slightly wide bottom key for the 0. The caps fill almost
+    // the entire housing: one key fills most of the screen at normal camera zoom.
     keypad: {
-      // Portrait housing, with a slightly wide bottom key for the 0. This is a phone
-      // pad, not a calculator: three columns, four rows, and a deep bezel.
-      x: 655,
-      y: 180,
-      w: 680,
-      h: 730,
+      x: 48,
+      y: 48,
+      w: 2400,
+      h: 2640,
       keys: [
-        { digit: '1', x: 692, y: 229, w: 190, h: 150 },
-        { digit: '2', x: 900, y: 229, w: 190, h: 150 },
-        { digit: '3', x: 1108, y: 229, w: 190, h: 150 },
-        { digit: '4', x: 692, y: 397, w: 190, h: 150 },
-        { digit: '5', x: 900, y: 397, w: 190, h: 150 },
-        { digit: '6', x: 1108, y: 397, w: 190, h: 150 },
-        { digit: '7', x: 692, y: 565, w: 190, h: 150 },
-        { digit: '8', x: 900, y: 565, w: 190, h: 150 },
-        { digit: '9', x: 1108, y: 565, w: 190, h: 150 },
-        { digit: '0', x: 692, y: 733, w: 606, h: 150 },
+        { digit: '1', x: 168, y: 222, w: 680, h: 528 },
+        { digit: '2', x: 908, y: 222, w: 680, h: 528 },
+        { digit: '3', x: 1648, y: 222, w: 680, h: 528 },
+        { digit: '4', x: 168, y: 810, w: 680, h: 528 },
+        { digit: '5', x: 908, y: 810, w: 680, h: 528 },
+        { digit: '6', x: 1648, y: 810, w: 680, h: 528 },
+        { digit: '7', x: 168, y: 1398, w: 680, h: 528 },
+        { digit: '8', x: 908, y: 1398, w: 680, h: 528 },
+        { digit: '9', x: 1648, y: 1398, w: 680, h: 528 },
+        { digit: '0', x: 168, y: 1986, w: 2160, h: 528 },
       ],
     },
     spawns: [
-      { x: 995, y: 130 },
-      { x: 1645, y: 220 },
-      { x: 1750, y: 547 },
-      { x: 1645, y: 880 },
-      { x: 995, y: 965 },
-      { x: 345, y: 880 },
-      { x: 240, y: 547 },
-      { x: 345, y: 220 },
+      { x: 720, y: 118 },
+      { x: 1680, y: 118 },
+      { x: 2378, y: 928 },
+      { x: 2378, y: 1808 },
+      { x: 1680, y: 2618 },
+      { x: 720, y: 2618 },
+      { x: 118, y: 1808 },
+      { x: 118, y: 928 },
     ],
   },
   {
@@ -1285,6 +1342,45 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 1800, y: 700, radius: 28, kind: 0 },
     ],
   },
+  {
+    id: 15,
+    name: 'USB HUB',
+    tagline: 'Four ports. Pull out. Reconnect.',
+    hudLabel: 'ARENA // USB HUB',
+    accent: '#67e8ff',
+    accentSoft: 'rgba(103, 232, 255, 0.32)',
+    accentFaint: 'rgba(103, 232, 255, 0.032)',
+    signature: 2,
+    // A square camera box around one round hub. The four drives and the hub are the
+    // whole floor; the corners are a drop. Local-only until Snapshot carries the phase.
+    bounds: { left: 48, top: 48, right: 1948, bottom: 1948 },
+    walls: 'open',
+    pillars: [],
+    spawns: usbSpawns,
+    usb: {
+      hubRadius: 300,
+      // East, south, west, north. All four share one phase.
+      drives: [
+        { angle: 0, length: 420, width: 240 },
+        { angle: Math.PI / 2, length: 420, width: 240 },
+        { angle: Math.PI, length: 420, width: 240 },
+        { angle: -Math.PI / 2, length: 420, width: 240 },
+      ],
+      dockOverlap: 70,
+      // 300 out leaves a 230-unit channel at the hub. A dash can cross while the
+      // drives are travelling, but not once they are fully out: 230 > the 180-unit
+      // dash. The inward current is the non-dash return route.
+      extension: 300,
+      // Live pass: a little more time on the separated islands, and quicker travel
+      // between docked and out. The current still matches full inward walk pressure.
+      holdIn: 2.8,
+      extend: 1.15,
+      holdOut: 3.3,
+      retract: 1.15,
+      flowSpeed: 95,
+      flowWidth: 48,
+    },
+  },
 ];
 
 export function discCenterX(arena: ArenaDef): number {
@@ -1328,11 +1424,18 @@ export function discArmLength(arena: ArenaDef): number {
   return arena.disc!.radius * arena.disc!.arm.reach;
 }
 
+/** Position of one key in the shared pad cycle, in seconds. Allocation-free. */
+export function keypadKeyPhase(keypad: ArenaKeypadDef, index: number, t: number): number {
+  const key = keypad.keys[index];
+  if (!key) return 0;
+  return (((t + (key.offset ?? index * KEYPAD.offsetStep)) % KEYPAD.period) + KEYPAD.period) % KEYPAD.period;
+}
+
 /** State of one key at `t` seconds into the shared pad cycle. Allocation-free. */
 export function keypadKeyState(keypad: ArenaKeypadDef, index: number, t: number): number {
   const key = keypad.keys[index];
   if (!key) return KEYPAD_STATE.up;
-  const phase = (((t + (key.offset ?? index * KEYPAD.offsetStep)) % KEYPAD.period) + KEYPAD.period) % KEYPAD.period;
+  const phase = keypadKeyPhase(keypad, index, t);
   const slamStart = KEYPAD.warn;
   const slamEnd = slamStart + KEYPAD.slam;
   const downEnd = slamEnd + KEYPAD.down;
@@ -1378,6 +1481,133 @@ export function pusherPhaseAt(arena: ArenaDef, t: number, out: PusherPhase): Pus
   }
   if (phase >= end && phase < end + 0.3) out.flashT = 0.3 - (phase - end);
   return out;
+}
+
+/** Seconds for one dock, extend, out, retract cycle. */
+export function usbCycle(usb: ArenaUsbDef): number {
+  return usb.holdIn + usb.extend + usb.holdOut + usb.retract;
+}
+
+/** Current phase of the hub cycle. Allocation-free. */
+export function usbPhaseAt(usb: ArenaUsbDef, t: number): number {
+  const cycle = usbCycle(usb);
+  const phase = ((t % cycle) + cycle) % cycle;
+  if (phase < usb.holdIn) return USB_STATE.docked;
+  if (phase < usb.holdIn + usb.extend) return USB_STATE.extend;
+  if (phase < usb.holdIn + usb.extend + usb.holdOut) return USB_STATE.out;
+  return USB_STATE.retract;
+}
+
+/** Distance the drives have travelled away from the hub at `t` seconds. */
+export function usbExtensionAt(usb: ArenaUsbDef, t: number): number {
+  const cycle = usbCycle(usb);
+  const phase = ((t % cycle) + cycle) % cycle;
+  const extendStart = usb.holdIn;
+  const outStart = extendStart + usb.extend;
+  const outEnd = outStart + usb.holdOut;
+  if (phase < extendStart) return 0;
+  if (phase < outStart) {
+    const k = (phase - extendStart) / Math.max(0.001, usb.extend);
+    return (k * k * (3 - 2 * k)) * usb.extension;
+  }
+  if (phase < outEnd) return usb.extension;
+  const k = (phase - outEnd) / Math.max(0.001, usb.retract);
+  return (1 - k * k * (3 - 2 * k)) * usb.extension;
+}
+
+/** +1 while extending, -1 while retracting, 0 while parked. */
+export function usbFlowDirAt(usb: ArenaUsbDef, t: number): number {
+  const phase = usbPhaseAt(usb, t);
+  return phase === USB_STATE.extend ? 1 : phase === USB_STATE.retract ? -1 : 0;
+}
+
+/** World centre of a USB hub arena. */
+export function usbCenterX(arena: ArenaDef): number {
+  return (arena.bounds.left + arena.bounds.right) * 0.5;
+}
+
+export function usbCenterY(arena: ArenaDef): number {
+  return (arena.bounds.top + arena.bounds.bottom) * 0.5;
+}
+
+/** Writes one drive's current world rectangle. Allocation-free. */
+export function usbDriveRect(arena: ArenaDef, index: number, t: number, out: Rect): Rect {
+  const usb = arena.usb!;
+  const drive = usb.drives[index];
+  const travel = usbExtensionAt(usb, t);
+  const inner = usb.hubRadius - usb.dockOverlap + travel;
+  const cx = usbCenterX(arena);
+  const cy = usbCenterY(arena);
+  const ux = Math.cos(drive.angle);
+  const uy = Math.sin(drive.angle);
+  if (Math.abs(ux) >= Math.abs(uy)) {
+    out.x = cx + (ux >= 0 ? inner : -inner - drive.length);
+    out.y = cy - drive.width * 0.5;
+    out.w = drive.length;
+    out.h = drive.width;
+  } else {
+    out.x = cx - drive.width * 0.5;
+    out.y = cy + (uy >= 0 ? inner : -inner - drive.length);
+    out.w = drive.width;
+    out.h = drive.length;
+  }
+  return out;
+}
+
+/** True when a world point is on the hub or one of the drives. */
+export function usbFloorAt(arena: ArenaDef, x: number, y: number, t: number): boolean {
+  const usb = arena.usb;
+  if (!usb) return true;
+  const dx = x - usbCenterX(arena);
+  const dy = y - usbCenterY(arena);
+  if (dx * dx + dy * dy <= usb.hubRadius * usb.hubRadius) return true;
+  const travel = usbExtensionAt(usb, t);
+  const inner = usb.hubRadius - usb.dockOverlap + travel;
+  for (let i = 0; i < usb.drives.length; i++) {
+    const drive = usb.drives[i];
+    const ux = Math.cos(drive.angle);
+    const uy = Math.sin(drive.angle);
+    const along = dx * ux + dy * uy;
+    const lateral = -dx * uy + dy * ux;
+    if (along >= inner && along <= inner + drive.length && Math.abs(lateral) <= drive.width * 0.5) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Current vector at a point, or false outside the four drive lanes. The lane starts
+ * just inside the hub so a body at the port is caught as the plate leaves.
+ */
+export function usbFlowAt(
+  arena: ArenaDef,
+  x: number,
+  y: number,
+  t: number,
+  out: UsbFlowVector,
+): boolean {
+  const usb = arena.usb;
+  if (!usb) return false;
+  const dir = usbFlowDirAt(usb, t);
+  if (dir === 0) return false;
+  const dx = x - usbCenterX(arena);
+  const dy = y - usbCenterY(arena);
+  const travel = usbExtensionAt(usb, t);
+  const inner = usb.hubRadius - usb.dockOverlap + travel;
+  for (let i = 0; i < usb.drives.length; i++) {
+    const drive = usb.drives[i];
+    const ux = Math.cos(drive.angle);
+    const uy = Math.sin(drive.angle);
+    const along = dx * ux + dy * uy;
+    const lateral = -dx * uy + dy * ux;
+    if (along < inner - 48 || along > inner + drive.length + 48) continue;
+    if (Math.abs(lateral) > drive.width * 0.5 + usb.flowWidth) continue;
+    out.x = ux * dir;
+    out.y = uy * dir;
+    return true;
+  }
+  return false;
 }
 
 export function getArena(index: number): ArenaDef {
@@ -1480,6 +1710,43 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     ctx.beginPath();
     ctx.arc(cx, cy, 3, 0, Math.PI * 2);
     ctx.fill();
+    return;
+  }
+
+  if (arena.usb) {
+    const usb = arena.usb;
+    const cx = mapX((bounds.left + bounds.right) * 0.5);
+    const cy = mapY((bounds.top + bounds.bottom) * 0.5);
+    const rr = usb.hubRadius * Math.min(sx, sy);
+    ctx.fillStyle = '#08131d';
+    ctx.beginPath();
+    ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    const outT = usb.holdIn + usb.extend + usb.holdOut * 0.5;
+    const r = { x: 0, y: 0, w: 0, h: 0 };
+    for (let i = 0; i < usb.drives.length; i++) {
+      usbDriveRect(arena, i, outT, r);
+      const x = mapX(r.x);
+      const y = mapY(r.y);
+      const w = Math.max(2, r.w * sx);
+      const h = Math.max(2, r.h * sy);
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(103, 232, 255, 0.28)' : 'rgba(103, 232, 255, 0.2)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = arena.accent;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    }
+    ctx.fillStyle = arena.accent;
+    for (let i = 0; i < usb.drives.length; i++) {
+      usbDriveRect(arena, i, outT, r);
+      const x = mapX(r.x + r.w * 0.5);
+      const y = mapY(r.y + r.h * 0.5);
+      ctx.beginPath();
+      ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
     return;
   }
 

@@ -419,7 +419,7 @@ export interface Player {
   /**
    * Fisher's web holds this body in place. Refreshed every tick it is inside a web,
    * so a caught player, bot or thrall stays stuck until the web expires; a dash tears
-   * through it because a dodge phases geometry.
+   * through it, though solid cover still stops the body.
    */
   netPinT: number;
   /**
@@ -648,6 +648,8 @@ export interface GameEvent {
 
 export interface Worm {
   active: boolean;
+  /** Campaign holding cell: present, frozen and invulnerable until the power-down. */
+  held: boolean;
   x: number;
   y: number;
   prevX: number;
@@ -693,6 +695,8 @@ export interface Worm {
 
 export interface Virus {
   active: boolean;
+  /** Campaign holding cell: present, frozen and invulnerable until the power-down. */
+  held: boolean;
   x: number;
   y: number;
   prevX: number;
