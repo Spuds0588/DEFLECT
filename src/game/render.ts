@@ -15,6 +15,10 @@ import {
   scannerLaserY,
   scannerPhaseAt,
   SCANNER_STATE,
+  satelliteSolarPhaseAt,
+  satelliteSolarStateAt,
+  satelliteTelescopeExtensionAt,
+  SATELLITE_SOLAR_STATE,
   swipeDirectionAt,
   swipeIndexAt,
   swipeMoveProgressAt,
@@ -41,7 +45,7 @@ import { P_COLOR_DANGER, P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
 import { drawDroppedFiles, drawRegularProgram, regularFace, regularProgram, type RegularMood, type RegularProgramDef } from './regulars';
-import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type Sentry, type Virus, type Worm } from './types';
+import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type SatelliteMeteor, type Sentry, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
 import { beamReach } from './collision';
 
@@ -116,6 +120,13 @@ export interface RenderState {
   /** SWIPE RIGHT card clock and independent match-popup clock. */
   swipeT?: number;
   swipePopupT?: number;
+  /** SATELLITE: solar/telescope clock, capsule state, meteors and reentry. */
+  satelliteT?: number;
+  satelliteState?: number;
+  satelliteHeatY?: number;
+  satelliteThrusterT?: number;
+  satelliteReentryT?: number;
+  satelliteMeteors?: readonly SatelliteMeteor[];
   /** Phone-pad phase and per-key state. The shared clock travels in Snapshot. */
   keypadT?: number;
   keypadStates?: ArrayLike<number>;
@@ -563,7 +574,7 @@ export class Renderer {
         ctx.translate(-pivotX, -pivotY);
       }
 
-      this.drawArena(t, state.arena, intro, state.discT ?? 0, state.usbT ?? 0, state.swipeT ?? 0, state.swipePopupT ?? 0);
+      this.drawArena(t, state.arena, intro, state.discT ?? 0, state.usbT ?? 0, state.swipeT ?? 0, state.swipePopupT ?? 0, state);
       this.drawFeedRun(state.arena, t);
       this.drawBumpers(state.arena, t, state.bumperFlash);
       if (state.arena.keypad) this.drawKeypad(state, t);
@@ -1516,7 +1527,7 @@ export class Renderer {
     const ctx = this.ctx;
     for (let i = 0; i < props.length; i++) {
       const b = props[i];
-      if (!b.active) continue;
+      if (!b.active || b.capacitor) continue;
       const fall = b.dropT > 0 ? (b.dropT / FILE_PROP.dropT) * (b.dropT / FILE_PROP.dropT) * FILE_PROP.dropRise : 0;
       const shake = b.hitFlash > 0 ? (b.hitFlash / FILE_PROP.hitFlash) * 2 : 0;
       const x = b.x + (shake > 0 ? Math.sin(b.hitFlash * 140) * shake : 0);
@@ -2524,6 +2535,335 @@ export class Renderer {
   }
 
   /**
+   * SATELLITE: a dark orbital hull with solar wings on catwalks. The floor is a union
+   * of authored plates, not the camera box; the solar heat, mast, showers and reentry
+   * line are all derived from the same local clock the host simulation uses.
+   */
+  private drawSatelliteArena(state: RenderState | undefined, groundA: number, frameA: number): void {
+    const sat = state?.arena.satellite;
+    if (!state || !sat) return;
+    const ctx = this.ctx;
+    const b = state.arena.bounds;
+    const t = state.satelliteT ?? 0;
+    const reel = state.satelliteState ?? 0;
+    const heatY = state.satelliteHeatY ?? b.bottom;
+
+    ctx.save();
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#02040a';
+    ctx.fillRect(b.left - 250, b.top - 250, b.right - b.left + 500, b.bottom - b.top + 500);
+    // Sparse stars, fixed by index so the camera moves over them instead of twinkling.
+    for (let i = 0; i < 72; i++) {
+      const x = b.left - 180 + ((i * 137) % (b.right - b.left + 360));
+      const y = b.top - 180 + ((i * 83) % (b.bottom - b.top + 360));
+      ctx.fillStyle = i % 5 === 0 ? 'rgba(255, 216, 160, 0.72)' : 'rgba(178, 216, 255, 0.34)';
+      ctx.fillRect(x, y, i % 5 === 0 ? 2 : 1, i % 5 === 0 ? 2 : 1);
+    }
+    ctx.globalAlpha = frameA * 0.22;
+    ctx.fillStyle = '#1f6cff';
+    ctx.beginPath();
+    ctx.arc((b.left + b.right) * 0.5, b.bottom + 640, 620, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    for (let i = 0; i < sat.floor.length; i++) {
+      const r = sat.floor[i];
+      const hull = i === 0;
+      ctx.save();
+      ctx.globalAlpha = groundA;
+      ctx.fillStyle = hull ? '#101922' : '#0a1620';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = hull ? 'rgba(255, 179, 71, 0.035)' : 'rgba(72, 183, 255, 0.035)';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = hull ? 'rgba(255, 179, 71, 0.32)' : 'rgba(72, 183, 255, 0.28)';
+      ctx.lineWidth = hull ? 2 : 1.5;
+      ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      // Plate joints and bolts.
+      ctx.globalAlpha = groundA * 0.22;
+      ctx.strokeStyle = '#b8d9e8';
+      ctx.lineWidth = 1;
+      if (hull) {
+        for (let y = r.y + 80; y < r.y + r.h; y += 120) {
+          ctx.beginPath();
+          ctx.moveTo(r.x + 16, y + 0.5);
+          ctx.lineTo(r.x + r.w - 16, y + 0.5);
+          ctx.stroke();
+        }
+        for (let x = r.x + 80; x < r.x + r.w; x += 90) {
+          ctx.beginPath();
+          ctx.moveTo(x + 0.5, r.y + 12);
+          ctx.lineTo(x + 0.5, r.y + r.h - 12);
+          ctx.stroke();
+        }
+      } else if (!hull && r.w < 100) {
+        for (let x = r.x + 12; x < r.x + r.w - 8; x += 16) {
+          ctx.beginPath();
+          ctx.moveTo(x + 0.5, r.y + 6);
+          ctx.lineTo(x + 0.5, r.y + r.h - 6);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // Solar wings: blue cells when safe, amber warning stripes, white-hot when live.
+    for (let i = 0; i < sat.panels.length; i++) {
+      const panel = sat.panels[i];
+      const solarState = satelliteSolarStateAt(sat, panel, t);
+      const hot = solarState === SATELLITE_SOLAR_STATE.hot;
+      const warn = solarState === SATELLITE_SOLAR_STATE.warn;
+      const phase = satelliteSolarPhaseAt(sat, panel, t);
+      const pulse = 0.5 + 0.5 * Math.sin(t * (hot ? 13 : warn ? 9 : 3) + i);
+      ctx.save();
+      ctx.globalAlpha = groundA;
+      ctx.fillStyle = hot ? 'rgba(255, 89, 42, 0.34)' : warn ? 'rgba(255, 190, 55, 0.18)' : 'rgba(28, 91, 146, 0.44)';
+      ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
+      ctx.strokeStyle = hot ? '#ff6d35' : warn ? '#ffd25b' : '#48b7ff';
+      ctx.lineWidth = hot ? 4 : 2;
+      ctx.strokeRect(panel.x + 1, panel.y + 1, panel.w - 2, panel.h - 2);
+      ctx.globalAlpha = groundA * (hot ? 0.36 : 0.24);
+      ctx.lineWidth = 1;
+      for (let x = panel.x + 16; x < panel.x + panel.w - 12; x += 34) {
+        ctx.beginPath();
+        ctx.moveTo(x + 0.5, panel.y + 12);
+        ctx.lineTo(x + 0.5, panel.y + panel.h - 12);
+        ctx.stroke();
+      }
+      for (let y = panel.y + 18; y < panel.y + panel.h - 12; y += 34) {
+        ctx.beginPath();
+        ctx.moveTo(panel.x + 12, y + 0.5);
+        ctx.lineTo(panel.x + panel.w - 12, y + 0.5);
+        ctx.stroke();
+      }
+      if (warn) {
+        ctx.globalAlpha = groundA * (0.26 + 0.34 * pulse);
+        ctx.strokeStyle = '#ffd25b';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([12, 8]);
+        ctx.strokeRect(panel.x + 5, panel.y + 5, panel.w - 10, panel.h - 10);
+        ctx.setLineDash([]);
+      }
+      if (hot) {
+        ctx.globalAlpha = groundA * (0.16 + 0.2 * pulse);
+        ctx.fillStyle = '#ff6d35';
+        ctx.fillRect(panel.x + 6, panel.y + 6, panel.w - 12, panel.h - 12);
+        ctx.globalAlpha = groundA * (0.5 + 0.3 * pulse);
+        ctx.strokeStyle = '#fff0b0';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(panel.x + 9, panel.y + 9, panel.w - 18, panel.h - 18);
+      }
+      ctx.globalAlpha = groundA * 0.82;
+      ctx.fillStyle = hot ? '#ffd3a1' : warn ? '#ffe6a6' : '#a9e5ff';
+      ctx.font = '700 11px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(panel.label, panel.x + panel.w * 0.5, panel.y + panel.h - 19);
+      if (warn) ctx.fillText(`HEAT IN ${Math.max(0, sat.solar.warn - phase).toFixed(1)}`, panel.x + panel.w * 0.5, panel.y + 19);
+      if (hot) ctx.fillText('SOLAR FLARE', panel.x + panel.w * 0.5, panel.y + 19);
+      ctx.restore();
+    }
+
+    // Bottom telescope mast. It is cover, not a weapon.
+    const ext = satelliteTelescopeExtensionAt(sat.telescope, t);
+    if (ext > 0.01) {
+      const tel = sat.telescope;
+      const mastH = ext * tel.extension;
+      const mastY = tel.baseY - mastH;
+      ctx.save();
+      ctx.globalAlpha = groundA;
+      ctx.fillStyle = '#1a2732';
+      ctx.fillRect(tel.x, mastY, tel.w, mastH);
+      ctx.fillStyle = 'rgba(255, 179, 71, 0.12)';
+      ctx.fillRect(tel.x + 8, mastY + 8, tel.w - 16, mastH - 16);
+      ctx.strokeStyle = '#ffb347';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(tel.x + 1, mastY + 1, tel.w - 2, mastH - 2);
+      ctx.globalAlpha = groundA * 0.34;
+      for (let y = mastY + 24; y < tel.baseY - 14; y += 28) {
+        ctx.strokeStyle = '#d8efff';
+        ctx.beginPath();
+        ctx.moveTo(tel.x + 10, y + 0.5);
+        ctx.lineTo(tel.x + tel.w - 10, y + 0.5);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = groundA;
+      ctx.fillStyle = '#0b1219';
+      ctx.beginPath();
+      ctx.ellipse(tel.x + tel.w * 0.5, mastY, tel.w * 0.52, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffd08a';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.fillStyle = '#5cd7ff';
+      ctx.beginPath();
+      ctx.ellipse(tel.x + tel.w * 0.5, mastY, tel.w * 0.3, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    // Mast base and service hatch.
+    ctx.save();
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#18242f';
+    ctx.fillRect(sat.telescope.x - 20, sat.telescope.baseY - 18, sat.telescope.w + 40, 18);
+    ctx.strokeStyle = 'rgba(255, 179, 71, 0.55)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sat.telescope.x - 20, sat.telescope.baseY - 18, sat.telescope.w + 40, 18);
+    ctx.restore();
+
+    // Top capacitor sockets and live canisters.
+    const capDefs = state.arena.props ?? [];
+    for (let i = 0; i < capDefs.length; i++) {
+      const def = capDefs[i];
+      if (!def.capacitor) continue;
+      let live: Prop | null = null;
+      if (state.props) for (let k = 0; k < state.props.length; k++) {
+        const p = state.props[k];
+        if (p.active && p.x === def.x && p.y === def.y) { live = p; break; }
+      }
+      ctx.save();
+      ctx.globalAlpha = groundA;
+      if (!live) {
+        ctx.strokeStyle = 'rgba(255, 90, 70, 0.45)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.strokeRect(def.x + 1, def.y + 1, def.w - 2, def.h - 2);
+        ctx.setLineDash([]);
+      } else {
+        ctx.fillStyle = live.hitFlash > 0 ? '#fff3d0' : '#24140c';
+        roundRect(ctx, live.x, live.y, live.w, live.h, 7);
+        ctx.fill();
+        ctx.strokeStyle = '#ffb347';
+        ctx.lineWidth = 2.4;
+        roundRect(ctx, live.x + 1, live.y + 1, live.w - 2, live.h - 2, 6);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255, 179, 71, 0.2)';
+        ctx.fillRect(live.x + 8, live.y + 9, live.w - 16, 8);
+        ctx.fillRect(live.x + 8, live.y + 23, live.w - 16, 2);
+        for (let k = 0; k < 4; k++) {
+          ctx.fillStyle = k < live.hp ? '#ffcf72' : 'rgba(255, 207, 114, 0.16)';
+          ctx.fillRect(live.x + 11 + k * 12, live.y + live.h - 15, 7, 5);
+        }
+        ctx.fillStyle = '#ff7d42';
+        ctx.fillRect(live.x + live.w * 0.5 - 3, live.y + live.h - 30, 6, 9);
+      }
+      ctx.restore();
+    }
+
+    // Meteor warnings, falling rocks and impact rings.
+    const meteors = state.satelliteMeteors ?? [];
+    for (let i = 0; i < meteors.length; i++) {
+      const m = meteors[i];
+      if (!m.active) continue;
+      if (m.t < sat.meteors.warn) {
+        const k = Math.min(1, m.t / Math.max(0.001, sat.meteors.warn));
+        ctx.save();
+        ctx.globalAlpha = groundA * (0.25 + 0.65 * k);
+        ctx.strokeStyle = '#ffcf72';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 6]);
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, sat.meteors.radius * (0.7 + k * 0.3), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#b9a58a';
+        ctx.beginPath();
+        ctx.moveTo(m.x - 9, m.y - 180 - (1 - k) * 180);
+        ctx.lineTo(m.x + 10, m.y - 205 - (1 - k) * 180);
+        ctx.lineTo(m.x + 7, m.y - 174 - (1 - k) * 180);
+        ctx.lineTo(m.x - 5, m.y - 164 - (1 - k) * 180);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 176, 88, 0.6)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(m.x - 18, m.y - 160 - (1 - k) * 180);
+        ctx.lineTo(m.x - 22, m.y - 250 - (1 - k) * 180);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        const k = Math.min(1, (m.t - sat.meteors.warn) / Math.max(0.001, sat.meteors.impact));
+        ctx.save();
+        ctx.globalAlpha = groundA * (1 - k);
+        ctx.fillStyle = '#ff8b3d';
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, sat.meteors.radius * (0.5 + k * 0.8), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fff0b0';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, sat.meteors.radius * (0.6 + k), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#c8b7a0';
+        for (let d = 0; d < 5; d++) {
+          const a = d * 1.256 + i;
+          ctx.fillRect(m.x + Math.cos(a) * (18 + k * 38), m.y + Math.sin(a) * (12 + k * 30), 5, 4);
+        }
+        ctx.restore();
+      }
+    }
+
+    // Thruster ignition and bottom-up reentry wash.
+    if (reel >= 1) {
+      const flame = 0.5 + 0.5 * Math.sin(t * 30);
+      ctx.save();
+      ctx.globalAlpha = frameA * (0.45 + 0.35 * flame);
+      ctx.fillStyle = '#ff5d2e';
+      for (let i = 0; i < 3; i++) {
+        const fx = sat.telescope.x - 20 + i * 78;
+        ctx.beginPath();
+        ctx.moveTo(fx, sat.telescope.baseY - 18);
+        ctx.lineTo(fx + 24, sat.telescope.baseY - 18);
+        ctx.lineTo(fx + 12, sat.telescope.baseY + 150 + flame * 90);
+        ctx.closePath();
+        ctx.fill();
+      }
+      if (reel === 1) {
+        ctx.globalAlpha = frameA * 0.8;
+        ctx.fillStyle = '#ffcf72';
+        ctx.font = '700 16px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`THRUSTERS ARMED // ${Math.max(0, state.satelliteThrusterT ?? 0).toFixed(1)}`, b.left + (b.right - b.left) * 0.5, b.bottom - 72);
+      }
+      if (reel >= 2) {
+        const top = Math.max(b.top, heatY);
+        ctx.globalAlpha = frameA * 0.3;
+        ctx.fillStyle = '#ff3d22';
+        ctx.fillRect(b.left - 200, top, b.right - b.left + 400, b.bottom - top + 220);
+        ctx.globalAlpha = frameA * 0.8;
+        ctx.strokeStyle = '#ffe7a0';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(b.left - 200, heatY);
+        ctx.lineTo(b.right + 200, heatY);
+        ctx.stroke();
+        ctx.globalAlpha = frameA * 0.75;
+        ctx.fillStyle = '#ffd08a';
+        ctx.font = '700 15px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('ATMOSPHERIC ENTRY // HEAT FRONT', b.left + (b.right - b.left) * 0.5, b.top + 28);
+      }
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.globalAlpha = frameA * 0.55;
+    ctx.strokeStyle = state.arena.accent;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([24, 14]);
+    ctx.strokeRect(b.left + 12, b.top + 12, b.right - b.left - 24, b.bottom - b.top - 24);
+    ctx.setLineDash([]);
+    ctx.globalAlpha = frameA * 0.7;
+    ctx.fillStyle = state.arena.accent;
+    ctx.font = '700 10px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ORBITAL PLATFORM // SOLAR ARRAY', b.left + 26, b.top + 31);
+    ctx.restore();
+  }
+
+  /**
    * SWIPE RIGHT: a phone screen as a floor. The deck is presentation only; the world
    * has already carried every body when a swipe beat lands. The match popup is drawn
    * as a raised slab, and its footprint is the same rect the host makes solid.
@@ -3301,7 +3641,16 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawArena(t: number, arena: ArenaDef, intro = INTRO_LEN, discT = 0, usbT = 0, swipeT = 0, swipePopupT = 0): void {
+  private drawArena(
+    t: number,
+    arena: ArenaDef,
+    intro = INTRO_LEN,
+    discT = 0,
+    usbT = 0,
+    swipeT = 0,
+    swipePopupT = 0,
+    satelliteState?: RenderState,
+  ): void {
     const ctx = this.ctx;
     const b = arena.bounds;
     this.ensureFloorPattern(arena);
@@ -3321,6 +3670,10 @@ export class Renderer {
     }
     if (arena.swipe) {
       this.drawSwipeArena(arena, groundA, frameA, t, swipeT, swipePopupT);
+      return;
+    }
+    if (arena.satellite) {
+      this.drawSatelliteArena(satelliteState, groundA, frameA);
       return;
     }
     if (this.dustArena !== arena.id) {

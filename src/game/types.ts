@@ -167,6 +167,18 @@ export interface Prop {
   hazard?: boolean;
   /** Remaining grace before this hostile file can hit again. */
   hurtCd?: number;
+  /** SATELLITE capacitor: durable, never launched, and arms the thrusters when all break. */
+  capacitor?: boolean;
+}
+
+/** One micro-meteor in a SATELLITE shower. Presentation and host damage share it. */
+export interface SatelliteMeteor {
+  active: boolean;
+  x: number;
+  y: number;
+  /** Time since the shower started: warning then impact. */
+  t: number;
+  hit: boolean;
 }
 
 /**

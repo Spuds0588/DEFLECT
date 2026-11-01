@@ -70,6 +70,10 @@ import {
   usbExtensionAt,
   usbFloorAt,
   usbFlowAt,
+  satelliteFloorAt,
+  satelliteSolarStateAt,
+  satelliteTelescopeRectAt,
+  SATELLITE_SOLAR_STATE,
   swipeDirectionAt,
   swipeIndexAt,
   swipePhaseAt,
@@ -77,6 +81,8 @@ import {
   type ArenaBrowserDef,
   type ArenaDef,
   type ArenaKeypadDef,
+  type ArenaPropDef,
+  type ArenaSatelliteDef,
   type ArenaScannerDef,
   type ArenaSwipeDef,
   type ArenaUsbDef,
@@ -122,6 +128,7 @@ import {
   type Lure,
   type Net,
   type Phase,
+  type SatelliteMeteor,
   type Pipe,
   type Pickup,
   type Player,
@@ -465,6 +472,31 @@ export class World {
   swipePopupT = 0;
   /** Raised match-popup collision while it is up. Public for tests and bot safety. */
   swipePopupSolid: Rect | null = null;
+  /** SATELLITE layout. Local-only: the meteor shower and reentry state are not in Snapshot. */
+  readonly satellite: ArenaSatelliteDef | null;
+  /** Shared solar/telescope clock, seconds into the run. */
+  satelliteT = 0;
+  /** Countdown to the next meteor shower. */
+  satelliteMeteorT = 0;
+  /** 0 idle, 1 thruster fuse, 2 reentry burn, 3 waiting to reset. */
+  satelliteState = 0;
+  /** Seconds left before the thrusters light. */
+  satelliteThrusterT = 0;
+  /** Seconds into the bottom-up burn. */
+  satelliteReentryT = 0;
+  /** Heat front, from the bottom lip upward. Public for the renderer. */
+  satelliteHeatY = 0;
+  /** Cooldown after the burn, before the arena resets. */
+  satelliteResetT = 0;
+  /** Preallocated meteor impacts. */
+  readonly satelliteMeteors: SatelliteMeteor[] = [];
+  /** Capsule containers that arm the thrusters when all of them break. */
+  readonly satelliteCapsules: Prop[] = [];
+  readonly satelliteTelescopeRect: Rect = { x: 0, y: 0, w: 0, h: 0 };
+  private readonly satelliteCapDefs: ArenaPropDef[] = [];
+  private satelliteSolarTickT = 0;
+  private satelliteBurnTickT = 0;
+  private satelliteTelescopePrev = 0;
   /** Current world angle of the read arm, from its pivot. Public for the renderer. */
   armAngle = 0;
   /** Read-arm pivot, fixed for the life of the arena. Public for the renderer. */
@@ -552,6 +584,7 @@ export class World {
       this.refreshUsb(0);
     }
     this.swipe = arena.swipe ?? null;
+    this.satellite = arena.satellite ?? null;
     this.gauntletPractice = gauntletPractice;
     this.localSlot = localSlot;
     this.selectedProgram = clampProgram(program);
@@ -594,15 +627,33 @@ export class World {
           y: d.y,
           w: d.w,
           h: d.h,
-          hp: FILE_PROP.hp,
+          hp: d.hp ?? FILE_PROP.hp,
           hitFlash: 0,
           dropT: 0,
           vx: 0,
           vy: 0,
           tx: 0,
           ty: 0,
+          capacitor: d.capacitor === true,
         });
       }
+    }
+    if (this.satellite) {
+      this.satelliteMeteorT = this.satellite.meteors.first;
+      this.satelliteHeatY = arena.bounds.bottom;
+      for (let i = 0; i < this.props.length; i++) {
+        const b = this.props[i];
+        if (!b.capacitor) continue;
+        this.satelliteCapsules.push(b);
+        const d = arena.props?.[i];
+        if (d) this.satelliteCapDefs.push(d);
+      }
+      for (let i = 0; i < this.satellite.meteors.count; i++) {
+        this.satelliteMeteors.push({ active: false, x: 0, y: 0, t: 0, hit: false });
+      }
+      this.solids = [...this.solids, this.satelliteTelescopeRect];
+      this.dashSolids = [...this.dashSolids, this.satelliteTelescopeRect];
+      this.satelliteTelescopeRect.y = arena.bounds.bottom + 200;
     }
     // A compactor arena needs boxes to feed back in after each stroke. They are preallocated
     // and parked inactive so the cycle never allocates.
@@ -777,6 +828,7 @@ export class World {
     this.firewallSwitchFlash = 0;
     if (this.usb) this.resetUsb();
     if (this.swipe) this.resetSwipe();
+    if (this.satellite) this.resetSatellite();
     for (let i = 0; i < this.pipes.length; i++) {
       const pipe = this.pipes[i];
       pipe.active = true;
@@ -2345,6 +2397,7 @@ export class World {
     if (this.browser) this.resetBrowser();
     if (this.usb) this.resetUsb();
     if (this.swipe) this.resetSwipe();
+    if (this.satellite) this.resetSatellite();
     const active = this.activeCount();
     if (active === 0) return;
     computeSpawns(active, this.arena, this.spawnTmpX, this.spawnTmpY);
@@ -2440,6 +2493,7 @@ export class World {
     if (this.arena.disc && canAct && this.mode !== 'match') this.tickDisc(dt);
     if (this.usb && canAct) this.tickUsb(dt);
     if (this.swipe && canAct) this.tickSwipe(dt);
+    if (this.satellite && canAct) this.tickSatellite(dt);
     for (let i = 0; i < this.bumperFlash.length; i++) {
       if (this.bumperFlash[i] > 0) this.bumperFlash[i] = Math.max(0, this.bumperFlash[i] - dt);
     }
@@ -3104,7 +3158,7 @@ export class World {
       );
       if (this.keypad) this.resolveKeypadPlayer(p);
       if (this.browser) this.resolveBrowserPlayer(p);
-      if (this.openWalls || this.arena.voids || this.arena.disc) {
+      if (this.openWalls || this.arena.voids || this.arena.disc || this.satellite) {
         this.checkFall(p);
         if (!p.alive) continue;
       }
@@ -8152,6 +8206,7 @@ export class World {
     // A raised match popup is temporary cover, not arena geometry. Shots still see it
     // while it stands, so the card cannot be used as a free firing slit.
     if (this.swipePopupSolid && this.bounceCoverRect(proj, this.swipePopupSolid)) return;
+    if (this.satelliteTelescopeRect.h > 0 && this.bounceCoverRect(proj, this.satelliteTelescopeRect)) return;
   }
 
   /** Shared shot/cover response for static pillars and the temporary swipe popup. */
@@ -8594,6 +8649,289 @@ export class World {
     }
   }
 
+  /** Reset the solar/telescope/meteor clocks and restore every capacitor. */
+  private resetSatellite(): void {
+    const sat = this.satellite;
+    if (!sat) return;
+    this.satelliteT = 0;
+    this.satelliteMeteorT = sat.meteors.first;
+    this.satelliteState = 0;
+    this.satelliteThrusterT = 0;
+    this.satelliteReentryT = 0;
+    this.satelliteResetT = 0;
+    this.satelliteHeatY = this.arena.bounds.bottom;
+    this.satelliteSolarTickT = 0;
+    this.satelliteBurnTickT = 0;
+    this.satelliteTelescopePrev = 0;
+    this.satelliteTelescopeRect.x = 0;
+    this.satelliteTelescopeRect.y = this.arena.bounds.bottom + 200;
+    this.satelliteTelescopeRect.w = 0;
+    this.satelliteTelescopeRect.h = 0;
+    for (let i = 0; i < sat.meteors.count; i++) {
+      const m = this.satelliteMeteors[i];
+      if (!m) continue;
+      m.active = false;
+      m.t = 0;
+      m.hit = false;
+    }
+    for (let i = 0; i < this.satelliteCapsules.length; i++) {
+      const b = this.satelliteCapsules[i];
+      const d = this.satelliteCapDefs[i];
+      if (!d) continue;
+      b.active = true;
+      b.kind = d.kind;
+      b.x = d.x;
+      b.y = d.y;
+      b.w = d.w;
+      b.h = d.h;
+      b.hp = d.hp ?? FILE_PROP.hp;
+      b.hitFlash = 0;
+      b.dropT = 0;
+      b.vx = 0;
+      b.vy = 0;
+      b.tx = 0;
+      b.ty = 0;
+      b.hazard = false;
+      b.hurtCd = 0;
+      b.capacitor = true;
+    }
+  }
+
+  /** Advance solar heat, the telescope, the shower and the reentry one step. */
+  private tickSatellite(dt: number): void {
+    const sat = this.satellite;
+    if (!sat) return;
+    this.satelliteT += dt;
+    this.updateSatelliteTelescope();
+    this.updateSatelliteMeteors(dt);
+    if (this.satelliteState <= 1) this.updateSatelliteSolar(dt);
+
+    if (this.satelliteState === 0) {
+      this.satelliteMeteorT -= dt;
+      if (this.satelliteMeteorT <= 0) {
+        this.startSatelliteShower();
+        this.satelliteMeteorT = sat.meteors.interval;
+      }
+      let liveCaps = 0;
+      for (let i = 0; i < this.satelliteCapsules.length; i++) {
+        if (this.satelliteCapsules[i].active) liveCaps++;
+      }
+      if (this.satelliteCapsules.length > 0 && liveCaps === 0) {
+        this.satelliteState = 1;
+        this.satelliteThrusterT = sat.reentry.fuse;
+        this.emit(EV.EXPLODE, -1, this.centerX, this.arena.bounds.bottom - 80, 180);
+      }
+    } else if (this.satelliteState === 1) {
+      this.satelliteThrusterT -= dt;
+      if (this.satelliteThrusterT <= 0) {
+        this.satelliteState = 2;
+        this.satelliteReentryT = 0;
+        this.satelliteHeatY = this.arena.bounds.bottom;
+        this.satelliteBurnTickT = 0;
+      }
+    } else if (this.satelliteState === 2) {
+      this.satelliteReentryT += dt;
+      const rise = Math.max(0.001, sat.reentry.rise);
+      const k = Math.min(1, this.satelliteReentryT / rise);
+      this.satelliteHeatY = this.arena.bounds.bottom - (this.arena.bounds.bottom - this.arena.bounds.top) * k;
+      this.satelliteBurnTickT -= dt;
+      if (this.satelliteBurnTickT <= 0) {
+        this.satelliteBurnTickT = sat.reentry.tick;
+        this.damageSatelliteBelow(this.satelliteHeatY, sat.reentry.damage);
+      }
+      // Hold the front on the top lip until every live body has been burned. The
+      // short hold lets an iframe tick expire and also guarantees a reset if a
+      // training respawn lands under the front.
+      if (k >= 1 && (this.satelliteAllDead() || this.satelliteReentryT >= rise + sat.reentry.hold)) {
+        this.satelliteState = 3;
+        this.satelliteResetT = sat.reentry.reset;
+      }
+    } else if (this.satelliteState === 3) {
+      this.satelliteResetT -= dt;
+      if (this.satelliteResetT <= 0) this.resetSatellite();
+    }
+  }
+
+  /** Grow/retract the bottom mast and lift a body the rising barrel catches. */
+  private updateSatelliteTelescope(): void {
+    const sat = this.satellite;
+    if (!sat) return;
+    const prev = this.satelliteTelescopePrev;
+    satelliteTelescopeRectAt(sat, this.satelliteT, this.satelliteTelescopeRect);
+    const r = this.satelliteTelescopeRect;
+    if (r.h > prev + 0.01) {
+      for (let i = 0; i < this.players.length; i++) {
+        const p = this.players[i];
+        if (!p.active || !p.alive || p.travelT > 0 || p.fallT > 0) continue;
+        this.liftOutOfRect(p, PLAYER.radius * p.shrink, r);
+      }
+      if (this.drone.active) this.liftOutOfRect(this.drone, this.drone.radius, r);
+    }
+    this.satelliteTelescopePrev = r.h;
+  }
+
+  private liftOutOfRect(body: { x: number; y: number }, radius: number, r: Rect): void {
+    if (body.x + radius < r.x || body.x - radius > r.x + r.w || body.y + radius < r.y || body.y - radius > r.y + r.h) return;
+    body.y = r.y - radius;
+  }
+
+  /** A body inside one hot wing takes the shared solar tick. */
+  private updateSatelliteSolar(dt: number): void {
+    const sat = this.satellite;
+    if (!sat) return;
+    this.satelliteSolarTickT -= dt;
+    if (this.satelliteSolarTickT > 0) return;
+    let hot = false;
+    for (let i = 0; i < sat.panels.length; i++) {
+      const panel = sat.panels[i];
+      if (satelliteSolarStateAt(sat, panel, this.satelliteT) !== SATELLITE_SOLAR_STATE.hot) continue;
+      hot = true;
+      this.damageSatelliteRect(panel, sat.solar.damage);
+    }
+    if (hot) this.satelliteSolarTickT = sat.solar.tick;
+  }
+
+  private startSatelliteShower(): void {
+    const sat = this.satellite;
+    if (!sat) return;
+    let launched = 0;
+    for (let i = 0; i < this.satelliteMeteors.length && launched < sat.meteors.count; i++) {
+      const m = this.satelliteMeteors[i];
+      if (m.active) continue;
+      const floor = sat.floor[Math.floor(this.rng.range(0, sat.floor.length)) % sat.floor.length];
+      m.active = true;
+      m.x = floor.x + 24 + this.rng.range(0, Math.max(1, floor.w - 48));
+      m.y = floor.y + 24 + this.rng.range(0, Math.max(1, floor.h - 48));
+      m.t = 0;
+      m.hit = false;
+      launched++;
+    }
+  }
+
+  private updateSatelliteMeteors(dt: number): void {
+    const sat = this.satellite;
+    if (!sat) return;
+    for (let i = 0; i < this.satelliteMeteors.length; i++) {
+      const m = this.satelliteMeteors[i];
+      if (!m.active) continue;
+      m.t += dt;
+      if (!m.hit && m.t >= sat.meteors.warn) {
+        m.hit = true;
+        this.damageSatelliteCircle(m.x, m.y, sat.meteors.radius, sat.meteors.damage);
+        this.emit(EV.EXPLODE, -1, m.x, m.y, sat.meteors.radius * 2);
+      }
+      if (m.t >= sat.meteors.warn + sat.meteors.impact) m.active = false;
+    }
+  }
+
+  private damageSatelliteRect(rect: Rect, damage: number): void {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive) continue;
+      if (p.x < rect.x || p.x > rect.x + rect.w || p.y < rect.y || p.y > rect.y + rect.h) continue;
+      this.damagePlayer(p, damage, -1, 0, 0, 0, SRC.NONE, -1);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active || w.held) continue;
+      if (w.x < rect.x || w.x > rect.x + rect.w || w.y < rect.y || w.y > rect.y + rect.h) continue;
+      this.damageWorm(w, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active || v.held) continue;
+      if (v.x < rect.x || v.x > rect.x + rect.w || v.y < rect.y || v.y > rect.y + rect.h) continue;
+      this.damageVirus(v, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      if (s.x < rect.x || s.x > rect.x + rect.w || s.y < rect.y || s.y > rect.y + rect.h) continue;
+      this.damageSentry(s, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      if (e.x < rect.x || e.x > rect.x + rect.w || e.y < rect.y || e.y > rect.y + rect.h) continue;
+      this.damageError(e, damage, -1, 0, 0);
+    }
+    if (this.drone.active && this.drone.x >= rect.x && this.drone.x <= rect.x + rect.w && this.drone.y >= rect.y && this.drone.y <= rect.y + rect.h) {
+      this.damageDrone(damage, -1);
+    }
+  }
+
+  private damageSatelliteCircle(x: number, y: number, radius: number, damage: number): void {
+    const r2 = radius * radius;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive) continue;
+      const rr = radius + PLAYER.radius * p.shrink;
+      if ((p.x - x) ** 2 + (p.y - y) ** 2 <= rr * rr) this.damagePlayer(p, damage, -1, 0, 0, 0, SRC.NONE, -1);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active || w.held) continue;
+      const rr = radius + WORM.segmentRadius;
+      if ((w.x - x) ** 2 + (w.y - y) ** 2 <= rr * rr) this.damageWorm(w, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active || v.held) continue;
+      const rr = radius + v.radius;
+      if ((v.x - x) ** 2 + (v.y - y) ** 2 <= rr * rr) this.damageVirus(v, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const rr = radius + s.radius;
+      if ((s.x - x) ** 2 + (s.y - y) ** 2 <= rr * rr) this.damageSentry(s, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const rr = radius + CASCADING_ERROR.blockSize * 0.5;
+      if ((e.x - x) ** 2 + (e.y - y) ** 2 <= rr * rr) this.damageError(e, damage, -1, 0, 0);
+    }
+    if (this.drone.active) {
+      const rr = radius + this.drone.radius;
+      if ((this.drone.x - x) ** 2 + (this.drone.y - y) ** 2 <= rr * rr) this.damageDrone(damage, -1);
+    }
+  }
+
+  /** The reentry line burns bodies at or below its current height. */
+  private damageSatelliteBelow(y: number, damage: number): void {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (p.active && p.alive && p.y >= y) this.damagePlayer(p, damage, -1, 0, 0, 0, SRC.NONE, -1);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (w.active && !w.held && w.y >= y) this.damageWorm(w, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (v.active && !v.held && v.y >= y) this.damageVirus(v, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active && s.y >= y) this.damageSentry(s, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (e.active && e.y >= y) this.damageError(e, damage, -1, 0, 0);
+    }
+    if (this.drone.active && this.drone.y >= y) this.damageDrone(damage, -1);
+  }
+
+  private satelliteAllDead(): boolean {
+    for (let i = 0; i < this.players.length; i++) if (this.players[i].active && this.players[i].alive) return false;
+    for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) return false;
+    for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) return false;
+    for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) return false;
+    for (let i = 0; i < this.errors.length; i++) if (this.errors[i].active) return false;
+    return !this.drone.active;
+  }
+
   /**
    * Open-wall arenas: the lip is the edge of the floor. A body whose centre crosses it
    * is gone, so a shove that carries someone over the line is a kill, not a nudge.
@@ -8611,6 +8949,9 @@ export class World {
     // The hub's gaps are interior floor holes. A dash is airborne over them; a walk
     // that ends over one starts the ordinary hang-and-fall.
     if (!pastLip && this.usb && p.dashT <= 0 && !usbFloorAt(this.arena, p.x, p.y, this.usbT)) {
+      pastLip = true;
+    }
+    if (!pastLip && this.satellite && p.dashT <= 0 && !satelliteFloorAt(this.arena, p.x, p.y)) {
       pastLip = true;
     }
     // A dash is airborne, so a short hole can be jumped. Land inside one and the fall
@@ -8635,6 +8976,7 @@ export class World {
       if (dx * dx + dy * dy > disc.radius * disc.radius) return true;
     }
     if (this.usb && !usbFloorAt(this.arena, x, y, this.usbT)) return true;
+    if (this.satellite && !satelliteFloorAt(this.arena, x, y)) return true;
     const slant = this.arena.slant;
     if (slant) {
       const k = (y - b.top) / (b.bottom - b.top);
@@ -10291,8 +10633,8 @@ export class World {
         }
       }
       if (blocked) continue;
-      // A disc or USB arena's outer corners are void; never send the drone to one.
-      if ((this.arena.disc || this.arena.usb) && this.offFloor(x, y)) continue;
+      // A disc, USB or satellite arena's outer corners are void; never send the drone to one.
+      if ((this.arena.disc || this.arena.usb || this.arena.satellite) && this.offFloor(x, y)) continue;
       const p = this.players[0];
       if (p && Math.hypot(x - p.x, y - p.y) < 190) continue;
       d.targetX = x;
@@ -11166,7 +11508,7 @@ export class World {
       if (this.viruses[i].active) this.updateVirus(this.viruses[i], dt);
     }
     if (this.usb) this.applyUsbThreats(dt);
-    if (this.openWalls || this.arena.voids || this.arena.disc) this.cullVoidThreats();
+    if (this.openWalls || this.arena.voids || this.arena.disc || this.satellite) this.cullVoidThreats();
   }
 
   private updateGauntlet(dt: number): void {
@@ -11276,7 +11618,7 @@ export class World {
     for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) this.updateFirewall(this.firewalls[i], dt);
     this.updateErrors(dt);
     if (this.usb) this.applyUsbThreats(dt);
-    if (this.openWalls || this.arena.voids || this.arena.disc) this.cullVoidThreats();
+    if (this.openWalls || this.arena.voids || this.arena.disc || this.satellite) this.cullVoidThreats();
   }
 
   /**
@@ -11540,7 +11882,7 @@ export class World {
     }
     const cx = b.x + b.w * 0.5;
     const cy = b.y + b.h * 0.5;
-    if ((this.openWalls || this.arena.voids || this.arena.slant || this.arena.disc) && this.offFloor(cx, cy)) {
+    if ((this.openWalls || this.arena.voids || this.arena.slant || this.arena.disc || this.satellite) && this.offFloor(cx, cy)) {
       b.active = false;
       this.emit(EV.PROP_BREAK, 0, cx, cy, b.w + b.h);
       return;
@@ -11647,6 +11989,8 @@ export class World {
 
   /** Send a box flying. Hits launch, they do not delete: the damage is a separate path. */
   private launchProp(b: Prop, nx: number, ny: number, speed: number): void {
+    // Capacitors are mounted hardware, not loose debris: a lash damages them in place.
+    if (b.capacitor) return;
     const mag = Math.hypot(nx, ny);
     if (mag < 0.001) return;
     const s = Math.min(speed, FILE_PROP.maxSpeed) / mag;
@@ -11913,8 +12257,9 @@ export class World {
     ) {
       return false;
     }
-    // Nothing spawns over a hole: threats, patrol points and pickups all use this test.
-    if (this.inVoid(x, y)) return false;
+    // Nothing spawns over a hole or off an open floor: threats, patrol points and
+    // pickups all use this test.
+    if (this.offFloor(x, y)) return false;
     for (let i = 0; i < this.solids.length; i++) {
       if (circleRect(x, y, radius + 4, this.solids[i], hitScratch)) return false;
     }
@@ -12374,6 +12719,7 @@ export class World {
     ) {
       return false;
     }
+    if (this.offFloor(x, y)) return false;
     for (let i = 0; i < this.solids.length; i++) {
       if (circleRect(x, y, r, this.solids[i], hitScratch)) return false;
     }

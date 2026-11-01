@@ -4604,3 +4604,39 @@ briefly predict against the moving floor before the next host correction.
 
 **Next:** play the card/popup pass at camera zoom on a desktop and phone viewport, then run a two-tab
 host/join check for swipe/popup sync and a rematch.
+
+## 2026-11-01 — SATELLITE orbital hazard arena (v0.1.110)
+
+**Goal:** build the SATELLITE brief: a long hull linked to solar wings that periodically burn the map, a
+telescoping bottom mast, periodic micro-meteor showers, and top capacitors whose destruction sends the
+whole satellite into a bottom-up reentry burn. Keep it local-only until the snapshot can carry its clocks.
+
+- Added arena id 17, `SATELLITE`: a five-plate floor union (central hull, port and starboard solar wings,
+two bridge plates), with real space outside the plates. The picker preview uses the same geometry.
+- Solar wings run independent 16 s cycles (3 s warning, 5.2 s hot, phase offsets 0 and 8 s), damaging
+players, bots, hostiles and the drone inside a hot panel. The telescope is moving cover and a lift with a
+3.2 s extend / 4.4 s hold / 3.2 s retract / 5.2 s rest cycle.
+- Added seven-rock meteor showers every 12.5 s after an 8 s opening delay. Each rock has a 0.9 s falling
+warning, a 48-unit impact radius and 1 damage; the meteor list is local state, not network projectiles.
+- Added three mounted capacitor props (64×84, hp 4) at the top. They take normal prop damage but cannot be
+launched. Destroying all three starts a 5 s thruster fuse and a 14 s bottom-up heat front (1 damage every
+0.8 s). The front holds at the top lip for up to 2.5 s, or ends early when every live body is gone, then
+the arena cools for 5 s and restores the pods.
+- Added renderer treatment for space, the five plates, solar warnings/hot panels, the mast, capacitor
+sockets, meteor warnings/impacts, thruster flames and the reentry wash. Floor checks, drone/pickup/threat/
+prop placement, fall handling and the bot nav grid all use the satellite floor union.
+- Kept the arena local-only: `isOnlineArena` excludes it and no satellite state enters `SnapshotHazards`.
+Added AGENTS D45, this TODO section and the GAME_GUIDE/README arena counts.
+
+**Verification:** `.tmp/satellite-check.ts` passes all timing chains (solar damage, meteor damage, mast
+lift, capacitor trigger, reentry hold and reset). `npx tsc --noEmit`, `npm run build`, `npm run bench` and
+`git diff --check` pass. Build: 776.83 kB JS / 216.58 kB gzip, 50.09 kB CSS / 11.20 kB gzip, with the
+existing chunk-size warning. Bench: 8P max projectiles 0.064 ms avg; gauntlet max 0.149 ms avg, 0.466 ms
+p99, 28.4 live threats.
+
+**Limitations:** no headed camera/framing pass and no visual check of the reentry wash. SATELLITE is
+intentionally absent from hosted rooms, so no two-client test was run. No render-performance measurement
+was taken on the new effects.
+
+**Next:** play SATELLITE headed in training and a gauntlet run, then adjust only the warning windows and
+mast timing that read badly at camera zoom.

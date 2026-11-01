@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-01 (SWIPE RIGHT arena)
+Last updated: 2026-11-01 (SATELLITE arena)
 
 ---
 
@@ -38,6 +38,23 @@ Last updated: 2026-11-01 (SWIPE RIGHT arena)
 - [x] `npm run build`, `npm run bench` and `git diff --check` clean
 - [ ] Headed pass: card framing, swipe readability and popup warning at camera zoom
 - [ ] Two-client playtest: verify guests see the same swipe/popup and cannot predict through the raised popup
+
+---
+
+## SATELLITE arena (2026-11-01)
+
+- [x] Arena id 17: five-plate floor union (hull, two solar wings, two bridges), real space falls and a telescoping mast
+- [x] Independent solar wing cycles with warning/hot states, damage ticks and renderer treatment
+- [x] Telescoping mast as moving cover and a standing-body lift, with collision and placement safeguards
+- [x] Periodic micro-meteor showers: seven rocks, 0.9 s warning, 48-unit impact and 1 damage
+- [x] Three mounted capacitor props (hp 4) that use prop damage but cannot be launched or thrown
+- [x] All-pods-destroyed trigger: 5 s thruster fuse, 14 s bottom-up heat front, 2.5 s top hold, 5 s cooldown and pod restore
+- [x] Bot nav bakes the five floor plates; drone, pickups, threats and props stay on authored floor
+- [x] Local-only online filter; meteor, capacitor and heat state stay out of `SnapshotHazards`
+- [x] Headless probe (`.tmp/satellite-check.ts`): solar, meteor, mast, capacitor trigger, reentry and reset timing
+- [x] `npx tsc --noEmit`, `npm run build`, `npm run bench` and `git diff --check` clean
+- [ ] Headed camera pass: solar readability, mast lift feel, meteor warning and reentry wash
+- [ ] Online support: deferred until a protocol decision can carry the local hazard clocks
 
 ---
 

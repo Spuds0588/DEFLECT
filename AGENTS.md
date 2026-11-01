@@ -1996,6 +1996,30 @@ new playable hull and not a threat family.
   The card and popup are local presentation only and never enter `Snapshot` as extra objects. No health,
   damage or balance numbers were changed for this arena.
 
+### D45 — SATELLITE is a local-only orbital hazard arena (built 2026-11-01)
+
+`SATELLITE` (arena id 17) is the eighteenth arena: a long central hull, two solar wings joined by short
+bridges, a telescoping mast below the hull, and three destructible capacitor pods across the top. Its floor
+is an explicit union of five rects — hull, port wing, starboard wing and two bridge plates. Outside that
+union is a real fall; projectiles and lasers still cross the gaps. The telescope is a moving solid and a
+lift, not a new traversal kind. Bots bake the five plates into their nav grid.
+
+- **Solar wings** run independent 16 s cycles (3 s warning, 5.2 s hot, phase offsets 0 and 8 s). A hot
+  panel damages every player, bot, hostile and drone body inside its rect on its damage tick. There is no
+  player-only filter and no prop damage.
+- **Telescope** uses 3.2 s extend / 4.4 s hold / 3.2 s retract / 5.2 s rest. It is cover while extended
+  and carries a standing body on its deck; a dash still stops at the barrel.
+- **Micro-meteors** begin at 8 s and repeat every 12.5 s: seven rocks with a 0.9 s falling warning, a
+  48-unit impact radius and 1 damage. They are a local `SatelliteMeteor` list, not `Projectile`s.
+- **Capacitors** are three mounted `Prop`s (64×84, hp 4) at the top. They use the normal shot/melee prop
+  damage path, but `launchProp` refuses to detach or throw them. Destroying all three starts a 5 s
+  thruster fuse, then a 14 s bottom-up heat front that ticks every 0.8 s for 1 damage. When the front
+  reaches the top lip it holds for 2.5 s (or ends early once every body is dead), then the arena cools
+  for 5 s and restores the pods. A training respawn cannot leave the map permanently hot.
+- The arena is **local-only**: none of its clocks, meteors, capacitor states or heat front are in
+  `SnapshotHazards`, and `isOnlineArena` excludes it. Do not add the map to hosted room selection until
+  a protocol decision carries that state. No health or damage budget was changed for the arena.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

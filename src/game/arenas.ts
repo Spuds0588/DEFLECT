@@ -280,6 +280,75 @@ export interface ArenaSwipeDef {
   popupFall: number;
 }
 
+/** One solar wing. Its phase offsets the shared heat cycle. */
+export interface ArenaSatellitePanelDef extends Rect {
+  phase: number;
+  label: string;
+}
+
+export interface ArenaSatelliteTelescopeDef {
+  x: number;
+  w: number;
+  baseY: number;
+  extension: number;
+  phase: number;
+  extend: number;
+  hold: number;
+  retract: number;
+  rest: number;
+}
+
+export interface ArenaSatelliteSolarDef {
+  /** Full rest-warn-hot cycle. */
+  period: number;
+  warn: number;
+  hot: number;
+  /** Seconds between damage ticks while a body is in a hot panel. */
+  tick: number;
+  damage: number;
+}
+
+export interface ArenaSatelliteMeteorDef {
+  first: number;
+  interval: number;
+  count: number;
+  /** Falling warning before the rock lands. */
+  warn: number;
+  /** Impact flash and collision window after it lands. */
+  impact: number;
+  radius: number;
+  damage: number;
+}
+
+export interface ArenaSatelliteReentryDef {
+  /** Thruster ignition warning after every capacitor is destroyed. */
+  fuse: number;
+  /** Seconds for the heat line to travel from the bottom lip to the top. */
+  rise: number;
+  /** Seconds between burn ticks while the line is live. */
+  tick: number;
+  damage: number;
+  /** Extra burn at the top lip, so a late respawn cannot outlast the front. */
+  hold: number;
+  /** Cooldown before the arena resets after the burn. */
+  reset: number;
+}
+
+/**
+ * SATELLITE: a central hull with two solar wings on narrow bridges, a telescoping
+ * bottom mast, top capacitors and an all-map reentry burn. It is local-only for now;
+ * the meteors and the thruster state are not part of SnapshotHazards.
+ */
+export interface ArenaSatelliteDef {
+  /** Every walkable plate. Outside these rects is space, not floor. */
+  floor: Rect[];
+  panels: ArenaSatellitePanelDef[];
+  telescope: ArenaSatelliteTelescopeDef;
+  solar: ArenaSatelliteSolarDef;
+  meteors: ArenaSatelliteMeteorDef;
+  reentry: ArenaSatelliteReentryDef;
+}
+
 /**
  * A breakable file box. Bodies step over it; shots and lashes delete it in one or two
  * hits. Kind is a `PROP` id, which picks the mark on the box.
@@ -290,6 +359,10 @@ export interface ArenaPropDef {
   w: number;
   h: number;
   kind: number;
+  /** Optional durable container HP; ordinary file boxes use `FILE_PROP.hp`. */
+  hp?: number;
+  /** A satellite capacitor: solid to its own damage path, never launched as debris. */
+  capacitor?: boolean;
 }
 
 /**
@@ -580,6 +653,8 @@ export interface ArenaDef {
   usb?: ArenaUsbDef;
   /** Swipe-card phone floor and its match-popup platform. */
   swipe?: ArenaSwipeDef;
+  /** Satellite hull, solar wings, telescope and reentry hazard. Local-only. */
+  satellite?: ArenaSatelliteDef;
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
   /** Tutorial room floors and labels. Presentation only; never collision. */
@@ -1466,6 +1541,63 @@ export const ARENAS: readonly ArenaDef[] = [
       popupFall: 0.6,
     },
   },
+  {
+    id: 17,
+    name: 'SATELLITE',
+    tagline: 'Solar wings. Deep space. One bad reentry.',
+    hudLabel: 'ARENA // SATELLITE',
+    accent: '#ffb347',
+    accentSoft: 'rgba(255, 179, 71, 0.34)',
+    accentFaint: 'rgba(255, 179, 71, 0.035)',
+    signature: 3,
+    bounds: { left: 100, top: 70, right: 1180, bottom: 1850 },
+    // Space outside these plates. The hull, two solar wings and their bridges are the
+    // only places a body can stand; the rest is a real fall.
+    walls: 'open',
+    pillars: [],
+    spawns: [
+      { x: 640, y: 440 },
+      { x: 500, y: 600 },
+      { x: 780, y: 600 },
+      { x: 500, y: 900 },
+      { x: 780, y: 900 },
+      { x: 500, y: 1200 },
+      { x: 780, y: 1200 },
+      { x: 820, y: 1520 },
+    ],
+    props: [
+      { x: 480, y: 280, w: 64, h: 84, kind: 2, hp: 4, capacitor: true },
+      { x: 608, y: 280, w: 64, h: 84, kind: 1, hp: 4, capacitor: true },
+      { x: 736, y: 280, w: 64, h: 84, kind: 0, hp: 4, capacitor: true },
+    ],
+    satellite: {
+      floor: [
+        { x: 420, y: 180, w: 440, h: 1520 },
+        { x: 160, y: 520, w: 240, h: 420 },
+        { x: 920, y: 520, w: 240, h: 420 },
+        { x: 360, y: 680, w: 60, h: 120 },
+        { x: 860, y: 680, w: 60, h: 120 },
+      ],
+      panels: [
+        { x: 160, y: 520, w: 240, h: 420, phase: 0, label: 'PORT ARRAY' },
+        { x: 920, y: 520, w: 240, h: 420, phase: 8, label: 'STARBOARD ARRAY' },
+      ],
+      telescope: {
+        x: 570,
+        w: 140,
+        baseY: 1700,
+        extension: 300,
+        phase: 2,
+        extend: 3.2,
+        hold: 4.4,
+        retract: 3.2,
+        rest: 5.2,
+      },
+      solar: { period: 16, warn: 3, hot: 5.2, tick: 0.9, damage: 1 },
+      meteors: { first: 8, interval: 12.5, count: 7, warn: 0.9, impact: 0.55, radius: 48, damage: 1 },
+      reentry: { fuse: 5, rise: 14, tick: 0.8, damage: 1, hold: 2.5, reset: 5 },
+    },
+  },
 ];
 
 export function discCenterX(arena: ArenaDef): number {
@@ -1765,6 +1897,82 @@ export function swipePopupActiveAt(swipe: ArenaSwipeDef, t: number): boolean {
   return swipePopupHeightAt(swipe, t) > 0.01;
 }
 
+export const SATELLITE_SOLAR_STATE = {
+  rest: 0,
+  warn: 1,
+  hot: 2,
+} as const;
+
+/** Offset local time of one solar wing. */
+export function satelliteSolarPhaseAt(
+  sat: ArenaSatelliteDef,
+  panel: ArenaSatellitePanelDef,
+  t: number,
+): number {
+  const period = Math.max(0.001, sat.solar.period);
+  return (((t + panel.phase) % period) + period) % period;
+}
+
+/** 0 rest, 1 warning, 2 hot. */
+export function satelliteSolarStateAt(
+  sat: ArenaSatelliteDef,
+  panel: ArenaSatellitePanelDef,
+  t: number,
+): number {
+  const phase = satelliteSolarPhaseAt(sat, panel, t);
+  if (phase < sat.solar.warn) return SATELLITE_SOLAR_STATE.warn;
+  if (phase < sat.solar.warn + sat.solar.hot) return SATELLITE_SOLAR_STATE.hot;
+  return SATELLITE_SOLAR_STATE.rest;
+}
+
+/** 0..1 extension of the bottom telescope mast. */
+export function satelliteTelescopeExtensionAt(
+  telescope: ArenaSatelliteTelescopeDef,
+  t: number,
+): number {
+  const cycle = telescope.extend + telescope.hold + telescope.retract + telescope.rest;
+  let phase = ((t + telescope.phase) % cycle + cycle) % cycle;
+  const extendEnd = telescope.extend;
+  const holdEnd = extendEnd + telescope.hold;
+  const retractEnd = holdEnd + telescope.retract;
+  if (phase < extendEnd) {
+    const k = phase / Math.max(0.001, telescope.extend);
+    return k * k * (3 - 2 * k);
+  }
+  if (phase < holdEnd) return 1;
+  if (phase < retractEnd) {
+    const k = (phase - holdEnd) / Math.max(0.001, telescope.retract);
+    return 1 - k * k * (3 - 2 * k);
+  }
+  return 0;
+}
+
+/** True when a world point is on the satellite's floor plates. */
+export function satelliteFloorAt(arena: ArenaDef, x: number, y: number): boolean {
+  const sat = arena.satellite;
+  if (!sat) return true;
+  for (let i = 0; i < sat.floor.length; i++) {
+    const r = sat.floor[i];
+    if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return true;
+  }
+  return false;
+}
+
+/** Writes the telescope mast's collision rectangle at `t` into `out`. */
+export function satelliteTelescopeRectAt(
+  sat: ArenaSatelliteDef,
+  t: number,
+  out: Rect,
+): Rect {
+  const ext = satelliteTelescopeExtensionAt(sat.telescope, t);
+  const h = ext * sat.telescope.extension;
+  out.x = sat.telescope.x;
+  out.w = sat.telescope.w;
+  out.y = sat.telescope.baseY - h;
+  out.h = h;
+  return out;
+}
+
 export function getArena(index: number): ArenaDef {
   const n = ARENAS.length;
   return ARENAS[((index % n) + n) % n];
@@ -1865,6 +2073,34 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     ctx.beginPath();
     ctx.arc(cx, cy, 3, 0, Math.PI * 2);
     ctx.fill();
+    return;
+  }
+
+  if (arena.satellite) {
+    const sat = arena.satellite;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < sat.floor.length; i++) {
+      const r = sat.floor[i];
+      ctx.fillStyle = i === 0 ? '#18212c' : '#0d2430';
+      ctx.fillRect(mapX(r.x), mapY(r.y), Math.max(1, r.w * sx), Math.max(1, r.h * sy));
+      ctx.strokeRect(mapX(r.x) + 0.5, mapY(r.y) + 0.5, Math.max(1, r.w * sx) - 1, Math.max(1, r.h * sy) - 1);
+    }
+    for (let i = 0; i < sat.panels.length; i++) {
+      const p = sat.panels[i];
+      ctx.fillStyle = 'rgba(72, 183, 255, 0.5)';
+      ctx.fillRect(mapX(p.x + 8), mapY(p.y + 8), Math.max(1, (p.w - 16) * sx), Math.max(1, (p.h - 16) * sy));
+      ctx.strokeStyle = arena.accent;
+      ctx.strokeRect(mapX(p.x) + 0.5, mapY(p.y) + 0.5, Math.max(1, p.w * sx) - 1, Math.max(1, p.h * sy) - 1);
+    }
+    const tel = sat.telescope;
+    ctx.fillStyle = '#ffd08a';
+    ctx.fillRect(mapX(tel.x), mapY(tel.baseY - tel.extension), Math.max(2, tel.w * sx), Math.max(2, tel.extension * sy));
+    for (let i = 0; i < (arena.props?.length ?? 0); i++) {
+      const p = arena.props![i];
+      ctx.fillStyle = p.capacitor ? '#ff8b4d' : '#ffd06a';
+      ctx.fillRect(mapX(p.x), mapY(p.y), Math.max(1, p.w * sx), Math.max(1, p.h * sy));
+    }
     return;
   }
 

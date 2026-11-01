@@ -1,5 +1,5 @@
 import { PLAYER, type Bounds } from './config';
-import { arenaSolids, type ArenaDef } from './arenas';
+import { arenaSolids, satelliteFloorAt, type ArenaDef } from './arenas';
 
 /**
  * Bots need to walk around concave cover, not just strafe at it. This is a small
@@ -57,7 +57,13 @@ export class ArenaNav {
       for (let c = 0; c < this.cols; c++) {
         const x = this.bounds.left + c * CELL + CELL * 0.5;
         const y = this.bounds.top + r * CELL + CELL * 0.5;
-        let blocked = 0;
+        // SATELLITE's floor is a union of plates with open space between them. A route
+        // must stay on the hull/wings instead of cutting across the drop.
+        let blocked = arena.satellite && !satelliteFloorAt(arena, x, y) ? 1 : 0;
+        if (blocked) {
+          this.blocked[r * this.cols + c] = 1;
+          continue;
+        }
         for (let i = 0; i < solids.length; i++) {
           const p = solids[i];
           // Conservative expanded box: no path cell can touch cover.

@@ -1140,7 +1140,7 @@ function selectArena(index: number): void {
 function isOnlineArena(a: ArenaDef): boolean {
   // Room arenas are tutorial staging: their chasms, props and fixture clocks are local
   // presentation/content, not a versus map. Keep them out of hosted rooms and series.
-  return !a.pipes && !a.firewallSwitch && !a.rooms;
+  return !a.pipes && !a.firewallSwitch && !a.rooms && !a.satellite;
 }
 
 function onlineArenaIndex(index: number): number {
