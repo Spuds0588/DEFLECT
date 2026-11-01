@@ -12,6 +12,15 @@ import {
   type GauntletRun,
 } from './game/gauntletRecords';
 import { Haptics, type RumbleCue } from './game/haptics';
+import {
+  bestForArena,
+  fastestBest,
+  formatInfectionTime,
+  loadInfectionBests,
+  recordInfectionClear,
+  saveInfectionBests,
+  type InfectionBest,
+} from './game/infectionRecords';
 import { Input, type MenuEdges } from './game/input';
 import { Renderer, type RenderState } from './game/render';
 import { PROGRAM_ID, PROGRAMS, clampProgram, programDef } from './game/programs';
@@ -86,6 +95,8 @@ const botTierEl = el('bot-tier');
 const botStageLabel = el('bot-stage-label');
 const tierStageLabel = el('tier-stage-label');
 const gauntletBtn = el<HTMLButtonElement>('btn-gauntlet');
+const infectionBtn = el<HTMLButtonElement>('btn-solo-infection');
+const infectionBestValue = el('infection-best');
 const lobbyArenaBtn = el<HTMLButtonElement>('btn-arena-cycle');
 const hitRotationInput = el<HTMLInputElement>('hit-rotation');
 const hitRotationValue = el('hit-rotation-value');
@@ -196,13 +207,17 @@ type MenuStage =
   | 'local'
   | 'multi'
   | 'online';
-type SoloProgram = 'training' | 'bots' | 'gauntlet' | 'campaign';
+type SoloProgram = 'training' | 'bots' | 'gauntlet' | 'campaign' | 'infection';
 let menuStage: MenuStage = 'hub';
 let soloProgram: SoloProgram = 'training';
 let selectedProgram: number = PROGRAM_ID.PROBE;
 let settingsTab: SettingsTab = 'feedback';
 let gauntletRecords: GauntletRun[] = [];
 let gauntletRecorded = false;
+/** INFECTION runs on the gauntlet simulation; this flag swaps the setup, HUD and results. */
+let infectionRun = false;
+let infectionRecorded = false;
+let infectionBests: InfectionBest[] = [];
 /** Campaign drill squad size (0-3). A NO BOTS run still drills against one instructor. */
 let campaignBots = 0;
 /** Save-slot index being set up on the campaign stage; -1 when none is selected. */
@@ -283,6 +298,8 @@ function boot(): void {
   bindUi();
   gauntletRecords = loadGauntletRuns();
   updateGauntletBestLabel();
+  infectionBests = loadInfectionBests();
+  updateInfectionBestLabel();
   renderProgramPicker();
   renderArenaPicker();
   renderBotControls();
@@ -318,6 +335,7 @@ function boot(): void {
   // QA-only gauntlet hook: `?gauntlet=1&arena=5&bot=1` boots straight into a run and
   // lets a BotBrain drive the local player so the camera can be watched hands-off.
   const gauntletParam = Number(params.get('gauntlet') ?? '0');
+  const infectionParam = params.get('infection') === '1';
   const gauntletBot = Number(params.get('bot') ?? '0') >= 1;
   // QA-only inspection handle. Nothing in normal play reads it; it keeps split and
   // grouping tests scriptable without a separate debug build.
@@ -342,6 +360,8 @@ function boot(): void {
     window.setTimeout(() => startAttract(), 250);
   } else if (stressParam >= 2 && stressParam <= MAX_PLAYERS) {
     window.setTimeout(() => startStress(stressParam), 250);
+  } else if (infectionParam) {
+    window.setTimeout(() => startInfection(gauntletBot), 250);
   } else if (gauntletParam >= 1) {
     window.setTimeout(() => startGauntlet(gauntletBot), 250);
   } else if (autoplayParam >= 1) {
@@ -349,7 +369,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.67 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.68 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -378,6 +398,7 @@ function bindUi(): void {
   trainingBtn.addEventListener('click', () => openProgramSelect('training'));
   soloBotsBtn.addEventListener('click', () => openProgramSelect('bots'));
   gauntletBtn.addEventListener('click', () => openProgramSelect('gauntlet'));
+  infectionBtn.addEventListener('click', () => openProgramSelect('infection'));
   soloCampaignBtn.addEventListener('click', openStory);
   storyBackBtn.addEventListener('click', () => showMenuStage('solo'));
   storyBotsBackBtn.addEventListener('click', () => showMenuStage('story'));
@@ -597,12 +618,21 @@ function updateProgramStageLabel(): void {
         ? 'VS BOTS // PROGRAM SELECT'
         : soloProgram === 'gauntlet'
           ? 'GAUNTLET // PROGRAM SELECT'
-          : 'CAMPAIGN // PLAYER SELECT';
+          : soloProgram === 'infection'
+            ? 'INFECTION // PROGRAM SELECT'
+            : 'CAMPAIGN // PLAYER SELECT';
 }
 
 function updateSoloArenaCopy(): void {
   const def = programDef(selectedProgram);
-  const label = soloProgram === 'training' ? 'TRAINING' : soloProgram === 'bots' ? 'VS BOTS' : 'GAUNTLET';
+  const label =
+    soloProgram === 'training'
+      ? 'TRAINING'
+      : soloProgram === 'bots'
+        ? 'VS BOTS'
+        : soloProgram === 'infection'
+          ? 'INFECTION'
+          : 'GAUNTLET';
   arenaStageLabel.textContent = `${label} // ${def.name} // SELECT ARENA`;
 }
 
@@ -936,6 +966,7 @@ function renderArenaPicker(): void {
       selectArena(i);
       if (menuStage !== 'soloArena' || screen !== 'title') return;
       if (soloProgram === 'gauntlet') showMenuStage('gauntlet');
+      else if (soloProgram === 'infection') startInfection();
       else showMenuStage('soloBots');
     });
     arenaPicker.appendChild(card);
@@ -2029,6 +2060,7 @@ function startGauntlet(aiLocal = false): void {
   teardownSession();
   hideOverlayInternal();
   mode = 'gauntlet';
+  infectionRun = false;
   localSlot = 0;
   stress = false;
   autoplay = aiLocal;
@@ -2049,6 +2081,39 @@ function startGauntlet(aiLocal = false): void {
   audio.unlock();
   audio.startMusic();
   console.log('[DEFLECT-STATE] Gauntlet start', arena.name, 'one life', aiLocal ? 'AUTOPILOT' : '', 'friendly fire', friendlyFire ? 'on' : 'off');
+}
+
+/**
+ * INFECTION: a timed clean sweep on the gauntlet simulation. The colony starts deep and
+ * keeps budding; the clear meter and the clock are the whole read. Friendly fire is off
+ * so the swarm cannot thin itself out and hand the player a cheap best time.
+ */
+function startInfection(aiLocal = false): void {
+  if (busy) return;
+  teardownSession();
+  hideOverlayInternal();
+  mode = 'gauntlet';
+  infectionRun = true;
+  localSlot = 0;
+  stress = false;
+  autoplay = aiLocal;
+  const arena = getArena(arenaIndex);
+  world = new World('gauntlet', [getCallsign()], 0, arena, false, selectedProgram, 0, null, false, null, true);
+  world.friendlyFire = false;
+  trainingInputs = [localFrame];
+  botInputs = new Array(MAX_PLAYERS);
+  for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
+  botBrains = new Array(MAX_PLAYERS).fill(null);
+  if (aiLocal) {
+    botBrains[0] = new BotBrain(0, botTierPrefs.training, 0, 0x51f15e + arena.id * 983 + 29);
+  }
+  resetCounters();
+  fx.reset();
+  setScreen('game');
+  beginLoadSequence(`INFECTION // ${arena.name}`);
+  audio.unlock();
+  audio.startMusic();
+  console.log('[DEFLECT-STATE] Infection start', arena.name, aiLocal ? 'AUTOPILOT' : '');
 }
 
 /** Timestamp for the title idle clock. Any device counts. */
@@ -2557,6 +2622,7 @@ function teardownSession(): void {
   guestView = null;
   lobbyState = null;
   mode = 'none';
+  infectionRun = false;
   stress = false;
   botBrains = [];
   botInputs = [];
@@ -2593,6 +2659,7 @@ function resetCounters(): void {
   lastCountdownText = '';
   lastLocalHp = -1;
   gauntletRecorded = false;
+  infectionRecorded = false;
   lastCampaignPhase = '';
 }
 
@@ -2708,6 +2775,17 @@ function syncPhaseUi(state: RenderState): void {
   }
   if (stress) {
     if (overlayKind !== 'leave') hideOverlayInternal();
+    return;
+  }
+  if (infectionRun && world) {
+    if (!world.infectionOver) {
+      deathHoldUntil = 0;
+      return;
+    }
+    if (overlayKind === 'none') {
+      if (deathHoldUntil === 0) deathHoldUntil = performance.now() + DEATH_HOLD_MS;
+      if (performance.now() >= deathHoldUntil) showInfectionOverOverlay(world);
+    }
     return;
   }
   if (mode === 'campaign' && world) {
@@ -2828,6 +2906,67 @@ function returnToGauntletSetup(): void {
   setScreen('title');
   refreshTitleButtons();
   setTitleStatus('');
+}
+
+function showInfectionOverOverlay(w: World): void {
+  if (overlayKind === 'leave' || overlayKind === 'runover') return;
+  const seconds = w.gauntletTime;
+  const kills = w.infectionKills;
+  const cleared = w.infectionCleared;
+  const pct = Math.floor(w.infectionProgress * 100);
+
+  let bestLine = '';
+  if (cleared) {
+    if (!infectionRecorded) {
+      const result = recordInfectionClear(infectionBests, {
+        name: getCallsign(),
+        arenaId: arenaIndex,
+        seconds,
+        kills,
+        at: Date.now(),
+      });
+      infectionBests = result.bests;
+      infectionRecorded = true;
+      saveInfectionBests(infectionBests);
+      updateInfectionBestLabel();
+      bestLine = result.improved ? ' // NEW BEST' : '';
+    }
+    if (!bestLine) {
+      const best = bestForArena(infectionBests, arenaIndex);
+      if (best) bestLine = ` // BEST ${formatInfectionTime(best.seconds)}`;
+    }
+  }
+
+  setOverlay(
+    'runover',
+    cleared ? 'INFECTION // SYSTEM CLEAN' : 'INFECTION // SIGNAL LOST',
+    cleared ? `CLEARED // ${formatInfectionTime(seconds)}` : 'RING BROKEN',
+    cleared
+      ? `${kills} VIRUSES // ${pct}% CLEARED${bestLine} // ${w.arena.name}`
+      : `${pct}% CLEARED // ${kills} VIRUSES // ${w.arena.name}`,
+    [
+      { label: 'RETRY', primary: true, onClick: () => startInfection() },
+      { label: 'ARENA', onClick: returnToInfectionSetup },
+      { label: 'TITLE', onClick: leaveToTitle },
+    ],
+  );
+}
+
+function returnToInfectionSetup(): void {
+  teardownSession();
+  soloProgram = 'infection';
+  showMenuStage('soloArena');
+  setScreen('title');
+  refreshTitleButtons();
+  setTitleStatus('');
+}
+
+function updateInfectionBestLabel(): void {
+  const best = fastestBest(infectionBests);
+  infectionBestValue.textContent = best ? `BEST ${formatInfectionTime(best.seconds)}` : 'BEST --';
+  infectionBestValue.title = best
+    ? `Best: ${formatInfectionTime(best.seconds)} on ${getArena(best.arenaId).name}`
+    : 'No clean sweeps yet';
 }
 
 function scoreCampaign(w: World): { score: number; clean: boolean } {
@@ -2960,6 +3099,7 @@ function closeLeave(): void {
 function openLeave(): void {
   if (mode === 'none' || overlayKind === 'leave' || overlayKind === 'runover') return;
   const campaignRun = mode === 'campaign';
+  const infection = infectionRun;
   const local = mode === 'training' || mode === 'bots' || mode === 'gauntlet' || campaignRun;
   const training = mode === 'training' && !stress;
   const botMatch = mode === 'bots';
@@ -2974,8 +3114,10 @@ function openLeave(): void {
         ? 'LEAVE BOT MATCH?'
         : campaignRun
           ? 'EXIT NODE?'
-          : gauntlet
-            ? 'EXIT GAUNTLET?'
+          : infection
+            ? 'EXIT INFECTION?'
+            : gauntlet
+              ? 'EXIT GAUNTLET?'
             : local
               ? 'LEAVE STRESS RUN?'
               : 'LEAVE MATCH?',
@@ -3407,6 +3549,7 @@ function refreshTitleButtons(): void {
   createBtn.disabled = busy;
   joinBtn.disabled = busy || !isValidCode(roomCodeInput.value);
   gauntletBtn.disabled = busy;
+  infectionBtn.disabled = busy;
   gauntletStartBtn.disabled = busy;
   soloCampaignBtn.disabled = busy;
 }
@@ -3445,6 +3588,7 @@ if (import.meta.env.DEV) {
     startTraining,
     startTrainingBots,
     startGauntlet,
+    startInfection,
     startCampaignLevel,
     getCampaign: () => ({ slot: campaignSlot, players: campaignPlayers, bots: campaignBots, saved: campaignSaved }),
     startBotMatch,

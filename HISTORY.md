@@ -3245,3 +3245,36 @@ sits about 7–8 dB under the match loop.
 
 **Next:** audition title → program select → match → title and confirm the handoff; decide whether the
 attract/demo kiosk should keep the match bed or the menu one.
+
+## 2026-11-01 — INFECTION: a timed swarm clear (v0.1.68)
+
+**Goal:** add the second planned mode: an arena flooded with a growing virus colony, cleared against the
+clock, with a 0–100% virus-cleared readout at the top of the screen and a local best time.
+
+- The mode runs `World('gauntlet', …, infectionMode=true)` and keeps the `gauntlet` mode string, the way
+  the campaign does, so the threat, camera, freeze and overlay paths did not fork. The virus pool grows
+  from 10 to 44 for this run only.
+- Twenty-four viruses open on a ring around the player and the colony buds one body every 1.6 s to the
+  cap. They hunt across the whole floor at 1.16x speed instead of the gauntlet's 310-unit interest radius.
+  The first pass opened with sixteen and a 3.2 s bud; the autopilot cleared that in 4.8 s, so the flood
+  was raised until a clear was a real run.
+- `infectionProgress = kills / (kills + live)`, capped at 99% while anything lives, so a split sets the
+  meter back and only an empty floor reaches 100%. The HUD is one top-centred bar with the percentage and
+  the run clock; the gauntlet's bottom possession strip is suppressed in this mode.
+- The first probe exposed a real problem: sixteen bodies each committing the single-target charge deleted
+  a stationary player in 2.97 s and froze the run before the first growth beat. The mode now disables the
+  charge, bites on contact for 1 and a 540 shove, and shares a 0.85 s grace so the pack cannot stack a
+  kill on one frame. The infection meter and thrall spawn are skipped in this mode.
+- Pickups, kill drops and friendly fire are off, so a best time cannot come from a random roll or a colony
+  that thins itself. Arena emitters and floor hazards still run.
+- `infectionRecords.ts` keeps one best per arena under `deflect.infection.bests` in `m:ss.d`; the results
+  overlay records a clear once and offers RETRY / ARENA / TITLE. The solo menu shows the fastest sweep.
+
+**Verification:** `npx tsc --noEmit` clean; `npm run build` clean (596.45 kB JS / 166.18 kB gzip, 48.60 kB
+CSS). Headless probe (`.tmp/check-infection.ts`): 44-body pool, 16-body opening flood, 0% start, one kill
+credits and moves the meter to 1/16, the colony buds by 4 s with the clock running, no worms/sentries/
+errors/pickups appear, sweeping the floor closes the run at exactly 100% with the clock frozen, death sets
+the failed state, and the ordinary gauntlet still has its 10-body pool and no infection flag.
+
+**Next:** playtest a real clear on CROSSROADS and DISK PLATTER, then tune opening count, growth interval
+and the bite grace. The new arena brief is still outstanding.

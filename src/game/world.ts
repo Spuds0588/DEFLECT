@@ -12,6 +12,7 @@ import {
   EMITTER,
   FISHER,
   GHOST,
+  INFECTION,
   MINE,
   SWEEP,
   FIREWALL,
@@ -143,6 +144,19 @@ export class World {
   private readonly netScratchY = new Float32Array(FISHER.netPoints);
   infection = 0;
   gauntletKills = 0;
+  /**
+   * INFECTION run: a local timed clear on the gauntlet simulation. Like the campaign, it
+   * keeps the `gauntlet` mode string so no threat, camera or network branch forks.
+   */
+  readonly infectionMode: boolean;
+  /** Viruses deleted by the local player this run. */
+  infectionKills = 0;
+  /** True once the last virus is gone; `gauntletOver` freezes the cleared arena. */
+  infectionCleared = false;
+  /** True when the ring broke before the swarm was cleared. */
+  infectionFailed = false;
+  private infectionStarted = false;
+  private infectionGrowT: number = INFECTION.growInterval;
   /** True after a scored gauntlet run has ended; the simulation holds the last frame. */
   gauntletOver = false;
   /**
@@ -316,9 +330,11 @@ export class World {
     botPrograms: readonly number[] | null = null,
     campaign = false,
     levelData: readonly CampaignDataCrate[] | null = null,
+    infectionMode = false,
   ) {
     this.mode = mode;
     this.campaign = campaign;
+    this.infectionMode = infectionMode;
     this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
@@ -339,7 +355,9 @@ export class World {
     this.drone = createDrone();
     this.worms = new Array(GAUNTLET.maxWorms);
     for (let i = 0; i < this.worms.length; i++) this.worms[i] = createWorm();
-    this.viruses = new Array(GAUNTLET.maxViruses);
+    // INFECTION floods the floor, so that run owns a larger pool. Every other local mode
+    // and every hosted match keep the gauntlet-sized pool.
+    this.viruses = new Array(infectionMode ? INFECTION.maxViruses : GAUNTLET.maxViruses);
     for (let i = 0; i < this.viruses.length; i++) this.viruses[i] = createVirus();
     this.firewalls = new Array(GAUNTLET.maxFirewalls);
     for (let i = 0; i < this.firewalls.length; i++) this.firewalls[i] = createFirewall();
@@ -478,6 +496,7 @@ export class World {
     } else if (mode === 'gauntlet') {
       this.phase = 'practice';
       if (campaign) this.setupCampaign();
+      else if (infectionMode) this.setupInfection();
       else this.setupGauntlet();
     } else {
       this.phase = 'countdown';
@@ -537,6 +556,35 @@ export class World {
       this.players[i].active = false;
       this.players[i].alive = false;
     }
+  }
+
+  /**
+   * INFECTION: the floor starts flooded and the colony keeps budding. Clear every virus
+   * for the fastest time; the ring breaking ends the attempt. No worms, sentries, error
+   * blocks or pickups, so a best time is about the swarm and the player. Arena hazards
+   * still run: they are part of the route.
+   */
+  private setupInfection(): void {
+    this.setupGauntlet();
+    this.infectionKills = 0;
+    this.infectionCleared = false;
+    this.infectionFailed = false;
+    this.infectionStarted = false;
+    this.infectionGrowT = INFECTION.growInterval;
+    this.infection = 0;
+    this.wave = 1;
+    this.waveBannerT = 0;
+
+    const p = this.players[0];
+    let spawned = 0;
+    for (let i = 0; i < INFECTION.startViruses; i++) {
+      const angle = (i / INFECTION.startViruses) * Math.PI * 2 + this.rng.range(-0.18, 0.18);
+      const dist = this.rng.range(INFECTION.startRadiusMin, INFECTION.startRadiusMax);
+      if (this.spawnVirus(p.x + Math.cos(angle) * dist, p.y + Math.sin(angle) * dist)) spawned++;
+    }
+    // A failed spawn is only possible on a degenerate arena; the run still starts and
+    // the first growth beat seeds the colony.
+    this.infectionStarted = spawned > 0;
   }
 
   /**
@@ -1431,6 +1479,26 @@ export class World {
     return this.gauntletT;
   }
 
+  /**
+   * 0..1 of the swarm cleared. `kills / (kills + live)` means a fresh bud pushes the
+   * meter down, and only a floor with nothing left on it reaches 100%.
+   */
+  get infectionProgress(): number {
+    if (this.infectionCleared) return 1;
+    let alive = 0;
+    for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) alive++;
+    const total = this.infectionKills + alive;
+    if (total === 0) return 0;
+    // A failed run can end with an empty floor (a hazard or a shove finished the
+    // colony); it still never reads 100%, because 100% is reserved for the clear.
+    return Math.min(0.99, this.infectionKills / total);
+  }
+
+  /** The run is decided: either the floor is clean or the ring broke. */
+  get infectionOver(): boolean {
+    return this.infectionCleared || this.infectionFailed;
+  }
+
   /** 0 at wave 1, 1 at fullPressureWave. The bench's practice path always runs at full pressure. */
   private gauntletPressure(): number {
     if (this.gauntletPractice) return 1;
@@ -1451,6 +1519,7 @@ export class World {
   }
 
   private virusLimit(): number {
+    if (this.infectionMode) return INFECTION.maxViruses;
     if (this.gauntletPractice) return GAUNTLET.maxViruses;
     return Math.min(
       GAUNTLET.maxViruses,
@@ -7301,6 +7370,7 @@ export class World {
         return;
       }
       if (this.mode === 'gauntlet' && !this.gauntletPractice && p.slot === 0) {
+        if (this.infectionMode) this.infectionFailed = true;
         this.gauntletOver = true;
         p.respawnT = 0;
         this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
@@ -7943,6 +8013,8 @@ export class World {
    * collection, and the duration timer. Adding content should not require touching it.
    */
   private updatePickups(dt: number): void {
+    // A best time must not depend on a random powerup roll.
+    if (this.infectionMode) return;
     const p = this.players[0];
     this.powerupSpawnT -= dt;
     if (this.powerupDropT > 0) this.powerupDropT = Math.max(0, this.powerupDropT - dt);
@@ -8152,8 +8224,39 @@ export class World {
     }
   }
 
+  /**
+   * INFECTION loop. The swarm hunts across the whole arena and buds on a timer, and the
+   * run ends the moment the last body is gone. Progress is derived from kills and live
+   * bodies, so a split visibly sets the clear meter back instead of hiding the loss.
+   */
+  private updateInfection(dt: number): void {
+    let alive = 0;
+    for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) alive++;
+
+    if (this.infectionStarted && alive === 0) {
+      this.infectionCleared = true;
+      this.gauntletOver = true;
+      return;
+    }
+
+    this.infectionGrowT -= dt;
+    if (this.infectionGrowT <= 0) {
+      this.infectionGrowT = INFECTION.growInterval;
+      if (alive < this.virusLimit()) this.splitVirus();
+    }
+
+    for (let i = 0; i < this.viruses.length; i++) {
+      if (this.viruses[i].active) this.updateVirus(this.viruses[i], dt);
+    }
+    if (this.openWalls || this.arena.voids || this.arena.disc) this.cullVoidThreats();
+  }
+
   private updateGauntlet(dt: number): void {
     this.gauntletT += dt;
+    if (this.infectionMode) {
+      this.updateInfection(dt);
+      return;
+    }
     // A campaign node runs a short, authored ramp instead of the endless sandbox wave.
     const nextWave = this.campaign
       ? CAMPAIGN.waveStart + Math.floor(this.campaignT / CAMPAIGN.waveSeconds)
@@ -9966,11 +10069,13 @@ export class World {
     let bestScore = Infinity;
     let tx = v.roamX;
     let ty = v.roamY;
+    // An infection colony is not a wanderer: it sees the player across the whole floor.
+    const huntRadius = this.infectionMode ? INFECTION.huntRadius : VIRUS.huntRadius;
     if (p.alive && p.cloakT <= 0) {
       const dx = p.x - v.x;
       const dy = p.y - v.y;
       const d2 = dx * dx + dy * dy;
-      if (d2 < VIRUS.huntRadius * VIRUS.huntRadius) {
+      if (d2 < huntRadius * huntRadius) {
         bestScore = d2;
         targetPlayer = true;
         tx = p.x;
@@ -10012,6 +10117,7 @@ export class World {
     const pcy = p.y - v.y;
     const pcDist = Math.hypot(pcx, pcy) || 1;
     if (
+      !this.infectionMode &&
       v.chargeT <= 0 &&
       v.chargeCd <= 0 &&
       targetPlayer &&
@@ -10046,6 +10152,7 @@ export class World {
     let desiredX = ux;
     let desiredY = uy;
     if (
+      !this.infectionMode &&
       targetPlayer &&
       p.alive &&
       dist < VIRUS.orbit + VIRUS.orbitBand &&
@@ -10085,9 +10192,10 @@ export class World {
       const dm = Math.hypot(desiredX, desiredY) || 1;
       desiredX /= dm;
       desiredY /= dm;
+      const speed = this.infectionMode ? VIRUS.speed * INFECTION.speedMult : VIRUS.speed;
       const k = 1 - Math.exp(-VIRUS.accel * dt);
-      v.vx += (desiredX * VIRUS.speed - v.vx) * k;
-      v.vy += (desiredY * VIRUS.speed - v.vy) * k;
+      v.vx += (desiredX * speed - v.vx) * k;
+      v.vy += (desiredY * speed - v.vy) * k;
     }
     v.x += (v.vx + v.kx) * dt;
     v.y += (v.vy + v.ky) * dt;
@@ -10136,7 +10244,25 @@ export class World {
       const rr = v.radius + PLAYER.radius;
       if (pdx * pdx + pdy * pdy <= rr * rr) {
         v.contactCd = VIRUS.contactCooldown;
-        this.addInfection(GAUNTLET.infectionPerTouch, p.x, p.y);
+        if (this.infectionMode) {
+          // A flood cannot all commit the single-target charge at once, so the swarm
+          // bites on contact instead. The shared grace keeps sixteen bodies from
+          // stacking three hits into one frame; the shove is what opens the escape.
+          const d = Math.hypot(pdx, pdy) || 1;
+          this.damagePlayer(
+            p,
+            INFECTION.contactDamage,
+            -1,
+            pdx / d,
+            pdy / d,
+            INFECTION.contactKnockback,
+            SRC.VIRUS,
+            this.viruses.indexOf(v),
+          );
+          p.iframes = Math.max(p.iframes, INFECTION.hitGrace);
+        } else {
+          this.addInfection(GAUNTLET.infectionPerTouch, p.x, p.y);
+        }
       }
     }
 
@@ -10168,6 +10294,9 @@ export class World {
   }
 
   private addInfection(amount: number, x: number, y: number): void {
+    // Infection is a swarm-clearing speed run, not the gauntlet's possession meter:
+    // there is no thrall to spawn and no meter to fill.
+    if (this.infectionMode) return;
     const thrall = this.players[1];
     const already = thrall.active && thrall.alive;
     this.infection = Math.min(already ? 0.98 : 1, this.infection + amount);
@@ -10354,7 +10483,8 @@ export class World {
       v.orbitOwner = -1;
       if (sourceSlot === 0) {
         this.gauntletKills++;
-        this.dropPickupFromKill(v.x, v.y, false);
+        if (this.infectionMode) this.infectionKills++;
+        else this.dropPickupFromKill(v.x, v.y, false);
       }
       this.emit(EV.VIRUS_KILL, sourceSlot, v.x, v.y, v.radius * 4, dirX, dirY);
     }

@@ -112,6 +112,25 @@ threats hold.
 Everything is local. The mode does not occupy a room slot and no enemy data crosses the network. Hits
 push, throw a directional spray of rotating triangles, and tilt the view by the amount set in Settings.
 
+### Infection
+
+`SINGLE PLAYER > INFECTION` is a timed clear, not a survival run. Pick a program and an arena and the
+floor opens flooded with twenty-four viruses; the colony buds a new body roughly every second and a half
+until the live cap, and every virus hunts you across the whole arena instead of holding a patch. The top of
+the screen carries the only number that matters: **VIRUS CLEARED**, rising from 0% to 100%, with the run
+clock underneath. Clear the last body to stop the clock; the fastest clean sweep per arena is kept on
+the title menu as `BEST`.
+
+- The meter is live, not a quota: `kills / (kills + living)`. A fresh split pushes it back. It only
+  reaches 100% when nothing is left alive.
+- Viruses **bite on contact** for one segment and shove you clear; eight tenths of a second of grace keeps
+  a packed screen from deleting you on one frame. They do not wind up or charge in this mode, so the
+  swarm is a wall to kite, not a line of jousters.
+- There are no powerup drops, no pickups and no friendly fire, so a best time is about the swarm and your
+  kit, not a lucky roll. Arena emitters and floor hazards still run.
+- One life. If your ring breaks the attempt is over and no time is recorded; `RETRY` starts a fresh flood,
+  `ARENA` goes back to the grid and `TITLE` leaves. Nothing is saved mid-run.
+
 ### Campaign
 
 `SINGLE PLAYER > CAMPAIGN` opens three local save slots first. An empty slot starts a new run: pick the

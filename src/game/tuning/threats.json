@@ -32,6 +32,18 @@
     "infectionDecay": 0.015,
     "infectionReset": 0.3
   },
+  "INFECTION": {
+    "startViruses": 24,
+    "maxViruses": 44,
+    "startRadiusMin": 260,
+    "startRadiusMax": 620,
+    "huntRadius": 2400,
+    "speedMult": 1.16,
+    "growInterval": 1.6,
+    "contactDamage": 1,
+    "contactKnockback": 540,
+    "hitGrace": 0.85
+  },
   "WORM": {
     "spawnTime": 1.05,
     "speed": 74,

@@ -2,7 +2,43 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-10-31 (v0.1.67 menu music)
+Last updated: 2026-11-01 (v0.1.68 infection)
+
+---
+
+## v0.1.68 — INFECTION: a timed swarm clear (2026-11-01)
+
+### Built
+- [x] New solo mode `SINGLE PLAYER > INFECTION`, entered as program → arena → run (no bot or setup
+      stage). It runs on the gauntlet simulation with `World(..., infectionMode=true)` and keeps the
+      `gauntlet` mode string, so no threat, camera or network branch forks
+- [x] Opening flood of 24 viruses around the player on a 260–620 ring, with a dedicated 44-body pool
+      (the gauntlet keeps 10). The colony buds one body every 1.6 s up to the cap and hunts across the
+      whole floor at 1.16x speed instead of holding the usual 310-unit patch
+- [x] Top-centred **VIRUS CLEARED** meter with percentage and run clock; progress is
+      `kills / (kills + live)`, capped at 99% while anything lives, so a split visibly sets it back and
+      only an empty floor reads 100%
+- [x] The swarm bites instead of charging: the single-target lunge is off in this mode (16 simultaneous
+      committed charges killed a standing player in three seconds), contact deals 1 and a 540 shove, and
+      a shared 0.85 s grace stops a packed frame from stacking a kill. The gauntlet's infection meter
+      and thrall spawn do not run here
+- [x] No pickups, no kill drops and friendly fire forced off, so a best time cannot come from a random
+      roll or the colony thinning itself. Arena emitters and floor hazards still run
+- [x] One life: a broken ring sets `infectionFailed`; a clean sweep sets `infectionCleared`; both use the
+      existing gauntlet freeze and death-hold before the results overlay
+- [x] `src/game/infectionRecords.ts`: one best time per arena under `deflect.infection.bests` in `m:ss.d`.
+      Failed runs are never recorded; the title menu shows the fastest clean sweep
+- [x] Results overlay (clear shows time, kills, percent and best; fail shows percent and kills) with
+      RETRY / ARENA / TITLE; `?infection=1&bot=1` is the QA autopilot hook
+- [x] Docs: AGENTS D32, GAME_GUIDE mode section, README mode and code map, this entry
+
+### Next
+- [ ] Playtest the first clear on CROSSROADS and DISK PLATTER; tune opening count, growth interval and
+      the 0.85 s bite grace before touching the virus pool cap
+- [ ] Decide whether the colony should bud faster as the meter climbs, or whether a flat 3.2 s is the
+      right pressure
+- [ ] Watch a full clear with the autopilot at couch distance and confirm the top meter reads without
+      stealing attention from the swarm
 
 ---
 

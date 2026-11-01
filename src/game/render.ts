@@ -48,6 +48,9 @@ export interface RenderState {
   lures?: readonly Lure[];
   barriers?: readonly Barrier[];
   infection?: number;
+  /** INFECTION run: the top-centred clear meter replaces the gauntlet warning strip. */
+  infectionMode?: boolean;
+  infectionProgress?: number;
   gauntletKills?: number;
   wave?: number;
   waveBannerT?: number;
@@ -7334,9 +7337,56 @@ export class Renderer {
     ctx.restore();
   }
 
+  /**
+   * INFECTION readout: a top-centred clear bar with the percentage and the run clock.
+   * It is the one labelled meter in the game, because the whole mode is a race against
+   * that number. The bottom edge stays free for the ordinary threat strip.
+   */
+  private drawInfectionHud(state: RenderState, t: number): void {
+    const ctx = this.ctx;
+    const progress = Math.max(0, Math.min(1, state.infectionProgress ?? 0));
+    const seconds = Math.max(0, state.gauntletTime ?? 0);
+    const whole = Math.floor(seconds);
+    const clock = `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}.${Math.floor(
+      (seconds - whole) * 10,
+    )}`;
+    const pct = progress >= 1 ? 100 : Math.floor(progress * 100);
+    const w = 300;
+    const x = (VIEW_W - w) * 0.5;
+    const y = 34;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(190, 226, 240, 0.62)';
+    ctx.fillText('VIRUS CLEARED', VIEW_W * 0.5, y - 12);
+
+    ctx.fillStyle = 'rgba(120, 170, 190, 0.16)';
+    ctx.fillRect(x, y, w, 5);
+    ctx.fillStyle = THREAT_COLORS.virus;
+    ctx.fillRect(x, y, w * progress, 5);
+    if (progress > 0 && progress < 1) {
+      // A breathing cap marks the leading edge; the bar is the only moving read at speed.
+      ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 7);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x + w * progress - 1, y - 1, 2, 7);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.font = FONT_MID;
+    ctx.fillStyle = progress >= 1 ? '#b8ffe0' : 'rgba(240, 250, 255, 0.94)';
+    ctx.fillText(`${pct}%`, VIEW_W * 0.5, y + 20);
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(190, 226, 240, 0.55)';
+    ctx.fillText(`TIME ${clock}`, VIEW_W * 0.5, y + 34);
+    ctx.restore();
+  }
+
   private drawHud(state: RenderState, t: number): void {
     const ctx = this.ctx;
     const players = state.players;
+    if (state.infectionMode) this.drawInfectionHud(state, t);
 
     // The arena itself carries the identity. Text only appears for a script beat or
     // a wave change, which is transient information between fights.
@@ -7454,7 +7504,8 @@ export class Renderer {
         pipX += 8;
       }
     } else if (state.mode === 'gauntlet') {
-      // Infection is a thin warning strip, not a labelled meter.
+      if (state.infectionMode) return;
+      // The gauntlet's possession meter is a thin warning strip, not a labelled meter.
       const infection = Math.max(0, Math.min(1, state.infection ?? 0));
       if (infection <= 0.001) return;
       const w = 214;

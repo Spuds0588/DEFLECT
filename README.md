@@ -10,8 +10,9 @@ shapes and every sound is synthesized at runtime: no sprites, no audio files, no
 
 [![DEFLECT kiosk demo](screenshots/demo-kiosk.png)](https://spuds0588.github.io/DEFLECT/?demo=true)
 
-Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, the
-first campaign node, and host/join rooms for up to eight players. Eleven programs, nine arenas. The alpha
+Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, a
+timed infection clear, the first campaign node, and host/join rooms for up to eight players. Eleven
+programs, nine arenas. The alpha
 is deployed from `main` on every push.
 
 ## Tech stack
@@ -72,7 +73,7 @@ charges, energy and cooldowns, and it keeps AI cost out of the physics loop.
 | Renderer, camera framing and split view | `src/game/render.ts`, `camera.ts` |
 | Program identity and vector marks | `src/game/identity.ts`, `programs.ts` |
 | Bots and pathfinding | `src/game/bot.ts`, `nav.ts` |
-| Local content | `powerups.ts`, `campaign.ts`, `saves.ts`, `gauntletRecords.ts` |
+| Local content | `powerups.ts`, `campaign.ts`, `saves.ts`, `gauntletRecords.ts`, `infectionRecords.ts` |
 | Networking | `src/net/net.ts` |
 | DOM and touch controls | `src/ui/dom.ts`, `src/ui/touch.ts` |
 | Tuning | `src/game/tuning/*.json` |
@@ -114,8 +115,8 @@ scheduler or garbage-collection outlier, not steady cost; the guardrail is the a
   so a high-DPI phone does not pay for 3× or 4× pixels it cannot resolve.
 - **Cheap AI.** Bots replan on a timer with a preallocated per-arena navigation grid and line-of-sight
   shortcuts, never a full-grid search per tick.
-- **Local modes pay no network cost.** Training, bot matches, the gauntlet and the campaign never
-  serialize or send a packet; online is opt-in.
+- **Local modes pay no network cost.** Training, bot matches, the gauntlet, the infection clear and the
+  campaign never serialize or send a packet; online is opt-in.
 - **Defensive catch-up.** The four-step clamp, a 100 ms delta cap and render interpolation keep a stalled
   tab from snowballing.
 

@@ -1174,6 +1174,46 @@ hull already leaves the core clear air. Do not put the mark behind the hull segm
 All numbers live in `tuning/programs.json` under `PINBALL`; the skill cooldown is the 14th entry in
 `BUG.cooldown` (16 s). The kit is local-only: no snapshot fields, online still runs Probe.
 
+### D32 — INFECTION: a timed swarm clear (built 2026-11-01)
+
+`SINGLE PLAYER > INFECTION` is a local timed clear built on the gauntlet simulation. It runs
+`World('gauntlet', …, infectionMode=true)` and keeps the `gauntlet` mode string, like the campaign, so no
+threat, camera, overlay or network branch forks. The arena is flooded with viruses that hunt across the
+whole floor and keep budding; the run ends when the last body is gone or the player's ring breaks.
+
+- **The readout is the mode.** `infectionProgress` is `kills / (kills + live)` and is capped at 99% while
+  any virus lives, so a fresh bud visibly sets the clear meter back. Only an empty floor reaches 100%.
+  The renderer draws one top-centred bar with `VIRUS CLEARED`, the percentage and the run clock; the
+  gauntlet's bottom possession strip is suppressed. `gauntletTime` is the run clock. Do not replace the
+  derived meter with a fixed kill quota: the colony's growth is the pressure.
+- **Flood and growth.** `INFECTION.startViruses` (24) land on a ring around the player at run start, the
+  pool is `INFECTION.maxViruses` (44) rather than the gauntlet's 10, and one split lands every
+  `growInterval` (1.6 s) while under the cap. Viruses use `INFECTION.huntRadius` (whole arena) and
+  `speedMult`, not the gauntlet's 310-unit interest radius. Do not reuse the gauntlet's wave ramp here.
+- **The swarm bites, it does not joust.** The single-target charge is disabled in this mode: the whole
+  pack committing one lunge each was a three-second death for a stationary player. Contact does
+  `contactDamage` (1) and `contactKnockback` (540), then sets a shared `hitGrace` (0.85 s) so the pack
+  cannot stack a kill on one frame. The gauntlet's contact-infection meter and thrall spawn do not run;
+  `addInfection` returns early. Keep the bite in `updateVirus`'s contact branch, not a new system.
+- **No random help.** Pickups are off (`updatePickups` returns early and virus kills do not drop), and
+  friendly fire is forced off when the run starts so the colony cannot thin itself for free. Best times
+  must not depend on a powerup roll. Arena emitters and floor hazards still run: they are part of the
+  arena's identity and of the route.
+- **One life, one clear.** The player's death sets `infectionFailed`; a clean sweep sets
+  `infectionCleared`. Both set `gauntletOver`, which freezes the arena through the existing gauntlet
+  freeze path. `infectionOver` is the single test for the results hook in `main.ts`.
+- **Records.** `src/game/infectionRecords.ts` keeps one best time per arena under
+  `deflect.infection.bests`, in `m:ss.d`. A failed run is never recorded; a clear only replaces a slower
+  time. The title menu shows the fastest clean sweep across arenas. Records are local and never enter
+  `Snapshot`.
+- **Entry and QA.** The solo flow is `INFECTION → program → arena → run` (no bot stage, no setup stage), so
+  a chosen arena starts the run. `?infection=1&bot=1` is the QA boot hook: the local body is driven by a
+  `BotBrain` and the arena must not enter menus or snapshots. Retry, arena and title actions live in the
+  result overlay; the run is never saved mid-attempt.
+
+Tuning lives in `tuning/threats.json` under `INFECTION`; the mode identity and records live in
+`infectionRecords.ts` and `main.ts`. It is local-only, like the gauntlet and the campaign.
+
 ---
 
 ## 3. Architecture
