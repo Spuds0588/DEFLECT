@@ -1480,6 +1480,34 @@ The alpha is hosted from `main` with GitHub Actions: `.github/workflows/pages.ym
 be **GitHub Actions**; serving the raw branch would expose unbundled TypeScript instead of the game. The
 play URL is <https://spuds0588.github.io/DEFLECT/>.
 
+### D33 — COPYPASTA.EXE: file chain, bot copy, redaction super (built 2026-11-01)
+
+`COPYPASTA.EXE` is the roster's **duplicate** program (id 11, `bugKind` 14). Identity: `PROGRAM_COLORS.copy`
+(`#ffe95c`), a hull of three upright file icons (one per health segment) orbiting at 0.8r, and a vector
+two-square copy stamp (`drawCopyMark`). The file hull's inner edge is 0.61r, so it clears the full core
+disc; the files stay upright while the ring turns. Do not turn the hull into a polygon: the three documents
+are the health readout, and the copy stamp is the only other copy symbol.
+
+- **Ranged** (type 16): one file, 1 damage, 620 speed, 1.15 s life. On a body it deals its hit, then tears
+  into `splitCount` (2) smaller files from a point 26 units outside the struck body. Children are
+  `variant` 1, do 1 damage, fly at 0.72x speed for 0.55 s, and never split again. The spawn offset is a
+  gameplay constant: at 6 units the children spawned inside the victim and re-hit it, which made every
+  file a guaranteed 3-damage burst instead of a chain. Do not remove the offset or the variant cap. File
+  damage is a normal hit; the chain does not bypass cover, guards or the owner's own body.
+- **Skill**: one copy body on the last slot (`MAX_PLAYERS - 1`), `cloneLife` 8 s, 3 health, excluded from
+  `activeCount`/`aliveCount`, round survival and `beginRound` spawns. It writes the same `InputFrame` a
+  human or bot does and obeys one-stick facing, swing locks, dash charges and energy. It hunts the nearest
+  threats in gauntlet mode and the nearest other program in bot matches, trails its owner when there is
+  nothing to fight, and presses only ranged, melee and dash (no nested copy and no heavy). A refused cast
+  hands the skill energy back. `clearCopyClones()` runs on every round start; a copy never respawns.
+- **Power**: a 280-unit redaction ring at the caster. Every enemy with line of sight gets a growing stack
+  of red file icons over 1.6 s (1 to 6 icons), then 2 damage to players or 3 to threats. Cover blocks the
+  cast; once marked, the stack follows the body and detonates even if it steps behind cover. Marks are a
+  local world pool (`World.copyMarks`) and are never in `Snapshot`; `RenderState.copyMarks` draws them.
+- Bots cast the copy at 120–380 units and the generic heavy hold builds the redaction. Their engagement
+  range uses the file's 620/1.15 s flight. All numbers live in `tuning/programs.json` under `COPYPASTA`;
+  the skill cooldown is the 15th entry in `player.json` `BUG.cooldown`.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

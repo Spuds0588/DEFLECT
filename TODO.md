@@ -2,7 +2,36 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-01 (v0.1.68 infection)
+Last updated: 2026-11-01 (v0.1.69 copypasta)
+
+---
+
+## v0.1.69 — COPYPASTA.EXE: chain files, bot copy, redaction (2026-11-01)
+
+### Built
+- [x] Program `COPYPASTA.EXE` (id 11, `DUPLICATE`), highlighter-yellow hull of three upright file icons,
+      one per health segment, and a vector two-square copy stamp at the core
+- [x] Ranged file (type 16): 1 damage, and on a body it tears into two smaller files from 26 units outside
+      the victim. Children carry `variant` 1, hit for 1 and never split again; the offset is what makes it
+      a chain rather than a guaranteed 3-damage burst on the same body
+- [x] Skill: a bot-driven copy on slot 7 for 8 s with 3 health. It writes an ordinary `InputFrame`, fights
+      threats in gauntlet modes and other programs in bot matches, trails its owner when idle, and never
+      counts as a room body or a round survivor
+- [x] Power: 280-unit redaction ring. Enemies in line of sight grow 1–6 little red file icons over 1.6 s,
+      then take 2 (players) or 3 (threats) damage. Cover blocks the cast; the mark follows the body
+- [x] Readiness dock marks, projectile art, bot skill/engagement band, select card and portrait
+
+### Verification
+- [x] `npx tsc --noEmit` clean
+- [x] Headless probe `.tmp/check-copypasta.ts`: 19/19 checks (two children, no re-split, one file of
+      direct damage, copy spawn/counts/expiry, mark growth, 2 damage, cover block, owner/copy immunity)
+- [x] `npm run build` clean (see HISTORY for sizes)
+- [x] Live browser: menu card, training with Copy Pasta, copy spawn on slot 7, redaction 1→3 icons and
+      detonation for 2, no console errors
+
+### Next
+- [ ] Human playtest and balance pass on the chain, the copy's 8 s window and the redaction damage
+- [ ] The new arena is still blocked on a layout brief (name, floor/cover, mechanic)
 
 ---
 

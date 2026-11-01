@@ -209,6 +209,15 @@ export interface Player {
   alive: boolean;
   /** Local gauntlet-only: this body is a virus-controlled copy. */
   thrall: boolean;
+  /**
+   * Local COPYPASTA summon: a second program body driven by the world's copy AI.
+   * It is never a room slot, never networked, and never counted for round survival.
+   */
+  copyClone: boolean;
+  /** Slot that cast the copy. -1 when this body is not a clone. */
+  copyOwner: number;
+  /** Seconds left on the copy's life. */
+  copyT: number;
 
   dashT: number;
   dashCd: number;
@@ -445,6 +454,19 @@ export interface Player {
   respawnT: number;
 }
 
+/** One growing stack of red file icons left by COPYPASTA's redaction burst. */
+export interface CopyMark {
+  active: boolean;
+  /** 0 player, 1 worm, 2 virus, 3 sentry, 4 cascading error. */
+  kind: number;
+  id: number;
+  owner: number;
+  t: number;
+  count: number;
+  x: number;
+  y: number;
+}
+
 export interface Projectile {
   active: boolean;
   serial: number;
@@ -461,7 +483,8 @@ export interface Projectile {
    * 1-5 damage over five bodies. Type 15 is the huge super ball: walls bounce it,
    * bodies do not, and it rolls through cover.
    */
-  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
+  /** 16 is Copy Pasta's file; its `variant` is 0 for the parent and 1 for the child. */
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;

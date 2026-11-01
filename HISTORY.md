@@ -3278,3 +3278,42 @@ the failed state, and the ordinary gauntlet still has its 10-body pool and no in
 
 **Next:** playtest a real clear on CROSSROADS and DISK PLATTER, then tune opening count, growth interval
 and the bite grace. The new arena brief is still outstanding.
+
+## 2026-11-01 — COPYPASTA.EXE: chain files, a bot copy and a redaction super (v0.1.69)
+
+**Goal:** add the roster's duplicate program from the design brief: an overlapping-square mark, file icons
+as the health hull, a file projectile that splits into two on impact, a bot-controlled copy, and an AOE
+that covers enemies in a growing stack of red files before it detonates.
+
+- Identity: id 11, `DUPLICATE`, highlighter-yellow (`#ffe95c`), three upright file icons at 0.8r (one per
+  health segment) and a vector two-square copy stamp. The file hull's inner edge is 0.61r, so the bright
+  segments stay outside the core disc at full health.
+- Ranged: one file (type 16), 1 damage, 620 speed, 1.15 s. On a body it tears into two smaller files that
+  fly out at 0.72x speed for 0.55 s. Children carry `variant` 1 and never split again, so a shot cannot
+  cascade into a projectile hose.
+- The first probe exposed the important bug: children spawned six units from the hit point, inside the
+  victim's hitbox, so both immediately re-hit the same body. That made every file a guaranteed 3-damage
+  burst. The split now starts 26 units outside the struck body; the probe verifies two live children, one
+  file of direct damage, and no re-split.
+- Skill: one copy body on slot 7 for 8 s with 3 health. It writes the ordinary `InputFrame`, so it obeys
+  one-stick facing, swing locks, dash charges and energy. It hunts threats in gauntlet, other programs in
+  bot matches and the infection thrall, and trails its owner when the room is clear. It is excluded from
+  `activeCount`, `aliveCount`, round survival and round spawns, and it never casts a second copy.
+- Power: a 280-unit redaction ring. Enemies in line of sight grow 1 to 6 red file icons over 1.6 s, then
+  take 2 (players) or 3 (threats). Cover blocks the cast; the mark follows the body once applied.
+- Bots cast the copy at 120–380 units and use the file's own flight time for their engagement band. The
+  generic heavy hold builds the redaction.
+- The kit is local-only like every program; no snapshot fields were added. Marks live in a local 16-slot
+  pool and the renderer reads them through `RenderState.copyMarks`.
+
+**Verification:** `npx tsc --noEmit` clean. `npm run build` clean: 608.55 kB JS / 168.95 kB gzip, 48.60 kB
+CSS / 10.90 kB gzip. Headless probe `.tmp/check-copypasta.ts` passed 19/19: two children on hit, direct
+damage of one, no child re-split, copy spawn on slot 7, copy excluded from both counts, copy moves/fights,
+copy expires at 8 s, redaction spends 55 and starts its 10 s cooldown, mark grows from 1 to 3 icons, 2
+damage on detonation, mark clears, a pillar blocks the cast, and neither the owner nor the copy is marked.
+Live browser at 1280x720: the select grid shows `COPYPASTA.EXE // DUPLICATE`; training starts with program
+11 and `bugKind` 14; the copy appears on slot 7 with `copyT` 7.4 and counts stay `[1,1]`; the redaction
+mark goes 1 → 3 icons over 0.8 s and the target drops 2 health; no console errors.
+
+**Next:** human playtest the chain spacing, the copy's 8 s window and the redaction's 2/3 damage. The new
+arena is still blocked on a layout brief.

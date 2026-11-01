@@ -73,6 +73,7 @@ export const ATOMIZE = programsJson.ATOMIZE;
 export const GHOST = programsJson.GHOST;
 export const COMPRESS = programsJson.COMPRESS;
 export const PINBALL = programsJson.PINBALL;
+export const COPYPASTA = programsJson.COPYPASTA;
 
 // --- World, camera and session pacing -------------------------------------
 

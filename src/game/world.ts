@@ -8,6 +8,7 @@ import {
   CAMPAIGN,
   CALIBRATION,
   COMPRESS,
+  COPYPASTA,
   CASCADING_ERROR,
   EMITTER,
   FISHER,
@@ -79,6 +80,7 @@ import {
   type Barrier,
   type CampaignPhase,
   type CascadingError,
+  type CopyMark,
   type Drone,
   type Firewall,
   type GameEvent,
@@ -265,6 +267,23 @@ export class World {
   private thrallShootT = 0;
   private thrallSwingT = 0;
   private thrallDashT = 0;
+  /** COPYPASTA's summon writes the same frame a human or bot does. */
+  private copyFrame: InputFrame = { mx: 0, my: 0, held: 0, pressed: 0 };
+  private copyShootT = 0;
+  private copySwingT = 0;
+  private copyDashT = 0;
+  private copyPhase = 0;
+  /** Growing redaction stacks on marked bodies. Local-only, never in a snapshot. */
+  readonly copyMarks: CopyMark[] = Array.from({ length: 16 }, () => ({
+    active: false,
+    kind: 0,
+    id: -1,
+    owner: -1,
+    t: 0,
+    count: 0,
+    x: 0,
+    y: 0,
+  }));
   /** Open-wall arena: the bounds are a lip, not a wall. Anything past it de-rezzes. */
   private readonly openWalls: boolean;
   /** Compactor cycle time, in seconds since this cycle began. Public for the renderer. */
@@ -1556,7 +1575,10 @@ export class World {
 
   activeCount(): number {
     let n = 0;
-    for (let i = 0; i < this.players.length; i++) if (this.players[i].active) n++;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (p.active && !p.copyClone) n++;
+    }
     return n;
   }
 
@@ -1564,7 +1586,7 @@ export class World {
     let n = 0;
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      if (p.active && p.alive) n++;
+      if (p.active && p.alive && !p.copyClone) n++;
     }
     return n;
   }
@@ -1594,20 +1616,21 @@ export class World {
   }
 
   beginRound(): void {
+    this.clearCopyClones();
     const active = this.activeCount();
     if (active === 0) return;
     computeSpawns(active, this.arena, this.spawnTmpX, this.spawnTmpY);
     let index = 0;
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      if (!p.active) continue;
+      if (!p.active || p.copyClone) continue;
       this.spawnX[p.slot] = this.spawnTmpX[index];
       this.spawnY[p.slot] = this.spawnTmpY[index];
       index++;
     }
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      if (!p.active) continue;
+      if (!p.active || p.copyClone) continue;
       const sx = this.spawnX[p.slot];
       const sy = this.spawnY[p.slot];
       const facing = Math.atan2(this.centerY - sy, this.centerX - sx);
@@ -1675,6 +1698,7 @@ export class World {
 
     const canAct = this.phase === 'live' || this.phase === 'practice';
     if (this.mode === 'gauntlet') this.driveThrall(dt);
+    this.updateCopyClone(dt);
     if (this.arena.pushers && canAct) this.tickPusher(dt);
     // A hosted match keeps the plate still: the snapshot has no disc phase, so a guest
     // could not agree with the host about which hole is underfoot. Local modes spin.
@@ -1688,6 +1712,12 @@ export class World {
       const p = this.players[i];
       if (!p.active) continue;
       if (!p.alive) {
+        // A copy is a temporary summon, not a match body: it never respawns and never
+        // holds a round open after its owner goes down.
+        if (p.copyClone) {
+          this.despawnCopyClone(p);
+          continue;
+        }
         // The campaign drill is practice: both the player and the squad come back.
         if (this.campaign && this.campaignPhase === 'drill') {
           p.respawnT -= dt;
@@ -1842,7 +1872,11 @@ export class World {
       }
       this.tickSwing(p, pdt);
 
-      const input = this.mode === 'gauntlet' && p.thrall ? this.thrallFrame : (inputs[p.slot] ?? null);
+      const input = this.mode === 'gauntlet' && p.thrall
+        ? this.thrallFrame
+        : p.copyClone
+          ? this.copyFrame
+          : (inputs[p.slot] ?? null);
       // Remember the last real stick direction. A dash commits to it even when lock is
       // holding facing on a target, so strafing past an enemy and dashing goes sideways.
       if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
@@ -2012,6 +2046,25 @@ export class World {
             if (p.laserChargeT >= PINBALL.powerChargeTime) this.firePinballSuper(p);
           } else if (p.laserChargeT >= PINBALL.powerChargeTime) {
             this.firePinballSuper(p);
+          } else {
+            if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+            p.laserChargeHeld = false;
+            p.laserChargeT = 0;
+            p.chargeT = 0;
+            p.chargeHeld = false;
+          }
+        } else if (p.program === PROGRAM_ID.COPYPASTA) {
+          // The redaction commits at full charge, like the other area heavies. It is
+          // centred on the caster; the charge only buys the moment and the aim.
+          if (canAct && heavyHeld) {
+            p.laserChargeT += pdt;
+            if (input && input.mx * input.mx + input.my * input.my > 0.0025) {
+              p.facing = Math.atan2(input.my, input.mx);
+            }
+            p.laserFacing = p.facing;
+            if (p.laserChargeT >= COPYPASTA.powerChargeTime) this.fireCopyRedaction(p);
+          } else if (p.laserChargeT >= COPYPASTA.powerChargeTime) {
+            this.fireCopyRedaction(p);
           } else {
             if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
             p.laserChargeHeld = false;
@@ -2301,6 +2354,7 @@ export class World {
     // movement and attack timers until the drill starts.
     if (this.campaign && this.campaignPhase === 'calibration') this.updateTrainingShapes(threatDt);
     this.updateProjectiles(dt);
+    this.updateCopyMarks(dt);
     // Flippers resolve after the shots move, so the paddle swats what is actually in
     // front of it this frame instead of last frame's position.
     this.updatePinballArms(dt);
@@ -2320,7 +2374,7 @@ export class World {
           let survivor = -1;
           for (let i = 0; i < this.players.length; i++) {
             const p = this.players[i];
-            if (p.active && p.alive) survivor = p.slot;
+            if (p.active && p.alive && !p.copyClone) survivor = p.slot;
           }
           this.finishRound(survivor);
         } else if (this.roundTimer <= 0) {
@@ -3609,6 +3663,26 @@ export class World {
       return;
     }
 
+    if (p.program === PROGRAM_ID.COPYPASTA) {
+      // One file per throw. On a body it tears into two children, so a single shot
+      // rewards a tight enemy cluster without turning into a projectile hose.
+      if (p.autoFireT > 0 || p.energy < COPYPASTA.shotCost) return;
+      if (!this.spawnProjectile(
+        p,
+        0,
+        COPYPASTA.shotTtl,
+        COPYPASTA.shotSpeed,
+        false,
+        COPYPASTA.shotRadius,
+        COPYPASTA.shotDamage,
+        16,
+      )) return;
+      p.energy -= COPYPASTA.shotCost;
+      p.autoFireT = COPYPASTA.attackCooldown;
+      this.emit(EV.SHOOT, p.slot, p.x, p.y, p.facing);
+      return;
+    }
+
     if (p.program === PROGRAM_ID.FISHER) {
       if (p.autoFireT > 0 || p.energy < FISHER.spearCost) return;
       if (!this.spawnProjectile(
@@ -3648,6 +3722,7 @@ export class World {
     if (p.program === PROGRAM_ID.GHOST) return GHOST.scareCost;
     if (p.program === PROGRAM_ID.COMPRESS) return COMPRESS.powerCost;
     if (p.program === PROGRAM_ID.PINBALL) return PINBALL.powerCost;
+    if (p.program === PROGRAM_ID.COPYPASTA) return COPYPASTA.powerCost;
     return PLAYER.laserCost;
   }
 
@@ -5045,6 +5120,14 @@ export class World {
       this.startCompressSprint(p);
     } else if (p.bugKind === 13) {
       this.startPinballArm(p);
+    } else if (p.bugKind === 14) {
+      // The copy needs a free body. A refused cast hands the energy back instead of
+      // eating the button while another copy is still on the floor.
+      if (!this.spawnCopyClone(p)) {
+        p.bugCd = 0;
+        p.energy = Math.min(PLAYER.energyMax, p.energy + BUG.cost);
+        return;
+      }
     } else if (p.bugKind === 4) {
       // Wedge's signature bug: a static bracket wall behind him. Refuse a wall that
       // would land inside cover and hand the energy back rather than eat the button.
@@ -7046,6 +7129,23 @@ export class World {
         this.damagePlayer(p, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, PINBALL.powerKnockback, hitKind, hitId);
         continue;
       }
+      if (proj.type === 16) {
+        // A file tears on impact and throws two smaller files out of the body. The
+        // children carry variant 1, so the chain stops there.
+        this.damagePlayer(
+          p,
+          proj.damage,
+          proj.owner,
+          proj.vx / speed,
+          proj.vy / speed,
+          proj.variant > 0 ? COPYPASTA.splitKnockback : COPYPASTA.shotKnockback,
+          hitKind,
+          hitId,
+        );
+        this.splitCopyShot(proj);
+        proj.active = false;
+        return true;
+      }
       if (proj.type === 5) {
         // Spear: damage each player once and keep travelling.
         const bit = 1 << p.slot;
@@ -7130,6 +7230,7 @@ export class World {
           return true;
         } else {
           this.damageDrone(proj.damage, proj.owner);
+          if (proj.type === 16) this.splitCopyShot(proj);
           if (proj.type === 13 && this.drone.active) {
             this.drone.maxHp = this.compressedCap(this.drone.maxHp);
             this.drone.hp = Math.min(this.drone.hp, this.drone.maxHp);
@@ -7778,7 +7879,9 @@ export class World {
     // Bot practice replaces the sparring drone; a second body in the room means the
     // drone stays gone instead of respawning behind the bots.
     let activePlayers = 0;
-    for (let i = 0; i < this.players.length; i++) if (this.players[i].active) activePlayers++;
+    for (let i = 0; i < this.players.length; i++) {
+      if (this.players[i].active && !this.players[i].copyClone) activePlayers++;
+    }
     if (activePlayers > 1) return;
     const d = this.drone;
     if (!d.active) {
@@ -8006,6 +8109,446 @@ export class World {
     f.mx = Math.cos(moveAngle) * speed;
     f.my = Math.sin(moveAngle) * speed;
     if (action !== 0) f.pressed = action;
+  }
+
+  // Copy Pasta -------------------------------------------------------------------------------
+
+  private clearCopyClones(): void {
+    for (let i = 0; i < this.players.length; i++) {
+      if (this.players[i].copyClone) this.despawnCopyClone(this.players[i]);
+    }
+  }
+
+  private despawnCopyClone(p: Player): void {
+    p.active = false;
+    p.connected = false;
+    p.alive = false;
+    p.copyClone = false;
+    p.copyOwner = -1;
+    p.copyT = 0;
+  }
+
+  /**
+   * Copies the caster into the last open slot. The copy is a real Player body, so it
+   * obeys the same movement, swing lock, dash charges and energy costs as a human; it
+   * is excluded from room counts and round survival because it is a summon, not a slot.
+   */
+  private spawnCopyClone(p: Player): boolean {
+    if (!p.alive || p.copyClone) return false;
+    const slot = MAX_PLAYERS - 1;
+    if (slot === p.slot) return false;
+    const clone = this.players[slot];
+    if (clone.active) return false;
+    const sx = p.x - Math.cos(p.facing) * 34;
+    const sy = p.y - Math.sin(p.facing) * 34;
+    clearPlayerForSpawn(clone, sx, sy, p.facing);
+    clone.active = true;
+    clone.connected = true;
+    clone.alive = true;
+    clone.copyClone = true;
+    clone.copyOwner = p.slot;
+    clone.copyT = COPYPASTA.cloneLife;
+    clone.program = p.program;
+    clone.bugKind = p.bugKind;
+    clone.name = 'COPY';
+    clone.hp = COPYPASTA.cloneHp;
+    clone.maxHp = COPYPASTA.cloneHp;
+    clone.dashMax = PLAYER.dashCharges;
+    clone.dashCharges = PLAYER.dashCharges;
+    clone.iframes = 0.35;
+    this.copyShootT = 0.25;
+    this.copySwingT = 0;
+    this.copyDashT = 0;
+    this.emit(EV.BUG, p.slot, sx, sy, p.bugKind, Math.cos(p.facing), Math.sin(p.facing));
+    return true;
+  }
+
+  /**
+   * The copy's pilot. It hunts the nearest hostile threat in gauntlet modes and the
+   * nearest other program in bot matches, then holds a ranged band and closes for the
+   * shared lash. With nothing to fight it trails its owner instead of standing still.
+   */
+  private updateCopyClone(dt: number): void {
+    const f = this.copyFrame;
+    f.mx = 0;
+    f.my = 0;
+    f.held = 0;
+    f.pressed = 0;
+    let clone: Player | null = null;
+    for (let i = 0; i < this.players.length; i++) {
+      if (this.players[i].active && this.players[i].copyClone) {
+        clone = this.players[i];
+        break;
+      }
+    }
+    if (!clone) return;
+    if (!clone.alive) {
+      this.despawnCopyClone(clone);
+      return;
+    }
+    clone.copyT -= dt;
+    const owner = this.players[clone.copyOwner];
+    if (clone.copyT <= 0 || !owner || !owner.active || !owner.alive) {
+      this.despawnCopyClone(clone);
+      return;
+    }
+    this.copyPhase += dt;
+    this.copyShootT = Math.max(0, this.copyShootT - dt);
+    this.copySwingT = Math.max(0, this.copySwingT - dt);
+    this.copyDashT = Math.max(0, this.copyDashT - dt);
+
+    let tx = owner.x;
+    let ty = owner.y;
+    let found = false;
+    let best = Infinity;
+    if (this.mode === 'gauntlet') {
+      // The virus thrall is a hostile player body, not a squadmate, so it is a copy
+      // target even though the rest of the gauntlet player list is friendly.
+      for (let i = 0; i < this.players.length; i++) {
+        const t = this.players[i];
+        if (!t.thrall || !t.active || !t.alive || t.copyClone) continue;
+        const d2 = (t.x - clone.x) * (t.x - clone.x) + (t.y - clone.y) * (t.y - clone.y);
+        if (d2 < best) {
+          best = d2;
+          tx = t.x;
+          ty = t.y;
+          found = true;
+        }
+      }
+      for (let i = 0; i < this.sentries.length; i++) {
+        const s = this.sentries[i];
+        if (!s.active) continue;
+        const d2 = (s.x - clone.x) * (s.x - clone.x) + (s.y - clone.y) * (s.y - clone.y);
+        if (d2 < best) {
+          best = d2;
+          tx = s.x;
+          ty = s.y;
+          found = true;
+        }
+      }
+      for (let i = 0; i < this.viruses.length; i++) {
+        const v = this.viruses[i];
+        if (!v.active) continue;
+        const d2 = (v.x - clone.x) * (v.x - clone.x) + (v.y - clone.y) * (v.y - clone.y);
+        if (d2 < best) {
+          best = d2;
+          tx = v.x;
+          ty = v.y;
+          found = true;
+        }
+      }
+      for (let i = 0; i < this.worms.length; i++) {
+        const w = this.worms[i];
+        if (!w.active) continue;
+        const d2 = (w.x - clone.x) * (w.x - clone.x) + (w.y - clone.y) * (w.y - clone.y);
+        if (d2 < best) {
+          best = d2;
+          tx = w.x;
+          ty = w.y;
+          found = true;
+        }
+      }
+      for (let i = 0; i < this.errors.length; i++) {
+        const e = this.errors[i];
+        if (!e.active) continue;
+        const d2 = (e.x - clone.x) * (e.x - clone.x) + (e.y - clone.y) * (e.y - clone.y);
+        if (d2 < best) {
+          best = d2;
+          tx = e.x;
+          ty = e.y;
+          found = true;
+        }
+      }
+    } else {
+      for (let i = 0; i < this.players.length; i++) {
+        const t = this.players[i];
+        if (!t.active || !t.alive || t.copyClone || t.slot === clone.slot || t.slot === clone.copyOwner) continue;
+        if (t.cloakT > 0) continue;
+        const d2 = (t.x - clone.x) * (t.x - clone.x) + (t.y - clone.y) * (t.y - clone.y);
+        if (d2 < best) {
+          best = d2;
+          tx = t.x;
+          ty = t.y;
+          found = true;
+        }
+      }
+    }
+
+    let moveAngle: number;
+    if (!found) {
+      // Trail the owner off one shoulder. A copy with no target should still read as
+      // part of the pair, not as a body parked in the middle of the floor.
+      const side = clone.slot % 2 === 0 ? 1 : -1;
+      tx = owner.x - Math.cos(owner.facing) * 62 - Math.sin(owner.facing) * 34 * side;
+      ty = owner.y - Math.sin(owner.facing) * 62 + Math.cos(owner.facing) * 34 * side;
+      const dx = tx - clone.x;
+      const dy = ty - clone.y;
+      moveAngle = Math.hypot(dx, dy) > 24 ? Math.atan2(dy, dx) : owner.facing;
+    } else {
+      const dx = tx - clone.x;
+      const dy = ty - clone.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const aim = Math.atan2(dy, dx);
+      moveAngle = aim;
+      if (dist < COPYPASTA.cloneMelee && this.copySwingT <= 0) {
+        f.pressed = ACTION.SWING;
+        this.copySwingT = 0.55;
+        moveAngle = aim;
+      } else if (
+        dist < COPYPASTA.cloneRange &&
+        this.copyShootT <= 0 &&
+        clone.autoFireT <= 0 &&
+        clone.energy >= COPYPASTA.shotCost
+      ) {
+        f.pressed = ACTION.BOLT;
+        this.copyShootT = COPYPASTA.attackCooldown;
+        moveAngle = aim;
+      } else if (dist > 360 && this.copyDashT <= 0 && clone.dashCharges > 0 && clone.dashCd <= 0) {
+        f.pressed = ACTION.DASH;
+        this.copyDashT = 1.2;
+        moveAngle = aim;
+      }
+      // Hold a band instead of standing nose to nose: strafe around the target while
+      // the next file is charging, and walk in only when it is too far to throw.
+      if (dist > 95 && dist < 250) moveAngle = aim + Math.sin(this.copyPhase * 2.6 + clone.slot) * COPYPASTA.cloneOrbit;
+    }
+    const speed = found && best < 80 * 80 ? 0.45 : COPYPASTA.cloneSpeed;
+    f.mx = Math.cos(moveAngle) * speed;
+    f.my = Math.sin(moveAngle) * speed;
+  }
+
+  /**
+   * The redaction super: every enemy in the burst gets a stack of red files that grows
+   * over `markTime`, then the stack detonates. Cover blocks the application, not the
+   * chase afterward; once a body is marked, the damage follows it around.
+   */
+  private fireCopyRedaction(p: Player): void {
+    p.laserChargeHeld = false;
+    p.laserChargeT = 0;
+    p.chargeT = 0;
+    p.chargeHeld = false;
+    if (!p.alive || p.laserCd > 0) return;
+    if (p.energy < COPYPASTA.powerCost) return;
+    p.energy -= COPYPASTA.powerCost;
+    p.laserCd = COPYPASTA.powerCooldown;
+    p.lockActive = false;
+    p.lockKind = 0;
+    p.lockId = -1;
+    p.comboStage = 0;
+    p.comboT = 0;
+    const r2 = COPYPASTA.markRadius * COPYPASTA.markRadius;
+    for (let i = 0; i < this.players.length; i++) {
+      const t = this.players[i];
+      if (t === p || !t.active || !t.alive || t.copyClone) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      if (dx * dx + dy * dy > r2) continue;
+      if (this.lineBlocked(p.x, p.y, t.x, t.y)) continue;
+      this.addCopyMark(0, t.slot, p.slot, t.x, t.y);
+    }
+    if (this.mode === 'gauntlet') {
+      for (let i = 0; i < this.sentries.length; i++) {
+        const s = this.sentries[i];
+        if (!s.active) continue;
+        const dx = s.x - p.x;
+        const dy = s.y - p.y;
+        if (dx * dx + dy * dy > r2 || this.lineBlocked(p.x, p.y, s.x, s.y)) continue;
+        this.addCopyMark(3, i, p.slot, s.x, s.y);
+      }
+      for (let i = 0; i < this.viruses.length; i++) {
+        const v = this.viruses[i];
+        if (!v.active) continue;
+        const dx = v.x - p.x;
+        const dy = v.y - p.y;
+        if (dx * dx + dy * dy > r2 || this.lineBlocked(p.x, p.y, v.x, v.y)) continue;
+        this.addCopyMark(2, i, p.slot, v.x, v.y);
+      }
+      for (let i = 0; i < this.worms.length; i++) {
+        const w = this.worms[i];
+        if (!w.active) continue;
+        const dx = w.x - p.x;
+        const dy = w.y - p.y;
+        if (dx * dx + dy * dy > r2 || this.lineBlocked(p.x, p.y, w.x, w.y)) continue;
+        this.addCopyMark(1, i, p.slot, w.x, w.y);
+      }
+      for (let i = 0; i < this.errors.length; i++) {
+        const e = this.errors[i];
+        if (!e.active) continue;
+        const dx = e.x - p.x;
+        const dy = e.y - p.y;
+        if (dx * dx + dy * dy > r2 || this.lineBlocked(p.x, p.y, e.x, e.y)) continue;
+        this.addCopyMark(4, i, p.slot, e.x, e.y);
+      }
+    }
+    this.emit(EV.LASER, p.slot, p.x, p.y, p.facing);
+  }
+
+  private addCopyMark(kind: number, id: number, owner: number, x: number, y: number): void {
+    for (let i = 0; i < this.copyMarks.length; i++) {
+      const mark = this.copyMarks[i];
+      if (mark.active) continue;
+      mark.active = true;
+      mark.kind = kind;
+      mark.id = id;
+      mark.owner = owner;
+      mark.t = COPYPASTA.markTime;
+      mark.count = 1;
+      mark.x = x;
+      mark.y = y;
+      return;
+    }
+  }
+
+  private updateCopyMarks(dt: number): void {
+    for (let i = 0; i < this.copyMarks.length; i++) {
+      const mark = this.copyMarks[i];
+      if (!mark.active) continue;
+      mark.t -= dt;
+      let tx = mark.x;
+      let ty = mark.y;
+      let live = true;
+      if (mark.kind === 0) {
+        const p = this.players[mark.id];
+        live = !!p && p.active && p.alive;
+        if (live) {
+          tx = p.x;
+          ty = p.y;
+        }
+      } else if (mark.kind === 1) {
+        const w = this.worms[mark.id];
+        live = !!w && w.active;
+        if (live) {
+          tx = w.x;
+          ty = w.y;
+        }
+      } else if (mark.kind === 2) {
+        const v = this.viruses[mark.id];
+        live = !!v && v.active;
+        if (live) {
+          tx = v.x;
+          ty = v.y;
+        }
+      } else if (mark.kind === 3) {
+        const s = this.sentries[mark.id];
+        live = !!s && s.active;
+        if (live) {
+          tx = s.x;
+          ty = s.y;
+        }
+      } else {
+        const e = this.errors[mark.id];
+        live = !!e && e.active;
+        if (live) {
+          tx = e.x;
+          ty = e.y;
+        }
+      }
+      if (!live) {
+        mark.active = false;
+        continue;
+      }
+      mark.x = tx;
+      mark.y = ty;
+      const progress = 1 - Math.max(0, mark.t) / COPYPASTA.markTime;
+      mark.count = Math.max(1, Math.min(COPYPASTA.markIcons, 1 + Math.floor(progress * (COPYPASTA.markIcons - 1))));
+      if (mark.t > 0) continue;
+      mark.active = false;
+      const src = this.players[mark.owner];
+      let ux = 1;
+      let uy = 0;
+      if (src) {
+        const dx = tx - src.x;
+        const dy = ty - src.y;
+        const d = Math.hypot(dx, dy) || 1;
+        ux = dx / d;
+        uy = dy / d;
+      }
+      if (mark.kind === 0) {
+        const p = this.players[mark.id];
+        if (p.active && p.alive) {
+          this.damagePlayer(p, COPYPASTA.markPlayerDamage, mark.owner, ux, uy, COPYPASTA.markKnockback);
+        }
+      } else if (mark.kind === 1) {
+        const w = this.worms[mark.id];
+        if (w.active) this.damageWorm(w, COPYPASTA.markThreatDamage, mark.owner, ux, uy, COPYPASTA.markKnockback);
+      } else if (mark.kind === 2) {
+        const v = this.viruses[mark.id];
+        if (v.active) this.damageVirus(v, COPYPASTA.markThreatDamage, mark.owner, ux, uy, COPYPASTA.markKnockback);
+      } else if (mark.kind === 3) {
+        const s = this.sentries[mark.id];
+        if (s.active) this.damageSentry(s, COPYPASTA.markThreatDamage, mark.owner, ux, uy, COPYPASTA.markKnockback);
+      } else {
+        const e = this.errors[mark.id];
+        if (e.active) this.damageError(e, COPYPASTA.markThreatDamage, mark.owner, ux, uy);
+      }
+      this.emit(EV.EXPLODE, mark.owner, tx, ty, 64);
+    }
+  }
+
+  /** One file tears into a short fan. Only the parent splits; children die on impact. */
+  private splitCopyShot(proj: Projectile): void {
+    if (proj.variant >= 1) return;
+    const speed = Math.hypot(proj.vx, proj.vy);
+    const base = Math.atan2(proj.vy, proj.vx);
+    for (let i = 0; i < COPYPASTA.splitCount; i++) {
+      const lane = COPYPASTA.splitCount > 1 ? (i / (COPYPASTA.splitCount - 1)) * 2 - 1 : 0;
+      this.spawnCopyShard(proj, base + lane * COPYPASTA.splitSpread, speed * COPYPASTA.splitSpeedMult);
+    }
+    this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 0);
+  }
+
+  private spawnCopyShard(source: Projectile, angle: number, speed: number): void {
+    let proj: Projectile | null = null;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      if (!this.projectiles[i].active) {
+        proj = this.projectiles[i];
+        break;
+      }
+    }
+    if (!proj) return;
+    // Clear the body that just tore: at 6 units the children spawned inside the
+    // victim's hitbox and immediately re-hit it, which made every file a guaranteed
+    // 3-damage burst instead of a chain. The extra reach is the seam the split reads on.
+    const x = source.x + Math.cos(angle) * (source.radius + 26);
+    const y = source.y + Math.sin(angle) * (source.radius + 26);
+    proj.active = true;
+    proj.serial = ++this.serial;
+    proj.type = 16;
+    proj.owner = source.owner;
+    proj.x = x;
+    proj.y = y;
+    proj.prevX = x;
+    proj.prevY = y;
+    proj.vx = Math.cos(angle) * speed;
+    proj.vy = Math.sin(angle) * speed;
+    proj.radius = source.radius * 0.72;
+    proj.damage = COPYPASTA.splitDamage;
+    proj.deflects = 0;
+    proj.bounces = 0;
+    proj.fuse = COPYPASTA.splitTtl;
+    proj.grace = 0;
+    proj.armed = true;
+    proj.blastRadius = 0;
+    proj.blastKnockback = 0;
+    proj.arcDur = 0;
+    proj.hits = 0;
+    proj.spin = 0;
+    proj.spinDir = 1;
+    proj.variant = 1;
+    proj.orbOwner = -1;
+    proj.orbA = 0;
+    proj.orbR = 0;
+    proj.orbDir = 1;
+    proj.homing = false;
+    proj.pathAxis = 0;
+    proj.hitPlayers = 0;
+    proj.hitWorms = 0;
+    proj.hitViruses = 0;
+    proj.hitErrors = 0;
+    proj.hitSentries = 0;
+    proj.hitDrone = false;
+    proj.trailHead = 0;
+    proj.trailCount = 0;
   }
 
   /**
@@ -10756,6 +11299,7 @@ export class World {
         const speed = Math.hypot(proj.vx, proj.vy) || 1;
         this.damageError(e, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed);
         if (proj.type === 13) this.compressErrorHit(e, proj.owner);
+        if (proj.type === 16) this.splitCopyShot(proj);
         proj.active = false;
       }
       return true;
@@ -10775,6 +11319,7 @@ export class World {
         const speed = Math.hypot(proj.vx, proj.vy) || 1;
         this.damageSentry(s, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed);
         if (proj.type === 13) this.compressSentryHit(s, proj.owner);
+        if (proj.type === 16) this.splitCopyShot(proj);
         proj.active = false;
       }
       return true;
@@ -10795,6 +11340,7 @@ export class World {
         const speed = Math.hypot(proj.vx, proj.vy) || 1;
         this.damageVirus(v, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed);
         if (proj.type === 13) this.compressVirusHit(v, proj.owner);
+        if (proj.type === 16) this.splitCopyShot(proj);
         proj.active = false;
       }
       return true;
@@ -10812,6 +11358,7 @@ export class World {
           const speed = Math.hypot(proj.vx, proj.vy) || 1;
           this.damageWorm(w, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed);
           if (proj.type === 13) this.compressWormHit(w, proj.owner);
+          if (proj.type === 16) this.splitCopyShot(proj);
           proj.active = false;
         }
         return true;

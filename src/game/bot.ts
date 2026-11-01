@@ -1,4 +1,4 @@
-import { ATOMIZE, BOLT, BUG, COMPRESS, FISHER, GHOST, KABOOM, PINBALL, PLAYER, TOXIC, WEDGE, type Rect } from './config';
+import { ATOMIZE, BOLT, BUG, COMPRESS, COPYPASTA, FISHER, GHOST, KABOOM, PINBALL, PLAYER, TOXIC, WEDGE, type Rect } from './config';
 import { PROGRAM_ID } from './programs';
 import { POWERUP_KIND } from './powerups';
 import { arenaSolids, discCenterX, discCenterY, discHoleX, discHoleY, type ArenaDef } from './arenas';
@@ -627,6 +627,28 @@ export class BotBrain {
       return;
     }
 
+    // Copy Pasta's summon is a second body, so spend it before the fight is already on
+    // top of him: the copy needs a beat to walk onto its target.
+    if (
+      me.program === PROGRAM_ID.COPYPASTA &&
+      this.candleCd <= 0 &&
+      me.bugCd <= 0 &&
+      me.energy >= BUG.cost &&
+      me.swingPhase === 0 &&
+      me.dashT <= 0 &&
+      me.laserT <= 0 &&
+      !me.laserChargeHeld &&
+      !blocked &&
+      dist > 120 &&
+      dist < 380
+    ) {
+      out.mx = Math.cos(aim) * 0.6;
+      out.my = Math.sin(aim) * 0.6;
+      out.pressed |= ACTION.CANDLE;
+      this.candleCd = this.rng.range(11, 15);
+      return;
+    }
+
     // The shot direction is the movement direction. Stepping into the aim is the
     // single-stick cost every player pays. Bot-owned bolts travel slower than a
     // human's, so range and lead must use the speed this brain actually fires.
@@ -636,8 +658,16 @@ export class BotBrain {
     if (!blocked && !lureFocus) out.held |= ACTION.LOCK;
     // Pinball's ball is slower but lives far longer than a bolt, so its engagement
     // band follows its own flight, not the generic bolt range.
-    const boltSpeed = (me.program === PROGRAM_ID.PINBALL ? PINBALL.shotSpeed : BOLT.speed) * BOLT.enemySpeedMult;
-    const boltRange = me.program === PROGRAM_ID.PINBALL ? boltSpeed * PINBALL.shotTtl : boltSpeed * BOLT.ttl;
+    const boltSpeed = (me.program === PROGRAM_ID.PINBALL
+      ? PINBALL.shotSpeed
+      : me.program === PROGRAM_ID.COPYPASTA
+        ? COPYPASTA.shotSpeed
+        : BOLT.speed) * BOLT.enemySpeedMult;
+    const boltRange = me.program === PROGRAM_ID.PINBALL
+      ? boltSpeed * PINBALL.shotTtl
+      : me.program === PROGRAM_ID.COPYPASTA
+        ? boltSpeed * COPYPASTA.shotTtl
+        : boltSpeed * BOLT.ttl;
     // Keep every style inside the distance its slowed shot can actually reach.
     // The siege style used to hold at 355 while its bolt died at ~310.
     // Wedge wants to be closer for the bracket and plow; Fisher's spear reaches farther.

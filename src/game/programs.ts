@@ -17,6 +17,7 @@ export const PROGRAM_ID = {
   GHOST: 8,
   COMPRESS: 9,
   PINBALL: 10,
+  COPYPASTA: 11,
 } as const;
 
 export interface ProgramDef {
@@ -213,6 +214,21 @@ export const PROGRAMS: readonly ProgramDef[] = [
     // A circular hull leaves the core plenty of air; the mark can use its full size.
     coreScale: 1.0,
     bugKind: 13,
+  },
+  {
+    id: PROGRAM_ID.COPYPASTA,
+    name: 'COPYPASTA.EXE',
+    role: 'DUPLICATE',
+    note: 'CHAINING FILES // BOT COPY // REDACTION',
+    color: PROGRAM_COLORS.copy,
+    /**
+     * Two offset document squares. The arena draws `drawCopyMark` so the copy stamp is
+     * vector on every host; this glyph is the text/card stand-in.
+     */
+    glyph: '⧉',
+    // The file-icon hull orbits at 0.8r, so the mark keeps clear air inside the ring.
+    coreScale: 0.8,
+    bugKind: 14,
   },
 ];
 

@@ -50,6 +50,8 @@ export const PROGRAM_COLORS = {
   compress: '#c46bff',
   /** Pinball: electric cabinet blue, between Probe's cyan and Fisher's indigo. */
   pinball: '#4d8bff',
+  /** Copypasta: highlighter yellow, the colour of a copied line on paper. */
+  copy: '#ffe95c',
   lure: '#7dffd4',
 } as const;
 
@@ -463,6 +465,52 @@ export function drawPinballMark(
   ctx.restore();
 }
 
+/**
+ * Copypasta's core: two offset document squares, the copy-and-paste stamp. Both are
+ * strokes so the mark stays a single-hue vector at every size.
+ */
+export function drawCopyMark(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  const ink = ctx.fillStyle as string;
+  ctx.save();
+  ctx.strokeStyle = ink;
+  ctx.lineJoin = 'miter';
+  ctx.lineWidth = Math.max(1.1, r * 0.12);
+  const side = r * 1.12;
+  const off = r * 0.18;
+  ctx.strokeRect(cx - off - side * 0.5, cy - off - side * 0.5, side, side);
+  ctx.strokeRect(cx + off - side * 0.5, cy + off - side * 0.5, side, side);
+  ctx.restore();
+}
+
+/** Path of one small file icon: body, folded corner and two text rules. */
+export function pathFileIcon(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  halfW: number,
+  halfH: number,
+): void {
+  const fold = 0.38;
+  ctx.moveTo(cx - halfW, cy - halfH);
+  ctx.lineTo(cx + halfW * (1 - fold), cy - halfH);
+  ctx.lineTo(cx + halfW, cy - halfH * (1 - fold * 2));
+  ctx.lineTo(cx + halfW, cy + halfH);
+  ctx.lineTo(cx - halfW, cy + halfH);
+  ctx.closePath();
+  ctx.moveTo(cx + halfW * (1 - fold), cy - halfH);
+  ctx.lineTo(cx + halfW * (1 - fold), cy - halfH * (1 - fold * 2));
+  ctx.lineTo(cx + halfW, cy - halfH * (1 - fold * 2));
+  ctx.moveTo(cx - halfW * 0.55, cy - halfH * 0.02);
+  ctx.lineTo(cx + halfW * 0.5, cy - halfH * 0.02);
+  ctx.moveTo(cx - halfW * 0.55, cy + halfH * 0.42);
+  ctx.lineTo(cx + halfW * 0.22, cy + halfH * 0.42);
+}
+
 export function drawProgramMark(
   ctx: CanvasRenderingContext2D,
   programId: number,
@@ -505,6 +553,12 @@ export function drawProgramMark(
   // Pinball's circled X is vector, so the ball's stamp is identical at every size.
   if (programId === 10) {
     drawPinballMark(ctx, cx, cy, r * fontScale);
+    return;
+  }
+  // Copypasta's two offset documents are vector, so the copy stamp never depends on
+  // U+29C9 resolving to a colour glyph.
+  if (programId === 11) {
+    drawCopyMark(ctx, cx, cy, r * fontScale);
     return;
   }
   if (programId === 5 && !hasSymbolFont(symbolFamily ?? '')) {
@@ -561,6 +615,8 @@ export function programHullSides(programId: number): number {
   if (programId === 9) return 0;
   // Pinball is a circular chrome ring; the shared arc path gives it three clean segments.
   if (programId === 10) return 0;
+  // Copypasta's hull is three upright file icons, one per health segment.
+  if (programId === 11) return 0;
   return 0;
 }
 
@@ -663,6 +719,19 @@ export function pathProgramHealth(
       ctx.lineTo(px - halfW, py + halfH);
       ctx.moveTo(px - halfW, py + halfH);
       ctx.lineTo(px + halfW, py + halfH);
+    }
+    return;
+  }
+  // Copypasta's hull is three upright file icons, one per health segment. They orbit at
+  // 0.8r with a 0.19r half-height, so the inner edge sits at 0.61r, outside the full
+  // core disc; the icons stay upright while the ring turns, like notes on a page.
+  if (programId === 11) {
+    const orbit = r * 0.8;
+    const halfW = r * 0.15;
+    const halfH = r * 0.19;
+    for (let seg = 0; seg < freshSegments; seg++) {
+      const a = spin + seg * (twoPi / 3);
+      pathFileIcon(ctx, cx + Math.cos(a) * orbit, cy + Math.sin(a) * orbit, halfW, halfH);
     }
     return;
   }

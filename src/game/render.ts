@@ -1,4 +1,5 @@
-import { ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PINBALL, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PINBALL, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import type { CopyMark } from './types';
 import {
   discArmAngle,
   discArmLength,
@@ -11,7 +12,7 @@ import {
   type ArenaDef,
 } from './arenas';
 import { Fx } from './fx';
-import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourglassMark, drawPinballMark, drawProgramMark, drawSymbol, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
+import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourglassMark, drawPinballMark, drawProgramMark, drawSymbol, pathFileIcon, pathProgramFrame, pathProgramHealth, PROP_GLYPHS, PROGRAM_COLORS, slotColor, slotGlyph, symbolFont, THREAT_COLORS } from './identity';
 import { P_COLOR_DANGER, P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
@@ -75,6 +76,8 @@ export interface RenderState {
   /** Bad Lag's time dilation, in seconds of real time left, and who cast it. */
   timeSlowT?: number;
   timeSlowOwner?: number;
+  /** Copy Pasta's growing redaction stacks. Local-only. */
+  copyMarks?: readonly CopyMark[];
 }
 
 const FONT_TINY = '700 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -470,6 +473,7 @@ export class Renderer {
       }
       this.drawPlayers(state, alpha, t, intro, view.localMask);
       if (introDone) {
+        if (state.copyMarks) this.drawCopyMarks(state.copyMarks);
         this.drawJumpScares(state, t);
         for (let s = 0; s < state.players.length; s++) {
           if ((view.localMask & (1 << s)) === 0) continue;
@@ -4484,6 +4488,32 @@ export class Renderer {
           ctx.stroke();
         }
         ctx.restore();
+      } else if (p.type === 16) {
+        // Copy Pasta's file: a dark document with a folded corner and two text rules,
+        // stamped in the owner's colour. Children draw smaller so the chain reads.
+        const angle = Math.atan2(p.vy, p.vx);
+        const r = p.radius * (p.variant > 0 ? 0.78 : 1);
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.globalAlpha = p.variant > 0 ? 0.82 : 1;
+        ctx.fillStyle = 'rgba(4, 9, 14, 0.94)';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.7;
+        ctx.beginPath();
+        pathFileIcon(ctx, 0, 0, r * 0.9, r);
+        ctx.fill();
+        ctx.stroke();
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let k = -1; k <= 1; k++) {
+          ctx.moveTo(-r * 0.52, k * r * 0.34);
+          ctx.lineTo(r * 0.34, k * r * 0.34);
+        }
+        ctx.stroke();
+        ctx.restore();
       } else if (p.type === 5) {
         const angle = Math.atan2(p.vy, p.vx);
         const len = 28 + Math.min(12, p.deflects * 3);
@@ -5322,6 +5352,39 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** Growing red file stacks, drawn over the body so the coverage is the timer. */
+  private drawCopyMarks(marks: readonly CopyMark[]): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    for (let i = 0; i < marks.length; i++) {
+      const m = marks[i];
+      if (!m.active) continue;
+      const pulse = 0.78 + 0.22 * Math.sin(m.t * 18 + i);
+      for (let k = 0; k < m.count; k++) {
+        const col = k % 3;
+        const row = Math.floor(k / 3);
+        const ox = (col - 1) * 7.2;
+        const oy = (row - 0.5) * 8.4;
+        ctx.globalAlpha = pulse;
+        ctx.fillStyle = '#d92b2b';
+        ctx.strokeStyle = '#ff9a9a';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        pathFileIcon(ctx, m.x + ox, m.y + oy, 3.1, 3.9);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 0.18 * pulse;
+      ctx.strokeStyle = '#ff4d4d';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 17 + m.count * 1.2, 0, TWO_PI);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   private drawPlayers(
     state: RenderState,
     alpha: number,
@@ -5706,6 +5769,20 @@ export class Renderer {
         ctx.stroke();
         ctx.lineCap = 'round';
         ctx.lineJoin = 'miter';
+
+        // A copy wears a dashed outer ring. It is a summon, not another room player,
+        // so the shared hull is kept and only the outline says it is temporary.
+        if (p.copyClone) {
+          ctx.save();
+          ctx.setLineDash([4, 5]);
+          ctx.globalAlpha = 0.55;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(x, y, bodyR + 5, 0, TWO_PI);
+          ctx.stroke();
+          ctx.restore();
+        }
 
         // Small heading arrow outside the outline. Local only: it is the player's own
         // facing cue, not a marker on every body.
@@ -6383,6 +6460,11 @@ export class Renderer {
     } else if (p.bugKind === 3) {
       ctx.setLineDash([2, 3]);
       ctx.arc(0, 0, 5, 0, TWO_PI);
+    } else if (p.bugKind === 14) {
+      // Copy: two offset documents. The heavy beside it is a redacted stack, so the
+      // summon and the super never share one mark.
+      ctx.rect(-6, -5.2, 7.2, 7.2);
+      ctx.rect(-1.2, -1.6, 7.2, 7.2);
     } else if (p.bugKind === 4) {
       // Rear bracket: an open C with a split spine, so it cannot be read as a
       // closed plate. Mirrors the pair of prongs planted behind Wedge.
@@ -6510,7 +6592,9 @@ export class Renderer {
                     ? COMPRESS.powerCooldown
                     : p.program === PROGRAM_ID.PINBALL
                       ? PINBALL.powerCooldown
-                      : PLAYER.laserCooldown;
+                      : p.program === PROGRAM_ID.COPYPASTA
+                        ? COPYPASTA.powerCooldown
+                        : PLAYER.laserCooldown;
     const heavyColor = p.program === PROGRAM_ID.WEDGE
       ? PROGRAM_COLORS.wedge
       : p.program === PROGRAM_ID.FISHER
@@ -6527,7 +6611,9 @@ export class Renderer {
                   ? PROGRAM_COLORS.compress
                   : p.program === PROGRAM_ID.PINBALL
                     ? PROGRAM_COLORS.pinball
-                    : color;
+                    : p.program === PROGRAM_ID.COPYPASTA
+                      ? PROGRAM_COLORS.copy
+                      : color;
     const heavyLive =
       p.laserT > 0 ||
       p.wedgeT > 0 ||
@@ -6541,7 +6627,8 @@ export class Renderer {
         p.program === PROGRAM_ID.ATOMIZE ||
         p.program === PROGRAM_ID.GHOST ||
         p.program === PROGRAM_ID.COMPRESS ||
-        p.program === PROGRAM_ID.PINBALL) &&
+        p.program === PROGRAM_ID.PINBALL ||
+        p.program === PROGRAM_ID.COPYPASTA) &&
         p.laserChargeHeld);
     ctx.save();
     ctx.translate(heavyX, cy);
@@ -6621,6 +6708,16 @@ export class Renderer {
       ctx.lineTo(-6.4, -2.4);
       ctx.moveTo(-8.4, 2.4);
       ctx.lineTo(-6.4, 2.4);
+    } else if (p.program === PROGRAM_ID.COPYPASTA) {
+      // Redaction: a document stack under a heavy bar. The skill beside it is the
+      // offset copy stamp, so owning a copy and marking a crowd never read alike.
+      ctx.rect(-5.6, -6, 7, 7);
+      ctx.moveTo(-1.4, -2.6);
+      ctx.rect(-1.4, -2.6, 7, 7);
+      ctx.moveTo(-6.4, 3.4);
+      ctx.lineTo(6.4, 3.4);
+      ctx.moveTo(-6.4, 5.2);
+      ctx.lineTo(2.2, 5.2);
     } else if (p.program === PROGRAM_ID.GHOST) {
       // Jump-scare: a wide open maw with a zigzag of teeth. The skill beside it is the
       // closed eye, so cloak and scare never share a mark.
