@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-01 (session feedback)
+Last updated: 2026-11-01 (SATELLITE online)
 
 ---
 
@@ -64,11 +64,14 @@ Last updated: 2026-11-01 (session feedback)
 - [x] Three mounted capacitor props (hp 4) that use prop damage but cannot be launched or thrown
 - [x] All-pods-destroyed trigger: 5 s thruster fuse, 14 s bottom-up heat front, 2.5 s top hold, 5 s cooldown and pod restore
 - [x] Bot nav bakes the five floor plates; drone, pickups, threats and props stay on authored floor
-- [x] Local-only online filter; meteor, capacitor and heat state stay out of `SnapshotHazards`
+- [x] Online support: `SnapshotHazards` carries the solar/telescope clock, thruster fuse, reentry clock, heat front, live meteors and capacitor flags
+- [x] Guest `NetView` derives solar/telescope/reentry presentation; `LocalPredictor` adds the extended mast as dynamic cover
+- [x] `isOnlineArena` accepts SATELLITE; host authority still owns solar/meteor damage, capsule breaks, mast carry and reentry hits
 - [x] Headless probe (`.tmp/satellite-check.ts`): solar, meteor, mast, capacitor trigger, reentry and reset timing
+- [x] Guest snapshot probe (`.tmp/satellite-net-check.ts`): hazard fields, meteor/capacitor mirror and mast prediction
 - [x] `npx tsc --noEmit`, `npm run build`, `npm run bench` and `git diff --check` clean
 - [ ] Headed camera pass: solar readability, mast lift feel, meteor warning and reentry wash
-- [ ] Online support: deferred until a protocol decision can carry the local hazard clocks
+- [ ] Two-client playtest: verify satellite clocks, meteor impacts, capsule destruction, mast collision and reentry across the room
 
 ---
 

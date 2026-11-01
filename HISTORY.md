@@ -4669,3 +4669,29 @@ is lost if the tab closes before the player shares it. No remote ingest exists b
 
 **Next:** test the share sheet on a phone and the download/copy fallback on desktop; only add a server-side
 ingest endpoint if real feedback volume justifies it.
+
+## 2026-11-01 — SATELLITE online (v0.1.112)
+
+**Goal:** make SATELLITE selectable in hosted rooms without moving its hazard authority off the host.
+
+- Extended `SnapshotHazards` after the existing prop row with the solar/telescope clock, thruster fuse,
+  reentry clock, heat front and live meteor rows. The prop row gains an additive capacitor flag at index 9.
+- Wired `NetView` to derive solar/telescope poses from the shared clock, advance the reentry front and
+  mirror active meteors and capacitor pods. `LocalPredictor` now adds the extended mast as dynamic cover.
+- Removed SATELLITE from the `isOnlineArena` exclusion. The host still owns solar and meteor damage,
+  capsule breaks, mast lift/carry, prop damage and reentry hits; guests only render and predict.
+- Kept the wire backward-compatible: older hazard shapes still parse, and the new fields default to zero
+  when a host predates them.
+
+**Verification:** `.tmp/satellite-net-check.ts` passes hazard shape, parser, guest clock/front, meteor,
+capacitor and predictor mast assertions; `.tmp/satellite-check.ts` still passes. `npx tsc --noEmit`,
+`npm run build`, `npm run bench` and `git diff --check` pass. Build: 789.90 kB JS / 220.81 kB gzip,
+50.09 kB CSS / 11.20 kB gzip, with the existing chunk-size warning. Bench: 8P max projectiles 0.071 ms
+avg; gauntlet max 0.188 ms avg, 0.581 ms p99, 28.4 live threats. The full SATELLITE hazard block measured
+192 B with seven live meteors; non-satellite maps still emit the 16 B clock-only shape.
+
+**Limitations:** no two-client room test yet. The extended hazard block is larger during a meteor shower;
+SATELLITE stays out of the remote disc-emitter group and still uses the ordinary snapshot path.
+
+**Next:** host a two-client match on SATELLITE and verify a guest sees the solar warning, meteor impacts,
+capacitor sockets and reentry front at the same time as the host.

@@ -472,7 +472,7 @@ export class World {
   swipePopupT = 0;
   /** Raised match-popup collision while it is up. Public for tests and bot safety. */
   swipePopupSolid: Rect | null = null;
-  /** SATELLITE layout. Local-only: the meteor shower and reentry state are not in Snapshot. */
+  /** SATELLITE layout. Host-authoritative online; its clocks and live meteors travel in SnapshotHazards. */
   readonly satellite: ArenaSatelliteDef | null;
   /** Shared solar/telescope clock, seconds into the run. */
   satelliteT = 0;

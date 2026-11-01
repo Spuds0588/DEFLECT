@@ -58,7 +58,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.111';
+const BUILD = '0.1.112';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -1146,14 +1146,14 @@ function selectArena(index: number): void {
 }
 
 /**
- * Compactor, keypad, scanner, browser, USB and SWIPE clocks ride the snapshot, and the
- * host resolves every hazard hit. Feed pipes and the firewall switch are different: they
- * spawn local threats and a sweep the snapshot does not carry.
+ * Compactor, keypad, scanner, browser, USB, SWIPE and SATELLITE clocks ride the
+ * snapshot, and the host resolves every hazard hit. Feed pipes and the firewall switch
+ * are different: they spawn local threats and a sweep the snapshot does not carry.
  */
 function isOnlineArena(a: ArenaDef): boolean {
   // Room arenas are tutorial staging: their chasms, props and fixture clocks are local
   // presentation/content, not a versus map. Keep them out of hosted rooms and series.
-  return !a.pipes && !a.firewallSwitch && !a.rooms && !a.satellite;
+  return !a.pipes && !a.firewallSwitch && !a.rooms;
 }
 
 function onlineArenaIndex(index: number): number {

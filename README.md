@@ -14,6 +14,7 @@ files, no game engine.
 Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, a
 timed infection clear, the first campaign node, and host/join rooms for up to eight players. VS BOTS and
 online versus can run a 1, 3 or 5 game series with random map rotation by default or a fixed custom arena.
+SATELLITE's solar wings, meteors, capacitor pods and reentry front are host-synced in those rooms.
 Thirteen programs, eighteen arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
 session JSON with setup, player action totals, round results, deflect sources and FPS/sim samples, shared
 through the platform sheet or downloaded with a copied summary. Callsigns, room codes, IPs and raw inputs
@@ -154,7 +155,7 @@ in the hot path. Particles and projectile trails are pooled ring buffers.
 
 Content is data, not branches:
 
-- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), bridges, breakable props, pipe fixtures, moving keypad caps, USB drive geometry, satellite floor/solar/telescope/meteor/reentry data, wall style and floor signature.
+- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), bridges, breakable props, pipe fixtures, moving keypad caps, USB drive geometry, satellite floor/solar/telescope/meteor/reentry data (host-synced online), wall style and floor signature.
 - `src/game/sessionReport.ts` owns the opt-in session tracker and share text; `World` and `Snapshot` do not carry its state.
 - `src/game/programs.ts` holds the roster identity and kit tuning; the four action jobs branch in `World`.
 - `src/game/tuning/*.json` holds all gameplay numbers, re-exported through the typed facade in
@@ -250,8 +251,9 @@ authority:
 - **Bandwidth.** A full 8-player, 48-projectile snapshot measures **2.45 KB** packed (one event included),
   or **73.4 KiB/s per guest** at 30 Hz. Two-way traffic for a typical guest stays well under 100 KiB/s;
   with seven guests the host uploads about **0.50 MiB/s**. That is why the v1 cap is 8 players: it is the
-  host's upload that runs out first, not the protocol. A hazard arena adds about **180 B** in the measured
-  worst case (v0.1.88), about 5.4 KB/s per guest at 30 Hz.
+  host's upload that runs out first, not the protocol. A hazard arena adds about **16 B** on a clock-only
+  map and up to **192 B** on SATELLITE with seven live meteors (v0.1.112), about 5.8 KB/s per guest at
+  30 Hz.
 - **Failure behavior.** If the host closes the tab the room ends; guests get a disconnect state. A guest
   leaving frees its slot. There is no migration and no dedicated server.
 - **What is not networked yet.** Versus rooms carry match state, infection co-op adds its clear readout

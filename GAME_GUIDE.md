@@ -313,7 +313,7 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `QUARANTINE` | The campaign tutorial route: a round intake office, a square holding office with three jail cells, a mainboard rectangle and a larger router rectangle linked by three bridge decks. The six calibration subjects wait in holding; the router ends at a network port. Local-only tutorial staging. |
 | `USB HUB` | A round hub with four thumb-drive islands pushing out on a shared cycle. Only the hub and drives are floor; the gap grows to 230 units, so a dash can cross while the drives are travelling but not at full extension. While a drive extends, its current pushes outward; while it retracts, the current pulls inward, carrying players and threats off or onto the islands. Online: the drive clock is synced and the host resolves the ride. |
 | `SWIPE RIGHT` | A tall phone touchscreen showing a dating deck. Every 4.6 s the card swipes left or right and the whole floor slides 108 units that way, carrying every fighter and live shot toward the wall. A `YOU GOT A MATCH` popup rises from the center of the screen for a few seconds as real cover: it blocks bodies and shots, displaces anyone caught under it, then drops back into the floor. Online: the swipe and popup clocks are synced and the host owns the carry and collision. |
-| `SATELLITE` | A long orbital hull joined to two solar wings by narrow bridges, with a telescoping mast below and three capacitor pods above. Only those plates are floor; the gaps are open space. The wings warn, then burn anyone standing on them on independent 16 s cycles. Micro-meteors fall every 12.5 s. Destroy all three capacitors and the thrusters fire: a heat front climbs the whole map from the bottom for 14 s, then the satellite cools and the pods return. Local-only. |
+| `SATELLITE` | A long orbital hull joined to two solar wings by narrow bridges, with a telescoping mast below and three capacitor pods above. Only those plates are floor; the gaps are open space. The wings warn, then burn anyone standing on them on independent 16 s cycles. Micro-meteors fall every 12.5 s. Destroy all three capacitors and the thrusters fire: a heat front climbs the whole map from the bottom for 14 s, then the satellite cools and the pods return. Online: the satellite clock, live meteors, capacitor states and reentry front are synced; the host still resolves every hit. |
 
 ### Ordinary programs
 
@@ -400,9 +400,9 @@ reflected beam hits harder than the direct one and can cut threats, the training
 It is the intended way to turn an arena emitter into a boss-fight weapon.
 
 A hosted match never arms the emitters: they remain local content and nothing about them enters a
-snapshot. The compactor, keypad, scanner and browser are different: their clocks are carried, so those
-maps also open online. The pipe/firewall arenas still stay local because their spawned threats are not
-in the snapshot.
+snapshot. The compactor, keypad, scanner, browser, USB, swipe and satellite are different: their clocks are
+carried, so those maps also open online. The pipe/firewall arenas still stay local because their spawned
+threats are not in the snapshot.
 
 ## Attract demo and kiosk
 
@@ -446,7 +446,8 @@ This build is a test rig as much as a game. A useful pass:
 - On `SATELLITE`, stand on a wing through the warning pulse and confirm the hot panel takes a segment.
   Ride the bottom mast up and down, then dash into its barrel to confirm it still stops you. Destroy all
   three top capacitors and watch the heat front climb from the bottom; do not stop until it has passed
-  the top and the pods return.
+  the top and the pods return. Host a room and confirm a guest sees the same solar warning, meteor
+  impacts, capacitor pods and heat front.
 - Finish a training session or a gauntlet run, then select `SHARE FEEDBACK` and confirm the report opens
   your share sheet or downloads a JSON file with a copied summary. Check that the report contains the
   arena, mode, program and round/action counts but no callsign or room code.

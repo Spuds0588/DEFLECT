@@ -11,6 +11,7 @@ import {
   keypadKeyState,
   KEYPAD_STATE,
   pusherPhaseAt,
+  satelliteTelescopeRectAt,
   scannerPhaseAt,
   swipePopupActiveAt,
   type ArenaDef,
@@ -32,6 +33,7 @@ import {
   type Player,
   type Projectile,
   type Prop,
+  type SatelliteMeteor,
   type Virus,
 } from '../game/types';
 
@@ -552,17 +554,32 @@ export interface SnapshotHazards {
   /** SWIPE RIGHT card-swipe clock and independent match-popup clock. */
   swipeT: number;
   swipePopupT: number;
-  /** [index, kind, x, y, w, h, hp, hitFlash, dropT] for each live file box. */
+  /**
+   * [index, kind, x, y, w, h, hp, hitFlash, dropT, capacitor] for each live prop.
+   * The capacitor flag is additive; older hosts omit it.
+   */
   props: number[][];
+  /** SATELLITE solar/telescope clock, seconds into the run. */
+  satelliteT: number;
+  /** 0 idle, 1 thruster fuse, 2 reentry burn, 3 waiting to reset. */
+  satelliteState: number;
+  /** Seconds left before the thrusters light. */
+  satelliteThrusterT: number;
+  /** Seconds into the bottom-up burn. */
+  satelliteReentryT: number;
+  /** Heat front, from the bottom lip upward. */
+  satelliteHeatY: number;
+  /** [index, x, y, t, hit] for each live meteor; empty outside a shower. */
+  satelliteMeteors: number[][];
 }
 
 /**
- * Compact hazard block for the snapshot: nine clocks/indices then live props. Empty
- * fixtures are omitted entirely, so a quiet arena pays only one null.
+ * Compact hazard block for the snapshot: nine clocks/indices, live props, then the
+ * satellite state. Empty fixtures are omitted entirely, so a quiet arena pays one null.
  */
 export function buildSnapshotHazards(world: World): unknown[] | null {
   const arena = world.arena;
-  if (!arena.pushers && !arena.keypad && !arena.scanner && !arena.browser && !arena.usb && !arena.swipe && world.props.length === 0) return null;
+  if (!arena.pushers && !arena.keypad && !arena.scanner && !arena.browser && !arena.usb && !arena.swipe && !arena.satellite && world.props.length === 0) return null;
   const props: number[][] = [];
   for (let i = 0; i < world.props.length; i++) {
     const b = world.props[i];
@@ -577,9 +594,16 @@ export function buildSnapshotHazards(world: World): unknown[] | null {
       b.hp,
       round2(b.hitFlash),
       round2(b.dropT),
+      b.capacitor ? 1 : 0,
     ]);
   }
-  return [
+  const meteors: number[][] = [];
+  for (let i = 0; i < world.satelliteMeteors.length; i++) {
+    const m = world.satelliteMeteors[i];
+    if (!m.active) continue;
+    meteors.push([i, round1(m.x), round1(m.y), round2(m.t), m.hit ? 1 : 0]);
+  }
+  const block: unknown[] = [
     round2(world.pusherT),
     round2(world.keypadT),
     round2(world.scannerT),
@@ -591,6 +615,18 @@ export function buildSnapshotHazards(world: World): unknown[] | null {
     round2(world.swipePopupT),
     props,
   ];
+  // Only a satellite arena pays for the extra fields; older shapes stay byte-identical.
+  if (arena.satellite) {
+    block.push(
+      round2(world.satelliteT),
+      world.satelliteState,
+      round2(world.satelliteThrusterT),
+      round2(world.satelliteReentryT),
+      round1(world.satelliteHeatY),
+      meteors,
+    );
+  }
+  return block;
 }
 
 export class GuestNet {
@@ -809,13 +845,17 @@ function parseHazards(raw: unknown): SnapshotHazards | null {
   const props: number[][] = [];
   // Three wire generations are accepted during a rolling reload: the pre-USB shape
   // (props at 6), the USB shape (USB at 6, props at 7), and this shape (swipe clocks
-  // at 7/8, props at 9). New hosts always emit the last one.
+  // at 7/8, props at 9, satellite fields after). New hosts always emit the last one.
   const hasSwipe = Array.isArray(raw[9]);
   const hasUsb = Array.isArray(raw[7]);
   const legacyProps = !hasUsb && !hasSwipe && Array.isArray(raw[6]);
   const propRaw = hasSwipe ? raw[9] : hasUsb ? raw[7] : legacyProps ? raw[6] : null;
   if (Array.isArray(propRaw)) {
     for (const p of propRaw as unknown[]) if (Array.isArray(p)) props.push(p as number[]);
+  }
+  const satelliteMeteors: number[][] = [];
+  if (Array.isArray(raw[15])) {
+    for (const m of raw[15] as unknown[]) if (Array.isArray(m)) satelliteMeteors.push(m as number[]);
   }
   return {
     pusherT: Number(raw[0]) || 0,
@@ -828,6 +868,12 @@ function parseHazards(raw: unknown): SnapshotHazards | null {
     swipeT: hasSwipe ? Number(raw[7]) || 0 : 0,
     swipePopupT: hasSwipe ? Number(raw[8]) || 0 : 0,
     props,
+    satelliteT: Number(raw[10]) || 0,
+    satelliteState: Number(raw[11]) | 0,
+    satelliteThrusterT: Number(raw[12]) || 0,
+    satelliteReentryT: Number(raw[13]) || 0,
+    satelliteHeatY: Number(raw[14]) || 0,
+    satelliteMeteors,
   };
 }
 
@@ -880,6 +926,12 @@ export class NetView {
   usbT = 0;
   swipeT = 0;
   swipePopupT = 0;
+  satelliteT = 0;
+  satelliteState = 0;
+  satelliteThrusterT = 0;
+  satelliteReentryT = 0;
+  satelliteHeatY = 0;
+  readonly satelliteMeteors: SatelliteMeteor[];
   browserClickT = 0;
   private readonly pusherPhase: PusherPhase = { warnT: 0, y: 0, active: false, flashT: 0 };
   private readonly browserCursorPoint = { x: 0, y: 0 };
@@ -903,6 +955,10 @@ export class NetView {
     this.viruses = new Array(INFECTION.maxViruses);
     for (let i = 0; i < this.viruses.length; i++) this.viruses[i] = createVirus();
     this.keypadStates = new Uint8Array(arena.keypad?.keys.length ?? 0);
+    this.satelliteMeteors = new Array(arena.satellite?.meteors.count ?? 0);
+    for (let i = 0; i < this.satelliteMeteors.length; i++) {
+      this.satelliteMeteors[i] = { active: false, x: 0, y: 0, t: 0, hit: false };
+    }
     const propCount = (arena.props?.length ?? 0) + (arena.pushers ? FILE_PROP.spare : 0);
     this.props = new Array(propCount);
     for (let i = 0; i < propCount; i++) {
@@ -992,6 +1048,12 @@ export class NetView {
     this.usbT = 0;
     this.swipeT = 0;
     this.swipePopupT = 0;
+    this.satelliteT = 0;
+    this.satelliteState = 0;
+    this.satelliteThrusterT = 0;
+    this.satelliteReentryT = 0;
+    this.satelliteHeatY = 0;
+    for (let i = 0; i < this.satelliteMeteors.length; i++) this.satelliteMeteors[i].active = false;
     for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
     this.snapCount = 0;
     this.snapWrite = 0;
@@ -1234,8 +1296,14 @@ export class NetView {
       this.usbT = 0;
       this.swipeT = 0;
       this.swipePopupT = 0;
+      this.satelliteT = 0;
+      this.satelliteState = 0;
+      this.satelliteThrusterT = 0;
+      this.satelliteReentryT = 0;
+      this.satelliteHeatY = 0;
+      for (let i = 0; i < this.satelliteMeteors.length; i++) this.satelliteMeteors[i].active = false;
       for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
-      this.predictor.setHazards(0, 0, 0, 0);
+      this.predictor.setHazards(0, 0, 0, 0, 0);
       return;
     }
 
@@ -1287,6 +1355,32 @@ export class NetView {
     this.swipeT = h.swipeT + age;
     this.swipePopupT = h.swipePopupT + age;
 
+    const satelliteT = h.satelliteT + age;
+    this.satelliteT = satelliteT;
+    this.satelliteState = h.satelliteState;
+    this.satelliteThrusterT = h.satelliteState === 1 ? Math.max(0, h.satelliteThrusterT - age) : 0;
+    const reentryT = h.satelliteState >= 2 ? h.satelliteReentryT + age : 0;
+    this.satelliteReentryT = reentryT;
+    const sat = this.arena.satellite;
+    this.satelliteHeatY = sat
+      ? this.arena.bounds.bottom -
+        (this.arena.bounds.bottom - this.arena.bounds.top) *
+          Math.min(1, reentryT / Math.max(0.001, sat.reentry.rise))
+      : 0;
+    for (let i = 0; i < this.satelliteMeteors.length; i++) this.satelliteMeteors[i].active = false;
+    for (let i = 0; i < h.satelliteMeteors.length; i++) {
+      const raw = h.satelliteMeteors[i];
+      const index = raw[0] | 0;
+      if (index < 0 || index >= this.satelliteMeteors.length) continue;
+      const m = this.satelliteMeteors[index];
+      m.active = true;
+      m.x = raw[1];
+      m.y = raw[2];
+      m.t = (raw[3] ?? 0) + age;
+      m.hit = raw[4] === 1 || (!!sat && m.t >= sat.meteors.warn);
+      if (sat && m.t >= sat.meteors.warn + sat.meteors.impact) m.active = false;
+    }
+
     for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
     for (let i = 0; i < h.props.length; i++) {
       const raw = h.props[i];
@@ -1302,9 +1396,10 @@ export class NetView {
       b.hp = raw[6];
       b.hitFlash = raw[7] ?? 0;
       b.dropT = raw[8] ?? 0;
+      b.capacitor = raw[9] === 1;
     }
 
-    this.predictor.setHazards(pusherT, keypadT, h.browserPage, this.swipePopupT);
+    this.predictor.setHazards(pusherT, keypadT, h.browserPage, this.swipePopupT, satelliteT);
   }
 
   predictStep(input: InputFrame, dt: number): void {
@@ -1368,6 +1463,7 @@ export class LocalPredictor {
   /** Cover and hazard cover only; a dash clears floor gaps but still stops on these. */
   private readonly dashSolids: Rect[] = [];
   private readonly dynamicRects: Rect[] = Array.from({ length: 32 }, () => ({ x: 0, y: 0, w: 0, h: 0 }));
+  private readonly satelliteTelescopeRect: Rect = { x: 0, y: 0, w: 0, h: 0 };
   private readonly pusherPhase: PusherPhase = { warnT: 0, y: 0, active: false, flashT: 0 };
   private pusherFront = 0;
   private pusherActive = false;
@@ -1386,7 +1482,7 @@ export class LocalPredictor {
    * Rebuild the body-collision list. Static cover is shared by reference; hazard
    * rectangles are reused from a fixed pool, so this is safe to call every render frame.
    */
-  setHazards(pusherT: number, keypadT: number, browserPage: number, swipePopupT = 0): void {
+  setHazards(pusherT: number, keypadT: number, browserPage: number, swipePopupT = 0, satelliteT = 0): void {
     this.solids.length = 0;
     this.dashSolids.length = 0;
     const statics = arenaSolids(this.arena);
@@ -1434,6 +1530,15 @@ export class LocalPredictor {
         r.h = src.h;
         this.solids.push(r);
         this.dashSolids.push(r);
+      }
+    }
+
+    const sat = this.arena.satellite;
+    if (sat) {
+      satelliteTelescopeRectAt(sat, satelliteT, this.satelliteTelescopeRect);
+      if (this.satelliteTelescopeRect.h > 0.01) {
+        this.solids.push(this.satelliteTelescopeRect);
+        this.dashSolids.push(this.satelliteTelescopeRect);
       }
     }
 

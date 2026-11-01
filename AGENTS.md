@@ -1827,13 +1827,15 @@ adds matchmaking ceremony a private group does not need.
 
 ### D40 — Arena hazard clocks are snapshot data (built 2026-11-01)
 
-The compactor, keypad, scanner and browser arenas are **online-safe**. `Snapshot` index 13 carries one
-compact hazard block, or `null` on a quiet floor:
+The compactor, keypad, scanner, browser, USB, SWIPE and SATELLITE arenas are **online-safe**. `Snapshot`
+index 13 carries one compact hazard block, or `null` on a quiet floor:
 
-`[pusherT, keypadT, scannerT, scannerPage, browserT, browserPage, props]`
+`[pusherT, keypadT, scannerT, scannerPage, browserT, browserPage, usbT, swipeT, swipePopupT, props,
+satelliteT, satelliteState, satelliteThrusterT, satelliteReentryT, satelliteHeatY, satelliteMeteors]`
 
-`props` is `[index, kind, x, y, w, h, hp, hitFlash, dropT]` for each live file box. Six clocks/indices and
-the live debris list are enough because every visible hazard is deterministic from the arena record:
+`props` is `[index, kind, x, y, w, h, hp, hitFlash, dropT, capacitor]` for each live prop; the last field
+is additive and older hosts omit it. `satelliteMeteors` holds `[index, x, y, t, hit]` rows only while live.
+The clocks and compact lists are enough because every visible hazard is deterministic from the arena record:
 `pusherPhaseAt()`, `keypadKeyState()`, `scannerPhaseAt()`/`scannerLaserY()`, `browserPhaseAt()`/
 `browserCursorAt()` and `browserClickAt()` are the shared derivations. Do not send per-key states, cursor
 coordinates, page cards or hit masks; they can drift or bloat the packet.
@@ -1852,12 +1854,13 @@ coordinates, page cards or hit masks; they can drift or bloat the packet.
   snapshot just to open those two maps.
 - `DISK PLATTER` and the wall emitters are not in this block. Hosted matches keep the platter's static
   holes, parked arm and unbuilt emitters because their moving voids/beams would need dynamic prediction
-  and a separate protocol decision (D27, D30). Do not treat the four clocks above as permission to add
+  and a separate protocol decision (D27, D30). Do not treat the clocks above as permission to add
   every fixture to the packet.
-- Measured v0.1.88: the heaviest hazard block (7 live boxes on `RECYCLING BIN`) packed to **180 B**;
-  clock-only maps packed to 16 B. At 30 Hz that is +5.4 KB/s per guest, or +37.8 KB/s of host upload with
-  seven guests (about 6% of the measured 0.59 MiB/s host baseline at 8P/48 projectiles). A quiet arena pays
-  one `null`.
+- Satellite fields are appended only on a satellite arena, so every older hazard shape stays
+  byte-identical. Measured v0.1.112: a full SATELLITE block with seven live meteors and three capacitor
+  rows packed to **192 B**; clock-only maps still packed to **16 B**. At 30 Hz the satellite block is
+  +5.8 KB/s per guest, or +40.3 KB/s of host upload with seven guests (about 7% of the measured 0.59 MiB/s
+  host baseline at 8P/48 projectiles). A quiet arena pays one `null`.
 
 ### D41 — QUARANTINE is the connected tutorial level (built 2026-11-01)
 
@@ -1996,7 +1999,7 @@ new playable hull and not a threat family.
   The card and popup are local presentation only and never enter `Snapshot` as extra objects. No health,
   damage or balance numbers were changed for this arena.
 
-### D45 — SATELLITE is a local-only orbital hazard arena (built 2026-11-01)
+### D45 — SATELLITE is a host-authoritative orbital hazard arena (built 2026-11-01; online 2026-11-01)
 
 `SATELLITE` (arena id 17) is the eighteenth arena: a long central hull, two solar wings joined by short
 bridges, a telescoping mast below the hull, and three destructible capacitor pods across the top. Its floor
@@ -2016,9 +2019,13 @@ lift, not a new traversal kind. Bots bake the five plates into their nav grid.
   thruster fuse, then a 14 s bottom-up heat front that ticks every 0.8 s for 1 damage. When the front
   reaches the top lip it holds for 2.5 s (or ends early once every body is dead), then the arena cools
   for 5 s and restores the pods. A training respawn cannot leave the map permanently hot.
-- The arena is **local-only**: none of its clocks, meteors, capacitor states or heat front are in
-  `SnapshotHazards`, and `isOnlineArena` excludes it. Do not add the map to hosted room selection until
-  a protocol decision carries that state. No health or damage budget was changed for the arena.
+- The arena is **host-authoritative online**. `SnapshotHazards` carries the solar/telescope clock, the
+  thruster fuse, the reentry clock and heat front, plus `[index,x,y,t,hit]` for each live meteor. Capacitors
+  are ordinary prop rows; their tenth field marks a capacitor so a guest can draw the pod and its socket.
+  The host still owns solar/meteor damage, capsule breaks, mast carry, prop damage and reentry hits;
+  `NetView` derives the solar and telescope poses and adds the extended mast to guest prediction.
+  `isOnlineArena` accepts it. Do not add per-body hit rows or move the meteor simulation to a guest.
+  No health or damage budget was changed for the arena.
 
 ### D46 — Session feedback is opt-in, local and anonymized (built 2026-11-01)
 

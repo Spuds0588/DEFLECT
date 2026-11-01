@@ -336,8 +336,8 @@ export interface ArenaSatelliteReentryDef {
 
 /**
  * SATELLITE: a central hull with two solar wings on narrow bridges, a telescoping
- * bottom mast, top capacitors and an all-map reentry burn. It is local-only for now;
- * the meteors and the thruster state are not part of SnapshotHazards.
+ * bottom mast, top capacitors and an all-map reentry burn. It is host-authoritative
+ * online; SnapshotHazards carries its clocks, live meteors and capacitor state.
  */
 export interface ArenaSatelliteDef {
   /** Every walkable plate. Outside these rects is space, not floor. */
@@ -653,7 +653,7 @@ export interface ArenaDef {
   usb?: ArenaUsbDef;
   /** Swipe-card phone floor and its match-popup platform. */
   swipe?: ArenaSwipeDef;
-  /** Satellite hull, solar wings, telescope and reentry hazard. Local-only. */
+  /** Satellite hull, solar wings, telescope and reentry hazard. Online-safe under D45. */
   satellite?: ArenaSatelliteDef;
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
