@@ -3362,3 +3362,31 @@ carried arena 0 and mode 1, and the decoded snapshot had 2 players, 24 virus row
 
 **Next:** two-browser production pass on the lobby toggle, guest mirror, spectator death and host retry;
 then tune the shared 44-virus cap for two runners. The arena layout brief is still outstanding.
+
+## 2026-11-01 — NETWORK SWITCH: pipes, hostile files and a firewall starter (v0.1.72)
+
+**Goal:** turn the supplied arena brief into the tenth arena: a rectangle whose destructible pipes feed
+hostile files and enemies, plus a one-shot firewall starter at one end.
+
+- New arena id 9, `NETWORK SWITCH`, with a central switchblock cover cluster, eight perimeter spawns,
+  four feed pipes and a west-end firewall plate.
+- Pipes alternate a hostile file box and a small threat. Hostile files are ordinary `Prop` records with a
+  `hazard` flag: they use the existing debris physics, damage a body on contact, and die to one shot.
+  Later waves can feed a pulse square instead of a virus.
+- Each live pipe has an intake that pulls loose files and small threats into its mouth. It is disabled for
+  infection viruses so the pipes cannot raise the clear meter for free. Destroying a pipe stops both its
+  emissions and its intake.
+- Pipe health is six, read as ticks on the housing. Player shots and blasts chip it; hostile fire passes
+  over. The pipe body is mounted through the wall and does not become pathfinding cover.
+- The firewall plate starts a sweep from the opposite wall and rearms after `NETWORK.switchCooldown`
+  (180 s). Automatic firewalls remain off. The switch is local-only and skipped by hosted rooms with the
+  rest of the pipe fixture.
+- Build stamp 0.1.72; no snapshot fields.
+
+**Verification:** `npm run build` clean: 623.25 kB JS / 172.76 kB gzip, 48.60 kB CSS / 10.90 kB gzip.
+`.tmp/check-network-switch.ts` passes 14/14: four live pipes, hostile file feed, contact damage, intake
+catch, shot damage, all-pipe destruction stopping the feed, firewall sweep and the long cooldown gate.
+Browser smoke on `NETWORK SWITCH`: four live pipes, three hostile files active after 13 s, no console errors.
+
+**Next:** browser smoke the picker and a live wave, then tune pipe cadence, file speed and catch radius from
+play; the arena is intentionally excluded from online rooms until fixture state has a protocol decision.

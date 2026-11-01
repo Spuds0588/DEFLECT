@@ -15,6 +15,7 @@ import {
   GHOST,
   INFECTION,
   MINE,
+  NETWORK,
   SWEEP,
   FIREWALL,
   FALL,
@@ -90,6 +91,7 @@ import {
   type Lure,
   type Net,
   type Phase,
+  type Pipe,
   type Pickup,
   type Player,
   type Projectile,
@@ -125,6 +127,12 @@ export class World {
   private readonly solids: readonly Rect[];
   /** Breakable file boxes. Local content; the snapshot never carries them. */
   readonly props: Prop[];
+  /** Destructible feed pipes. Local-only, like the floor fixtures they sit beside. */
+  readonly pipes: Pipe[];
+  /** Rearm clock for the Network Switch firewall starter. */
+  firewallSwitchT = 0;
+  firewallSwitchDwell = 0;
+  firewallSwitchFlash = 0;
   readonly selectedProgram: number;
   readonly players: Player[];
   readonly projectiles: Projectile[];
@@ -459,6 +467,47 @@ export class World {
         });
       }
     }
+    // Feed pipes and their hostile file pool are local fixtures. A hosted room skips
+    // this arena entirely, so neither side has to carry fixture state in a snapshot.
+    this.pipes = [];
+    if (mode !== 'match' && arena.pipes) {
+      for (let i = 0; i < arena.pipes.length; i++) {
+        const d = arena.pipes[i];
+        this.pipes.push({
+          active: true,
+          x: d.x,
+          y: d.y,
+          angle: d.angle,
+          radius: NETWORK.pipeRadius,
+          hp: NETWORK.pipeHp,
+          maxHp: NETWORK.pipeHp,
+          fireT: NETWORK.pipeFirst + (d.offset ?? 0),
+          shots: 0,
+          hitFlash: 0,
+          catchFlash: 0,
+          catchT: 0,
+        });
+      }
+      for (let i = 0; i < NETWORK.filePool; i++) {
+        this.props.push({
+          active: false,
+          kind: i % 4,
+          x: 0,
+          y: 0,
+          w: 38,
+          h: 27,
+          hp: 1,
+          hitFlash: 0,
+          dropT: 0,
+          vx: 0,
+          vy: 0,
+          tx: 0,
+          ty: 0,
+          hazard: false,
+          hurtCd: 0,
+        });
+      }
+    }
     this.events = new Array(EVENT_CAPACITY);
     for (let i = 0; i < EVENT_CAPACITY; i++) this.events[i] = { kind: 0, slot: 0, x: 0, y: 0, power: 0, dirX: 0, dirY: 0 };
 
@@ -536,6 +585,19 @@ export class World {
     this.timeSlowT = 0;
     this.timeSlowOwner = -1;
     this.gauntletOver = false;
+    this.firewallSwitchT = 0;
+    this.firewallSwitchDwell = 0;
+    this.firewallSwitchFlash = 0;
+    for (let i = 0; i < this.pipes.length; i++) {
+      const pipe = this.pipes[i];
+      pipe.active = true;
+      pipe.hp = pipe.maxHp;
+      pipe.shots = 0;
+      pipe.fireT = NETWORK.pipeFirst + (this.arena.pipes?.[i]?.offset ?? 0);
+      pipe.hitFlash = 0;
+      pipe.catchFlash = 0;
+      pipe.catchT = 0;
+    }
     this.wave = 1;
     this.waveBannerT = 0;
     this.wormSpawnT = GAUNTLET.wormSpawnDelay;
@@ -6767,6 +6829,7 @@ export class World {
           this.bounceWalls(proj);
           if (!proj.active) break;
           if (this.propHit(proj)) break;
+          if (this.pipeHit(proj)) break;
           if (proj.type === 8) {
             this.bouncePillars(proj);
             if (!proj.active) break;
@@ -6828,6 +6891,7 @@ export class World {
         // The super ball is a rolling weight: it smashes through debris instead of
         // stopping on a file box like a bolt.
         if (proj.type !== 15 && this.propHit(proj)) break;
+        if (this.pipeHit(proj)) break;
         this.bouncePillars(proj);
         if (!proj.active) break;
         this.bounceBarriers(proj);
@@ -7392,7 +7456,190 @@ export class World {
     this.emit(EV.PROP_HIT, 0, x, y, amount);
     if (b.hp > 0) return;
     b.active = false;
+    b.hazard = false;
     this.emit(EV.PROP_BREAK, 0, b.x + b.w * 0.5, b.y + b.h * 0.5, b.w + b.h * 0.5);
+  }
+
+  /**
+   * NETWORK SWITCH feed pipes. Each live pipe alternates a hostile file and a threat;
+   * its intake also pulls loose files and small threats into the mouth. Destroying the
+   * pipe stops that emitter and its intake for the rest of the run.
+   */
+  private updateNetwork(dt: number): void {
+    for (let i = 0; i < this.pipes.length; i++) {
+      const pipe = this.pipes[i];
+      if (pipe.hitFlash > 0) pipe.hitFlash = Math.max(0, pipe.hitFlash - dt);
+      if (pipe.catchFlash > 0) pipe.catchFlash = Math.max(0, pipe.catchFlash - dt);
+      if (pipe.catchT > 0) pipe.catchT = Math.max(0, pipe.catchT - dt);
+      if (!pipe.active) continue;
+      pipe.fireT -= dt;
+      if (pipe.fireT <= 0) {
+        pipe.fireT = NETWORK.pipeInterval;
+        this.firePipe(pipe);
+      }
+      this.catchAtPipe(pipe, dt);
+    }
+    this.updateFirewallSwitch(dt);
+  }
+
+  private firePipe(pipe: Pipe): void {
+    const dx = Math.cos(pipe.angle);
+    const dy = Math.sin(pipe.angle);
+    pipe.shots++;
+    // The first beat is always a file; the next is an enemy. That makes the pipe's
+    // job readable before the room gets busy.
+    if (pipe.shots % 2 === 1) {
+      this.spawnPipeFile(pipe, dx, dy);
+    } else {
+      const x = pipe.x + dx * 48;
+      const y = pipe.y + dy * 48;
+      let spawned = false;
+      if (!this.infectionMode && this.wave >= 9 && pipe.shots % 6 === 0) {
+        spawned = this.spawnSentry(0, x, y);
+      }
+      if (!spawned) this.spawnVirus(x, y);
+    }
+    pipe.catchT = 1.4;
+    pipe.catchFlash = 0.3;
+  }
+
+  private spawnPipeFile(pipe: Pipe, dx: number, dy: number): void {
+    let hazards = 0;
+    let slot: Prop | null = null;
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (b.active && b.hazard) hazards++;
+      if (!b.active && !slot) slot = b;
+    }
+    if (!slot || hazards >= NETWORK.maxFiles) return;
+    const b = this.arena.bounds;
+    const w = 38;
+    const h = 27;
+    slot.active = true;
+    slot.kind = (pipe.shots + this.props.indexOf(slot)) % 4;
+    slot.w = w;
+    slot.h = h;
+    slot.x = Math.max(b.left + 4, Math.min(b.right - w - 4, pipe.x + dx * 34 - w * 0.5));
+    slot.y = Math.max(b.top + 4, Math.min(b.bottom - h - 4, pipe.y + dy * 34 - h * 0.5));
+    slot.hp = 1;
+    slot.hitFlash = 0;
+    slot.dropT = 0;
+    slot.vx = dx * NETWORK.fileSpeed;
+    slot.vy = dy * NETWORK.fileSpeed;
+    slot.tx = slot.vx;
+    slot.ty = slot.vy;
+    slot.hazard = true;
+    slot.hurtCd = 0;
+  }
+
+  private catchAtPipe(pipe: Pipe, dt: number): void {
+    if (pipe.catchT > 0) return;
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.active || b.dropT > 0) continue;
+      const cx = b.x + b.w * 0.5;
+      const cy = b.y + b.h * 0.5;
+      let dx = pipe.x - cx;
+      let dy = pipe.y - cy;
+      const d = Math.hypot(dx, dy);
+      if (d > NETWORK.catchRadius || d < 0.001) continue;
+      dx /= d;
+      dy /= d;
+      b.tx = dx * NETWORK.catchPull;
+      b.ty = dy * NETWORK.catchPull;
+      if (d < pipe.radius * 0.85) {
+        b.active = false;
+        b.hazard = false;
+        pipe.catchFlash = 0.42;
+        pipe.catchT = NETWORK.catchCooldown;
+        this.emit(EV.PROP_BREAK, 0, cx, cy, b.w + b.h);
+      }
+    }
+    // The infection colony is the run's score, so pipes do not eat it. In a normal
+    // gauntlet a small threat that wanders into a mouth is reclaimed without a kill.
+    if (this.infectionMode) return;
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      let dx = pipe.x - v.x;
+      let dy = pipe.y - v.y;
+      const d = Math.hypot(dx, dy);
+      if (d > NETWORK.catchRadius || d < 0.001) continue;
+      dx /= d;
+      dy /= d;
+      v.x += dx * NETWORK.catchPull * dt;
+      v.y += dy * NETWORK.catchPull * dt;
+      if (d < pipe.radius * 0.8) {
+        v.active = false;
+        v.orbitOwner = -1;
+        pipe.catchFlash = 0.42;
+        pipe.catchT = NETWORK.catchCooldown;
+        this.emit(EV.VIRUS_KILL, -1, v.x, v.y, v.radius * 4, dx, dy);
+      }
+    }
+  }
+
+  private updateFirewallSwitch(dt: number): void {
+    const s = this.arena.firewallSwitch;
+    if (!s || this.infectionMode) return;
+    if (this.firewallSwitchT > 0) this.firewallSwitchT = Math.max(0, this.firewallSwitchT - dt);
+    if (this.firewallSwitchFlash > 0) this.firewallSwitchFlash = Math.max(0, this.firewallSwitchFlash - dt);
+    let onPad = false;
+    if (this.firewallSwitchT <= 0) {
+      for (let i = 0; i < this.players.length; i++) {
+        const p = this.players[i];
+        if (!p.active || !p.alive || p.travelT > 0) continue;
+        const dx = p.x - s.x;
+        const dy = p.y - s.y;
+        if (dx * dx + dy * dy <= (s.radius + PLAYER.radius * 0.5) ** 2) {
+          onPad = true;
+          break;
+        }
+      }
+    }
+    if (!onPad) {
+      this.firewallSwitchDwell = 0;
+      return;
+    }
+    this.firewallSwitchDwell += dt;
+    if (this.firewallSwitchDwell < NETWORK.switchDwell) return;
+    this.firewallSwitchDwell = 0;
+    let activeFirewalls = 0;
+    for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) activeFirewalls++;
+    if (activeFirewalls > 0) return;
+    // The switch is on the west wall; the sweep starts at the opposite wall so the
+    // operator has the length of the room to read it and get clear.
+    if (this.spawnFirewall(0, -1)) {
+      this.firewallSwitchT = NETWORK.switchCooldown;
+      this.firewallSwitchFlash = NETWORK.switchFlash;
+    }
+  }
+
+  private damagePipe(pipe: Pipe, amount: number, x: number, y: number): void {
+    if (!pipe.active) return;
+    pipe.hp -= amount;
+    pipe.hitFlash = 0.22;
+    this.emit(EV.PROP_HIT, 0, x, y, amount);
+    if (pipe.hp > 0) return;
+    pipe.active = false;
+    this.emit(EV.PROP_BREAK, 0, pipe.x, pipe.y, pipe.radius * 2.6);
+  }
+
+  /** Player shots stop on a live pipe and chip it; hostile fire passes over it. */
+  private pipeHit(proj: Projectile): boolean {
+    if (proj.owner < 0) return false;
+    for (let i = 0; i < this.pipes.length; i++) {
+      const pipe = this.pipes[i];
+      if (!pipe.active) continue;
+      const dx = proj.x - pipe.x;
+      const dy = proj.y - pipe.y;
+      const rr = pipe.radius + proj.radius;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      this.damagePipe(pipe, Math.max(1, proj.damage), proj.x, proj.y);
+      proj.active = false;
+      return true;
+    }
+    return false;
   }
 
   /** Shots stop on a file box and chip it. Returns true when the projectile was spent. */
@@ -7818,6 +8065,18 @@ export class World {
       const rr = radius + WEDGE.wallThickness * 0.5;
       if (dx * dx + dy * dy > rr * rr) continue;
       this.damageBarrier(wall, 2);
+    }
+
+    // Feed pipes are fixtures, not bodies: a player blast chips them like a shot.
+    if (sourceSlot >= 0) {
+      for (let i = 0; i < this.pipes.length; i++) {
+        const pipe = this.pipes[i];
+        if (!pipe.active) continue;
+        const dx = pipe.x - x;
+        const dy = pipe.y - y;
+        if (dx * dx + dy * dy > (radius + pipe.radius) ** 2) continue;
+        this.damagePipe(pipe, NETWORK.pipeBlastDamage, pipe.x, pipe.y);
+      }
     }
 
     // Loose file boxes catch the blast: they crack and get thrown, they do not vanish.
@@ -8853,6 +9112,9 @@ export class World {
 
   private updateGauntlet(dt: number): void {
     this.gauntletT += dt;
+    // Pipes feed both the normal sandbox and infection; the firewall starter is a
+    // gauntlet-only set piece because infection has no firewall update pass.
+    this.updateNetwork(dt);
     if (this.infectionMode) {
       this.updateInfection(dt);
       return;
@@ -9176,6 +9438,7 @@ export class World {
     for (let i = 0; i < this.props.length; i++) {
       const b = this.props[i];
       if (b.hitFlash > 0) b.hitFlash = Math.max(0, b.hitFlash - dt);
+      if (b.hurtCd && b.hurtCd > 0) b.hurtCd = Math.max(0, b.hurtCd - dt);
       if (b.dropT > 0) {
         b.dropT = Math.max(0, b.dropT - dt);
         continue;
@@ -9283,6 +9546,11 @@ export class World {
       const overlap = PLAYER.radius - d;
       b.x += ux * overlap;
       b.y += uy * overlap;
+      if (b.hazard && (b.hurtCd ?? 0) <= 0) {
+        b.hurtCd = NETWORK.fileHurtCooldown;
+        b.hitFlash = FILE_PROP.hitFlash;
+        this.damagePlayer(p, NETWORK.fileDamage, -1, -ux, -uy, NETWORK.fileKnockback, SRC.PIPE, this.props.indexOf(b));
+      }
       if (b.vx * ux + b.vy * uy < FILE_PROP.bumpSpeed) {
         const speed = Math.min(FILE_PROP.maxSpeed, Math.max(FILE_PROP.bumpSpeed, Math.hypot(p.vx, p.vy) * 1.4));
         b.tx = ux * speed;
@@ -10990,7 +11258,7 @@ export class World {
     return true;
   }
 
-  private spawnFirewall(): void {
+  private spawnFirewall(forceAxis?: 0 | 1, forceDir?: 1 | -1): boolean {
     let f: Firewall | null = null;
     for (let i = 0; i < this.firewalls.length; i++) {
       if (!this.firewalls[i].active) {
@@ -10998,10 +11266,10 @@ export class World {
         break;
       }
     }
-    if (!f) return;
+    if (!f) return false;
     f.active = true;
-    f.axis = this.rng.next() < 0.5 ? 0 : 1;
-    f.dir = this.rng.next() < 0.5 ? 1 : -1;
+    f.axis = forceAxis ?? (this.rng.next() < 0.5 ? 0 : 1);
+    f.dir = forceDir ?? (this.rng.next() < 0.5 ? 1 : -1);
     f.warnT = FIREWALL.warn;
     f.tickT = 0;
     f.age = 0;
@@ -11010,6 +11278,7 @@ export class World {
     else f.pos = f.dir > 0 ? this.arena.bounds.top + half : this.arena.bounds.bottom - half;
     f.prevPos = f.pos;
     this.emit(EV.FIREWALL, -1, f.axis === 0 ? f.pos : this.centerX, f.axis === 0 ? this.centerY : f.pos, f.axis);
+    return true;
   }
 
   private updateFirewall(f: Firewall, dt: number): void {

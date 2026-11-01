@@ -370,7 +370,7 @@ function boot(): void {
   }
 
   requestAnimationFrame(loop);
-  console.log('[DEFLECT-INIT] Build 0.1.70 ready. Max players:', MAX_PLAYERS);
+  console.log('[DEFLECT-INIT] Build 0.1.72 ready. Max players:', MAX_PLAYERS);
 }
 
 function bindUi(): void {
@@ -934,10 +934,10 @@ function selectArena(index: number): void {
 function onlineArenaIndex(index: number): number {
   const n = ARENAS.length;
   const start = ((index % n) + n) % n;
-  if (!ARENAS[start].pushers) return start;
+  if (!ARENAS[start].pushers && !ARENAS[start].pipes) return start;
   for (let i = 1; i < n; i++) {
     const idx = (start + i) % n;
-    if (!ARENAS[idx].pushers) return idx;
+    if (!ARENAS[idx].pushers && !ARENAS[idx].pipes) return idx;
   }
   return start;
 }
@@ -2349,7 +2349,7 @@ async function createRoom(): Promise<void> {
   try {
     const code = await net.start();
     if (hostNet !== net) return;
-    net.setArena(arenaIndex);
+    net.setArena(onlineArenaIndex(arenaIndex));
     busy = false;
     lobbyState = net.getLobbyState();
     renderLobby(lobbyState);

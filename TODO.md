@@ -2,7 +2,30 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-01 (v0.1.71 infection co-op)
+Last updated: 2026-11-01 (v0.1.72 Network Switch arena)
+
+---
+
+## v0.1.72 — NETWORK SWITCH: pipes, hostile files and a firewall starter (2026-11-01)
+
+### Built
+- [x] Arena id 9, a walled rectangle with a central switchblock cluster: four destructible feed pipes,
+      a west-end firewall plate, and eight spawn points
+- [x] Each pipe alternates a hostile file box and a small threat. Hostile files reuse `Prop` physics with
+      a `hazard` flag, damage on contact, and one-hit health; later waves can feed a pulse square
+- [x] Pipe intake pulls loose files and small threats into the mouth. Infection deliberately skips the
+      enemy intake so the swarm cannot clear its own meter
+- [x] Pipes take player-shot and blast damage, show health on the housing, and stop both emissions and
+      intake when destroyed
+- [x] Firewall plate triggers one opposite-wall sweep and rearms after 180 s; automatic firewalls stay off
+- [x] Local-only fixtures: hosted rooms skip an arena with pipes; no pipe or switch state enters `Snapshot`
+
+### Verification
+- [x] `npm run build` clean
+- [x] `.tmp/check-network-switch.ts`: 14/14 (four live pipes, file feed, hazard damage, intake catch,
+      shot damage, all-pipe destruction stopping files, switch sweep and long cooldown)
+- [x] Browser smoke: `NETWORK SWITCH` selected and launched, four pipes live, three hostile files on the
+      floor after 13 s, no console errors
 
 ---
 

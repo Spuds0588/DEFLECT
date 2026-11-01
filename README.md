@@ -12,7 +12,7 @@ shapes and every sound is synthesized at runtime: no sprites, no audio files, no
 
 Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, a
 timed infection clear, the first campaign node, and host/join rooms for up to eight players. Eleven
-programs, nine arenas. The alpha
+programs, ten arenas. The alpha
 is deployed from `main` on every push.
 
 ## Tech stack
@@ -55,7 +55,7 @@ in the hot path. Particles and projectile trails are pooled ring buffers.
 
 Content is data, not branches:
 
-- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, wall style and floor signature.
+- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, breakable props, pipe fixtures, wall style and floor signature.
 - `src/game/programs.ts` holds the roster identity and kit tuning; the four action jobs branch in `World`.
 - `src/game/tuning/*.json` holds all gameplay numbers, re-exported through the typed facade in
   `src/game/config.ts`, so most balance changes are a JSON edit with no code change.

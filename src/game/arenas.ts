@@ -136,6 +136,22 @@ export interface ArenaPropDef {
   kind: number;
 }
 
+/** A destructible feed pipe. `x,y` is the mouth; the body runs back toward the wall. */
+export interface ArenaPipeDef {
+  x: number;
+  y: number;
+  angle: number;
+  /** Stagger the first emission in seconds. */
+  offset?: number;
+}
+
+/** A floor switch that triggers one firewall sweep, then rearms after a long cooldown. */
+export interface ArenaFirewallSwitchDef {
+  x: number;
+  y: number;
+  radius: number;
+}
+
 /**
  * An arena is pure geometry + presentation. Collision, spawns, prediction, rendering and
  * the host snapshot all read this one definition so a guest can never simulate a different map.
@@ -178,6 +194,10 @@ export interface ArenaDef {
   emitters?: ArenaEmitterDef[];
   /** Breakable file boxes. Local content like powerups; no snapshot fields. */
   props?: ArenaPropDef[];
+  /** Destructible feed pipes. Local content; hosted rooms skip this arena. */
+  pipes?: ArenaPipeDef[];
+  /** One-shot firewall starter. Local content; hosted rooms skip this arena. */
+  firewallSwitch?: ArenaFirewallSwitchDef;
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
   /** A round spinning platter with a read arm. Implies an open drop around the rim. */
@@ -555,6 +575,46 @@ export const ARENAS: readonly ArenaDef[] = [
       arm: { pivot: 0.35, period: 11.5, sweep: 0.55, thickness: 44, push: 360, reach: 1.06 },
     },
   },
+  {
+    id: 9,
+    name: 'NETWORK SWITCH',
+    tagline: 'The pipes feed the fight. Cut them.',
+    hudLabel: 'ARENA // NETWORK SWITCH',
+    accent: '#6dffb0',
+    accentSoft: 'rgba(109, 255, 176, 0.32)',
+    accentFaint: 'rgba(109, 255, 176, 0.032)',
+    signature: 3,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    // A rectangular switchboard with a central chip block and four cable lanes.
+    pillars: [
+      { x: 790, y: 360, w: 120, h: 96 },
+      { x: 1090, y: 360, w: 120, h: 96 },
+      { x: 790, y: 590, w: 120, h: 96 },
+      { x: 1090, y: 590, w: 120, h: 96 },
+      { x: 940, y: 290, w: 120, h: 80 },
+      { x: 940, y: 676, w: 120, h: 80 },
+    ],
+    spawns: [
+      { x: 995, y: 130 },
+      { x: 1700, y: 240 },
+      { x: 1760, y: 547 },
+      { x: 1700, y: 854 },
+      { x: 995, y: 964 },
+      { x: 290, y: 854 },
+      { x: 230, y: 547 },
+      { x: 290, y: 240 },
+    ],
+    // Four feed mouths, two from each long wall, aimed into the switchboard. Their
+    // bodies sit behind the mouth so the pipe reads as mounted through the frame.
+    pipes: [
+      { x: 420, y: 150, angle: 0.9, offset: 1.2 },
+      { x: 1570, y: 150, angle: 2.25, offset: 5.4 },
+      { x: 420, y: 944, angle: -0.9, offset: 9.6 },
+      { x: 1570, y: 944, angle: -2.25, offset: 13.8 },
+    ],
+    // At the west end, off the spawn ring. One manual sweep, then a three-minute rearm.
+    firewallSwitch: { x: 155, y: 547, radius: 46 },
+  },
 ];
 
 export function discCenterX(arena: ArenaDef): number {
@@ -773,6 +833,32 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     const h = r.h * sy;
     ctx.fillRect(x, y, w, h);
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  }
+
+  // Feed pipes and the firewall starter are the arena's readable fixtures.
+  if (arena.pipes) {
+    ctx.strokeStyle = arena.accent;
+    ctx.fillStyle = arena.accent;
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < arena.pipes.length; i++) {
+      const p = arena.pipes[i];
+      const px = mapX(p.x);
+      const py = mapY(p.y);
+      ctx.beginPath();
+      ctx.moveTo(px - Math.cos(p.angle) * 7, py - Math.sin(p.angle) * 7);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(px, py, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  if (arena.firewallSwitch) {
+    ctx.strokeStyle = '#ff6a4d';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(mapX(arena.firewallSwitch.x), mapY(arena.firewallSwitch.y), 3.2, 0, Math.PI * 2);
+    ctx.stroke();
   }
 
   // Emitters are the one arena fixture a player must spot before the fight starts.

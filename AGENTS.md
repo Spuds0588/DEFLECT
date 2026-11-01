@@ -215,6 +215,13 @@ moves at the start and is covered by the shrinking-deck transition. `TRANSIT` is
 Traversal is also the intended route for threats to spill into a later campaign arena (a virus following
 a pad across linked rooms); until a campaign runtime exists, pads only move player bodies.
 
+`NETWORK SWITCH` carries two more local fixtures. `pipes` are destructible feed mouths: each alternates a
+hostile file box and a small threat, and its intake pulls loose files and small threats into the mouth. A
+hostile file is the normal `Prop` record with `hazard` set, so it uses the existing debris physics and
+damage path rather than a second projectile system. `firewallSwitch` is a floor plate that starts one
+firewall sweep from the opposite wall and rearms after `NETWORK.switchCooldown` (180 s). Both fixtures are
+local content: `onlineArenaIndex` skips an arena with `pipes`, and neither fixture enters `Snapshot`.
+
 ### D9 — Gauntlet is a local threat sandbox (revised 2026-10-29)
 On explicit designer request, hostiles exist in a **GAUNTLET** mode, not in ranked PvP. It is a test bed
 for the eventual PvE direction, not a promise of online PvE. The single exception is INFECTION, which is
@@ -247,8 +254,9 @@ solo and host-authoritative online co-op (D32); every other gauntlet threat stay
   then `chargeRecovery` and `chargeCooldown` follow. Cover and dashes beat the hit, not the commitment.
 - **Firewalls** are sweeping orange beams. They warn, then cross the arena and burn players, worms and
   viruses. Pillars cut both the visible beam and its damage; line of sight is real cover. Automatic
-  firewalls are **off**. They are reserved for a future destructible switch on selected arenas; setting
-  `GAUNTLET.autoFirewalls` back to true is the only way they appear in the sandbox today.
+  firewalls are **off**. `NETWORK SWITCH` has a manual starter at its west end; standing on it starts one
+  sweep from the opposite wall and begins a three-minute rearm. Setting `GAUNTLET.autoFirewalls` back to
+  true is still the only ambient firewall source.
 - **Cascading errors** are yellow blocks with red exclamation marks. They spread outward block by block,
   damage on contact, and take three hits to delete one block. They are part of the threat pool, not
   arena geometry.

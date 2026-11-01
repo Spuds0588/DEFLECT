@@ -1,4 +1,4 @@
-import { ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, PINBALL, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { ATOMIZE, BOLT, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { CopyMark } from './types';
 import {
   discArmAngle,
@@ -16,7 +16,7 @@ import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourgla
 import { P_COLOR_DANGER, P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
-import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Player, type Projectile, type Prop, type Sentry, type Virus, type Worm } from './types';
+import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type Sentry, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
 import { beamReach } from './collision';
 
@@ -70,6 +70,11 @@ export interface RenderState {
   campaignBannerKind?: number;
   /** Breakable file boxes. Local content; guests never receive these. */
   props?: readonly Prop[];
+  /** NETWORK SWITCH feed pipes. Local arena content. */
+  pipes?: readonly Pipe[];
+  firewallSwitchT?: number;
+  firewallSwitchDwell?: number;
+  firewallSwitchFlash?: number;
   /** Floor compactor: warning timer, the arm's leading edge, and the stop flash. */
   pusherWarnT?: number;
   pusherFlashT?: number;
@@ -455,6 +460,8 @@ export class Renderer {
       this.drawArena(t, state.arena, intro, state.discT ?? 0);
       if (introDone) {
         if (state.props) this.drawProps(state.props);
+        if (state.pipes) this.drawPipes(state.pipes, state.arena, t);
+        if (state.arena.firewallSwitch) this.drawFirewallSwitch(state, t);
         if (state.arena.pushers) this.drawPusher(state);
         if (state.firewalls) this.drawFirewalls(state.firewalls, state.arena, alpha, t);
         if (state.emitters) this.drawEmitters(state, t);
@@ -1378,6 +1385,9 @@ export class Renderer {
       const shake = b.hitFlash > 0 ? (b.hitFlash / FILE_PROP.hitFlash) * 2 : 0;
       const x = b.x + (shake > 0 ? Math.sin(b.hitFlash * 140) * shake : 0);
       const y = b.y - fall;
+      const hazard = b.hazard === true;
+      const edge = hazard ? '#ff6a4d' : 'rgba(255, 194, 77, 0.8)';
+      const mark = hazard ? '#ffd9c9' : 'rgba(255, 231, 178, 0.92)';
       ctx.save();
       if (fall > 0) {
         const shadow = 1 - fall / FILE_PROP.dropRise;
@@ -1393,20 +1403,190 @@ export class Renderer {
       ctx.fill();
       ctx.beginPath();
       ctx.roundRect(x + 3, y + 3, b.w - 6, b.h - 6, 4);
-      ctx.fillStyle = 'rgba(255, 194, 77, 0.13)';
+      ctx.fillStyle = hazard ? 'rgba(255, 74, 58, 0.24)' : 'rgba(255, 194, 77, 0.13)';
       ctx.fill();
+      if (hazard) {
+        ctx.strokeStyle = 'rgba(255, 90, 76, 0.35)';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.roundRect(x - 2, y - 2, b.w + 4, b.h + 4, 7);
+        ctx.stroke();
+      }
       ctx.beginPath();
       ctx.roundRect(x + 0.5, y + 0.5, b.w - 1, b.h - 1, 6);
-      ctx.strokeStyle = b.hitFlash > 0 ? '#fff4d4' : 'rgba(255, 194, 77, 0.8)';
+      ctx.strokeStyle = b.hitFlash > 0 ? '#fff4d4' : edge;
       ctx.lineWidth = 1.6;
       ctx.setLineDash([5, 4]);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(255, 231, 178, 0.92)';
+      ctx.fillStyle = mark;
       drawSymbol(ctx, PROP_GLYPHS[b.kind] ?? PROP_GLYPHS[1], x + b.w * 0.5, y + b.h * 0.5, 11);
       if (b.hp < FILE_PROP.hp) this.drawCracks(x + 1, y + 1, b.w - 2, b.h - 2, 1, 'rgba(4, 7, 11, 0.9)', i * 7 + b.kind);
       ctx.restore();
     }
+  }
+
+  /**
+   * NETWORK SWITCH feed pipes. The mouth faces the floor; the body runs back through the
+   * wall. Health is read as ticks along the housing, so a destroyed pipe can never be
+   * mistaken for a live feed.
+   */
+  private drawPipes(pipes: readonly Pipe[], arena: ArenaDef, t: number): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < pipes.length; i++) {
+      const pipe = pipes[i];
+      const live = pipe.active;
+      ctx.save();
+      ctx.translate(pipe.x, pipe.y);
+      ctx.rotate(pipe.angle);
+      ctx.globalAlpha = live ? 1 : 0.42;
+      // Housing and elbow.
+      ctx.fillStyle = live ? '#132a30' : '#101820';
+      ctx.strokeStyle = live ? arena.accent : 'rgba(130, 160, 170, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-64, -15, 64, 30, 9);
+      ctx.fill();
+      ctx.stroke();
+      ctx.globalAlpha = live ? 0.55 : 0.2;
+      ctx.strokeStyle = live ? arena.accent : '#7d929a';
+      ctx.lineWidth = 1;
+      for (let k = -50; k < -6; k += 11) {
+        ctx.beginPath();
+        ctx.moveTo(k, -12);
+        ctx.lineTo(k + 6, 12);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      // Mouth. A live pipe has a hot inner ring and a breathing intake halo.
+      ctx.beginPath();
+      ctx.arc(0, 0, pipe.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#071016';
+      ctx.fill();
+      ctx.strokeStyle = live ? arena.accent : '#566b73';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      if (live) {
+        const pulse = 0.62 + 0.28 * Math.sin(t * 5 + i);
+        ctx.globalAlpha = 0.2 * pulse;
+        ctx.strokeStyle = arena.accent;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, pipe.radius + 9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = arena.accent;
+        ctx.beginPath();
+        ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        // Health ticks on the housing.
+        for (let h = 0; h < pipe.maxHp; h++) {
+          ctx.globalAlpha = h < pipe.hp ? 0.95 : 0.2;
+          ctx.fillStyle = h < pipe.hp ? arena.accent : '#77909a';
+          ctx.fillRect(-55 + h * 8, 16, 5, 3);
+        }
+      } else {
+        ctx.strokeStyle = '#ff5a4c';
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(-9, -9);
+        ctx.lineTo(9, 9);
+        ctx.moveTo(9, -9);
+        ctx.lineTo(-9, 9);
+        ctx.stroke();
+      }
+      if (pipe.hitFlash > 0) {
+        ctx.globalAlpha = Math.min(1, pipe.hitFlash * 4);
+        ctx.strokeStyle = '#fff4d4';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, pipe.radius + 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (pipe.catchFlash > 0) {
+        ctx.globalAlpha = Math.min(1, pipe.catchFlash * 2);
+        ctx.strokeStyle = '#d7fff0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, pipe.radius - 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  /** The west-end firewall starter: a plate, a hot lamp and a rearm ring. */
+  private drawFirewallSwitch(state: RenderState, t: number): void {
+    const s = state.arena.firewallSwitch;
+    if (!s) return;
+    const cooldown = Math.max(0, state.firewallSwitchT ?? 0);
+    const ready = cooldown <= 0;
+    const dwell = Math.max(0, Math.min(1, (state.firewallSwitchDwell ?? 0) / NETWORK.switchDwell));
+    const flash = Math.max(0, state.firewallSwitchFlash ?? 0);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    // Recessed plate.
+    ctx.fillStyle = 'rgba(6, 18, 22, 0.9)';
+    ctx.strokeStyle = ready ? '#ff6a4d' : 'rgba(160, 185, 190, 0.4)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, s.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Hazard chevrons point along the sweep lane.
+    ctx.globalAlpha = ready ? 0.7 + 0.2 * Math.sin(t * 6) : 0.2;
+    ctx.strokeStyle = ready ? '#ff6a4d' : '#81969c';
+    ctx.lineWidth = 2;
+    for (let k = -1; k <= 1; k++) {
+      ctx.beginPath();
+      ctx.moveTo(k * 12 - 5, -9);
+      ctx.lineTo(k * 12, -2);
+      ctx.lineTo(k * 12 + 5, -9);
+      ctx.stroke();
+    }
+    // Lamp.
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = ready ? '#ff6a4d' : '#314047';
+    ctx.beginPath();
+    ctx.arc(0, 8, 6, 0, Math.PI * 2);
+    ctx.fill();
+    if (ready) {
+      ctx.globalAlpha = 0.25 + 0.15 * Math.sin(t * 5);
+      ctx.beginPath();
+      ctx.arc(0, 8, 13, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Cooldown ring. A lit arc returns as the switch rearms.
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = 'rgba(8, 14, 18, 0.9)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, s.radius - 7, 0, Math.PI * 2);
+    ctx.stroke();
+    if (cooldown > 0) {
+      const pct = 1 - Math.min(1, cooldown / NETWORK.switchCooldown);
+      ctx.strokeStyle = '#ff6a4d';
+      ctx.beginPath();
+      ctx.arc(0, 0, s.radius - 7, -Math.PI * 0.5, -Math.PI * 0.5 + pct * Math.PI * 2);
+      ctx.stroke();
+    }
+    if (dwell > 0) {
+      ctx.strokeStyle = '#ffe8b0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, s.radius - 13, -Math.PI * 0.5, -Math.PI * 0.5 + dwell * Math.PI * 2);
+      ctx.stroke();
+    }
+    if (flash > 0) {
+      ctx.globalAlpha = Math.min(1, flash * 2);
+      ctx.strokeStyle = '#ff6a4d';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(0, 0, s.radius + 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /**
@@ -7313,6 +7493,26 @@ export class Renderer {
       for (let i = 0; i < tr.lifts.length; i++) {
         ctx.strokeRect(x0 + (tr.lifts[i].x - b.left) * sx - 2, y0 + (tr.lifts[i].y - b.top) * sy - 2, 4, 4);
       }
+    }
+    if (state.pipes) {
+      for (let i = 0; i < state.pipes.length; i++) {
+        const pipe = state.pipes[i];
+        ctx.fillStyle = pipe.active ? arena.accent : 'rgba(125, 143, 148, 0.45)';
+        ctx.fillRect(x0 + (pipe.x - b.left) * sx - 2, y0 + (pipe.y - b.top) * sy - 2, 4, 4);
+      }
+    }
+    if (arena.firewallSwitch) {
+      ctx.strokeStyle = (state.firewallSwitchT ?? 0) <= 0 ? '#ff6a4d' : 'rgba(140, 160, 165, 0.6)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(
+        x0 + (arena.firewallSwitch.x - b.left) * sx,
+        y0 + (arena.firewallSwitch.y - b.top) * sy,
+        2.8,
+        0,
+        TWO_PI,
+      );
+      ctx.stroke();
     }
     // Emitters are a fixed hazard, so the minimap marks live fixtures as red wall studs.
     // Read the world list, not the arena data: a match carries no fixtures.

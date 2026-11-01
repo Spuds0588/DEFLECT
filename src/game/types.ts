@@ -77,6 +77,8 @@ export const SRC = {
   VOID: 8,
   /** Arena laser emitter. No body, so the death camera falls through like a firewall. */
   EMITTER: 9,
+  /** Arena feed pipe: a hostile file box or its intake. */
+  PIPE: 10,
 } as const;
 
 export const EV = {
@@ -155,6 +157,33 @@ export interface Prop {
   /** Target velocity. The box eases toward it, so a shove ramps in instead of snapping. */
   tx: number;
   ty: number;
+  /** Pipe-fed file: hurts a body on contact instead of only being shoved. */
+  hazard?: boolean;
+  /** Remaining grace before this hostile file can hit again. */
+  hurtCd?: number;
+}
+
+/**
+ * A destructible arena feed pipe. It cycles a hostile file and a threat into the floor;
+ * its intake also reclaims loose files and small threats. Local content only.
+ */
+export interface Pipe {
+  active: boolean;
+  x: number;
+  y: number;
+  /** Aim of the mouth, radians. The body runs back opposite this angle into the wall. */
+  angle: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+  /** Countdown to the next emission. */
+  fireT: number;
+  /** Number of emissions so far; alternates file and threat. */
+  shots: number;
+  hitFlash: number;
+  /** Short glow after an intake swallow. */
+  catchFlash: number;
+  catchT: number;
 }
 
 export interface Player {

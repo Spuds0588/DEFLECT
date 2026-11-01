@@ -131,6 +131,25 @@
     "reflectKnockback": 620,
     "gatherDots": 12
   },
+  "NETWORK": {
+    "pipeHp": 6,
+    "pipeRadius": 30,
+    "pipeInterval": 7.4,
+    "pipeFirst": 2.2,
+    "fileSpeed": 330,
+    "fileDamage": 1,
+    "fileKnockback": 420,
+    "fileHurtCooldown": 1.1,
+    "maxFiles": 4,
+    "filePool": 6,
+    "catchRadius": 82,
+    "catchCooldown": 0.35,
+    "catchPull": 520,
+    "switchDwell": 0.65,
+    "switchCooldown": 180,
+    "switchFlash": 0.7,
+    "pipeBlastDamage": 2
+  },
   "ATTRACT": {
     "idle": 24,
     "wave": 72,

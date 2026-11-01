@@ -18,7 +18,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
   infected thralls, with a local top-eight table.
 - **CAMPAIGN:** the first story node, `BUILD ROOT`, with three local save slots.
 - **Online:** host or join a room for up to 8 players.
-- Eleven programs, nine arenas.
+- Eleven programs, ten arenas.
 
 Everything below is the current alpha, including the rough edges.
 
@@ -73,6 +73,12 @@ risk. The same saved rule applies to a campaign run. When your last health segme
 the results overlay records your callsign, arena, wave reached, survival time and kills. There is no
 in-run respawn; training is the practice space.
 
+`NETWORK SWITCH` is a rectangular feed floor: four destructible pipes on the long walls alternate
+launching hostile file boxes and enemies into the room. The boxes damage on contact; the pipes also have
+an intake that pulls loose files and small threats into the mouth. Shoot a pipe down and that feed and its
+intake stop for the rest of the run. The west-end firewall plate starts one sweep from the far wall and
+rearms after three minutes.
+
 The setup screen shows the local top eight runs, ranked by wave, then survival time, then kills. The
 title menu shows your best wave beside the gauntlet option. Records live in `localStorage` and never enter
 a network snapshot. Waves are 30 s and the ramp is deliberately slow: worms arrive at wave 3, viruses at
@@ -104,8 +110,9 @@ threats hold.
   plant, one block every 4.0 s early and 2.0 s at full pressure, hurt on contact, and take three hits to
   delete a single block. The first colony starts at four blocks and the live cap grows over many waves.
 - **FIREWALLS:** orange beams that warn, then sweep across the arena burning players, worms and viruses.
-  Pillars cut both the visible beam and the damage. Automatic firewalls are **off**; they are reserved
-  for a future destructible switch on selected arenas.
+  Pillars cut both the visible beam and the damage. Automatic firewalls are **off**. `NETWORK SWITCH`
+  carries one manual starter at its west end: stand on the plate to launch a sweep, then wait three
+  minutes for it to rearm.
 - **HEALTH:** enemy hit points are deliberately low so a crowded screen can be cleared. Worms, viruses,
   errors and shooters all die faster than in v0.1.8; firewalls burn enemy factions harder.
 
