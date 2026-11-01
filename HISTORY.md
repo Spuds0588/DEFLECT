@@ -3317,3 +3317,17 @@ mark goes 1 → 3 icons over 0.8 s and the target drops 2 health; no console err
 
 **Next:** human playtest the chain spacing, the copy's 8 s window and the redaction's 2/3 damage. The new
 arena is still blocked on a layout brief.
+
+## 2026-11-01 — COPY_PASTA.EXE display spelling (v0.1.70)
+
+**Goal:** the brief spells the new player character `copy_pasta.exe`; the first ship used `COPYPASTA.EXE`.
+
+- Renamed only the roster display string to `COPY_PASTA.EXE`, matching the `BAD_LAG.EXE` two-word
+  convention. The internal key, tuning block, probe and code paths remain `COPYPASTA` so no behavior,
+  save data or kit numbers moved.
+- No mechanical change: same file chain, bot copy and redaction super.
+
+**Verification:** `npx tsc --noEmit` clean; `npm run build` clean (608.55 kB JS / 168.95 kB gzip, 48.60 kB
+CSS). Production select card and How to Play roster read `COPY_PASTA.EXE`.
+
+**Next:** the arena layout brief is still outstanding; Copy Pasta's first human playtest is still pending.

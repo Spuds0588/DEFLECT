@@ -217,7 +217,7 @@ export const PROGRAMS: readonly ProgramDef[] = [
   },
   {
     id: PROGRAM_ID.COPYPASTA,
-    name: 'COPYPASTA.EXE',
+    name: 'COPY_PASTA.EXE',
     role: 'DUPLICATE',
     note: 'CHAINING FILES // BOT COPY // REDACTION',
     color: PROGRAM_COLORS.copy,

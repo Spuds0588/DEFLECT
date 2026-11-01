@@ -2,7 +2,19 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-01 (v0.1.69 copypasta)
+Last updated: 2026-11-01 (v0.1.70 copy_pasta name)
+
+---
+
+## v0.1.70 — COPY_PASTA.EXE display spelling (2026-11-01)
+
+### Built
+- [x] Align the roster display name with the brief's spelling: `COPY_PASTA.EXE`. The internal program key,
+      tuning block and probe stay `COPYPASTA`; only the user-facing name changed
+
+### Verification
+- [x] `npx tsc --noEmit` clean; `npm run build` clean
+- [x] Production select card and How to Play roster read `COPY_PASTA.EXE`
 
 ---
 

@@ -1480,9 +1480,9 @@ The alpha is hosted from `main` with GitHub Actions: `.github/workflows/pages.ym
 be **GitHub Actions**; serving the raw branch would expose unbundled TypeScript instead of the game. The
 play URL is <https://spuds0588.github.io/DEFLECT/>.
 
-### D33 — COPYPASTA.EXE: file chain, bot copy, redaction super (built 2026-11-01)
+### D33 — COPY_PASTA.EXE: file chain, bot copy, redaction super (built 2026-11-01)
 
-`COPYPASTA.EXE` is the roster's **duplicate** program (id 11, `bugKind` 14). Identity: `PROGRAM_COLORS.copy`
+`COPY_PASTA.EXE` is the roster's **duplicate** program (id 11, `bugKind` 14). Identity: `PROGRAM_COLORS.copy`
 (`#ffe95c`), a hull of three upright file icons (one per health segment) orbiting at 0.8r, and a vector
 two-square copy stamp (`drawCopyMark`). The file hull's inner edge is 0.61r, so it clears the full core
 disc; the files stay upright while the ring turns. Do not turn the hull into a polygon: the three documents
