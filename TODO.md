@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-02 (SPEAK & FIND and CAR NAVIGATION)
+Last updated: 2026-11-02 (FAX MACHINE)
 
 ---
 
@@ -28,6 +28,64 @@ Last updated: 2026-11-02 (SPEAK & FIND and CAR NAVIGATION)
 - [x] Hide the panel with `GAME UI`, loading and overlays; older peers degrade to `--`
 - [x] `npx tsc --noEmit` clean
 - [ ] Two-real-client pass: verify RTT, snapshot cadence, disconnect fallback and legacy-peer `--` state
+
+---
+
+## FAX MACHINE (2026-11-02)
+
+- [x] Add `fax` data to `ArenaDef`; id 25 after SPACE INVADERS
+- [x] Add a 1254×758 fax sheet with four corner toner-drum/paper-stack cover pieces
+- [x] Add a thermal print carriage that shuttles left and right across the page
+- [x] Make the vertical print bar a once-per-pass hazard for players, the drone and all gauntlet threat families
+- [x] Park and telegraph at each edge before reversing; add `SRC.FAX`
+- [x] Reset the shuttle, page and hit masks in `beginRound()`; keep all of it out of `SnapshotHazards` and `isOnlineArena`
+- [x] Custom renderer and picker preview
+- [x] Headless probe (`.tmp/fax-arena-check.ts`): id/order, page stack, all four phases, rail bounds, live `SRC.FAX` hit and snapshot isolation
+- [ ] Headed pass: read the carriage, vertical bar and reversal telegraph at play size
+- [ ] Optional: add a bot dodge response to the print bar
+
+---
+
+## SPACE INVADERS (2026-11-02)
+
+- [x] Add `invaders` data to `ArenaDef`; id 24 after AIRPORT
+- [x] Five-row, ten-column pixel invader fleet as presentation; players spawn inside it
+- [x] Three green bunkers as static cover between the fleet and the cannon
+- [x] Simulated bottom cannon tracks the nearest live body and fires upward local shots
+- [x] Cannon shots damage players, the training drone and all gauntlet threat families; bunkers stop shots
+- [x] Reset cannon, aim line and shots in `beginRound()`; keep all of it out of `SnapshotHazards` and `isOnlineArena`
+- [x] Custom arena renderer and picker preview
+- [x] Headless probe (`.tmp/invaders-arena-check.ts`): id/order, fleet size, bunkers, spawn safety, cannon tracking, `SRC.ARCADE` hit, reset and snapshot isolation
+- [ ] Headed pass: read the fleet, bunkers, aim lane and cannon shots at play size
+- [ ] Optional: add a bot dodge response to the aim lane
+
+---
+
+## AIRPORT (2026-11-02)
+
+- [x] Add `flip` data to `ArenaDef`; id 23 after PONG
+- [x] Six-row arrivals/departures board with cycling time decks and gate/status labels
+- [x] Staggered split-flap hazard: warning pulse, flap landing, damage and shove on each time tile
+- [x] Terminal furniture and gate-window presentation; benches remain static cover
+- [x] Reset the board clock and row states in `beginRound()`; keep it out of `SnapshotHazards` and `isOnlineArena`
+- [x] Custom arena renderer and picker preview
+- [x] Headless probe (`.tmp/airport-arena-check.ts`): id/order, arrivals/departures split, time-tile bounds, spawn safety, flap timing, hazard damage, `SRC.FLIP`, reset and snapshot isolation
+- [ ] Headed pass: read the time tiles and warning pulse against the flight text at play size
+- [ ] Optional: teach bot navigation to avoid warning tiles if the hazard proves too punishing
+
+---
+
+## PONG (2026-11-02)
+
+- [x] Add `pong` data to `ArenaDef`; id 22 after CAR NAVIGATION
+- [x] Green CRT court with automatic paddles, scoreboard, scanlines and cabinet presentation
+- [x] Live rally ball: wall bounces, paddle returns, point scoring and delayed serves
+- [x] Ball damages players, the training drone and every gauntlet threat family; dashing bodies avoid it
+- [x] Reset score, paddles and rally in `beginRound()`; keep the arena out of `SnapshotHazards` and `isOnlineArena`
+- [x] Custom arena renderer and picker preview
+- [x] Headless probe (`.tmp/pong-arena-check.ts`): id/order, court bounds, spawn safety, serve, movement, paddle bounds, hazard hit, reset and snapshot isolation
+- [ ] Headed pass: read the ball/paddle contrast and score hierarchy at play size
+- [ ] Optional: replace the perfect auto-paddles with a deliberate difficulty curve if the rally needs more scoring
 
 ---
 
@@ -3130,7 +3188,7 @@ arrive.
   or local match exists yet; the only local multi-body paths today are bots and the gauntlet thrall.
 - Story mode lists three local save slots, but nothing writes or reads a run: the first playable sector
   and the new-game/resume wiring do not exist. The slot format is already versioned in `saves.ts`.
-- ROCKET NAVIGATION's growing barrier and CAR NAVIGATION's growing route are not in the bot nav grid or any snapshot. Bots can path through them while short, and both maps are deliberately excluded from hosted rooms. WEAPON SYSTEMS' console banks and SPEAK & FIND's picture cards are static cover/presentation only; no jet weapon, eject action, thruster system or pickable card target exists.
+- ROCKET NAVIGATION's growing barrier, CAR NAVIGATION's growing route, AIRPORT's time-tile hazard, SPACE INVADERS' cannon shots and FAX MACHINE's shuttle print bar are not in the bot nav grid or any snapshot. Bots can path through them, stand on a warning tile, eat a cannon shot or stand in the print bar; those maps are deliberately excluded from hosted rooms. PONG's rally ball is local-only and not part of bot pathing; its court has no static cover. WEAPON SYSTEMS' console banks and SPEAK & FIND's picture cards are static cover/presentation only; no jet weapon, eject action, thruster system or pickable card target exists.
 - Compress is local-only like every program kit: a guest does not see a shrunk body and online still runs
   Probe. A compressed player's cover and arena-bound collision still use `PLAYER.radius` even though the
   drawn hull and projectile/bomb hitboxes shrink. A shrunk worm's contact and bite reach stay at the

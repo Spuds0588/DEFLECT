@@ -85,6 +85,14 @@ export const SRC = {
   SCANNER: 12,
   /** Browser cursor click slam. No body, so the death camera falls through. */
   BROWSER: 13,
+  /** PONG rally ball. No body, so the death camera falls through. */
+  PONG: 14,
+  /** AIRPORT split-flap time tile. No body, so the death camera falls through. */
+  FLIP: 15,
+  /** SPACE INVADERS simulated arcade cannon. No body, so the death camera falls through. */
+  ARCADE: 16,
+  /** FAX MACHINE shuttle print bar. No body, so the death camera falls through. */
+  FAX: 17,
 } as const;
 
 export const EV = {
@@ -172,6 +180,13 @@ export interface Prop {
 }
 
 /** One micro-meteor in a SATELLITE shower. Presentation and host damage share it. */
+export interface InvaderShot {
+  active: boolean;
+  x: number;
+  y: number;
+  vy: number;
+}
+
 export interface SatelliteMeteor {
   active: boolean;
   x: number;

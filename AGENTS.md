@@ -2116,6 +2116,83 @@ records; ids **20** and **21** follow WEAPON SYSTEMS. Neither changes player hea
   the rocket arc), so bots can path through it while it is short. This is acceptable for the local display
   arena until the barrier gets a nav representation or online support.
 
+### D50 — PONG is a local rally arena (built 2026-11-02)
+
+PONG is id **22**, after CAR NAVIGATION. `ArenaPongDef` owns the court, paddle dimensions, serve speed,
+serve delay, bounce angle and damage. The cabinet, scanlines, scoreboard and paddle labels are
+presentation. This is an arcade screen used as a floor, not a second game mode.
+
+- `World` advances one live rally: automatic paddles track the ball, the ball bounces off the court's top
+  and bottom, and a missed ball scores for the opposite side then serves again after `serveDelay`.
+  `beginRound()` resets the score, paddles, serve clock and ball.
+- The ball is a **local hazard**. It damages and ricochets off players, the training drone and every
+  gauntlet threat family. Dashing and phased bodies avoid it. The death source is `SRC.PONG`.
+- Paddles are screen rails, not body or shot cover. Players may stand on them; only the ball threatens a
+  body. Do not add paddle collision without a separate dynamic-cover decision and bot-navigation work.
+- Keep PONG **local-only** through `isOnlineArena`; its rally ball and score are not in `SnapshotHazards`.
+  A guest has no court presentation, so do not add it to hosted rooms or series without a protocol
+  decision and guest tests.
+- The court has no static cover by design. The moving ball is the arena's pressure; adding pillars would
+  make the ball read as random rather than as a Pong rally.
+
+### D51 — AIRPORT is a local split-flap hazard (built 2026-11-02)
+
+AIRPORT is id **23**, after PONG. `ArenaFlipDef` owns a six-row arrivals/departures board, the time-tile
+geometry and the flip cycle. The flight text, gate labels, terminal furniture and gate windows are
+presentation. This is a terminal floor used as an arena, not a campaign/terminal simulation.
+
+- Six time tiles are the hazard. `World` advances `flipT` and resolves a staggered wave through
+  `flipRowStateAt`; a tile warns, then `slamFlipRow` damages and shoves anything on its footprint. The
+  board text cycles through each row's `times` deck with `flipRowTimeAt`. `beginRound()` rearms the clock.
+- The board's time cells are **not solid cover**. They are floor hazard tiles: bodies can walk over them,
+  and the flip is dodged by leaving the tile or being airborne in a dash. The benches and desks in
+  `pillars` are the static cover.
+- Keep AIRPORT **local-only** through `isOnlineArena`; its flip clock and row states are not in
+  `SnapshotHazards`. Do not add it to hosted rooms or series without a protocol decision and guest tests.
+- Known limitation: the precomputed bot nav grid cannot represent the moving time-tile hazard, so bots can
+  stand on a warning tile. Keep the warning readable rather than making the tile a hidden trap.
+- All timing and damage values live on the arena record; do not add a second flip clock or a global board
+  constant in `World`.
+
+### D52 — SPACE INVADERS is a local cannon arena (built 2026-11-02)
+
+SPACE INVADERS is id **24**, after AIRPORT. `ArenaInvadersDef` owns the presentation fleet, cannon geometry,
+shot speed, cadence, telegraph and damage. The fleet, starfield, score readout and cannon are presentation;
+the three bunkers in `pillars` are static cover.
+
+- A simulated arcade player patrols the bottom (`invaderCannonX`), picks the nearest horizontal live body and
+  fires upward shots from `invaderShots`. Shots stop on bunkers and damage players, the training drone and
+  every gauntlet threat family. Dashing and phased bodies avoid them. The death source is `SRC.ARCADE`.
+- `resetInvaders()` clears the cannon, aim lead-in and all shots; `beginRound()` calls it. The cannon, shots,
+  aim line and fleet clock are local simulation only.
+- Keep SPACE INVADERS **local-only** through `isOnlineArena`; none of its state is in `SnapshotHazards`. Do
+  not add it to hosted rooms or series without a protocol decision and guest tests.
+- Do not make the invader formation collision. It is the painted enemy-fleet floor; the bunkers are the
+  readable cover. Do not add a second projectile system for the cannon; its local shot array is the hazard.
+- Known limitation: the cannon targets and shoots bots without a bot-specific dodge response, and the bunkers
+  are already in the nav grid while the cannon shots are not.
+
+### D53 — FAX MACHINE is a local shuttle-print arena (built 2026-11-02)
+
+FAX MACHINE is id **25**, after SPACE INVADERS. `ArenaFaxDef` owns the page bed, document stack, print-head
+width, travel speed, edge pause and damage values. The page copy, routing block, chassis, rails and status
+labels are presentation; the four corner toner drums and paper stacks in `pillars` are static cover.
+
+- The shuttle has four derivation phases: parked left, printing right, parked right, printing left. It
+  begins parked at the left edge, then crosses, pauses and returns. `faxCycle()`, `faxPhaseAt()` and
+  `faxHeadX()` are the single source of truth for the renderer and the world.
+- The vertical thermal bar is the hazard. It damages players, the training drone and every gauntlet threat
+  family once per pass, with `SRC.FAX` as the death source. Dashing and phased bodies avoid it. A parked
+  head is never hot; the pause is the reversal telegraph.
+- `resetFax()` clears the clock, page and per-pass hit masks; `beginRound()` calls it. The head, page, phase
+  and print bar are local simulation only.
+- Keep FAX MACHINE **local-only** through `isOnlineArena`; none of its state is in `SnapshotHazards`. Do not
+  add it to hosted rooms or series without a protocol decision and guest tests.
+- The sheet is a floor object, not solid cover. Do not add the carriage as a body or projectile collider; the
+  hot bar is the only physical rule. Do not add a second scanner read line to this map.
+- Known limitation: the precomputed bot nav grid cannot represent the moving print bar, so bots can stand
+  in its path. Keep the parked blinking bar and the hot pass readable rather than making it a hidden trap.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

@@ -19,7 +19,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **CAMPAIGN:** `BUILD ROOT`, the first playable story level, with three local save slots. More levels are coming soon.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
-- Thirteen programs, twenty-two arenas.
+- Thirteen programs, twenty-six arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
@@ -326,6 +326,10 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `WEAPON SYSTEMS` | A fighter-jet status screen built as a cockpit floor. Three large console banks are real cover: `FIRE WEAPONS`, `EJECTOR SEAT` and `THRUSTERS`. The jet silhouette, status readouts and target reticle are display art; the buttons do not grant a jet weapon, eject a body or change thrust. Local-only presentation with static cover. |
 | `SPEAK & FIND` | A bright children's talking-picture toy. A prompt screen calls out a picture (`FIND THE BOAT`, `FIND THE MOON`) and the matching card pulses while a magnifier sweeps the board. Four chunky letter keys are static cover. The prompt, cards and magnifier are display art; they do not grant items or score. Local-only presentation. |
 | `CAR NAVIGATION` | A GPS map screen with a serpentine route across the floor. The car drives from below the left lip to the upper-right map edge over 26 s; the travelled portion is a real barrier that bodies, dashes and shots cannot cross, and the finished route divides the arena into north and south halves. The car, stop pins, city blocks and speed/ETA/next-turn readout are presentation. Local-only: the route clock is not in the snapshot. |
+| `PONG` | A green phosphor CRT court with two automatic paddles. A square rally ball serves from the centre, bounces off the top and bottom walls, and is returned by the paddles; a missed ball scores and serves again. The ball is a real local hazard: a body on its line takes a segment and is shoved, and the ball ricochets away. The cabinet, scanlines, scoreboard and paddle labels are presentation, and the court has no static cover. Local-only: the rally ball and score are not in the snapshot. |
+| `AIRPORT` | A terminal floor under a split-flap arrivals/departures board. Six flight rows split three arrivals and three departures; the six large time tiles cycle through new times. Every tile warns with an amber pulse, then the flap lands and damages and shoves anything standing on it. The flight text, gate labels, benches and gate windows are presentation. Local-only: the flip clock and tile states are not in the snapshot. |
+| `SPACE INVADERS` | A black arcade fleet floor. Players fight inside a five-row, ten-column formation of pixel invaders, with three green bunkers as the static cover. A simulated arcade cannon patrols the bottom, tracks the nearest body and fires upward shots; the shots damage players and gauntlet threats and stop on bunkers. The fleet, starfield, score readout and cannon are presentation; the shots are the hazard. Local-only: the cannon, aim line and shots are not in the snapshot. |
+| `FAX MACHINE` | A giant incoming fax sheet with corner toner drums and paper stacks as cover. A thermal print carriage shuttles left and right across the page; its vertical print bar damages players and gauntlet threats once per pass, then parks and reverses at each edge. The sheet copy, routing block and status labels are presentation. Local-only: the shuttle clock, page and phase are not in the snapshot. |
 | `SATELLITE` | A long orbital hull joined to two solar wings by narrow bridges, with a telescoping mast below and three capacitor pods above. Only those plates are floor; the gaps are open space. The wings warn, then burn anyone standing on them on independent 16 s cycles. Micro-meteors fall every 12.5 s. Destroy all three capacitors and the thrusters fire: a heat front climbs the whole map from the bottom for 14 s, then the satellite cools and the pods return. Online: the satellite clock, live meteors, capacitor states and reentry front are synced; the host still resolves every hit. |
 
 ### Ordinary programs
@@ -416,8 +420,9 @@ A hosted match never arms the emitters: they remain local content and nothing ab
 snapshot. The compactor, keypad, scanner, browser, USB, swipe and satellite are different: their clocks are
 carried, so those maps also open online. The pipe/firewall arenas still stay local because their spawned
 threats are not in the snapshot. ROCKET NAVIGATION's launch wall, WEAPON SYSTEMS' cockpit console,
-SPEAK & FIND's card board and CAR NAVIGATION's route clock are local-only display content and are not in
-that clock list.
+SPEAK & FIND's card board, CAR NAVIGATION's route clock, PONG's rally ball, AIRPORT's flip clock,
+SPACE INVADERS' simulated cannon and FAX MACHINE's shuttle print bar are local-only display content and
+are not in that clock list.
 
 ## Attract demo and kiosk
 

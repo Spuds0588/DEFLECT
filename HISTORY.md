@@ -4779,3 +4779,110 @@ and is local-only; the SPEAK & FIND cards are display art rather than collectibl
 
 **Next:** play both maps at full size, then decide whether the car route needs a bot-nav representation or
 an online snapshot clock.
+
+## 2026-11-02 — PONG arena (v0.1.116)
+
+**Goal:** add the requested arcade-game arena with a live Pong court, not another static display board.
+
+- Added `ArenaPongDef` and `ArenaDef.pong`; PONG is id 22 after CAR NAVIGATION. The court is
+  `1460 × 780` with no static cover, two automatic paddles, a square ball, a delayed serve and a scoreboard.
+- `World` owns the rally: paddles track the ball, top and bottom walls return it, a missed ball scores for the
+  opposite side, and `beginRound()` resets the score, paddles and serve. The ball is a local hazard that
+  damages and ricochets off players, the training drone and every gauntlet threat family; dashing or phased
+  bodies avoid it. Added `SRC.PONG` for the death source.
+- Added a CRT cabinet renderer with phosphor scanlines, score digits, paddle rails and point flash, plus a
+  picker preview. Local-only through `isOnlineArena`; the rally and score are not in `SnapshotHazards`.
+- Updated README, GAME_GUIDE, AGENTS D50 and TODO.
+
+**Verification:** `.tmp/pong-arena-check.ts` passes 23-arena order, id 22, court bounds, eight safe spawns,
+serve and ball movement, paddle bounds, a body hit for three segments with `SRC.PONG`, round reset and
+`SnapshotHazards === null`. `npm run build` passes (includes `tsc --noEmit`): 827.70 kB JS / 230.60 kB gzip,
+51.04 kB CSS / 11.39 kB gzip, with the existing chunk-size warning. `npm run bench` clean: 8P max projectiles
+0.073 ms avg / 0.224 ms p99; gauntlet max 0.172 ms avg / 0.520 ms p99, 28.4 threats. `git diff --check` clean.
+
+**Limitations:** no headed playtest was run. Both paddles are automatic and the rally scores rarely (one
+point per side in a 180-second idle simulation), so the scoreboard is mostly set dressing. The moving ball is
+not in bot pathing; bots can be caught by it.
+
+**Next:** read the court at play size, then tune paddle speed or serve angles if the rally needs more scoring.
+
+## 2026-11-02 — AIRPORT flip-board arena (v0.1.117)
+
+**Goal:** turn the airport arrivals/departures board into a finished local arena whose flipping numbers are
+an actual floor hazard.
+
+- Added `ArenaFlipDef` and `ArenaDef.flip`; AIRPORT is id 23 after PONG. Six flight rows split three arrivals
+  and three departures; each row owns a time deck and destination/gate/status labels.
+- Added `FLIP_STATE` plus row phase/state/flap/time helpers. The board advances through warning, flap and
+  idle states in a staggered wave; `flipTimeRectAt` keeps the collision footprint and the rendered tile in
+  sync. `beginRound()` rearms the board.
+- Added six time tiles as local hazards: a flap damages and shoves players, the training drone and every
+  gauntlet threat family. `SRC.FLIP` identifies the death source. Dashes and phased bodies avoid the hit.
+- Added a terminal-floor renderer with gate windows, check-in/baggage/cafe/gates benches, amber board
+  housing, section labels, clock strings and a split-flap sweep across the numbers. Added a picker preview.
+- AIRPORT is local-only through `isOnlineArena`; its clock and row states never enter `SnapshotHazards`.
+- Updated README, GAME_GUIDE, AGENTS D51 and TODO.
+
+**Verification:** `.tmp/airport-arena-check.ts` passes 24-arena order, id 23, six rows (3 arrivals/3
+departures), six time tiles, board/tile bounds, spawn safety, flap timing, a real one-segment hazard hit with
+`SRC.FLIP`, round reset and `SnapshotHazards === null`. `npm run build` passes (includes `tsc --noEmit`):
+836.83 kB JS / 232.93 kB gzip, 51.04 kB CSS / 11.39 kB gzip, with the existing chunk-size warning.
+`npm run bench` clean: 8P max projectiles 0.067 ms avg / 0.149 ms p99; gauntlet max 0.169 ms avg / 0.600 ms
+p99, 28.4 threats. `git diff --check` clean.
+
+**Limitations:** no headed playtest was run. The time tiles are not represented in bot navigation, so a bot
+can stand on a warning tile; the flip text and terminal furniture are presentation only.
+
+**Next:** play it at full size, then decide whether warning tiles need a bot-navigation repulsion pass.
+
+## 2026-11-02 — SPACE INVADERS simulated cannon arena (v0.1.118)
+
+**Goal:** put the players inside the invaders' part of an arcade screen and make the simulated arcade
+player at the bottom a real local threat.
+
+- Added `ArenaInvadersDef` and `ArenaDef.invaders`; SPACE INVADERS is id 24 after AIRPORT. The painted
+  fleet is five rows by ten columns of pixel invaders, with three green bunkers as static cover.
+- Added a simulated cannon that patrols the bottom, tracks the nearest horizontal live body and fires
+  upward local shots. The shots stop on bunkers and damage players, the training drone and every gauntlet
+  threat family; dashing or phased bodies avoid them. Added `SRC.ARCADE` and the local `InvaderShot` type.
+- Added a neon fleet/starfield renderer, bunker silhouettes, an aim lane, muzzle flash, local shots and a
+  picker preview. `beginRound()` resets the cannon and clears its shots. The fleet is presentation only.
+- SPACE INVADERS is local-only through `isOnlineArena`; its cannon, aim line and shots never enter
+  `SnapshotHazards`. Updated README, GAME_GUIDE, AGENTS D52 and TODO.
+
+**Verification:** `.tmp/invaders-arena-check.ts` passes 25-arena order, id 24, a 5×10 fleet, three bunkers,
+safe spawns, cannon tracking, a two-segment `SRC.ARCADE` hazard hit, round reset and
+`SnapshotHazards === null`. `npm run build` passes (includes `tsc --noEmit`): 845.42 kB JS / 235.31 kB gzip,
+51.04 kB CSS / 11.39 kB gzip, with the existing chunk-size warning. `npm run bench` clean: 8P max projectiles
+0.065 ms avg / 0.128 ms p99; gauntlet max 0.208 ms avg / 0.813 ms p99, 28.4 threats. `git diff --check` clean.
+
+**Limitations:** no headed playtest was run. The cannon shots are local-only and bots do not dodge the aim
+lane; the invader fleet is painted presentation, not collision.
+
+**Next:** play it at full size, then add a bot dodge response to the cannon aim lane if it reads as too harsh.
+
+## 2026-11-02 — FAX MACHINE shuttle-print arena (v0.1.119)
+
+**Goal:** add a scanner-style document arena where the hazard is a printer head moving back and forth.
+
+- Added `ArenaFaxDef` and `ArenaDef.fax`; FAX MACHINE is id 25 after SPACE INVADERS, with a 1254×758
+  incoming fax sheet and four corner toner-drum/paper-stack cover pieces.
+- Added a thermal carriage that shuttles left and right across the page, parks and blinks at each edge, then
+  reverses. The vertical print bar damages players, the training drone and every gauntlet threat family once
+  per pass; dashing and phased bodies avoid it. Added `SRC.FAX` and the four `FAX_STATE` phases.
+- Added a custom fax renderer with sheet copy, routing block, rails, carriage, feed rollers, hot bar and
+  reversal telegraph, plus a picker preview. `resetFax()` clears the clock, page and pass masks on round start.
+- FAX MACHINE is local-only through `isOnlineArena`; its shuttle and pages never enter `SnapshotHazards`.
+  Updated README, GAME_GUIDE, AGENTS D53 and TODO.
+
+**Verification:** `.tmp/fax-arena-check.ts` passes 26-arena order, id 25, four phases, a 9.47 s cycle,
+rail-bounded travel 349..1545, a live hit at 2.72 s using `SRC.FAX`, one segment of damage, round reset and
+`SnapshotHazards === null`. `npm run build` passes (includes `tsc --noEmit`): 854.22 kB JS / 237.20 kB gzip,
+51.04 kB CSS / 11.39 kB gzip, with the existing chunk-size warning. `npm run bench` clean: 8P max projectiles
+0.064 ms avg / 0.123 ms p99; gauntlet max 0.147 ms avg / 0.488 ms p99, 28.4 threats. `git diff --check` clean.
+
+**Limitations:** no headed playtest was run. The shuttle is local-only and bots do not dodge the print bar;
+its vertical bar is a floor hazard, not solid cover.
+
+**Next:** play the carriage and reversal telegraph at full size, then add a bot sidestep if the bar feels
+unavoidable in the centre.

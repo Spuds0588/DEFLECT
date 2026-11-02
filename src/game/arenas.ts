@@ -444,6 +444,99 @@ export interface ArenaCarDef {
 }
 
 /**
+ * PONG: a CRT-shaped court with two automatic paddles and a live rally ball. The
+ * ball is a real local hazard; the cabinet, scanlines and scoreboard are presentation.
+ * Local-only because the rally clock and ball are not in Snapshot.
+ */
+export interface ArenaPongDef {
+  /** The playable screen rectangle. The ball bounces inside its top and bottom. */
+  court: Rect;
+  ballRadius: number;
+  paddleW: number;
+  paddleH: number;
+  /** Horizontal distance from a court side to that paddle's centre. */
+  paddleInset: number;
+  /** Maximum paddle travel per second while tracking the ball. */
+  paddleSpeed: number;
+  /** Serve speed, in world units per second. */
+  speed: number;
+  /** Speed cap after paddle and body returns. */
+  maxSpeed: number;
+  /** Delay after a point before the next serve. */
+  serveDelay: number;
+  /** Maximum return angle away from horizontal, radians. */
+  bounceAngle: number;
+  damage: number;
+  enemyDamage: number;
+  knockback: number;
+}
+
+/** One flight row on the airport split-flap board. Times cycle through the deck. */
+export interface ArenaFlipRowDef {
+  section: 'ARRIVALS' | 'DEPARTURES';
+  times: string[];
+  destination: string;
+  gate: string;
+  status: string;
+}
+
+/**
+ * AIRPORT: a terminal floor whose arrivals/departures split-flap board is a real
+ * hazard. The time tiles flip in a staggered wave and damage bodies standing on them.
+ * The flight text and terminal furniture are presentation. Local-only because the
+ * flip clock is not in SnapshotHazards.
+ */
+export interface ArenaFlipDef {
+  board: Rect;
+  rows: ArenaFlipRowDef[];
+  headerH: number;
+  rowH: number;
+  /** Time tile footprint, starting at the board's left inset. */
+  timeW: number;
+  timeH: number;
+  /** Seconds for one complete time-tile cycle. */
+  period: number;
+  /** Warning lead-in before the flap lands. */
+  warn: number;
+  /** Seconds the flap animation runs. */
+  flap: number;
+  /** Offset between adjacent rows, so the board flips as a wave. */
+  stagger: number;
+  damage: number;
+  enemyDamage: number;
+  knockback: number;
+}
+
+/**
+ * SPACE INVADERS: a local arcade floor. Players fight inside the invader formation
+ * while a simulated cannon patrols the bottom and fires upward. The fleet is
+ * presentation; the cannon, its shots and the bunkers are the local hazard/cover.
+ */
+export interface ArenaInvadersDef {
+  /** Presentation-only formation of invader sprites. */
+  fleet: Rect;
+  rows: number;
+  cols: number;
+  cannon: {
+    /** Starting centre. The simulated player moves along the bottom. */
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    speed: number;
+  };
+  shotSpeed: number;
+  shotRadius: number;
+  /** Seconds between shots once the cannon is aligned with a target. */
+  fireEvery: number;
+  /** Aim-line lead-in before a ready cannon fires. */
+  telegraph: number;
+  damage: number;
+  enemyDamage: number;
+  knockback: number;
+}
+
+/**
  * A breakable file box. Bodies step over it; shots and lashes delete it in one or two
  * hits. Kind is a `PROP` id, which picks the mark on the box.
  */
@@ -522,6 +615,24 @@ export interface ArenaKeypadDef {
  */
 export interface ArenaScannerDef extends Rect {
   documents: string[];
+}
+
+/**
+ * A fax bed under a thermal print head. The head shuttles left and right across the
+ * sheet, pauses at each edge, then returns. The page labels are cosmetic; the timing
+ * and hazard values live on this record because the arena is local-only.
+ */
+export interface ArenaFaxDef extends Rect {
+  documents: string[];
+  /** Width of the moving head and its hot print bar. */
+  headW: number;
+  /** Travel speed in world units per second. */
+  speed: number;
+  /** Park time at each edge before the carriage reverses. */
+  pause: number;
+  damage: number;
+  enemyDamage: number;
+  knockback: number;
 }
 
 /** One tab in the browser chrome. Width is data so the strip stays editable. */
@@ -681,6 +792,49 @@ export function scannerLaserY(scanner: ArenaScannerDef, t: number): number {
   return -1;
 }
 
+export const FAX_STATE = {
+  readyLeft: 0,
+  printRight: 1,
+  readyRight: 2,
+  printLeft: 3,
+} as const;
+
+/** Seconds to cross the whole sheet at the current carriage speed. */
+export function faxTravelTime(fax: ArenaFaxDef): number {
+  return Math.max(0.001, (fax.w - fax.headW) / Math.max(1, fax.speed));
+}
+
+/** Seconds for one parked edge, one crossing, the other edge and the return. */
+export function faxCycle(fax: ArenaFaxDef): number {
+  return (faxTravelTime(fax) + Math.max(0, fax.pause)) * 2;
+}
+
+/** Current print-head phase at `t` seconds into the fax cycle. Allocation-free. */
+export function faxPhaseAt(fax: ArenaFaxDef, t: number): number {
+  const travel = faxTravelTime(fax);
+  const pause = Math.max(0, fax.pause);
+  const cycle = (travel + pause) * 2;
+  const phase = ((t % cycle) + cycle) % cycle;
+  if (phase < pause) return FAX_STATE.readyLeft;
+  if (phase < pause + travel) return FAX_STATE.printRight;
+  if (phase < pause * 2 + travel) return FAX_STATE.readyRight;
+  return FAX_STATE.printLeft;
+}
+
+/** World x of the print head. Parked at an edge, it stays there for `pause`. */
+export function faxHeadX(fax: ArenaFaxDef, t: number): number {
+  const travel = faxTravelTime(fax);
+  const pause = Math.max(0, fax.pause);
+  const cycle = (travel + pause) * 2;
+  const phase = ((t % cycle) + cycle) % cycle;
+  const left = fax.x + fax.headW * 0.5;
+  const right = fax.x + fax.w - fax.headW * 0.5;
+  if (phase < pause) return left;
+  if (phase < pause + travel) return left + (right - left) * ((phase - pause) / travel);
+  if (phase < pause * 2 + travel) return right;
+  return right - (right - left) * ((phase - pause * 2 - travel) / travel);
+}
+
 export const KEYPAD_STATE = {
   up: 0,
   warn: 1,
@@ -741,6 +895,8 @@ export interface ArenaDef {
   keypad?: ArenaKeypadDef;
   /** Document scanner floor. Local content; hosted rooms skip this arena. */
   scanner?: ArenaScannerDef;
+  /** Fax machine page and moving thermal print head. Local-only. */
+  fax?: ArenaFaxDef;
   /** Browser-window presentation. Its solid pieces are listed in `pillars`. */
   browser?: ArenaBrowserDef;
   /** Four retracting USB-drive floor plates. The shared phase travels in SnapshotHazards. */
@@ -757,6 +913,12 @@ export interface ArenaDef {
   seek?: ArenaSeekDef;
   /** CAR NAVIGATION map and growing serpentine route barrier. Local-only. */
   car?: ArenaCarDef;
+  /** PONG court and live rally ball. Local-only. */
+  pong?: ArenaPongDef;
+  /** AIRPORT split-flap board and its flipping time tiles. Local-only. */
+  flip?: ArenaFlipDef;
+  /** SPACE INVADERS simulated cannon and invader formation. Local-only. */
+  invaders?: ArenaInvadersDef;
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
   /** Tutorial room floors and labels. Presentation only; never collision. */
@@ -1883,6 +2045,184 @@ export const ARENAS: readonly ArenaDef[] = [
       ],
     },
   },
+  {
+    id: 22,
+    name: 'PONG',
+    tagline: 'Serve. Rally. Mind the ball.',
+    hudLabel: 'ARENA // PONG',
+    accent: '#a8ffb0',
+    accentSoft: 'rgba(168, 255, 176, 0.32)',
+    accentFaint: 'rgba(168, 255, 176, 0.034)',
+    signature: 1,
+    bounds: { left: 80, top: 60, right: 1780, bottom: 1000 },
+    // The court is the arena: no static cover, only the live rally ball.
+    pillars: [],
+    spawns: [
+      { x: 400, y: 240 },
+      { x: 760, y: 230 },
+      { x: 1100, y: 230 },
+      { x: 1420, y: 240 },
+      { x: 1450, y: 820 },
+      { x: 1100, y: 860 },
+      { x: 760, y: 860 },
+      { x: 390, y: 820 },
+    ],
+    pong: {
+      court: { x: 200, y: 150, w: 1460, h: 780 },
+      ballRadius: 12,
+      paddleW: 16,
+      paddleH: 122,
+      paddleInset: 30,
+      paddleSpeed: 360,
+      speed: 430,
+      maxSpeed: 680,
+      serveDelay: 0.85,
+      bounceAngle: 0.6,
+      damage: 1,
+      enemyDamage: 3,
+      knockback: 520,
+    },
+  },
+  {
+    id: 23,
+    name: 'AIRPORT',
+    tagline: 'Arrivals. Departures. Stand clear.',
+    hudLabel: 'ARENA // AIRPORT',
+    accent: '#ffc857',
+    accentSoft: 'rgba(255, 200, 87, 0.32)',
+    accentFaint: 'rgba(255, 200, 87, 0.034)',
+    signature: 1,
+    bounds: { left: 80, top: 60, right: 1780, bottom: 1000 },
+    // Terminal benches and check-in desks frame the board. The board itself is floor.
+    pillars: [
+      { x: 120, y: 180, w: 180, h: 86 },
+      { x: 1500, y: 180, w: 180, h: 86 },
+      { x: 120, y: 790, w: 160, h: 86 },
+      { x: 1520, y: 790, w: 160, h: 86 },
+    ],
+    spawns: [
+      { x: 230, y: 150 },
+      { x: 600, y: 140 },
+      { x: 1180, y: 140 },
+      { x: 1600, y: 420 },
+      { x: 1720, y: 860 },
+      { x: 1200, y: 900 },
+      { x: 600, y: 900 },
+      { x: 320, y: 930 },
+    ],
+    flip: {
+      board: { x: 390, y: 210, w: 1000, h: 510 },
+      rows: [
+        { section: 'ARRIVALS', times: ['10:45', '10:52', '11:04'], destination: 'OSAKA', gate: 'A12', status: 'ON TIME' },
+        { section: 'ARRIVALS', times: ['11:20', '11:28', '11:41'], destination: 'LISBON', gate: 'B04', status: 'BOARDING' },
+        { section: 'ARRIVALS', times: ['12:10', '12:18', '12:25'], destination: 'NAIROBI', gate: 'C07', status: 'DELAYED' },
+        { section: 'DEPARTURES', times: ['13:05', '13:14', '13:22'], destination: 'REYKJAVIK', gate: 'D02', status: 'ON TIME' },
+        { section: 'DEPARTURES', times: ['13:40', '13:48', '13:59'], destination: 'SINGAPORE', gate: 'E11', status: 'BOARDING' },
+        { section: 'DEPARTURES', times: ['14:15', '14:24', '14:36'], destination: 'SANTIAGO', gate: 'F08', status: 'GATE OPEN' },
+      ],
+      headerH: 78,
+      rowH: 64,
+      timeW: 168,
+      timeH: 50,
+      period: 7.6,
+      warn: 1.2,
+      flap: 0.38,
+      stagger: 0.35,
+      damage: 1,
+      enemyDamage: 3,
+      knockback: 460,
+    },
+  },
+  {
+    id: 24,
+    name: 'SPACE INVADERS',
+    tagline: 'The fleet is the floor. The cannon is live.',
+    hudLabel: 'ARENA // SPACE INVADERS',
+    accent: '#83ff9b',
+    accentSoft: 'rgba(131, 255, 155, 0.32)',
+    accentFaint: 'rgba(131, 255, 155, 0.034)',
+    signature: 3,
+    bounds: { left: 80, top: 60, right: 1780, bottom: 1000 },
+    // Three pixel bunkers between the fleet and the simulated player's cannon.
+    pillars: [
+      { x: 360, y: 740, w: 190, h: 54 },
+      { x: 825, y: 740, w: 190, h: 54 },
+      { x: 1290, y: 740, w: 190, h: 54 },
+    ],
+    spawns: [
+      { x: 240, y: 170 },
+      { x: 620, y: 140 },
+      { x: 1080, y: 140 },
+      { x: 1520, y: 180 },
+      { x: 1600, y: 620 },
+      { x: 1180, y: 680 },
+      { x: 620, y: 680 },
+      { x: 220, y: 620 },
+    ],
+    invaders: {
+      fleet: { x: 170, y: 100, w: 1560, h: 520 },
+      rows: 5,
+      cols: 10,
+      cannon: { x: 930, y: 920, w: 56, h: 32, speed: 300 },
+      shotSpeed: 760,
+      shotRadius: 6,
+      fireEvery: 0.66,
+      telegraph: 0.28,
+      damage: 1,
+      enemyDamage: 2,
+      knockback: 420,
+    },
+  },
+  {
+    id: 25,
+    name: 'FAX MACHINE',
+    tagline: 'Transmission live. Mind the carriage.',
+    hudLabel: 'ARENA // FAX MACHINE',
+    accent: '#ffc35c',
+    accentSoft: 'rgba(255, 195, 92, 0.32)',
+    accentFaint: 'rgba(255, 195, 92, 0.034)',
+    signature: 1,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    // Toner drums and paper stacks frame the sheet. They are ordinary static cover.
+    pillars: [
+      { x: 150, y: 180, w: 110, h: 140 },
+      { x: 1634, y: 180, w: 110, h: 140 },
+      { x: 150, y: 726, w: 110, h: 140 },
+      { x: 1634, y: 726, w: 110, h: 140 },
+    ],
+    // The sheet is the arena. The head starts parked at the left edge, then makes
+    // one pass to the right, parks, and comes back.
+    fax: {
+      x: 320,
+      y: 120,
+      w: 1254,
+      h: 758,
+      documents: [
+        'TRANSMITTAL // 004',
+        'PAGE 02 // ATTACHMENT',
+        'ROUTING SLIP // URGENT',
+        'FAX BACK // NO COVER',
+      ],
+      headW: 58,
+      speed: 320,
+      pause: 1,
+      damage: 1,
+      enemyDamage: 3,
+      knockback: 620,
+    },
+    // Perimeter starts clear of the sheet and the corner stacks. The first pass
+    // begins parked, so the opening spawn is never a free hit.
+    spawns: [
+      { x: 995, y: 90 },
+      { x: 1780, y: 190 },
+      { x: 1780, y: 547 },
+      { x: 1780, y: 900 },
+      { x: 995, y: 990 },
+      { x: 280, y: 900 },
+      { x: 280, y: 547 },
+      { x: 280, y: 190 },
+    ],
+  },
 ];
 
 /** 0..1 trajectory progress at `t` seconds after launch. */
@@ -1896,6 +2236,50 @@ export function rocketArcAt(rocket: ArenaRocketDef, k: number, out: Point2): Poi
   const u = 1 - p;
   out.x = u * u * rocket.launch.x + 2 * u * p * rocket.control.x + p * p * rocket.end.x;
   out.y = u * u * rocket.launch.y + 2 * u * p * rocket.control.y + p * p * rocket.end.y;
+  return out;
+}
+
+export const FLIP_STATE = {
+  idle: 0,
+  warn: 1,
+  flap: 2,
+} as const;
+
+/** Local phase of one board row. Later rows lag, so a flap travels down the board. */
+export function flipRowPhaseAt(flip: ArenaFlipDef, row: number, t: number): number {
+  const period = Math.max(0.001, flip.period);
+  return (((t - row * flip.stagger) % period) + period) % period;
+}
+
+/** 0 idle, 1 warning, 2 flap. */
+export function flipRowStateAt(flip: ArenaFlipDef, row: number, t: number): number {
+  const phase = flipRowPhaseAt(flip, row, t);
+  if (phase < flip.warn) return FLIP_STATE.warn;
+  if (phase < flip.warn + flip.flap) return FLIP_STATE.flap;
+  return FLIP_STATE.idle;
+}
+
+/** 0..1 through the flap, or -1 while the row is idle or warning. */
+export function flipRowFlapProgressAt(flip: ArenaFlipDef, row: number, t: number): number {
+  const phase = flipRowPhaseAt(flip, row, t);
+  if (phase < flip.warn || phase >= flip.warn + flip.flap) return -1;
+  return (phase - flip.warn) / Math.max(0.001, flip.flap);
+}
+
+/** Current time string in the row's cycling split-flap deck. */
+export function flipRowTimeAt(flip: ArenaFlipDef, row: number, t: number): string {
+  const times = flip.rows[row]?.times;
+  if (!times || times.length === 0) return '';
+  const cycle = Math.floor((t - row * flip.stagger) / Math.max(0.001, flip.period));
+  return times[((cycle % times.length) + times.length) % times.length];
+}
+
+/** The floor footprint of one flipping time tile. */
+export function flipTimeRectAt(flip: ArenaFlipDef, row: number, out: Rect): Rect {
+  out.x = flip.board.x + 24;
+  out.y = flip.board.y + flip.headerH + row * flip.rowH + (flip.rowH - flip.timeH) * 0.5;
+  out.w = flip.timeW;
+  out.h = flip.timeH;
   return out;
 }
 
@@ -2575,6 +2959,109 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     return;
   }
 
+  if (arena.pong) {
+    const pong = arena.pong;
+    const court = pong.court;
+    const cx = mapX(court.x);
+    const cy = mapY(court.y);
+    const cw = court.w * sx;
+    const ch = court.h * sy;
+    ctx.fillStyle = '#020a05';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.fillStyle = '#04170c';
+    ctx.fillRect(cx, cy, cw, ch);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx + 0.5, cy + 0.5, cw - 1, ch - 1);
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(cx + cw * 0.5, cy + 4);
+    ctx.lineTo(cx + cw * 0.5, cy + ch - 4);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const paddleW = Math.max(2, pong.paddleW * sx);
+    const paddleH = Math.max(5, pong.paddleH * sy);
+    const leftX = cx + pong.paddleInset * sx;
+    const rightX = cx + cw - pong.paddleInset * sx;
+    ctx.fillStyle = arena.accent;
+    ctx.fillRect(leftX - paddleW * 0.5, cy + ch * 0.28, paddleW, paddleH);
+    ctx.fillRect(rightX - paddleW * 0.5, cy + ch * 0.62, paddleW, paddleH);
+    ctx.fillRect(cx + cw * 0.47, cy + ch * 0.47, 3, 3);
+    ctx.font = '700 9px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('3', cx + cw * 0.28, cy + 12);
+    ctx.fillText('5', cx + cw * 0.72, cy + 12);
+    return;
+  }
+
+  if (arena.flip) {
+    const flip = arena.flip;
+    const board = flip.board;
+    const bx = mapX(board.x);
+    const by = mapY(board.y);
+    const bw = board.w * sx;
+    const bh = board.h * sy;
+    ctx.fillStyle = '#0c1018';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.fillStyle = '#151b27';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+    ctx.fillStyle = 'rgba(255, 200, 87, 0.24)';
+    ctx.fillRect(bx + 3, by + 3, bw - 6, 10);
+    for (let i = 0; i < flip.rows.length; i++) {
+      const rowY = by + (flip.headerH + i * flip.rowH) * sy;
+      ctx.fillStyle = '#0a0e15';
+      ctx.fillRect(bx + 5, rowY + 2, Math.max(20, flip.timeW * sx), Math.max(4, flip.timeH * sy));
+      ctx.fillStyle = i < 3 ? '#ffc857' : '#ff9d6a';
+      ctx.fillRect(bx + 5, rowY + 2, Math.max(20, flip.timeW * sx), 2);
+      ctx.fillStyle = 'rgba(255, 234, 184, 0.55)';
+      ctx.fillRect(bx + flip.timeW * sx + 14, rowY + 5, bw * 0.34, 2);
+      ctx.fillRect(bx + flip.timeW * sx + 14, rowY + 10, bw * 0.22, 2);
+    }
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      ctx.fillStyle = '#2a2119';
+      ctx.fillRect(mapX(r.x), mapY(r.y), r.w * sx, r.h * sy);
+      ctx.strokeStyle = 'rgba(255, 200, 87, 0.35)';
+      ctx.strokeRect(mapX(r.x) + 0.5, mapY(r.y) + 0.5, r.w * sx - 1, r.h * sy - 1);
+    }
+    return;
+  }
+
+  if (arena.invaders) {
+    const inv = arena.invaders;
+    const fleet = inv.fleet;
+    ctx.fillStyle = '#02050a';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.fillStyle = 'rgba(131, 255, 155, 0.32)';
+    for (let r = 0; r < inv.rows; r++) {
+      for (let c = 0; c < inv.cols; c++) {
+        const x = fleet.x + 34 + (c / Math.max(1, inv.cols - 1)) * (fleet.w - 68);
+        const y = fleet.y + 34 + (r / Math.max(1, inv.rows - 1)) * (fleet.h - 68);
+        ctx.fillRect(mapX(x), mapY(y), 3, 2);
+        ctx.fillRect(mapX(x) + 2, mapY(y) + 2, 2, 2);
+      }
+    }
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      ctx.fillStyle = '#317d45';
+      ctx.fillRect(mapX(r.x), mapY(r.y), r.w * sx, Math.max(2, r.h * sy));
+    }
+    const cannonX = mapX(inv.cannon.x);
+    const cannonY = mapY(inv.cannon.y);
+    ctx.fillStyle = '#eaffef';
+    ctx.fillRect(cannonX - 3, cannonY - 3, 6, 4);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cannonX, cannonY - 5);
+    ctx.lineTo(cannonX, mapY(fleet.y + fleet.h));
+    ctx.stroke();
+    return;
+  }
+
   if (arena.seek) {
     const seek = arena.seek;
     ctx.fillStyle = '#21121d';
@@ -2814,6 +3301,31 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
       ctx.fillStyle = i % 3 === 1 ? 'rgba(255, 207, 92, 0.3)' : 'rgba(255, 207, 92, 0.16)';
       ctx.fillRect(mapX(k.x), mapY(k.y), Math.max(1, k.w * sx), Math.max(1, k.h * sy));
     }
+  }
+
+  // The fax is a pale sheet crossed by a moving vertical print bar.
+  if (arena.fax) {
+    const f = arena.fax;
+    ctx.fillStyle = 'rgba(222, 232, 238, 0.18)';
+    ctx.fillRect(mapX(f.x), mapY(f.y), f.w * sx, f.h * sy);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(f.x) + 0.5, mapY(f.y) + 0.5, f.w * sx - 1, f.h * sy - 1);
+    ctx.fillStyle = 'rgba(222, 232, 238, 0.48)';
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(mapX(f.x) + 5, mapY(f.y) + 8 + i * 9, Math.max(4, (f.w * sx) * 0.46), 1);
+    }
+    const headX = mapX(f.x + f.w * 0.58);
+    ctx.strokeStyle = '#ff9a58';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(headX, mapY(f.y));
+    ctx.lineTo(headX, mapY(f.y + f.h));
+    ctx.stroke();
+    ctx.fillStyle = '#2a2119';
+    ctx.fillRect(headX - 4, mapY(f.y) - 3, 8, 3);
+    ctx.fillRect(headX - 4, mapY(f.y + f.h), 8, 3);
+    return;
   }
 
   // The scanner is a pale sheet with a hot read line even at thumbnail size.

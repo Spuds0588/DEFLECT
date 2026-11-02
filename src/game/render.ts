@@ -1,5 +1,5 @@
 import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, KEYPAD, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
-import type { AimMark, CopyMark } from './types';
+import type { AimMark, CopyMark, InvaderShot } from './types';
 import {
   discArmAngle,
   discArmLength,
@@ -15,12 +15,19 @@ import {
   scannerLaserY,
   scannerPhaseAt,
   SCANNER_STATE,
+  faxHeadX,
+  faxPhaseAt,
+  FAX_STATE,
   satelliteSolarPhaseAt,
   satelliteSolarStateAt,
   satelliteTelescopeExtensionAt,
   SATELLITE_SOLAR_STATE,
   carProgressAt,
   carRouteAt,
+  flipRowFlapProgressAt,
+  flipRowStateAt,
+  flipRowTimeAt,
+  FLIP_STATE,
   rocketArcAt,
   rocketProgressAt,
   swipeDirectionAt,
@@ -38,6 +45,7 @@ import {
   usbPhaseAt,
   ROOM_THEME_COLORS,
   type ArenaDef,
+  type ArenaFaxDef,
   type ArenaKeypadDef,
   type ArenaRoomDef,
   type ArenaScannerDef,
@@ -137,6 +145,25 @@ export interface RenderState {
   /** CAR NAVIGATION route clock and 0..1 progress. Local-only. */
   carT?: number;
   carProgress?: number;
+  /** PONG rally state. Local-only. */
+  pongBallX?: number;
+  pongBallY?: number;
+  pongBallActive?: boolean;
+  pongLeftY?: number;
+  pongRightY?: number;
+  pongScoreLeft?: number;
+  pongScoreRight?: number;
+  pongScoreFlash?: number;
+  pongScoreSide?: number;
+  pongHitFlash?: number;
+  /** AIRPORT board clock and per-row flap states. Local-only. */
+  flipT?: number;
+  flipStates?: ArrayLike<number>;
+  /** SPACE INVADERS simulated cannon and local shots. */
+  invaderCannonX?: number;
+  invaderCannonFlash?: number;
+  invaderAimT?: number;
+  invaderShots?: readonly InvaderShot[];
   /** Phone-pad phase and per-key state. The shared clock travels in Snapshot. */
   keypadT?: number;
   keypadStates?: ArrayLike<number>;
@@ -144,6 +171,10 @@ export interface RenderState {
   scannerT?: number;
   scannerPage?: number;
   scannerPhase?: number;
+  /** FAX MACHINE shuttle clock, page and current phase. Local-only. */
+  faxT?: number;
+  faxPage?: number;
+  faxPhase?: number;
   /** Forum browser page, cursor and click flash. Guests derive these from Snapshot. */
   browserPage?: number;
   browserPhase?: number;
@@ -194,6 +225,7 @@ const FONT_SMALL = '700 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monos
 const FONT_MID = '700 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const FONT_KEYPAD = '700 156px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const FONT_KEYPAD_LABEL = '700 24px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+const INVADER_PATTERN = ['0011100', '0111110', '1111111', '1101011', '1010101'];
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
@@ -591,6 +623,7 @@ export class Renderer {
       this.drawBumpers(state.arena, t, state.bumperFlash);
       if (state.arena.keypad) this.drawKeypad(state, t);
       if (state.arena.scanner) this.drawScanner(state, t);
+      if (state.arena.fax) this.drawFax(state, t);
       if (state.arena.browser) this.drawBrowser(state);
       if (introDone) {
         if (state.props) this.drawProps(state.props);
@@ -1972,6 +2005,219 @@ export class Renderer {
     ctx.fillText(`SHEET ${String(index + 1).padStart(2, '0')} // COLD STORAGE`, x + 20, y + h - 20);
     ctx.textAlign = 'right';
     ctx.fillText('DO NOT ARCHIVE', x + w - 20, y + h - 20);
+    ctx.restore();
+  }
+
+  /**
+   * Fax bed: a pale incoming sheet under a thermal carriage that shuttles left and
+   * right. Its vertical print bar is the arena hazard, so the carriage and the bar
+   * share one x derived from `faxHeadX()`.
+   */
+  private drawFax(state: RenderState, t: number): void {
+    const fx = state.arena.fax;
+    if (!fx) return;
+    const ctx = this.ctx;
+    const clock = state.faxT ?? 0;
+    const phase = state.faxPhase ?? faxPhaseAt(fx, clock);
+    const headX = faxHeadX(fx, clock);
+    const pageIndex = state.faxPage ?? 0;
+    const title = fx.documents.length > 0
+      ? fx.documents[((pageIndex % fx.documents.length) + fx.documents.length) % fx.documents.length]
+      : 'UNTITLED';
+    const moving = phase === FAX_STATE.printRight || phase === FAX_STATE.printLeft;
+    const dir = phase === FAX_STATE.printRight ? 1 : -1;
+    const blink = 0.35 + 0.65 * Math.abs(Math.sin(t * 15));
+    const half = fx.headW * 0.5;
+
+    ctx.save();
+    // Heavy fax chassis and a recessed paper slot.
+    ctx.fillStyle = '#0b0c0e';
+    ctx.fillRect(fx.x - 34, fx.y - 38, fx.w + 68, fx.h + 76);
+    ctx.strokeStyle = 'rgba(255, 195, 92, 0.34)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(fx.x - 33.5, fx.y - 37.5, fx.w + 67, fx.h + 75);
+    ctx.strokeStyle = 'rgba(255, 195, 92, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(fx.x - 23.5, fx.y - 27.5, fx.w + 47, fx.h + 55);
+    ctx.fillStyle = 'rgba(255, 218, 150, 0.42)';
+    for (let i = 0; i < 4; i++) {
+      const bx = i % 2 === 0 ? fx.x - 23 : fx.x + fx.w + 18;
+      const by = i < 2 ? fx.y - 24 : fx.y + fx.h + 17;
+      ctx.fillRect(bx, by, 5, 5);
+    }
+
+    // Sheet and its clip. The sheet is a floor object, so it stays under the bodies.
+    ctx.fillStyle = '#0d0f0f';
+    ctx.fillRect(fx.x - 10, fx.y - 10, fx.w + 20, fx.h + 20);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(fx.x, fx.y, fx.w, fx.h);
+    ctx.clip();
+    this.drawFaxPage(fx, title, pageIndex);
+    ctx.restore();
+
+    // Guides, feed rollers and the two rails the carriage runs on.
+    ctx.fillStyle = '#060809';
+    ctx.fillRect(fx.x - 6, fx.y + fx.h + 8, fx.w + 12, 17);
+    ctx.strokeStyle = 'rgba(255, 195, 92, 0.24)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(fx.x - 5.5, fx.y + fx.h + 8.5, fx.w + 11, 16);
+    ctx.fillStyle = 'rgba(255, 195, 92, 0.38)';
+    for (let i = 0; i < 8; i++) {
+      ctx.fillRect(fx.x + 24 + i * (fx.w - 48) * 0.14, fx.y + fx.h + 13, 22, 7);
+    }
+    ctx.strokeStyle = 'rgba(255, 195, 92, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(fx.x - 12, fx.y - 9);
+    ctx.lineTo(fx.x + fx.w + 12, fx.y - 9);
+    ctx.moveTo(fx.x - 12, fx.y + fx.h + 5);
+    ctx.lineTo(fx.x + fx.w + 12, fx.y + fx.h + 5);
+    ctx.stroke();
+
+    // The hot print bar. Parked, it becomes a blinking dashed guide.
+    if (moving) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = THREAT_COLORS.firewall;
+      ctx.lineCap = 'butt';
+      ctx.beginPath();
+      ctx.moveTo(headX, fx.y + 5);
+      ctx.lineTo(headX, fx.y + fx.h - 5);
+      ctx.globalAlpha = 0.12;
+      ctx.lineWidth = fx.headW + 22;
+      ctx.stroke();
+      ctx.globalAlpha = 0.36;
+      ctx.lineWidth = fx.headW;
+      ctx.stroke();
+      ctx.globalAlpha = 0.7;
+      ctx.lineWidth = 8;
+      ctx.stroke();
+      ctx.globalAlpha = 0.96;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.strokeStyle = '#fff2d8';
+      ctx.globalAlpha = 0.52;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.globalAlpha = 0.16 + 0.28 * blink;
+      ctx.strokeStyle = THREAT_COLORS.firewall;
+      ctx.lineWidth = fx.headW + 10;
+      ctx.beginPath();
+      ctx.moveTo(headX, fx.y + 5);
+      ctx.lineTo(headX, fx.y + fx.h - 5);
+      ctx.stroke();
+      ctx.globalAlpha = 0.72 * blink;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([10, 8]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Carriage blocks make the vertical bar read as a print head, not a free beam.
+    ctx.fillStyle = moving ? '#ff9a58' : '#5b4632';
+    ctx.fillRect(headX - half - 8, fx.y - 22, fx.headW + 16, 18);
+    ctx.fillRect(headX - half - 8, fx.y + fx.h + 5, fx.headW + 16, 15);
+    ctx.fillStyle = '#1a1410';
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect(headX - half + 4 + i * (fx.headW - 8) * 0.2, fx.y - 18, 4, 5);
+    }
+    ctx.fillStyle = moving ? '#fff4cf' : 'rgba(255, 228, 177, 0.34)';
+    ctx.fillRect(headX - half, fx.y - 4, fx.headW, 3);
+
+    // Status lives in the chassis margins, clear of the sheet copy.
+    let status = moving ? (dir > 0 ? 'PRINTING RIGHT' : 'PRINTING LEFT') : 'HEAD PARKED // REVERSING';
+    ctx.globalAlpha = 0.78;
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = state.arena.accent;
+    ctx.fillText('FAX // TX 004', fx.x - 4, fx.y - 17);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255, 224, 177, 0.6)';
+    ctx.fillText(`SHEET ${String(pageIndex + 1).padStart(2, '0')} // ${status}`, fx.x + fx.w + 5, fx.y - 17);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /** One incoming fax sheet. The printed copy is decorative, not game state. */
+  private drawFaxPage(fx: ArenaFaxDef, title: string, index: number): void {
+    const ctx = this.ctx;
+    const x = fx.x + 16;
+    const y = fx.y + 16;
+    const w = fx.w - 32;
+    const h = fx.h - 32;
+
+    ctx.save();
+    ctx.fillStyle = '#dedbcc';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#b7b19f';
+    ctx.fillRect(x, y, w, 64);
+    ctx.fillStyle = '#9f9988';
+    ctx.fillRect(x, y + 64, w, 2);
+    ctx.fillStyle = '#252b2a';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('INCOMING FAX // LOCALHOST // CHANNEL 04', x + 20, y + 19);
+    ctx.fillStyle = '#1d2524';
+    ctx.font = FONT_PAGE_TITLE;
+    ctx.fillText(title, x + 20, y + 45);
+    ctx.fillStyle = 'rgba(29, 37, 36, 0.58)';
+    ctx.font = FONT_SMALL;
+    ctx.fillText(`TX ${String(index + 4).padStart(3, '0')} / REV 02:14 / COPY ${index % 3 + 1}`, x + 20, y + 57);
+
+    // Fax routing block and a fake transmission log.
+    ctx.fillStyle = '#8d897b';
+    ctx.font = FONT_SMALL;
+    ctx.fillText('TO: LOCALHOST OPERATIONS', x + 20, y + 86);
+    ctx.fillText('FROM: UNKNOWN SENDER', x + 20, y + 104);
+    ctx.fillText('SUBJECT: PAPER JAM // URGENT', x + 20, y + 122);
+    ctx.fillStyle = '#a19b89';
+    ctx.fillRect(x + 20, y + 136, w - 40, 2);
+
+    const bodyW = w - 40;
+    for (let i = 0; i < 13; i++) {
+      const lineY = y + 158 + i * 25;
+      const lineW = bodyW * (0.48 + ((i * 31) % 48) * 0.01);
+      ctx.fillStyle = i % 5 === 0 ? '#8f9388' : '#a9aa9c';
+      ctx.fillRect(x + 20, lineY, lineW, 2);
+      if (i % 4 === 1) {
+        ctx.fillStyle = 'rgba(99, 108, 99, 0.55)';
+        ctx.fillRect(x + 20 + lineW + 12, lineY, Math.max(8, bodyW - lineW - 18), 2);
+      }
+    }
+
+    // A faint fax watermark and a receipt stamp.
+    ctx.save();
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = '#1c2825';
+    ctx.font = '900 152px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('FAX', x + w * 0.5, y + h * 0.56);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(x + w - 118, y + h - 54);
+    ctx.rotate(-0.06);
+    ctx.strokeStyle = 'rgba(155, 88, 42, 0.72)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, 104, 30);
+    ctx.fillStyle = 'rgba(155, 88, 42, 0.72)';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'center';
+    ctx.fillText(index % 2 === 0 ? 'RECEIVED' : 'RETRYING', 52, 16);
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(72, 79, 71, 0.55)';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.fillText(`SHEET ${String(index + 1).padStart(2, '0')} // THERMAL FEED`, x + 20, y + h - 20);
+    ctx.textAlign = 'right';
+    ctx.fillText('DO NOT REFAX', x + w - 20, y + h - 20);
     ctx.restore();
   }
 
@@ -4352,6 +4598,461 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** PONG: a phosphor CRT court with automatic paddles and a live rally ball. */
+  private drawPongArena(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const pong = arena?.pong;
+    if (!arena || !pong) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const court = pong.court;
+    const centerX = court.x + court.w * 0.5;
+    const centerY = court.y + court.h * 0.5;
+    const ballX = state?.pongBallX ?? centerX;
+    const ballY = state?.pongBallY ?? centerY;
+    const leftY = state?.pongLeftY ?? centerY;
+    const rightY = state?.pongRightY ?? centerY;
+    const leftScore = state?.pongScoreLeft ?? 0;
+    const rightScore = state?.pongScoreRight ?? 0;
+    const hitFlash = state?.pongHitFlash ?? 0;
+    const pointFlash = state?.pongScoreFlash ?? 0;
+    const pointSide = state?.pongScoreSide ?? 0;
+
+    ctx.save();
+    ctx.fillStyle = '#010503';
+    ctx.fillRect(b.left - 40, b.top - 40, b.right - b.left + 80, b.bottom - b.top + 80);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#031008';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+
+    // Cabinet housing and the green CRT screen.
+    ctx.fillStyle = '#071911';
+    ctx.fillRect(court.x - 26, court.y - 26, court.w + 52, court.h + 52);
+    ctx.strokeStyle = 'rgba(168, 255, 176, 0.34)';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(court.x - 26, court.y - 26, court.w + 52, court.h + 52);
+    ctx.fillStyle = '#020b05';
+    ctx.fillRect(court.x, court.y, court.w, court.h);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(court.x, court.y, court.w, court.h);
+    ctx.strokeStyle = 'rgba(168, 255, 176, 0.18)';
+    ctx.lineWidth = 1;
+    for (let y = court.y + 8; y < court.y + court.h; y += 7) {
+      ctx.beginPath();
+      ctx.moveTo(court.x + 3, y);
+      ctx.lineTo(court.x + court.w - 3, y);
+      ctx.stroke();
+    }
+
+    // Cabinet labels, scoreboard and centre net.
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(168, 255, 176, 0.58)';
+    ctx.fillText('ATTRACT MODE // 1UP', b.left + 34, b.top + 30);
+    ctx.textAlign = 'right';
+    ctx.fillText('CREDIT 00', b.right - 34, b.top + 30);
+    ctx.textAlign = 'center';
+    ctx.font = '700 58px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#d9ffe2';
+    ctx.fillText(String(leftScore), court.x + court.w * 0.28, court.y + 78);
+    ctx.fillText(String(rightScore), court.x + court.w * 0.72, court.y + 78);
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(168, 255, 176, 0.48)';
+    ctx.fillText('P1', court.x + court.w * 0.28, court.y + 104);
+    ctx.fillText('P2', court.x + court.w * 0.72, court.y + 104);
+    ctx.font = FONT_MID;
+    ctx.fillStyle = 'rgba(217, 255, 226, 0.74)';
+    ctx.fillText('PONG', centerX, court.y + 42);
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(168, 255, 176, 0.4)';
+    ctx.fillText('RALLY // LIVE BALL', centerX, court.y + 60);
+
+    ctx.strokeStyle = 'rgba(168, 255, 176, 0.52)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([16, 18]);
+    ctx.beginPath();
+    ctx.moveTo(centerX, court.y + 124);
+    ctx.lineTo(centerX, court.y + court.h - 24);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Paddles are screen rails, not body cover: they return the ball and glow on contact.
+    const leftX = court.x + pong.paddleInset;
+    const rightX = court.x + court.w - pong.paddleInset;
+    const paddleAlpha = hitFlash > 0 ? 0.72 + Math.min(0.28, hitFlash) : 0.24;
+    ctx.fillStyle = `rgba(168, 255, 176, ${paddleAlpha})`;
+    ctx.fillRect(leftX - pong.paddleW * 0.5, leftY - pong.paddleH * 0.5, pong.paddleW, pong.paddleH);
+    ctx.fillRect(rightX - pong.paddleW * 0.5, rightY - pong.paddleH * 0.5, pong.paddleW, pong.paddleH);
+    ctx.fillStyle = '#eaffef';
+    ctx.fillRect(leftX - 2, leftY - pong.paddleH * 0.5, 4, pong.paddleH);
+    ctx.fillRect(rightX - 2, rightY - pong.paddleH * 0.5, 4, pong.paddleH);
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(168, 255, 176, 0.52)';
+    ctx.fillText('CPU', leftX, court.y + court.h - 10);
+    ctx.fillText('CPU', rightX, court.y + court.h - 10);
+
+    // The ball is deliberately a square: the old arcade silhouette, not a second body.
+    if (state?.pongBallActive ?? true) {
+      const size = pong.ballRadius * 2;
+      ctx.fillStyle = hitFlash > 0 ? '#ffffff' : '#eaffef';
+      ctx.fillRect(ballX - pong.ballRadius, ballY - pong.ballRadius, size, size);
+      ctx.strokeStyle = 'rgba(168, 255, 176, 0.68)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ballX - pong.ballRadius - 3, ballY - pong.ballRadius - 3, size + 6, size + 6);
+    } else {
+      ctx.globalAlpha = groundA * 0.38;
+      ctx.fillStyle = arena.accent;
+      ctx.fillRect(centerX - pong.ballRadius, centerY - pong.ballRadius, pong.ballRadius * 2, pong.ballRadius * 2);
+      ctx.globalAlpha = groundA;
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(217, 255, 226, 0.5)';
+      ctx.fillText('SERVE', centerX, centerY + 34);
+    }
+
+    if (pointFlash > 0) {
+      ctx.globalAlpha = Math.min(1, pointFlash) * groundA;
+      ctx.font = FONT_SMALL;
+      ctx.fillStyle = '#f2fff4';
+      ctx.fillText(pointSide === 0 ? 'P1 SCORES' : 'P2 SCORES', centerX, centerY - 42);
+      ctx.globalAlpha = groundA;
+    }
+
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(168, 255, 176, 0.4)';
+    ctx.fillText('INSERT COIN', centerX, court.y + court.h + 38);
+    ctx.fillText('MOVE TO SURVIVE THE RALLY', centerX, court.y + court.h + 54);
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(168, 255, 176, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.restore();
+  }
+
+  /** AIRPORT: a terminal floor under a split-flap arrivals/departures board. */
+  private drawFlipArena(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const flip = arena?.flip;
+    if (!arena || !flip) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const board = flip.board;
+    const clock = state?.flipT ?? t;
+    const timeX = board.x + 24;
+    const textX = board.x + flip.timeW + 52;
+    const gateX = board.x + board.w - 300;
+    const statusX = board.x + board.w - 158;
+
+    ctx.save();
+    ctx.fillStyle = '#080b12';
+    ctx.fillRect(b.left - 40, b.top - 40, b.right - b.left + 80, b.bottom - b.top + 80);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#111722';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+
+    // Terminal floor: pale gate windows, carpet tiles and runway edge lights.
+    ctx.fillStyle = '#0b111b';
+    ctx.fillRect(b.left + 20, b.top + 20, b.right - b.left - 40, b.bottom - b.top - 40);
+    ctx.strokeStyle = 'rgba(255, 200, 87, 0.08)';
+    ctx.lineWidth = 1;
+    for (let x = b.left + 64; x < b.right; x += 64) {
+      ctx.beginPath();
+      ctx.moveTo(x, b.top + 20);
+      ctx.lineTo(x, b.bottom - 20);
+      ctx.stroke();
+    }
+    for (let y = b.top + 64; y < b.bottom; y += 64) {
+      ctx.beginPath();
+      ctx.moveTo(b.left + 20, y);
+      ctx.lineTo(b.right - 20, y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(120, 190, 255, 0.12)';
+    for (let x = b.left + 80; x < b.right - 40; x += 180) {
+      ctx.fillRect(x, b.top + 26, 94, 34);
+      ctx.strokeStyle = 'rgba(160, 220, 255, 0.2)';
+      ctx.strokeRect(x + 0.5, b.top + 26.5, 94, 34);
+    }
+
+    // Board housing. The rows and time tiles are the readable centre of the floor.
+    ctx.fillStyle = '#070a10';
+    ctx.fillRect(board.x - 18, board.y - 18, board.w + 36, board.h + 36);
+    ctx.strokeStyle = 'rgba(255, 200, 87, 0.34)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(board.x - 18, board.y - 18, board.w + 36, board.h + 36);
+    ctx.fillStyle = '#171d29';
+    ctx.fillRect(board.x, board.y, board.w, board.h);
+    ctx.fillStyle = '#202838';
+    ctx.fillRect(board.x, board.y, board.w, flip.headerH);
+    ctx.fillStyle = 'rgba(255, 200, 87, 0.18)';
+    ctx.fillRect(board.x + 16, board.y + flip.headerH - 3, board.w - 32, 3);
+    ctx.font = FONT_MID;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffe5a3';
+    ctx.fillText('FLIGHT INFORMATION', board.x + 24, board.y + 28);
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(255, 227, 164, 0.56)';
+    ctx.fillText('ARRIVALS  //  DEPARTURES', board.x + 24, board.y + 45);
+    ctx.fillText('TIME', timeX, board.y + 62);
+    ctx.fillText('DESTINATION', textX, board.y + 62);
+    ctx.fillText('GATE', gateX, board.y + 62);
+    ctx.fillText('STATUS', statusX, board.y + 62);
+
+    for (let i = 0; i < flip.rows.length; i++) {
+      const row = flip.rows[i];
+      const rowY = board.y + flip.headerH + i * flip.rowH;
+      const cellY = rowY + (flip.rowH - flip.timeH) * 0.5;
+      const rowState = state?.flipStates?.[i] ?? flipRowStateAt(flip, i, clock);
+      const flap = flipRowFlapProgressAt(flip, i, clock);
+      const warning = rowState === FLIP_STATE.warn;
+      const flapping = rowState === FLIP_STATE.flap;
+      const pulse = 0.55 + Math.sin(t * 9) * 0.25;
+
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(255, 255, 255, 0.025)' : 'rgba(0, 0, 0, 0.08)';
+      ctx.fillRect(board.x + 10, rowY, board.w - 20, flip.rowH);
+      ctx.strokeStyle = 'rgba(255, 200, 87, 0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(board.x + 10, rowY + flip.rowH);
+      ctx.lineTo(board.x + board.w - 10, rowY + flip.rowH);
+      ctx.stroke();
+
+      // The time tile is the only damaging part of the board.
+      ctx.fillStyle = flapping ? '#24170a' : warning ? '#1d160c' : '#05070a';
+      ctx.fillRect(timeX, cellY, flip.timeW, flip.timeH);
+      ctx.strokeStyle = flapping || warning ? `rgba(255, 190, 65, ${pulse})` : 'rgba(255, 200, 87, 0.42)';
+      ctx.lineWidth = flapping || warning ? 3 : 1;
+      ctx.strokeRect(timeX, cellY, flip.timeW, flip.timeH);
+      if (warning) {
+        ctx.fillStyle = `rgba(255, 176, 40, ${0.08 + pulse * 0.08})`;
+        ctx.fillRect(timeX + 4, cellY + 4, flip.timeW - 8, flip.timeH - 8);
+      }
+
+      const time = flipRowTimeAt(flip, i, clock);
+      const chars = Math.max(1, time.length);
+      const charW = (flip.timeW - 18) / chars;
+      const charY = cellY + flip.timeH * 0.68;
+      const squeeze = flap >= 0 ? Math.max(0.12, Math.abs(Math.cos(Math.PI * flap))) : 1;
+      ctx.font = '700 27px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+      ctx.textAlign = 'center';
+      for (let c = 0; c < chars; c++) {
+        const glyph = time.charAt(c);
+        const gx = timeX + 9 + charW * (c + 0.5);
+        ctx.save();
+        ctx.translate(gx, charY);
+        ctx.scale(1, squeeze);
+        ctx.fillStyle = flapping ? '#ffdd8b' : '#ffe9bd';
+        ctx.fillText(glyph, 0, 0);
+        ctx.restore();
+      }
+      ctx.strokeStyle = 'rgba(4, 7, 11, 0.9)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(timeX + 5, cellY + flip.timeH * 0.5);
+      ctx.lineTo(timeX + flip.timeW - 5, cellY + flip.timeH * 0.5);
+      ctx.stroke();
+      if (flap >= 0) {
+        const sweepY = cellY + flip.timeH * flap;
+        ctx.fillStyle = 'rgba(255, 211, 111, 0.2)';
+        ctx.fillRect(timeX + 4, sweepY - 3, flip.timeW - 8, 6);
+        ctx.strokeStyle = '#ffe5a3';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(timeX + 4, sweepY);
+        ctx.lineTo(timeX + flip.timeW - 4, sweepY);
+        ctx.stroke();
+      }
+
+      ctx.textAlign = 'left';
+      ctx.font = FONT_SMALL;
+      ctx.fillStyle = '#f4e9d4';
+      ctx.fillText(row.destination, textX, rowY + 27);
+      ctx.font = FONT_TINY;
+      ctx.fillStyle = row.section === 'ARRIVALS' ? 'rgba(255, 208, 112, 0.56)' : 'rgba(255, 164, 112, 0.56)';
+      ctx.fillText(row.section, textX, rowY + 45);
+      ctx.font = FONT_SMALL;
+      ctx.fillStyle = '#ffe6ac';
+      ctx.fillText(row.gate, gateX, rowY + 30);
+      ctx.font = FONT_TINY;
+      ctx.fillStyle = row.status === 'DELAYED' ? '#ff9d72' : row.status === 'BOARDING' ? '#8ce5b0' : '#ffe19a';
+      ctx.fillText(row.status, statusX, rowY + 30);
+    }
+
+    // Benches and check-in desks frame the board but never overlap a time tile.
+    const labels = ['CHECK-IN', 'BAGGAGE', 'CAFE', 'GATES'];
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      ctx.fillStyle = '#2a2119';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = '#3b2d1f';
+      ctx.fillRect(r.x + 8, r.y + 8, r.w - 16, r.h - 22);
+      ctx.strokeStyle = 'rgba(255, 200, 87, 0.42)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255, 230, 176, 0.62)';
+      ctx.fillText(labels[i] ?? 'TERMINAL', r.x + r.w * 0.5, r.y + r.h * 0.58);
+    }
+
+    ctx.textAlign = 'center';
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(255, 200, 87, 0.58)';
+    ctx.fillText('TIME CELLS FLIP // STAND CLEAR', b.left + (b.right - b.left) * 0.5, board.y + board.h + 38);
+    ctx.fillStyle = 'rgba(255, 200, 87, 0.34)';
+    ctx.fillText('GATE 07  //  LOCALHOST INTERNATIONAL', b.left + (b.right - b.left) * 0.5, board.y + board.h + 54);
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(255, 200, 87, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.restore();
+  }
+
+  /** SPACE INVADERS: an arcade fleet floor with a simulated cannon below. */
+  private drawInvadersArena(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const inv = arena?.invaders;
+    if (!arena || !inv) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const fleet = inv.fleet;
+    const cannonX = state?.invaderCannonX ?? inv.cannon.x;
+    const flash = state?.invaderCannonFlash ?? 0;
+    const aim = state?.invaderAimT ?? 0;
+    const shots = state?.invaderShots ?? [];
+
+    ctx.save();
+    ctx.fillStyle = '#010307';
+    ctx.fillRect(b.left - 40, b.top - 40, b.right - b.left + 80, b.bottom - b.top + 80);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#030811';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+
+    // Fixed star field. Deterministic, so it does not shimmer between frames.
+    for (let i = 0; i < 130; i++) {
+      const x = b.left + 24 + ((i * 137) % (b.right - b.left - 48));
+      const y = b.top + 22 + ((i * 83) % (b.bottom - b.top - 44));
+      const twinkle = 0.16 + ((i * 17) % 9) * 0.035 + Math.sin(t * 1.3 + i) * 0.04;
+      ctx.fillStyle = `rgba(180, 220, 255, ${Math.max(0.06, twinkle)})`;
+      ctx.fillRect(x, y, i % 7 === 0 ? 2 : 1, i % 7 === 0 ? 2 : 1);
+    }
+
+    // The invader formation is the floor's painted backdrop. It never collides.
+    const xStep = (fleet.w - 80) / Math.max(1, inv.cols - 1);
+    const yStep = (fleet.h - 104) / Math.max(1, inv.rows - 1);
+    for (let r = 0; r < inv.rows; r++) {
+      for (let c = 0; c < inv.cols; c++) {
+        const size = 33 - r * 2;
+        const x = fleet.x + 40 + c * xStep + Math.sin(t * 1.1 + r * 0.7) * 5;
+        const y = fleet.y + 52 + r * yStep + Math.cos(t * 0.85 + c * 0.4) * 3;
+        const alpha = 0.16 + (inv.rows - r) * 0.025 + ((c + r) % 3) * 0.016;
+        ctx.fillStyle = `rgba(131, 255, 155, ${alpha})`;
+        for (let py = 0; py < INVADER_PATTERN.length; py++) {
+          const row = INVADER_PATTERN[py];
+          for (let px = 0; px < row.length; px++) {
+            if (row.charAt(px) === '1') {
+              ctx.fillRect(x - size * 0.5 + px * (size / 7), y - size * 0.4 + py * (size / 7), size / 7, size / 7);
+            }
+          }
+        }
+      }
+    }
+
+    // Bunkers are the static cover between the fleet and the cannon.
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      ctx.fillStyle = '#1c5b32';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = '#2d8a4c';
+      ctx.fillRect(r.x + 8, r.y + 8, r.w - 16, 10);
+      ctx.fillStyle = '#0a1d12';
+      ctx.fillRect(r.x + r.w * 0.27, r.y + r.h * 0.42, r.w * 0.46, r.h * 0.3);
+      ctx.strokeStyle = 'rgba(131, 255, 155, 0.36)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+    }
+
+    // A ready cannon paints a thin aim lane before it fires.
+    if (aim > 0) {
+      const alpha = 0.12 + Math.min(0.4, aim / Math.max(0.001, inv.telegraph) * 0.4);
+      ctx.strokeStyle = `rgba(255, 98, 98, ${alpha})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([7, 12]);
+      ctx.beginPath();
+      ctx.moveTo(cannonX, inv.cannon.y - inv.cannon.h * 0.5);
+      ctx.lineTo(cannonX, b.top + 12);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Arcade-player cannon, moving along the bottom edge.
+    const cannonY = inv.cannon.y;
+    ctx.fillStyle = '#0b2818';
+    ctx.fillRect(cannonX - inv.cannon.w * 0.5, cannonY - inv.cannon.h * 0.5, inv.cannon.w, inv.cannon.h);
+    ctx.strokeStyle = '#83ff9b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cannonX - inv.cannon.w * 0.5, cannonY - inv.cannon.h * 0.5, inv.cannon.w, inv.cannon.h);
+    ctx.fillStyle = '#d8ffe0';
+    ctx.fillRect(cannonX - 4, cannonY - inv.cannon.h * 0.85, 8, inv.cannon.h * 0.42);
+    ctx.fillStyle = '#83ff9b';
+    ctx.fillRect(cannonX - 18, cannonY + 4, 36, 5);
+    if (flash > 0) {
+      ctx.fillStyle = '#ff7a68';
+      ctx.fillRect(cannonX - 5, cannonY - inv.cannon.h * 0.98, 10, 18);
+      ctx.fillStyle = 'rgba(255, 224, 143, 0.7)';
+      ctx.fillRect(cannonX - 11, cannonY - inv.cannon.h * 0.82, 22, 4);
+    }
+
+    // Local cannon shots. These are the actual hazard, not decoration.
+    for (let i = 0; i < shots.length; i++) {
+      const shot = shots[i];
+      if (!shot.active) continue;
+      ctx.fillStyle = 'rgba(255, 94, 86, 0.28)';
+      ctx.fillRect(shot.x - 5, shot.y - 12, 10, 24);
+      ctx.fillStyle = '#ffb38a';
+      ctx.fillRect(shot.x - 3, shot.y - 8, 6, 16);
+      ctx.fillStyle = '#fff4cf';
+      ctx.fillRect(shot.x - 1, shot.y - 5, 2, 10);
+    }
+
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(131, 255, 155, 0.54)';
+    ctx.fillText('SCORE 0000', b.left + 24, b.top + 26);
+    ctx.textAlign = 'right';
+    ctx.fillText('HI 9999', b.right - 24, b.top + 26);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(131, 255, 155, 0.44)';
+    ctx.fillText('INVADER FLEET // LIVE CANNON', b.left + (b.right - b.left) * 0.5, b.top + 26);
+    ctx.fillStyle = 'rgba(255, 147, 128, 0.58)';
+    ctx.fillText('THE ARCADE PLAYER SHOOTS BACK', b.left + (b.right - b.left) * 0.5, b.bottom - 22);
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(131, 255, 155, 0.68)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.restore();
+  }
+
   private drawArena(
     t: number,
     arena: ArenaDef,
@@ -4385,6 +5086,18 @@ export class Renderer {
     }
     if (arena.car) {
       this.drawCarArena(satelliteState, groundA, frameA, t);
+      return;
+    }
+    if (arena.pong) {
+      this.drawPongArena(satelliteState, groundA, frameA, t);
+      return;
+    }
+    if (arena.flip) {
+      this.drawFlipArena(satelliteState, groundA, frameA, t);
+      return;
+    }
+    if (arena.invaders) {
+      this.drawInvadersArena(satelliteState, groundA, frameA, t);
       return;
     }
     if (arena.seek) {

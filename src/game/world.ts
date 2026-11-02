@@ -66,6 +66,10 @@ import {
   scannerLaserY,
   scannerPhaseAt,
   SCANNER_STATE,
+  faxCycle,
+  faxHeadX,
+  faxPhaseAt,
+  FAX_STATE,
   usbDriveRect,
   usbExtensionAt,
   usbFloorAt,
@@ -76,6 +80,9 @@ import {
   SATELLITE_SOLAR_STATE,
   carRouteAt,
   carProgressAt,
+  flipTimeRectAt,
+  flipRowStateAt,
+  FLIP_STATE,
   rocketArcAt,
   rocketProgressAt,
   swipeDirectionAt,
@@ -84,10 +91,14 @@ import {
   swipePopupActiveAt,
   type ArenaBrowserDef,
   type ArenaDef,
+  type ArenaFaxDef,
   type ArenaKeypadDef,
   type ArenaPropDef,
   type ArenaSatelliteDef,
   type ArenaCarDef,
+  type ArenaFlipDef,
+  type ArenaInvadersDef,
+  type ArenaPongDef,
   type ArenaRocketDef,
   type ArenaScannerDef,
   type ArenaSwipeDef,
@@ -135,6 +146,7 @@ import {
   type Net,
   type Phase,
   type SatelliteMeteor,
+  type InvaderShot,
   type Pipe,
   type Pickup,
   type Player,
@@ -427,6 +439,11 @@ export class World {
   scannerT = 0;
   scannerPage = 0;
   scannerPhase: number = SCANNER_STATE.load;
+  /** Fax sheet and shuttle print head. Local-only. */
+  readonly fax: ArenaFaxDef | null;
+  faxT = 0;
+  faxPage = 0;
+  faxPhase: number = FAX_STATE.readyLeft;
   /** Forum browser. Snapshot carries the page and cycle clock; damage stays host-side. */
   readonly browser: ArenaBrowserDef | null;
   /** Active forum page and the clock driving its cursor and click. */
@@ -449,6 +466,13 @@ export class World {
   private scannerHitSentries = 0;
   private scannerHitErrors = 0;
   private scannerHitDrone = false;
+  /** One bit per body family already hit by the current fax pass. Local-only. */
+  private faxHitPlayers = 0;
+  private faxHitWorms = 0;
+  private faxHitViruses = 0;
+  private faxHitSentries = 0;
+  private faxHitErrors = 0;
+  private faxHitDrone = false;
   /** World y of the arm's leading edge. Public for the renderer. */
   pusherY = 0;
   /** True while the arm is descending. Public for the renderer. */
@@ -497,6 +521,44 @@ export class World {
   carProgress = 0;
   private readonly carBarrierRects: Rect[] = [];
   private readonly carScratch = { x: 0, y: 0 };
+  /** PONG court and rally ball. Local-only; the snapshot does not carry a rally. */
+  readonly pong: ArenaPongDef | null;
+  pongBallX = 0;
+  pongBallY = 0;
+  pongBallVx = 0;
+  pongBallVy = 0;
+  pongBallActive = false;
+  pongLeftY = 0;
+  pongRightY = 0;
+  pongScoreLeft = 0;
+  pongScoreRight = 0;
+  /** Delay before the next serve, in seconds. */
+  pongServeT = 0;
+  /** Point flash timer and 0 left / 1 right scorer. */
+  pongScoreFlash = 0;
+  pongScoreSide = 0;
+  /** Brief paddle/body/wall glow after a return. */
+  pongHitFlash = 0;
+  private pongServeIndex = 0;
+  private pongHitNx = 1;
+  private pongHitNy = 0;
+  /** AIRPORT split-flap board. Local-only; time tiles resolve as floor hazards. */
+  readonly flip: ArenaFlipDef | null;
+  flipT = 0;
+  /** Current FLIP_STATE per board row. Public for the renderer and tests. */
+  readonly flipStates: Uint8Array;
+  private readonly flipPrevStates: Uint8Array;
+  private readonly flipCellScratch: Rect = { x: 0, y: 0, w: 0, h: 0 };
+  /** SPACE INVADERS simulated cannon and local shots. */
+  readonly invaders: ArenaInvadersDef | null;
+  invaderT = 0;
+  invaderCannonX = 0;
+  /** Cooldown before the next cannon shot; 0 means ready. */
+  invaderFireT = 0;
+  /** Time left in the visible aim-line lead-in. */
+  invaderAimT = 0;
+  invaderCannonFlash = 0;
+  readonly invaderShots: InvaderShot[] = [];
   /** Shared solar/telescope clock, seconds into the run. */
   satelliteT = 0;
   /** Countdown to the next meteor shower. */
@@ -591,6 +653,18 @@ export class World {
         this.carBarrierRects.push({ x: 0, y: 0, w: 0, h: 0 });
       }
     }
+    this.pong = arena.pong ?? null;
+    if (this.pong) this.resetPong();
+    this.flip = arena.flip ?? null;
+    this.flipStates = new Uint8Array(this.flip?.rows.length ?? 0);
+    this.flipPrevStates = new Uint8Array(this.flipStates.length);
+    this.refreshFlipStates();
+    this.flipPrevStates.set(this.flipStates);
+    this.invaders = arena.invaders ?? null;
+    if (this.invaders) {
+      for (let i = 0; i < 10; i++) this.invaderShots.push({ active: false, x: 0, y: 0, vy: 0 });
+      this.resetInvaders();
+    }
     const routeBarrierRects = [...this.rocketBarrierRects, ...this.carBarrierRects];
     const staticSolids =
       routeBarrierRects.length > 0 ? [...arenaSolids(arena), ...routeBarrierRects] : arenaSolids(arena);
@@ -605,6 +679,8 @@ export class World {
     this.keypadPrevStates.set(this.keypadStates);
     this.scanner = arena.scanner ?? null;
     this.scannerPhase = this.scanner ? scannerPhaseAt(0) : SCANNER_STATE.load;
+    this.fax = arena.fax ?? null;
+    this.faxPhase = this.fax ? faxPhaseAt(this.fax, 0) : FAX_STATE.readyLeft;
     this.browser = arena.browser ?? null;
     this.resetBrowser();
     this.bumperFlash = new Float32Array(arena.bumpers?.length ?? 0);
@@ -2431,12 +2507,16 @@ export class World {
     this.clearAimMarks();
     if (this.keypad) this.resetKeypad();
     if (this.scanner) this.resetScanner();
+    if (this.fax) this.resetFax();
     if (this.browser) this.resetBrowser();
     if (this.usb) this.resetUsb();
     if (this.swipe) this.resetSwipe();
     if (this.satellite) this.resetSatellite();
     if (this.rocket) this.resetRocket();
     if (this.car) this.resetCar();
+    if (this.pong) this.resetPong();
+    if (this.flip) this.resetFlip();
+    if (this.invaders) this.resetInvaders();
     const active = this.activeCount();
     if (active === 0) return;
     computeSpawns(active, this.arena, this.spawnTmpX, this.spawnTmpY);
@@ -2535,6 +2615,9 @@ export class World {
     if (this.satellite && canAct) this.tickSatellite(dt);
     if (this.rocket && canAct) this.tickRocket(dt);
     if (this.car && canAct) this.tickCar(dt);
+    if (this.pong && canAct) this.tickPong(dt);
+    if (this.flip && canAct) this.tickFlip(dt);
+    if (this.invaders && canAct) this.tickInvaders(dt);
     for (let i = 0; i < this.bumperFlash.length; i++) {
       if (this.bumperFlash[i] > 0) this.bumperFlash[i] = Math.max(0, this.bumperFlash[i] - dt);
     }
@@ -3247,6 +3330,7 @@ export class World {
     // The read head runs after the bodies have moved, so a dash that crosses the
     // line this frame is already airborne when the scan resolves.
     if (this.scanner && canAct && !calibrationHold) this.tickScanner(dt);
+    if (this.fax && canAct && !calibrationHold) this.tickFax(dt);
     if (this.browser) this.pushThreatsOffBrowser();
     if (this.keypad) this.pushThreatsOffKeypad();
     this.bumpThreats();
@@ -8795,6 +8879,459 @@ export class World {
     }
   }
 
+  /** Reset the PONG scoreboard, paddles and serve clock. */
+  private resetPong(): void {
+    const pong = this.pong;
+    if (!pong) return;
+    const cx = pong.court.x + pong.court.w * 0.5;
+    const cy = pong.court.y + pong.court.h * 0.5;
+    this.pongBallX = cx;
+    this.pongBallY = cy;
+    this.pongBallVx = 0;
+    this.pongBallVy = 0;
+    this.pongBallActive = false;
+    this.pongLeftY = cy;
+    this.pongRightY = cy;
+    this.pongScoreLeft = 0;
+    this.pongScoreRight = 0;
+    this.pongServeT = pong.serveDelay;
+    this.pongScoreFlash = 0;
+    this.pongScoreSide = 0;
+    this.pongHitFlash = 0;
+    this.pongServeIndex = 0;
+  }
+
+  /** Put a new ball into play. Serves alternate sides and tilt so the rally can move. */
+  private servePong(): void {
+    const pong = this.pong;
+    if (!pong) return;
+    const direction = (this.pongServeIndex & 1) === 0 ? 1 : -1;
+    const tilt = this.pongServeIndex % 4 < 2 ? 0.52 : -0.52;
+    this.pongBallX = pong.court.x + pong.court.w * 0.5;
+    this.pongBallY = pong.court.y + pong.court.h * 0.5;
+    this.pongBallVx = Math.cos(tilt) * pong.speed * direction;
+    this.pongBallVy = Math.sin(tilt) * pong.speed;
+    this.pongBallActive = true;
+    this.pongServeT = 0;
+    this.pongHitFlash = 0;
+    this.pongServeIndex++;
+  }
+
+  /**
+   * One PONG rally tick. The ball is a local hazard: paddles return it, walls bounce
+   * it, and a body caught on the line takes one hit and becomes a return surface.
+   */
+  private tickPong(dt: number): void {
+    const pong = this.pong;
+    if (!pong) return;
+    if (this.pongScoreFlash > 0) this.pongScoreFlash = Math.max(0, this.pongScoreFlash - dt);
+    if (this.pongHitFlash > 0) this.pongHitFlash = Math.max(0, this.pongHitFlash - dt);
+    if (!this.pongBallActive) {
+      this.pongServeT -= dt;
+      if (this.pongServeT <= 0) this.servePong();
+      return;
+    }
+
+    const court = pong.court;
+    const r = pong.ballRadius;
+    const paddleStep = pong.paddleSpeed * dt;
+    const minPaddleY = court.y + pong.paddleH * 0.5 + 10;
+    const maxPaddleY = court.y + court.h - pong.paddleH * 0.5 - 10;
+    const targetY = Math.max(minPaddleY, Math.min(maxPaddleY, this.pongBallY));
+    const leftDelta = targetY - this.pongLeftY;
+    const rightDelta = targetY - this.pongRightY;
+    this.pongLeftY += Math.max(-paddleStep, Math.min(paddleStep, leftDelta));
+    this.pongRightY += Math.max(-paddleStep, Math.min(paddleStep, rightDelta));
+
+    this.pongBallX += this.pongBallVx * dt;
+    this.pongBallY += this.pongBallVy * dt;
+    if (this.pongBallY - r < court.y) {
+      this.pongBallY = court.y + r;
+      this.pongBallVy = Math.abs(this.pongBallVy);
+      this.pongHitFlash = 0.16;
+    } else if (this.pongBallY + r > court.y + court.h) {
+      this.pongBallY = court.y + court.h - r;
+      this.pongBallVy = -Math.abs(this.pongBallVy);
+      this.pongHitFlash = 0.16;
+    }
+
+    const leftX = court.x + pong.paddleInset;
+    const rightX = court.x + court.w - pong.paddleInset;
+    const leftFace = leftX + pong.paddleW * 0.5 + r;
+    const rightFace = rightX - pong.paddleW * 0.5 - r;
+    let returned = false;
+    if (
+      this.pongBallVx < 0 &&
+      this.pongBallX <= leftFace &&
+      this.pongBallX >= court.x &&
+      Math.abs(this.pongBallY - this.pongLeftY) <= pong.paddleH * 0.5 + r
+    ) {
+      this.pongBallX = leftFace;
+      const relative = Math.max(-1, Math.min(1, (this.pongBallY - this.pongLeftY) / (pong.paddleH * 0.5)));
+      const angle = relative * pong.bounceAngle;
+      const speed = Math.min(pong.maxSpeed, Math.hypot(this.pongBallVx, this.pongBallVy) * 1.045);
+      this.pongBallVx = Math.cos(angle) * speed;
+      this.pongBallVy = Math.sin(angle) * speed;
+      this.pongHitFlash = 0.22;
+      this.emit(EV.BOUNCE, -1, this.pongBallX, this.pongBallY, 0);
+      returned = true;
+    } else if (
+      this.pongBallVx > 0 &&
+      this.pongBallX >= rightFace &&
+      this.pongBallX <= court.x + court.w &&
+      Math.abs(this.pongBallY - this.pongRightY) <= pong.paddleH * 0.5 + r
+    ) {
+      this.pongBallX = rightFace;
+      const relative = Math.max(-1, Math.min(1, (this.pongBallY - this.pongRightY) / (pong.paddleH * 0.5)));
+      const angle = relative * pong.bounceAngle;
+      const speed = Math.min(pong.maxSpeed, Math.hypot(this.pongBallVx, this.pongBallVy) * 1.045);
+      this.pongBallVx = -Math.cos(angle) * speed;
+      this.pongBallVy = Math.sin(angle) * speed;
+      this.pongHitFlash = 0.22;
+      this.emit(EV.BOUNCE, -1, this.pongBallX, this.pongBallY, 0);
+      returned = true;
+    }
+
+    this.pongHitBodies();
+    if (returned) return;
+
+    if (this.pongBallX + r < court.x) {
+      this.pongScoreRight++;
+      this.pongScoreSide = 1;
+      this.pongScoreFlash = 1.1;
+      this.pongBallActive = false;
+      this.pongServeT = pong.serveDelay;
+      this.pongBallX = court.x + court.w * 0.5;
+      this.pongBallY = court.y + court.h * 0.5;
+    } else if (this.pongBallX - r > court.x + court.w) {
+      this.pongScoreLeft++;
+      this.pongScoreSide = 0;
+      this.pongScoreFlash = 1.1;
+      this.pongBallActive = false;
+      this.pongServeT = pong.serveDelay;
+      this.pongBallX = court.x + court.w * 0.5;
+      this.pongBallY = court.y + court.h * 0.5;
+    }
+  }
+
+  /** Resolve the ball against every live body. A hit reflects and marks the return normal. */
+  private pongHitBodies(): void {
+    const pong = this.pong;
+    if (!pong) return;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.dashT > 0 || phased(p) || p.iframes > 0) continue;
+      if (!this.pongBounceOff(p.x, p.y, PLAYER.radius * p.shrink)) continue;
+      this.damagePlayer(p, pong.damage, -1, this.pongHitNx, this.pongHitNy, pong.knockback, SRC.PONG, -1);
+    }
+    if (this.mode === 'training' && this.drone.active && this.pongBounceOff(this.drone.x, this.drone.y, this.drone.radius)) {
+      this.damageDrone(pong.enemyDamage, -1);
+    }
+    if (this.mode !== 'gauntlet') return;
+
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      let hit = this.pongBounceOff(w.x, w.y, WORM.headRadius);
+      for (let s = 0; s < w.segCount && !hit; s++) {
+        hit = this.pongBounceOff(w.segX[s], w.segY[s], WORM.segmentRadius);
+      }
+      if (hit) this.damageWorm(w, pong.enemyDamage, -1, this.pongHitNx, this.pongHitNy);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      if (!this.pongBounceOff(v.x, v.y, v.radius)) continue;
+      this.damageVirus(v, pong.enemyDamage, -1, this.pongHitNx, this.pongHitNy, pong.knockback);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      if (!this.pongBounceOff(s.x, s.y, s.radius)) continue;
+      this.damageSentry(s, pong.enemyDamage, -1, this.pongHitNx, this.pongHitNy, pong.knockback);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      if (!this.pongBounceOff(e.x, e.y, CASCADING_ERROR.blockSize * 0.5)) continue;
+      this.damageError(e, pong.enemyDamage, -1, this.pongHitNx, this.pongHitNy);
+    }
+  }
+
+  /** Reflect the ball off a circular body and remember the outward normal for knockback. */
+  private pongBounceOff(x: number, y: number, radius: number): boolean {
+    const pong = this.pong;
+    if (!pong) return false;
+    const min = pong.ballRadius + radius;
+    const dx = this.pongBallX - x;
+    const dy = this.pongBallY - y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > min * min) return false;
+    const d = Math.sqrt(d2);
+    const nx = d > 0.001 ? dx / d : this.pongBallVx >= 0 ? 1 : -1;
+    const ny = d > 0.001 ? dy / d : this.pongBallVy >= 0 ? 1 : -1;
+    this.pongHitNx = nx;
+    this.pongHitNy = ny;
+    this.pongBallX = x + nx * min;
+    this.pongBallY = y + ny * min;
+    const dot = this.pongBallVx * nx + this.pongBallVy * ny;
+    if (dot < 0) {
+      this.pongBallVx -= 2 * dot * nx;
+      this.pongBallVy -= 2 * dot * ny;
+    }
+    this.pongHitFlash = 0.22;
+    return true;
+  }
+
+  /** Reset the airport board to its opening warning frame. */
+  private resetFlip(): void {
+    if (!this.flip) return;
+    this.flipT = 0;
+    this.refreshFlipStates();
+    this.flipPrevStates.set(this.flipStates);
+  }
+
+  private refreshFlipStates(): void {
+    const flip = this.flip;
+    if (!flip) return;
+    for (let i = 0; i < flip.rows.length; i++) {
+      this.flipStates[i] = flipRowStateAt(flip, i, this.flipT);
+    }
+  }
+
+  /** Advance the board and resolve each row on the frame its flap lands. */
+  private tickFlip(dt: number): void {
+    const flip = this.flip;
+    if (!flip) return;
+    this.flipPrevStates.set(this.flipStates);
+    this.flipT += dt;
+    for (let i = 0; i < flip.rows.length; i++) {
+      const next = flipRowStateAt(flip, i, this.flipT);
+      this.flipStates[i] = next;
+      if (next === FLIP_STATE.flap && this.flipPrevStates[i] !== FLIP_STATE.flap) this.slamFlipRow(i);
+    }
+  }
+
+  /** A time tile lands: damage and shove anything standing on its footprint. */
+  private slamFlipRow(row: number): void {
+    const flip = this.flip;
+    if (!flip) return;
+    const cell = flipTimeRectAt(flip, row, this.flipCellScratch);
+    const cx = cell.x + cell.w * 0.5;
+    const cy = cell.y + cell.h * 0.5;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.dashT > 0 || phased(p)) continue;
+      if (!circleRect(p.x, p.y, PLAYER.radius * p.shrink, cell, hitScratch)) continue;
+      const dx = p.x - cx;
+      const dy = p.y - cy;
+      const d = Math.hypot(dx, dy) || 1;
+      this.damagePlayer(p, flip.damage, -1, dx / d, dy / d, flip.knockback, SRC.FLIP, row);
+    }
+    if (this.mode === 'training' && this.drone.active) {
+      if (circleRect(this.drone.x, this.drone.y, this.drone.radius, cell, hitScratch)) {
+        this.damageDrone(flip.enemyDamage, -1);
+      }
+    }
+    if (this.mode !== 'gauntlet') return;
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      let hit = circleRect(w.x, w.y, WORM.headRadius, cell, hitScratch);
+      for (let s = 0; s < w.segCount && !hit; s++) {
+        hit = circleRect(w.segX[s], w.segY[s], WORM.segmentRadius, cell, hitScratch);
+      }
+      if (hit) this.damageWorm(w, flip.enemyDamage, -1, 0, -1);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active || !circleRect(v.x, v.y, v.radius, cell, hitScratch)) continue;
+      this.damageVirus(v, flip.enemyDamage, -1, 0, -1);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active || !circleRect(s.x, s.y, s.radius, cell, hitScratch)) continue;
+      this.damageSentry(s, flip.enemyDamage, -1, 0, -1);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active || !circleRect(e.x, e.y, CASCADING_ERROR.blockSize * 0.5, cell, hitScratch)) continue;
+      this.damageError(e, flip.enemyDamage, -1, 0, -1);
+    }
+  }
+
+  /** Reset the simulated cannon and clear its local shots. */
+  private resetInvaders(): void {
+    const inv = this.invaders;
+    if (!inv) return;
+    this.invaderT = 0;
+    this.invaderCannonX = inv.cannon.x;
+    this.invaderFireT = 1.2;
+    this.invaderAimT = 0;
+    this.invaderCannonFlash = 0;
+    for (let i = 0; i < this.invaderShots.length; i++) this.invaderShots[i].active = false;
+  }
+
+  /** Choose the nearest horizontal body, so the simulated player sweeps the fleet. */
+  private invaderTargetX(): number {
+    const inv = this.invaders;
+    if (!inv) return this.centerX;
+    let bestX = this.centerX;
+    let bestD = Infinity;
+    const consider = (x: number): void => {
+      const d = Math.abs(x - this.invaderCannonX);
+      if (d < bestD) {
+        bestD = d;
+        bestX = x;
+      }
+    };
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (p.active && p.alive) consider(p.x);
+    }
+    if (this.mode === 'training' && this.drone.active) consider(this.drone.x);
+    if (this.mode === 'gauntlet') {
+      for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) consider(this.worms[i].x);
+      for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) consider(this.viruses[i].x);
+      for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) consider(this.sentries[i].x);
+      for (let i = 0; i < this.errors.length; i++) if (this.errors[i].active) consider(this.errors[i].x);
+    }
+    return bestX;
+  }
+
+  /** Move the cannon, fire when aligned, and resolve its upward shots. */
+  private tickInvaders(dt: number): void {
+    const inv = this.invaders;
+    if (!inv) return;
+    this.invaderT += dt;
+    if (this.invaderCannonFlash > 0) this.invaderCannonFlash = Math.max(0, this.invaderCannonFlash - dt);
+    if (this.invaderAimT > 0) this.invaderAimT = Math.max(0, this.invaderAimT - dt);
+    const targetX = this.invaderTargetX();
+    const left = this.arena.bounds.left + inv.cannon.w * 0.5 + 18;
+    const right = this.arena.bounds.right - inv.cannon.w * 0.5 - 18;
+    const step = inv.cannon.speed * dt;
+    const delta = Math.max(-step, Math.min(step, targetX - this.invaderCannonX));
+    this.invaderCannonX = Math.max(left, Math.min(right, this.invaderCannonX + delta));
+    this.invaderFireT = Math.max(0, this.invaderFireT - dt);
+    const aligned = Math.abs(this.invaderCannonX - targetX) < 58;
+    if (aligned && this.invaderFireT <= 0) {
+      this.fireInvaderShot();
+      this.invaderFireT = inv.fireEvery;
+      this.invaderAimT = 0;
+    } else if (aligned) {
+      this.invaderAimT = Math.max(this.invaderAimT, Math.max(0, inv.telegraph - this.invaderFireT));
+    }
+    this.updateInvaderShots(dt);
+  }
+
+  private fireInvaderShot(): void {
+    const inv = this.invaders;
+    if (!inv) return;
+    for (let i = 0; i < this.invaderShots.length; i++) {
+      const shot = this.invaderShots[i];
+      if (shot.active) continue;
+      shot.active = true;
+      shot.x = this.invaderCannonX;
+      shot.y = inv.cannon.y - inv.cannon.h * 0.5;
+      shot.vy = -inv.shotSpeed;
+      this.invaderCannonFlash = 0.14;
+      return;
+    }
+  }
+
+  /** Circle-circle test for the local cannon shot. Bodies have no w/h rect. */
+  private invaderShotHitsBody(shot: InvaderShot, x: number, y: number, radius: number): boolean {
+    const inv = this.invaders;
+    if (!inv) return false;
+    const reach = inv.shotRadius + radius;
+    const dx = shot.x - x;
+    const dy = shot.y - y;
+    return dx * dx + dy * dy <= reach * reach;
+  }
+
+  private updateInvaderShots(dt: number): void {
+    const inv = this.invaders;
+    if (!inv) return;
+    for (let i = 0; i < this.invaderShots.length; i++) {
+      const shot = this.invaderShots[i];
+      if (!shot.active) continue;
+      shot.y += shot.vy * dt;
+      if (shot.y < this.arena.bounds.top) {
+        shot.active = false;
+        continue;
+      }
+      let blocked = false;
+      for (let j = 0; j < this.arena.pillars.length; j++) {
+        if (circleRect(shot.x, shot.y, inv.shotRadius, this.arena.pillars[j], hitScratch)) {
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) {
+        shot.active = false;
+        this.emit(EV.BOUNCE, -1, shot.x, shot.y, 1);
+        continue;
+      }
+      let hit = false;
+      for (let j = 0; j < this.players.length; j++) {
+        const p = this.players[j];
+        if (!p.active || !p.alive || p.dashT > 0 || phased(p)) continue;
+        if (!this.invaderShotHitsBody(shot, p.x, p.y, PLAYER.radius * p.shrink)) continue;
+        this.damagePlayer(p, inv.damage, -1, 0, -1, inv.knockback, SRC.ARCADE, -1);
+        shot.active = false;
+        hit = true;
+        break;
+      }
+      if (hit) continue;
+      if (this.mode === 'training' && this.drone.active) {
+        if (this.invaderShotHitsBody(shot, this.drone.x, this.drone.y, this.drone.radius)) {
+          this.damageDrone(inv.enemyDamage, -1);
+          shot.active = false;
+          continue;
+        }
+      }
+      if (this.mode !== 'gauntlet') continue;
+      for (let j = 0; j < this.worms.length && !hit; j++) {
+        const w = this.worms[j];
+        if (!w.active) continue;
+        let touched = this.invaderShotHitsBody(shot, w.x, w.y, WORM.headRadius);
+        for (let s = 0; s < w.segCount && !touched; s++) {
+          touched = this.invaderShotHitsBody(shot, w.segX[s], w.segY[s], WORM.segmentRadius);
+        }
+        if (!touched) continue;
+        this.damageWorm(w, inv.enemyDamage, -1, 0, -1);
+        shot.active = false;
+        hit = true;
+      }
+      if (hit) continue;
+      for (let j = 0; j < this.viruses.length; j++) {
+        const v = this.viruses[j];
+        if (!v.active || !this.invaderShotHitsBody(shot, v.x, v.y, v.radius)) continue;
+        this.damageVirus(v, inv.enemyDamage, -1, 0, -1);
+        shot.active = false;
+        hit = true;
+        break;
+      }
+      if (hit) continue;
+      for (let j = 0; j < this.sentries.length; j++) {
+        const s = this.sentries[j];
+        if (!s.active || !this.invaderShotHitsBody(shot, s.x, s.y, s.radius)) continue;
+        this.damageSentry(s, inv.enemyDamage, -1, 0, -1);
+        shot.active = false;
+        hit = true;
+        break;
+      }
+      if (hit) continue;
+      for (let j = 0; j < this.errors.length; j++) {
+        const e = this.errors[j];
+        if (!e.active || !this.invaderShotHitsBody(shot, e.x, e.y, CASCADING_ERROR.blockSize * 0.5)) continue;
+        this.damageError(e, inv.enemyDamage, -1, 0, -1);
+        shot.active = false;
+        break;
+      }
+    }
+  }
+
   /** Advance the launch and rebuild the collision blocks that approximate the arc. */
   private tickRocket(dt: number): void {
     const rocket = this.rocket;
@@ -10105,6 +10642,130 @@ export class World {
       if (!this.scannerHits(e.x, e.y, CASCADING_ERROR.blockSize * 0.5, sc, line, half)) continue;
       this.scannerHitErrors |= bit;
       this.damageError(e, SCANNER.enemyDamage, -1, 0, dirY);
+    }
+  }
+
+  private resetFax(): void {
+    this.faxT = 0;
+    this.faxPage = 0;
+    this.faxPhase = this.fax ? faxPhaseAt(this.fax, 0) : FAX_STATE.readyLeft;
+    this.clearFaxHits();
+  }
+
+  private clearFaxHits(): void {
+    this.faxHitPlayers = 0;
+    this.faxHitWorms = 0;
+    this.faxHitViruses = 0;
+    this.faxHitSentries = 0;
+    this.faxHitErrors = 0;
+    this.faxHitDrone = false;
+  }
+
+  /** Advance the shuttle, swap sheets at the end of a full out-and-back, then burn. */
+  private tickFax(dt: number): void {
+    const fx = this.fax;
+    if (!fx) return;
+    const cycle = faxCycle(fx);
+    this.faxT += dt;
+    let wrapped = false;
+    while (this.faxT >= cycle) {
+      this.faxT -= cycle;
+      wrapped = true;
+    }
+    if (wrapped) {
+      const pages = Math.max(1, fx.documents.length);
+      this.faxPage = (this.faxPage + 1) % pages;
+      this.clearFaxHits();
+    }
+    const phase = faxPhaseAt(fx, this.faxT);
+    if (phase !== this.faxPhase) {
+      this.faxPhase = phase;
+      if (phase === FAX_STATE.printRight || phase === FAX_STATE.printLeft) this.clearFaxHits();
+    }
+    if (phase === FAX_STATE.printRight || phase === FAX_STATE.printLeft) this.burnFax();
+  }
+
+  private faxHits(
+    x: number,
+    y: number,
+    radius: number,
+    fx: ArenaFaxDef,
+    headX: number,
+    half: number,
+  ): boolean {
+    if (y < fx.y - radius || y > fx.y + fx.h + radius) return false;
+    return Math.abs(x - headX) <= half + radius;
+  }
+
+  /**
+   * The thermal bar resolves after the bodies move, exactly like the scanner line.
+   * One hit per pass per body keeps the shuttle readable instead of melting a target
+   * that stands beside it for several frames.
+   */
+  private burnFax(): void {
+    const fx = this.fax;
+    if (!fx) return;
+    const headX = faxHeadX(fx, this.faxT);
+    const half = fx.headW * 0.5;
+    const dirX = this.faxPhase === FAX_STATE.printRight ? 1 : -1;
+
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.dashT > 0 || phased(p)) continue;
+      const bit = 1 << p.slot;
+      if (this.faxHitPlayers & bit) continue;
+      if (!this.faxHits(p.x, p.y, PLAYER.radius * p.shrink, fx, headX, half)) continue;
+      this.faxHitPlayers |= bit;
+      this.damagePlayer(p, fx.damage, -1, dirX, 0, fx.knockback, SRC.FAX, -1);
+    }
+
+    if (this.mode === 'training' && this.drone.active && !this.faxHitDrone) {
+      if (this.faxHits(this.drone.x, this.drone.y, this.drone.radius, fx, headX, half)) {
+        this.faxHitDrone = true;
+        this.damageDrone(fx.enemyDamage, -1);
+      }
+    }
+    if (this.mode !== 'gauntlet') return;
+
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const bit = 1 << i;
+      if (this.faxHitWorms & bit) continue;
+      let hit = this.faxHits(w.x, w.y, WORM.headRadius, fx, headX, half);
+      for (let s = 0; s < w.segCount && !hit; s++) {
+        hit = this.faxHits(w.segX[s], w.segY[s], WORM.segmentRadius, fx, headX, half);
+      }
+      if (!hit) continue;
+      this.faxHitWorms |= bit;
+      this.damageWorm(w, fx.enemyDamage, -1, dirX, 0);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const bit = 1 << i;
+      if (this.faxHitViruses & bit) continue;
+      if (!this.faxHits(v.x, v.y, v.radius, fx, headX, half)) continue;
+      this.faxHitViruses |= bit;
+      this.damageVirus(v, fx.enemyDamage, -1, dirX, 0);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const bit = 1 << i;
+      if (this.faxHitSentries & bit) continue;
+      if (!this.faxHits(s.x, s.y, s.radius, fx, headX, half)) continue;
+      this.faxHitSentries |= bit;
+      this.damageSentry(s, fx.enemyDamage, -1, dirX, 0);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const bit = 1 << i;
+      if (this.faxHitErrors & bit) continue;
+      if (!this.faxHits(e.x, e.y, CASCADING_ERROR.blockSize * 0.5, fx, headX, half)) continue;
+      this.faxHitErrors |= bit;
+      this.damageError(e, fx.enemyDamage, -1, 0, dirX);
     }
   }
 
