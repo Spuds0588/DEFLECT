@@ -413,8 +413,9 @@ export interface ArenaRocketStageDef {
 
 /**
  * ROCKET NAVIGATION: a launch-control floor under a rocket's telemetry display. The
- * arc is a real growing body/shot barrier; the rocket and stage debris are presentation.
- * Local-only because the host owns the growth clock.
+ * flown arc is a shot-only dotted reflector: bodies, dashes and enemies cross it, while
+ * projectiles bounce off it. The rocket and stage debris are presentation. Local-only
+ * because the host owns the growth clock.
  */
 export interface ArenaRocketDef {
   /** Start of the trajectory, usually just outside the bottom lip. */
@@ -441,116 +442,121 @@ export interface ArenaWeaponButtonDef extends Rect {
 
 
 /**
- * WEAPON SYSTEMS jet silhouette: a side profile traced from real fighter geometry —
- * pointed nose, bubble canopy, swept wing, tail plane, swept vertical fin, intake and
- * exhaust nozzle. Coordinates are normalized: x runs 0 (nose) to 1 (tail), y is a
- * fraction of the jet box height from the centreline, negative upward.
- *
- * The arena and the arena picker both draw from this, so the drawing in the status
- * console and the thumbnail can never drift apart. Do not re-inline a polygon.
+ * WEAPON SYSTEMS jet silhouette: a top-down plan view with the cockpit and nose facing
+ * up. Coordinates are normalized: x runs 0 (left wingtip) to 1 (right wingtip), y runs
+ * 0 (nose) to 1 (tail). The arena and the arena picker both draw from this, so the
+ * status screen and its thumbnail can never drift apart. Do not re-inline a polygon.
  */
-export const FIGHTER_SIDE: readonly {
+export const FIGHTER_TOP: readonly {
   name: 'wing' | 'stabilizer' | 'intake' | 'missile' | 'fin' | 'fuselage' | 'nozzle' | 'canopy';
   points: readonly (readonly [number, number])[];
   closed: boolean;
 }[] = [
-  // Far surfaces first, then the fuselage, then the glass and the hot end on top.
+  // Broad surfaces first, then the fuselage, tail fin, glass and hot end on top.
   {
     name: 'wing',
     closed: true,
     points: [
-      [0.38, 0.026],
-      [0.70, 0.126],
-      [0.78, 0.132],
-      [0.58, 0.036],
+      [0.40, 0.38],
+      [0.04, 0.62],
+      [0.06, 0.72],
+      [0.40, 0.56],
+      [0.60, 0.56],
+      [0.94, 0.72],
+      [0.96, 0.62],
+      [0.60, 0.38],
     ],
   },
   {
     name: 'stabilizer',
     closed: true,
     points: [
-      [0.76, 0.004],
-      [0.90, 0.058],
-      [0.95, 0.056],
-      [0.88, 0.016],
+      [0.43, 0.78],
+      [0.16, 0.88],
+      [0.15, 0.94],
+      [0.43, 0.88],
+      [0.57, 0.88],
+      [0.85, 0.94],
+      [0.84, 0.88],
+      [0.57, 0.78],
     ],
   },
   {
     name: 'intake',
     closed: true,
     points: [
-      [0.38, 0.044],
-      [0.42, 0.082],
-      [0.52, 0.076],
-      [0.54, 0.044],
-    ],
-  },
-  {
-    name: 'missile',
-    closed: true,
-    points: [
-      [0.44, 0.06],
-      [0.62, 0.108],
-      [0.65, 0.1],
-      [0.47, 0.054],
-    ],
-  },
-  {
-    name: 'fin',
-    closed: true,
-    points: [
-      [0.64, -0.02],
-      [0.70, -0.15],
-      [0.78, -0.156],
-      [0.82, -0.02],
+      [0.36, 0.32],
+      [0.29, 0.41],
+      [0.31, 0.53],
+      [0.41, 0.51],
+      [0.41, 0.38],
+      [0.59, 0.38],
+      [0.59, 0.51],
+      [0.69, 0.53],
+      [0.71, 0.41],
+      [0.64, 0.32],
     ],
   },
   {
     name: 'fuselage',
     closed: true,
     points: [
-      [0.03, 0.012],
-      [0.1, -0.002],
-      [0.18, -0.014],
-      [0.26, -0.022],
-      [0.36, -0.024],
-      [0.5, -0.02],
-      [0.66, -0.018],
-      [0.78, -0.014],
-      [0.86, -0.024],
-      [0.94, -0.03],
-      [0.94, 0.02],
-      [0.86, 0.026],
-      [0.72, 0.03],
-      [0.6, 0.034],
-      [0.5, 0.038],
-      [0.44, 0.052],
-      [0.36, 0.05],
-      [0.28, 0.032],
-      [0.18, 0.024],
-      [0.09, 0.018],
+      [0.50, 0.02],
+      [0.55, 0.08],
+      [0.57, 0.16],
+      [0.585, 0.30],
+      [0.58, 0.42],
+      [0.60, 0.55],
+      [0.60, 0.68],
+      [0.575, 0.79],
+      [0.56, 0.88],
+      [0.55, 0.96],
+      [0.50, 0.99],
+      [0.45, 0.96],
+      [0.44, 0.88],
+      [0.425, 0.79],
+      [0.40, 0.68],
+      [0.40, 0.55],
+      [0.42, 0.42],
+      [0.415, 0.30],
+      [0.43, 0.16],
+      [0.45, 0.08],
     ],
   },
   {
-    name: 'nozzle',
+    name: 'fin',
     closed: true,
     points: [
-      [0.88, -0.022],
-      [0.96, -0.016],
-      [0.96, 0.016],
-      [0.88, 0.022],
+      [0.47, 0.64],
+      [0.53, 0.64],
+      [0.55, 0.88],
+      [0.50, 0.95],
+      [0.45, 0.88],
     ],
   },
   {
     name: 'canopy',
     closed: true,
     points: [
-      [0.25, -0.024],
-      [0.29, -0.062],
-      [0.34, -0.068],
-      [0.4, -0.04],
-      [0.36, -0.03],
-      [0.28, -0.028],
+      [0.47, 0.19],
+      [0.51, 0.17],
+      [0.55, 0.20],
+      [0.56, 0.26],
+      [0.54, 0.31],
+      [0.50, 0.33],
+      [0.46, 0.31],
+      [0.44, 0.26],
+      [0.45, 0.21],
+    ],
+  },
+  {
+    name: 'nozzle',
+    closed: true,
+    points: [
+      [0.44, 0.92],
+      [0.56, 0.92],
+      [0.55, 0.99],
+      [0.45, 0.99],
     ],
   },
 ];
@@ -561,7 +567,7 @@ export const FIGHTER_SIDE: readonly {
  */
 export interface ArenaWeaponDef {
   buttons: ArenaWeaponButtonDef[];
-  /** Bounding box for the jet side-view drawing. */
+  /** Bounding box for the nose-up top-down jet drawing. */
   jet: Rect;
 }
 
@@ -597,13 +603,34 @@ export interface ArenaCarStopDef {
   label: string;
 }
 
+/** One land parcel on the CAR NAVIGATION map. Presentation only. */
+export interface ArenaCarFieldDef {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** 0-2, picks one of the muted field tones. */
+  tone: number;
+}
+
+/** One tree-cover cluster on the CAR NAVIGATION map. Presentation only. */
+export interface ArenaCarWoodsDef {
+  x: number;
+  y: number;
+  r: number;
+}
+
 /**
- * CAR NAVIGATION: a GPS/map display with a serpentine car route. The travelled
- * portion is a real growing barrier; the car, pins and map furniture are presentation.
- * Local-only because the host owns the route clock.
+ * CAR NAVIGATION: a GPS/map display split into farmland and a city grid. The recent
+ * travelled portion is a real, capped barrier that recedes as the car advances; the
+ * car, pins, fields, river and map furniture are presentation. Local-only because the
+ * host owns the route clock.
  */
 export interface ArenaCarDef {
-  /** Ordered serpentine polyline. The first and last points may sit outside the bounds. */
+  /**
+   * Ordered polyline. The first and last points may sit outside the bounds. The
+   * country legs wind; every leg east of `cityX` is axis-aligned to a city street.
+   */
   route: Point2[];
   /** Seconds from route start to a completed barrier. */
   duration: number;
@@ -611,7 +638,29 @@ export interface ArenaCarDef {
   segments: number;
   /** Width of one collision block, in world units. */
   thickness: number;
+  /** Maximum live road kept behind the car, in world units. Older blocks recede. */
+  trailLength: number;
   stops: ArenaCarStopDef[];
+  /** District split: farmland west of this line, city blocks east of it. */
+  cityX: number;
+  /** City street grid: first vertical and horizontal street, and cell size. */
+  gridX: number;
+  gridY: number;
+  gridStep: number;
+  /** The first `farmCount` pillars are farm buildings; the rest are city blocks. */
+  farmCount: number;
+  /** Names for `pillars`, in the same order. */
+  labels: string[];
+  /** Farmland parcels, drawn as map paper under the route. */
+  fields: ArenaCarFieldDef[];
+  /** Tree cover clusters. */
+  woods: ArenaCarWoodsDef[];
+  /** River polyline, drawn as a map waterway beside the city edge. */
+  river: Point2[];
+  /** Bridge deck where the route crosses the river. */
+  bridge: Rect;
+  /** City park block. Presentation only. */
+  park: Rect;
 }
 
 /**
@@ -834,18 +883,23 @@ export interface ArenaScannerDef extends Rect {
 }
 
 /**
- * A fax bed under a thermal print head. The head shuttles left and right across the
- * sheet, pauses at each edge, then returns. The page labels are cosmetic; the timing
- * and hazard values live on this record because the arena is local-only.
+ * A fax bed under a compact thermal print head. The head prints across one row,
+ * steps down one line, then prints the next row in the opposite direction. The page
+ * labels are cosmetic; the timing and hazard values live on this record because the
+ * arena is local-only.
  */
 export interface ArenaFaxDef extends Rect {
   documents: string[];
-  /** Width of the moving head and its hot print bar. */
+  /** Width of the moving print head. */
   headW: number;
+  /** Height of the moving print head. */
+  headH: number;
+  /** Number of print rows on one sheet. */
+  rows: number;
   /** Travel speed in world units per second. */
   speed: number;
-  /** Park time at each edge before the carriage reverses. */
-  pause: number;
+  /** Seconds to step down one row at the end of a pass. */
+  lineFeed: number;
   damage: number;
   enemyDamage: number;
   knockback: number;
@@ -1170,35 +1224,66 @@ export function faxTravelTime(fax: ArenaFaxDef): number {
   return Math.max(0.001, (fax.w - fax.headW) / Math.max(1, fax.speed));
 }
 
-/** Seconds for one parked edge, one crossing, the other edge and the return. */
+/** Seconds for one row pass and its line feed. */
+export function faxRowTime(fax: ArenaFaxDef): number {
+  return faxTravelTime(fax) + Math.max(0, fax.lineFeed);
+}
+
+/** Seconds for one complete sheet: every row plus its line feed. */
 export function faxCycle(fax: ArenaFaxDef): number {
-  return (faxTravelTime(fax) + Math.max(0, fax.pause)) * 2;
+  return faxRowTime(fax) * Math.max(1, fax.rows);
 }
 
-/** Current print-head phase at `t` seconds into the fax cycle. Allocation-free. */
+/** Current print row, 0 at the top of the sheet. */
+export function faxRowAt(fax: ArenaFaxDef, t: number): number {
+  const cycle = faxCycle(fax);
+  const phase = ((t % cycle) + cycle) % cycle;
+  return Math.min(Math.max(1, fax.rows) - 1, Math.floor(phase / faxRowTime(fax)));
+}
+
+/**
+ * Current print-head phase at `t` seconds. Even rows print right, odd rows print
+ * left; the `ready*` phases are the line feed at the end of a row.
+ */
 export function faxPhaseAt(fax: ArenaFaxDef, t: number): number {
-  const travel = faxTravelTime(fax);
-  const pause = Math.max(0, fax.pause);
-  const cycle = (travel + pause) * 2;
+  const row = faxRowAt(fax, t);
+  const cycle = faxCycle(fax);
   const phase = ((t % cycle) + cycle) % cycle;
-  if (phase < pause) return FAX_STATE.readyLeft;
-  if (phase < pause + travel) return FAX_STATE.printRight;
-  if (phase < pause * 2 + travel) return FAX_STATE.readyRight;
-  return FAX_STATE.printLeft;
+  const rowPhase = phase - row * faxRowTime(fax);
+  if (rowPhase < faxTravelTime(fax)) return row % 2 === 0 ? FAX_STATE.printRight : FAX_STATE.printLeft;
+  return row % 2 === 0 ? FAX_STATE.readyRight : FAX_STATE.readyLeft;
 }
 
-/** World x of the print head. Parked at an edge, it stays there for `pause`. */
+/** World x of the compact print head. It reverses direction on the next row. */
 export function faxHeadX(fax: ArenaFaxDef, t: number): number {
-  const travel = faxTravelTime(fax);
-  const pause = Math.max(0, fax.pause);
-  const cycle = (travel + pause) * 2;
+  const row = faxRowAt(fax, t);
+  const cycle = faxCycle(fax);
   const phase = ((t % cycle) + cycle) % cycle;
+  const rowPhase = phase - row * faxRowTime(fax);
+  const travel = faxTravelTime(fax);
   const left = fax.x + fax.headW * 0.5;
   const right = fax.x + fax.w - fax.headW * 0.5;
-  if (phase < pause) return left;
-  if (phase < pause + travel) return left + (right - left) * ((phase - pause) / travel);
-  if (phase < pause * 2 + travel) return right;
-  return right - (right - left) * ((phase - pause * 2 - travel) / travel);
+  if (rowPhase < travel) {
+    const p = rowPhase / travel;
+    return row % 2 === 0 ? left + (right - left) * p : right - (right - left) * p;
+  }
+  return row % 2 === 0 ? right : left;
+}
+
+/** World y of the compact print head. The line feed drops it one row. */
+export function faxHeadY(fax: ArenaFaxDef, t: number): number {
+  const row = faxRowAt(fax, t);
+  const cycle = faxCycle(fax);
+  const phase = ((t % cycle) + cycle) % cycle;
+  const rowPhase = phase - row * faxRowTime(fax);
+  const rowH = fax.h / Math.max(1, fax.rows);
+  const center = fax.y + rowH * (row + 0.5);
+  const feed = Math.max(0, fax.lineFeed);
+  if (feed > 0 && rowPhase >= faxTravelTime(fax)) {
+    const p = Math.min(1, (rowPhase - faxTravelTime(fax)) / feed);
+    return Math.min(fax.y + fax.h - fax.headH * 0.5, center + rowH * p);
+  }
+  return center;
 }
 
 export const PLUG_STATE = {
@@ -1228,11 +1313,21 @@ export function watchHandAngle(watch: ArenaWatchDef, t: number): number {
   return -Math.PI * 0.5 + t * watch.speed;
 }
 
-/** Top edge of inbox card `i` at `t` seconds. Cards scroll upward and wrap. */
+/**
+ * Top edge of inbox card `i` at `t` seconds. Cards scroll upward and wrap.
+ *
+ * CHAT wraps each bubble on its own slot below the pane, so only the bubble that leaves the
+ * top re-enters at the bottom. A shared scroll reset moved every bubble at once, which read
+ * as the whole thread jumping. MAIL keeps the original single-column wrap.
+ */
 export function laptopCardY(laptop: ArenaLaptopDef, i: number, t: number): number {
   const step = Math.max(1, laptop.cardH + laptop.cardGap);
   const span = step * Math.max(1, laptop.cards);
   const scroll = ((t * laptop.speed) % span + span) % span;
+  if (laptop.variant === 'chat') {
+    const entry = laptop.inbox.y + laptop.inbox.h + laptop.cardGap;
+    return entry - ((i * step + scroll) % span);
+  }
   return laptop.inbox.y + laptop.inbox.h - laptop.cardH - i * step - scroll;
 }
 
@@ -1331,7 +1426,7 @@ export interface ArenaDef {
   weapon?: ArenaWeaponDef;
   /** SPEAK & FIND children's toy floor. Local-only presentation. */
   seek?: ArenaSeekDef;
-  /** CAR NAVIGATION map and growing serpentine route barrier. Local-only. */
+  /** CAR NAVIGATION map and capped serpentine route trail. Local-only. */
   car?: ArenaCarDef;
   /** PONG court and live rally ball. Local-only. */
   pong?: ArenaPongDef;
@@ -1408,26 +1503,84 @@ const usbSpawns: SpawnPoint[] = [
   { x: 864, y: 864 },
 ];
 
-// The three cockpit banks are both the visible controls and the arena's cover.
+// Each bank sits beside the aircraft system it controls: guns by the wing root,
+// ejection beside the cockpit, thrusters beside the tail.
 const weaponButtons: ArenaWeaponButtonDef[] = [
-  { x: 1190, y: 214, w: 280, h: 132, label: 'FIRE WEAPONS', kind: 0 },
-  { x: 1190, y: 420, w: 280, h: 132, label: 'EJECTOR SEAT', kind: 1 },
-  { x: 1190, y: 626, w: 280, h: 132, label: 'THRUSTERS', kind: 2 },
+  { x: 400, y: 430, w: 260, h: 112, label: 'FIRE WEAPONS', kind: 0 },
+  { x: 1050, y: 190, w: 250, h: 112, label: 'EJECTOR SEAT', kind: 1 },
+  { x: 1200, y: 740, w: 250, h: 112, label: 'THRUSTERS', kind: 2 },
 ];
 
-// A serpentine GPS route. It crosses the arena once, so the finished wall divides the
-// floor into a north and south half rather than fencing off a pocket.
+// A country-to-city GPS route. The west half winds between farms and crosses the river;
+// every leg east of `cityX` is a straight street, so the city reads as a grid. It still
+// crosses the arena once, so the finished wall divides the floor rather than fencing a
+// pocket.
 const carRoute: Point2[] = [
-  { x: 30, y: 880 },
-  { x: 250, y: 940 },
-  { x: 450, y: 800 },
-  { x: 650, y: 740 },
-  { x: 850, y: 860 },
-  { x: 1050, y: 820 },
-  { x: 1250, y: 660 },
-  { x: 1450, y: 700 },
-  { x: 1650, y: 520 },
-  { x: 1830, y: 440 },
+  { x: 20, y: 900 },
+  { x: 150, y: 900 },
+  { x: 250, y: 800 },
+  { x: 210, y: 660 },
+  { x: 320, y: 570 },
+  { x: 280, y: 430 },
+  { x: 390, y: 330 },
+  { x: 520, y: 380 },
+  { x: 560, y: 520 },
+  { x: 700, y: 560 },
+  { x: 760, y: 430 },
+  { x: 900, y: 400 },
+  { x: 1000, y: 340 },
+  { x: 1220, y: 340 },
+  { x: 1220, y: 160 },
+  { x: 1400, y: 160 },
+  { x: 1400, y: 520 },
+  { x: 1580, y: 520 },
+  { x: 1580, y: 340 },
+  { x: 1810, y: 340 },
+];
+
+// Farm buildings first, then city blocks, so `farmCount` splits the cover list for the
+// renderer and one array still feeds collision, bot nav and placement.
+const carFarmPillars: Rect[] = [
+  { x: 100, y: 470, w: 110, h: 74 },
+  { x: 380, y: 680, w: 108, h: 70 },
+  { x: 610, y: 250, w: 92, h: 92 },
+  { x: 770, y: 690, w: 100, h: 76 },
+];
+const carCityPillars: Rect[] = [
+  { x: 1088, y: 200, w: 96, h: 96 },
+  { x: 1258, y: 380, w: 100, h: 100 },
+  { x: 1450, y: 215, w: 100, h: 100 },
+  { x: 1270, y: 560, w: 100, h: 100 },
+  { x: 1600, y: 690, w: 100, h: 88 },
+];
+const carFields: ArenaCarFieldDef[] = [
+  { x: 90, y: 70, w: 320, h: 200, tone: 0 },
+  { x: 430, y: 70, w: 250, h: 170, tone: 1 },
+  { x: 700, y: 70, w: 210, h: 190, tone: 2 },
+  { x: 700, y: 290, w: 200, h: 150, tone: 0 },
+  { x: 96, y: 400, w: 168, h: 200, tone: 1 },
+  { x: 290, y: 470, w: 220, h: 160, tone: 2 },
+  { x: 530, y: 470, w: 230, h: 150, tone: 1 },
+  { x: 100, y: 800, w: 190, h: 170, tone: 2 },
+  { x: 320, y: 770, w: 230, h: 210, tone: 0 },
+  { x: 580, y: 770, w: 240, h: 210, tone: 1 },
+  { x: 790, y: 620, w: 110, h: 150, tone: 2 },
+];
+const carWoods: ArenaCarWoodsDef[] = [
+  { x: 300, y: 210, r: 58 },
+  { x: 336, y: 664, r: 50 },
+  { x: 632, y: 612, r: 42 },
+  { x: 838, y: 548, r: 44 },
+  { x: 208, y: 300, r: 38 },
+];
+const carRiver: Point2[] = [
+  { x: 930, y: 50 },
+  { x: 956, y: 190 },
+  { x: 920, y: 330 },
+  { x: 966, y: 470 },
+  { x: 930, y: 620 },
+  { x: 962, y: 780 },
+  { x: 934, y: 1010 },
 ];
 
 const seekCards: ArenaSeekCardDef[] = [
@@ -2403,22 +2556,23 @@ export const ARENAS: readonly ArenaDef[] = [
     bounds: { left: 60, top: 60, right: 1780, bottom: 1000 },
     pillars: [
       ...weaponButtons,
-      { x: 760, y: 790, w: 180, h: 70 },
-      { x: 1010, y: 780, w: 140, h: 80 },
+      { x: 760, y: 900, w: 180, h: 60 },
+      { x: 1010, y: 900, w: 140, h: 60 },
     ],
     spawns: [
-      { x: 232, y: 174 },
-      { x: 760, y: 138 },
-      { x: 1580, y: 168 },
-      { x: 1600, y: 804 },
-      { x: 1080, y: 900 },
-      { x: 620, y: 882 },
-      { x: 224, y: 640 },
-      { x: 168, y: 382 },
+      { x: 180, y: 170 },
+      { x: 560, y: 110 },
+      { x: 1320, y: 110 },
+      { x: 1640, y: 340 },
+      { x: 1640, y: 760 },
+      { x: 1400, y: 930 },
+      { x: 500, y: 930 },
+      { x: 180, y: 620 },
     ],
     weapon: {
       buttons: weaponButtons,
-      jet: { x: 176, y: 244, w: 780, h: 500 },
+      // Nose at the top of the box, tail at the bottom: a plan view, not a side view.
+      jet: { x: 660, y: 145, w: 520, h: 700 },
     },
   },
   {
@@ -2471,34 +2625,54 @@ export const ARENAS: readonly ArenaDef[] = [
     accentFaint: 'rgba(98, 217, 255, 0.034)',
     signature: 3,
     bounds: { left: 80, top: 60, right: 1780, bottom: 1000 },
-    pillars: [
-      { x: 120, y: 250, w: 150, h: 96 },
-      { x: 610, y: 150, w: 160, h: 88 },
-      { x: 1470, y: 180, w: 160, h: 96 },
-      { x: 930, y: 900, w: 170, h: 72 },
-      { x: 1540, y: 820, w: 140, h: 96 },
-    ],
+    pillars: [...carFarmPillars, ...carCityPillars],
     spawns: [
-      { x: 250, y: 140 },
-      { x: 760, y: 128 },
-      { x: 1260, y: 128 },
-      { x: 1660, y: 280 },
+      { x: 250, y: 180 },
+      { x: 700, y: 150 },
+      { x: 1140, y: 120 },
+      { x: 1660, y: 110 },
       { x: 1700, y: 900 },
-      { x: 1200, y: 930 },
-      { x: 480, y: 930 },
-      { x: 180, y: 620 },
+      { x: 1200, y: 940 },
+      { x: 500, y: 930 },
+      { x: 170, y: 620 },
     ],
     car: {
       route: carRoute,
-      duration: 26,
+      // The country-to-city route is about 3.2k units, so 32 s keeps the drive near the
+      // old 100 units/s pace instead of turning the wall into a sprint.
+      duration: 32,
       segments: 160,
       thickness: 26,
+      // 620 units is about six seconds of road. The tail recedes as it grows, so the
+      // car never fences the whole map behind itself.
+      trailLength: 620,
       stops: [
-        { at: 0.22, label: 'PICKUP' },
-        { at: 0.48, label: 'TOLL GATE' },
-        { at: 0.74, label: 'SCENIC ROUTE' },
-        { at: 0.96, label: 'DESTINATION' },
+        { at: 0.18, label: 'FARM MARKET' },
+        { at: 0.4, label: 'OLD MILL' },
+        { at: 0.55, label: 'TOLL GATE' },
+        { at: 0.88, label: 'DOWNTOWN' },
       ],
+      cityX: 990,
+      gridX: 1040,
+      gridY: 160,
+      gridStep: 180,
+      farmCount: carFarmPillars.length,
+      labels: [
+        'BARN',
+        'FARMHOUSE',
+        'SILO',
+        'OLD MILL',
+        'BLOCK 3',
+        'BLOCK 5',
+        'BLOCK 7',
+        'BLOCK 9',
+        'DEPOT',
+      ],
+      fields: carFields,
+      woods: carWoods,
+      river: carRiver,
+      bridge: { x: 884, y: 300, w: 116, h: 90 },
+      park: { x: 1620, y: 175, w: 130, h: 120 },
     },
   },
   {
@@ -2657,8 +2831,10 @@ export const ARENAS: readonly ArenaDef[] = [
         'FAX BACK // NO COVER',
       ],
       headW: 58,
-      speed: 320,
-      pause: 1,
+      headH: 30,
+      rows: 16,
+      speed: 520,
+      lineFeed: 0.15,
       damage: 1,
       enemyDamage: 3,
       knockback: 620,
@@ -2985,9 +3161,10 @@ export const ARENAS: readonly ArenaDef[] = [
       inbox: { x: 130, y: 150, w: 1690, h: 700 },
       // Composer strip. Presentation only.
       preview: { x: 130, y: 872, w: 1690, h: 110 },
-      cards: 4,
+      cards: 8,
       cardH: 118,
-      cardGap: 26,
+      // Wide enough for two players to pass between bubbles, not just squeeze through.
+      cardGap: 96,
       speed: 52,
       messageEvery: 6,
       // Bubble labels and the pinned line. Chat moves cover with the bubbles, not a preview
@@ -2997,6 +3174,10 @@ export const ARENAS: readonly ArenaDef[] = [
         { sender: 'MAYA', subject: 're: standup', preview: 'Two blockers left, both in the middle column.', layout: [] },
         { sender: 'BUILD BOT', subject: 'pipeline', preview: 'Green on main. Twelve minutes since last push.', layout: [] },
         { sender: 'SAM', subject: 'lunch?', preview: 'Bring the pager. The thread never sleeps.', layout: [] },
+        { sender: 'NINA', subject: 'build queue', preview: 'Three jobs ahead of yours. ETA nine minutes.', layout: [] },
+        { sender: 'ONCALL', subject: 'pager test', preview: 'Ack if you can read this. Do not reply all.', layout: [] },
+        { sender: 'JULES', subject: 're: deploy window', preview: 'Holding the lane. Ping when you are clear.', layout: [] },
+        { sender: 'SYSTEM', subject: 'thread archived', preview: 'Older messages moved to cold storage.', layout: [] },
       ],
       bubbleW: 0.56,
     },
@@ -3297,6 +3478,16 @@ export function carProgressAt(car: ArenaCarDef, t: number): number {
   return Math.max(0, Math.min(1, t / Math.max(0.001, car.duration)));
 }
 
+/** Total world-space length of the authored route. */
+export function carRouteLength(car: ArenaCarDef): number {
+  const route = car.route;
+  let total = 0;
+  for (let i = 1; i < route.length; i++) {
+    total += Math.hypot(route[i].x - route[i - 1].x, route[i].y - route[i - 1].y);
+  }
+  return total;
+}
+
 /** Point at normalized arc-length `k` along the serpentine route. */
 export function carRouteAt(car: ArenaCarDef, k: number, out: Point2): Point2 {
   const route = car.route;
@@ -3310,10 +3501,7 @@ export function carRouteAt(car: ArenaCarDef, k: number, out: Point2): Point2 {
     out.y = route[0].y;
     return out;
   }
-  let total = 0;
-  for (let i = 1; i < route.length; i++) {
-    total += Math.hypot(route[i].x - route[i - 1].x, route[i].y - route[i - 1].y);
-  }
+  const total = carRouteLength(car);
   let remaining = Math.max(0, Math.min(1, k)) * total;
   for (let i = 1; i < route.length; i++) {
     const a = route[i - 1];
@@ -4073,13 +4261,12 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     ctx.lineWidth = 1;
     ctx.strokeRect(mapX(bounds.left) + 0.5, mapY(bounds.top) + 0.5, previewW - 1, previewH - 1);
     const jet = weapon.jet;
-    const jetCy = jet.y + jet.h * 0.48;
-    for (let i = 0; i < FIGHTER_SIDE.length; i++) {
-      const shape = FIGHTER_SIDE[i];
+    for (let i = 0; i < FIGHTER_TOP.length; i++) {
+      const shape = FIGHTER_TOP[i];
       ctx.beginPath();
       for (let p = 0; p < shape.points.length; p++) {
         const px = mapX(jet.x + shape.points[p][0] * jet.w);
-        const py = mapY(jetCy + shape.points[p][1] * jet.h);
+        const py = mapY(jet.y + shape.points[p][1] * jet.h);
         if (p === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
@@ -4114,19 +4301,30 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     ctx.strokeStyle = arena.accentSoft;
     ctx.lineWidth = 1;
     ctx.strokeRect(mapX(bounds.left) + 0.5, mapY(bounds.top) + 0.5, previewW - 1, previewH - 1);
+    // Country parcels west of the river, street grid east of it, so the select card
+    // reads as the same two districts as the floor.
+    for (let i = 0; i < car.fields.length; i++) {
+      const f = car.fields[i];
+      ctx.fillStyle = f.tone === 1 ? 'rgba(80, 130, 90, 0.3)' : 'rgba(62, 108, 78, 0.24)';
+      ctx.fillRect(mapX(f.x), mapY(f.y), f.w * sx, f.h * sy);
+    }
+    ctx.fillStyle = 'rgba(122, 148, 160, 0.08)';
+    ctx.fillRect(mapX(car.cityX), mapY(bounds.top), (bounds.right - car.cityX) * sx, (bounds.bottom - bounds.top) * sy);
     ctx.strokeStyle = 'rgba(98, 217, 255, 0.12)';
-    for (let x = bounds.left + 90; x < bounds.right; x += 90) {
+    for (let x = car.gridX; x < bounds.right; x += car.gridStep) {
       ctx.beginPath();
-      ctx.moveTo(mapX(x), mapY(bounds.top));
+      ctx.moveTo(mapX(x), mapY(car.gridY));
       ctx.lineTo(mapX(x), mapY(bounds.bottom));
       ctx.stroke();
     }
-    for (let y = bounds.top + 90; y < bounds.bottom; y += 90) {
+    for (let y = car.gridY; y < bounds.bottom; y += car.gridStep) {
       ctx.beginPath();
-      ctx.moveTo(mapX(bounds.left), mapY(y));
+      ctx.moveTo(mapX(car.gridX), mapY(y));
       ctx.lineTo(mapX(bounds.right), mapY(y));
       ctx.stroke();
     }
+    ctx.fillStyle = 'rgba(78, 142, 96, 0.28)';
+    ctx.fillRect(mapX(car.park.x), mapY(car.park.y), car.park.w * sx, car.park.h * sy);
     const p = { x: 0, y: 0 };
     ctx.strokeStyle = 'rgba(98, 217, 255, 0.26)';
     ctx.setLineDash([3, 4]);
@@ -4139,11 +4337,13 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     ctx.stroke();
     ctx.setLineDash([]);
     const previewProgress = 0.58;
+    const previewTrail = Math.min(previewProgress, car.trailLength / Math.max(1, carRouteLength(car)));
+    const previewStart = Math.max(0, previewProgress - previewTrail);
     ctx.strokeStyle = arena.accent;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     for (let i = 0; i <= 36; i++) {
-      carRouteAt(car, (i / 36) * previewProgress, p);
+      carRouteAt(car, previewStart + (i / 36) * (previewProgress - previewStart), p);
       if (i === 0) ctx.moveTo(mapX(p.x), mapY(p.y));
       else ctx.lineTo(mapX(p.x), mapY(p.y));
     }
@@ -4556,7 +4756,7 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     }
   }
 
-  // The fax is a pale sheet crossed by a moving vertical print bar.
+  // The fax is a pale sheet with a compact carriage at one print row.
   if (arena.fax) {
     const f = arena.fax;
     ctx.fillStyle = 'rgba(222, 232, 238, 0.18)';
@@ -4569,15 +4769,11 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
       ctx.fillRect(mapX(f.x) + 5, mapY(f.y) + 8 + i * 9, Math.max(4, (f.w * sx) * 0.46), 1);
     }
     const headX = mapX(f.x + f.w * 0.58);
-    ctx.strokeStyle = '#ff9a58';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(headX, mapY(f.y));
-    ctx.lineTo(headX, mapY(f.y + f.h));
-    ctx.stroke();
+    const headY = mapY(f.y + f.h * 0.42);
     ctx.fillStyle = '#2a2119';
-    ctx.fillRect(headX - 4, mapY(f.y) - 3, 8, 3);
-    ctx.fillRect(headX - 4, mapY(f.y + f.h), 8, 3);
+    ctx.fillRect(headX - 5, headY - 3, 10, 6);
+    ctx.fillStyle = '#ff9a58';
+    ctx.fillRect(headX - 3, headY + 3, 6, 2);
     return;
   }
 

@@ -108,6 +108,17 @@ export class Fx {
         this.flashColor = '#ffb27a';
         break;
       }
+      case EV.MEGA_CRY: {
+        // The arrival call: a long pressure ring and a solid shake, so the screen move
+        // lands with the sound instead of a frame later.
+        this.shake = Math.max(this.shake, 16);
+        this.flash = Math.max(this.flash, 0.22);
+        this.flashColor = '#e6f2ff';
+        this.particles.ring(ev.x, ev.y, P_COLOR_WORM, 12, ev.power * 2.2, 0.62);
+        this.particles.ring(ev.x, ev.y, P_COLOR_WHITE, 5, ev.power * 1.4, 0.44);
+        this.particles.shards(ev.x, ev.y, 10, P_COLOR_WORM, 80, 380);
+        break;
+      }
       case EV.WORM_KILL: {
         const scale = Math.max(1, Math.min(2.6, ev.power / 100));
         this.particles.ring(ev.x, ev.y, P_COLOR_WORM, 12, 90 + ev.power * 0.7, 0.5);

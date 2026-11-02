@@ -168,16 +168,101 @@ const bolts = (world: World) => world.projectiles.filter((q) => q.active && q.ow
   console.log(JSON.stringify({ death: true }));
 }
 
-// --- a boss may sit through the arena edge ----------------------------------
+// --- no arena clamp, and the floor cull leaves the body alone ---------------
 {
   const { priv, storm } = fresh();
-  storm.x = arena.bounds.left + 2;
+  const outside = arena.bounds.left - 260;
+  storm.x = outside;
   storm.spawnT = 0;
-  for (let i = 0; i < 10; i++) priv.updateWorm(storm, SIM_DT);
-  const pad = storm.hitR * 0.5;
-  if (storm.x < arena.bounds.left + pad - 1) fail('the cloud was pushed fully inside the arena');
-  if (storm.x > arena.bounds.left + storm.hitR) fail('the cloud left the arena entirely');
-  console.log(JSON.stringify({ overhang: { x: Math.round(storm.x - arena.bounds.left), pad: Math.round(pad) } }));
+  priv.updateWorm(storm, SIM_DT);
+  if (storm.x <= outside) fail('the cloud did not resume tracking after leaving the arena');
+  if (storm.x > arena.bounds.left) fail('the cloud was clamped back inside the arena');
+  priv.cullVoidThreats();
+  if (!storm.active) fail('the off-floor cull deleted the storm cloud');
+  console.log(JSON.stringify({ bounds: { x: Math.round(storm.x - arena.bounds.left), alive: storm.active } }));
+}
+
+// --- cover blocks the rain and the return fire both ways --------------------
+{
+  const coverArena = {
+    ...arena,
+    id: 900,
+    name: 'COVER TEST',
+    pillars: [{ x: 700, y: 320, w: 180, h: 180 }],
+    bounds: { left: 0, top: 0, right: 1600, bottom: 900 },
+    spawns: Array.from({ length: 7 }, (_, i) => ({ x: 220 + i * 160, y: 720 })),
+  } as typeof arena;
+  const world = new World('gauntlet', ['STORM'], 0, coverArena);
+  const priv = world as any;
+  for (const w of world.worms) w.active = false;
+  for (const v of world.viruses) v.active = false;
+  for (const s of world.sentries) s.active = false;
+  for (const e of world.errors) e.active = false;
+  priv.wormSpawnT = 999;
+  priv.virusSpawnT = 999;
+  priv.sentrySpawnT = 999;
+  priv.errorSpawnT = 999;
+  priv.powerupSpawnT = 999;
+  const p = world.players[0];
+  const block = coverArena.pillars[0];
+  const cx = block.x + block.w * 0.5;
+  p.x = cx;
+  p.y = block.y + block.h + 90;
+  p.alive = true;
+  p.hp = p.maxHp = 40;
+  p.iframes = 0;
+  p.cloakT = 0;
+  p.guardT = 0;
+  const storm = priv.spawnMiniboss(MINIBOSS.STORM_CLOUD, cx, coverArena.bounds.top) as Worm;
+  storm.spawnT = 0;
+  storm.storm!.rainCd = 0;
+  storm.storm!.rowsLeft = 1;
+  storm.storm!.rowT = 0;
+  storm.storm!.boltCd = 0;
+  // Pin the body over the block each tick: the live cloud repels sideways from a body
+  // below it, which would walk the rain lane off the roof this test is about.
+  const pin = () => {
+    storm.x = storm.prevX = cx;
+    storm.y = storm.prevY = coverArena.bounds.top + STORM_CLOUD.hoverTop;
+  };
+  pin();
+  priv.updateWorm(storm, SIM_DT);
+  if (rainDrops(world).length < STORM_CLOUD.rain.count) fail('the cover row did not lay its drops');
+  const hpBefore = storm.hp;
+  let leaked = 0;
+  for (let i = 0; i < 240; i++) {
+    pin();
+    world.step(SIM_DT, [{ mx: 0, my: 0, held: 0, pressed: 0 }]);
+    for (const d of rainDrops(world)) {
+      if (d.x > block.x && d.x < block.x + block.w && d.y > block.y + block.h) leaked++;
+    }
+    for (const b of bolts(world)) {
+      if (b.y > block.y + block.h) leaked++;
+    }
+  }
+  if (leaked > 0) fail(`${leaked} hostile shots fell through cover`);
+  if (p.hp !== 40) fail('rain or lightning under cover still damaged the body');
+  // The same block hides the cloud from return fire: the shot stops on the roof.
+  const shot = world.projectiles.find((q) => !q.active) ?? fail('no free projectile slot');
+  shot.active = true;
+  shot.type = 0;
+  shot.owner = 0;
+  shot.radius = 7;
+  shot.x = shot.prevX = cx;
+  shot.y = shot.prevY = p.y - 20;
+  shot.vx = 0;
+  shot.vy = -900;
+  shot.fuse = 2;
+  shot.lightning = false;
+  let highest = shot.y;
+  for (let i = 0; i < 20; i++) {
+    pin();
+    world.step(SIM_DT, [{ mx: 0, my: 0, held: 0, pressed: 0 }]);
+    highest = Math.min(highest, shot.y);
+  }
+  if (highest < block.y + block.h - 6) fail('a player shot passed into the block toward the cloud');
+  if (storm.hp !== hpBefore) fail('the cloud took damage through cover');
+  console.log(JSON.stringify({ cover: { leaked, shielded: p.hp === 40, blockedShot: highest >= block.y + block.h - 6 } }));
 }
 
 console.log('storm-check: OK');

@@ -64,6 +64,12 @@ export const MINIBOSSES: readonly MinibossDef[] = [
   },
 ];
 
+/**
+ * BOSS RUSH ladder: registry order, walked once. Keeping it derived means a new
+ * mini-boss joins the rush by being registered, not by a second hand-written list.
+ */
+export const BOSS_RUSH_ORDER: readonly number[] = MINIBOSSES.map((d) => d.id);
+
 export function minibossDef(id: number): MinibossDef | null {
   for (let i = 0; i < MINIBOSSES.length; i++) if (MINIBOSSES[i].id === id) return MINIBOSSES[i];
   return null;

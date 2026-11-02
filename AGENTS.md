@@ -280,6 +280,16 @@ firewall sweep from the opposite wall and rearms after `NETWORK.switchCooldown` 
 local content: `onlineArenaIndex` skips an arena with `pipes`, and neither fixture enters `Snapshot`. The
 compactor, keypad, scanner and browser are not in this group; their clocks are networked under D40.
 
+### ROCKET NAVIGATION reflector (decided 2026-11-02)
+
+The rocket's flown trajectory is a **shot-only dotted reflector**, not a wall. Projectiles bounce off the
+active portion of the arc; bodies, dashes, bots and enemy waves pass through it. This is what turns the lane
+into a growing crossfire: hostile fire stays alive instead of dispersing on cover, and reflected shots can
+cross back over the fight. Do not add `rocketBarrierRects` back to `baseSolids` or `baseDashSolids`; the
+field is read only by `bounceRocketPath`. Mines, traps, bombs (8/9), the super ball (15) and the Aim Bot rail
+(17) keep their own no-bounce rules. The planned path and the flown path are both drawn dotted; never restore
+the solid band. The car route is unaffected and remains body geometry.
+
 ### D9 — Gauntlet is a local threat sandbox (revised 2026-10-29)
 On explicit designer request, hostiles exist in a **GAUNTLET** mode, not in ranked PvP. It is a test bed
 for the eventual PvE direction, not a promise of online PvE. The single exception is INFECTION, which is
@@ -341,6 +351,10 @@ solo and host-authoritative online co-op (D32); every other gauntlet threat stay
   It is local-only, set when the run is created, and never enters `Snapshot`.
 - Every enemy assembles in over a short spawn window, holds still while its parts arrive, and de-rezzes
   into a size-scaled triangle burst on death.
+- **Floating bosses are not floor-culled.** `cullVoidThreats` skips Idle Hands: the trio hovers over the
+  USB HUB's open gaps, and its own arena-bounds clamp is the only limit. Do not make the hands stand on
+  the disc floor or restore the 9,999 void hit, which deleted the whole trio on the first simulation tick
+  after their entrance.
 - Waves are 30 s and the difficulty ramp is intentionally long: threat families unlock one at a time
   (worms 3, viruses 6, triplex 9, cascading errors 12, homing pods 15, flocks 18) and spawn intervals
   taper across `fullPressureWave` = 120. A new wave does **not** force every threat timer to zero, so there
@@ -2085,10 +2099,12 @@ order after SATELLITE.
   blocks bodies, dashes and shots without allocating per tick. Inactive blocks are zeroed rather than
   removed. `beginRound()` resets the launch. The rocket, flame, atmosphere departure and stage debris are
   presentation only; a separated stage never becomes a body or pickup.
-- **WEAPON SYSTEMS** is a fighter-jet status console. Its three large `FIRE WEAPONS`, `EJECTOR SEAT` and
-  `THRUSTERS` banks are the arena's static cover and are also drawn as cockpit controls. They do not
-  grant a second player kit, fire a jet weapon, eject a body or change thrust. The jet silhouette,
-  readouts and reticle are presentation.
+- **WEAPON SYSTEMS** is a nose-up top-down fighter status console. `FIGHTER_TOP` puts the cockpit and
+  nose at the top of the screen. The three large `FIRE WEAPONS`, `EJECTOR SEAT` and `THRUSTERS` banks are
+  positioned by the system they describe: fire at the left wing root, ejection beside the cockpit, and
+  thrusters by the tail. They are the arena's static cover and controls, not a second player kit; they do
+  not fire a jet weapon, eject a body or change thrust. The jet silhouette, readouts and reticle are
+  presentation.
 - Both maps are **local-only**. They are excluded by `isOnlineArena` because the launch clock/barrier and
   the cockpit display have no `Snapshot` fields. Do not add either to hosted rooms, series or snapshots
   without a protocol decision and guest-side presentation tests.
@@ -2128,20 +2144,30 @@ records; ids **20** and **21** follow WEAPON SYSTEMS. Neither changes player hea
   and display rectangle. The renderer cycles a prompt, pulses the matching card and sweeps a magnifier;
   those are presentation only. The four chunky letter keys are the arena's static cover. The cards never
   become pickups, targets or collision.
-- **CAR NAVIGATION** is a GPS/map screen. `ArenaCarDef.route` is an ordered serpentine polyline; `World`
-  samples it into 160 preallocated overlapping `Rect`s in `solids` and `dashSolids`. `carT` and
-  `carProgress` drive both the rendered route and the barrier, exactly like the rocket arc. The finished
-  route divides the map; the car, pins, map buildings and speed/ETA readout are presentation. `beginRound()`
-  resets the route, and the route blocks use the same body, dash and shot collision path as the rocket
-  wall.
+- **CAR NAVIGATION** is a GPS/map screen cut into two districts. Farmland, farm cover and the winding
+  country lane sit west of `ArenaCarDef.cityX`; a street grid and city blocks sit east of it, and every
+  route leg east of that line is axis-aligned to a street. `ArenaCarDef.route` is the ordered polyline;
+  `World` samples it into 160 preallocated overlapping `Rect`s in `solids` and `dashSolids`. `carT` and
+  `carProgress` drive both the rendered route and the barrier, exactly like the rocket arc. Only the newest
+  `trailLength` (620 units) stays live; older blocks are zeroed as the car advances, so the wall recedes and
+  never becomes a full-map divider. The car, pins, fields, tree cover, river, bridge, grid, park and
+  speed/ETA readout are presentation; `pillars` is the only static cover, with the first `farmCount` entries
+  as farm buildings and `labels` naming every building in order. `beginRound()` resets the route, and the
+  route blocks use the same body, dash and shot collision path as the rocket wall.
 - Keep both maps **local-only** through `isOnlineArena`; their clocks are not in `SnapshotHazards` and a
   guest has no route/card presentation. Do not add either to hosted rooms or series without a protocol
   decision and guest tests.
 - The car barrier needs 160 blocks so its sampled spacing stays below the authored thickness. Do not lower
-  the segment count without checking the longest route leg; a gap would become a walkable hole.
-- Known limitation: the precomputed bot nav grid does not include the growing car wall (the same limit as
-  the rocket arc), so bots can path through it while it is short. This is acceptable for the local display
-  arena until the barrier gets a nav representation or online support.
+  the segment count without checking the longest route leg; a gap would become a walkable hole. Keep the
+  live trail capped by `trailLength` (620 units); a wall sampled from route start to the car would divide
+  the whole arena and must not come back. The country-to-city route is about 3.2k units over `duration` 32 s,
+  so the wall still advances near the old 100 units/s pace. Keep every city leg square to the grid: the
+  street drawing and the 180-unit cell spacing assume it.
+- Map buildings must clear the route centreline by at least the barrier half-thickness plus a player radius
+  (35 units); `.tmp/car-arena-check.ts` samples the whole route against every pillar and every spawn.
+- Known limitation: the precomputed bot nav grid does not include the moving car trail (the same limit as
+  the rocket arc), so bots can path through it. This is acceptable for the local display arena until the
+  barrier gets a nav representation or online support.
 
 ### D50 — PONG is a local rally arena (built 2026-11-02)
 
@@ -2199,26 +2225,28 @@ the three bunkers in `pillars` are static cover.
 - Known limitation: the cannon targets and shoots bots without a bot-specific dodge response, and the bunkers
   are already in the nav grid while the cannon shots are not.
 
-### D53 — FAX MACHINE is a local shuttle-print arena (built 2026-11-02)
+### D53 — FAX MACHINE is a local row-printing arena (built 2026-11-02, revised 2026-11-02)
 
-FAX MACHINE is id **25**, after SPACE INVADERS. `ArenaFaxDef` owns the page bed, document stack, print-head
-width, travel speed, edge pause and damage values. The page copy, routing block, chassis, rails and status
-labels are presentation; the four corner toner drums and paper stacks in `pillars` are static cover.
+FAX MACHINE is id **25**, after SPACE INVADERS. `ArenaFaxDef` owns the page bed, document stack, compact
+head dimensions, row count, travel speed, line-feed time and damage values. The page copy, routing block,
+chassis, rails and status labels are presentation; the four corner toner drums and paper stacks in
+`pillars` are static cover.
 
-- The shuttle has four derivation phases: parked left, printing right, parked right, printing left. It
-  begins parked at the left edge, then crosses, pauses and returns. `faxCycle()`, `faxPhaseAt()` and
-  `faxHeadX()` are the single source of truth for the renderer and the world.
-- The vertical thermal bar is the hazard. It damages players, the training drone and every gauntlet threat
-  family once per pass, with `SRC.FAX` as the death source. Dashing and phased bodies avoid it. A parked
-  head is never hot; the pause is the reversal telegraph.
-- `resetFax()` clears the clock, page and per-pass hit masks; `beginRound()` calls it. The head, page, phase
-  and print bar are local simulation only.
+- The carriage prints one row at a time, alternating direction: even rows print right, odd rows print left.
+  At the end of each row it feeds down one line, then starts the next row from the opposite edge. The page
+  cycle repeats after `rows` rows. `faxCycle()`, `faxRowAt()`, `faxPhaseAt()`, `faxHeadX()` and
+  `faxHeadY()` are the single source of truth for the renderer and the world.
+- Only the compact head is hot, not the whole row. Its rectangle damages players, the training drone and
+  every gauntlet threat family once per row, with `SRC.FAX` as the death source. Dashing and phased bodies
+  avoid it. The line feed is the reversal/telegraph beat and is never hot.
+- `resetFax()` clears the clock, page, row and per-row hit masks; `beginRound()` calls it. The head, row,
+  page and phase are local simulation only.
 - Keep FAX MACHINE **local-only** through `isOnlineArena`; none of its state is in `SnapshotHazards`. Do not
   add it to hosted rooms or series without a protocol decision and guest tests.
 - The sheet is a floor object, not solid cover. Do not add the carriage as a body or projectile collider; the
-  hot bar is the only physical rule. Do not add a second scanner read line to this map.
-- Known limitation: the precomputed bot nav grid cannot represent the moving print bar, so bots can stand
-  in its path. Keep the parked blinking bar and the hot pass readable rather than making it a hidden trap.
+  head rectangle is the only physical rule. Do not add a second scanner read line to this map.
+- Known limitation: the precomputed bot nav grid cannot represent the moving head, so bots can stand in its
+  path. Keep the compact head and line-feed beat readable rather than making it a hidden trap.
 
 ### D54 — SMART PLUG is a local circuit-ring arena (built 2026-11-02)
 
@@ -2324,8 +2352,12 @@ notes recorded, and both extend `ArenaLaptopDef` rather than adding a second scr
   Bombs and the heavy beam stop on a cell without chipping it, because those paths carry no cover target;
   that asymmetry is deliberate. Re-test spawn clearance before teaching another path to damage cells.
 - CHAT bubbles ride the same conveyor with `bubbleW`: they alternate the right and left half of the pane, so
-  the open lane zig-zags. A card is solid only while **fully inside the pane**; a clipped card mid-wrap is
-  invisible and must not keep blocking a spawn row. That rule is shared, so the mail inbox obeys it too.
+  the open lane zig-zags. The authored record uses eight cards and a `cardGap` of 96 so a body can pass
+  between bubbles; do not shrink that gap to fit another row. Each bubble wraps on its own slot below the
+  pane (the `chat` branch of `laptopCardY`), so only the bubble leaving the top re-enters and the thread
+  never jumps as one block. MAIL keeps the shared scroll. A card is solid only while **fully inside the
+  pane**; a clipped card mid-wrap is invisible and must not keep blocking a spawn row. That rule is shared,
+  so the mail inbox obeys it too.
 - Both variants stay local-only through `isOnlineArena` (`!a.laptop` already covers them). Their clocks,
   cell health, cursor and bubble positions never enter `SnapshotHazards`.
 
@@ -2480,24 +2512,24 @@ apron, and only the time tile could hurt a body. That is the wrong shape for a l
   once.
 - Still local-only: `isOnlineArena` excludes `flip`, and its clock stays out of `SnapshotHazards`.
 
-### D64 — The WEAPON SYSTEMS jet is traced geometry, shared with the picker (2026-11-02, built v0.1.131)
+### D64 — The WEAPON SYSTEMS jet is a top-down plan view, shared with the picker (revised 2026-11-02)
 
-The fighter on the WEAPON SYSTEMS console was a nine-point polygon that read as an arrowhead, not an
-aircraft: no canopy bump, no tail fin, no intake, and a nose the reticle was not even pointing at.
+The console originally drew a side profile, which put the cockpit at the side and left the three banks in
+one unrelated column. The arena now reads as a plan view with the cockpit and nose facing up, so each
+bank can sit beside the aircraft system it names.
 
-- `FIGHTER_SIDE` in `arenas.ts` is now the single source. It is a side profile traced from real fighter
-  geometry — pointed nose, bubble canopy, swept wing, tail plane, swept vertical fin, belly intake, wing
-  missile and exhaust nozzle. Coordinates are normalized: x 0 is the nose, 1 the tail; y is a fraction of
-  the jet box height from the centreline, negative upward.
-- Both consumers draw it: `drawWeaponArena` fills and strokes it with console colours and adds panel detail
-  (spine line, two frame lines, roundel, exhaust streaks, a `SIDE PROFILE` caption), and the arena picker
-  traces the same shapes scaled down. Never re-inline a polygon in either place; the probe fails if the
-  old blob returns or if either draw stops referencing `FIGHTER_SIDE`.
-- It stays a side profile because the console is a status screen: the top-down mark used by the AIR TRAFFIC
-  aircraft is the wrong projection here, and the `✈` glyph is a three-quarter mark that reads as a sticker
-  next to the instrument readouts rather than as this aircraft.
-- The reticle sits on the nose (about 0.1 of the box length), not mid-fuselage, and the engine streaks run
-  off the tail. Keep new features on the profile's own axes so the drawing stays one aircraft.
+- `FIGHTER_TOP` in `arenas.ts` is the single source. Coordinates are normalized: x 0 is the left wingtip,
+  1 the right wingtip; y 0 is the nose, 1 the tail. It carries both wings, tail planes, shoulder intakes,
+  a forward canopy, a centred tail fin and a rear nozzle.
+- Both consumers draw it: `drawWeaponArena` fills and strokes it with console colours and adds a centre
+  spine, wing-root seams, hardpoints, exhaust streaks and a `TOP PROFILE` caption, and the arena picker
+  traces the same shapes scaled down. Never re-inline a polygon in either place; the probe fails if the old
+  blob returns or if either draw stops referencing `FIGHTER_TOP`.
+- The banks follow the aircraft: `FIRE WEAPONS` is beside the left wing root, `EJECTOR SEAT` beside the
+  cockpit, and `THRUSTERS` beside the tail. Keep that spatial relationship when moving the jet or resizing
+  the arena; a bank in a generic column is the failure this layout fixes.
+- The reticle sits over the nose at the top of the box, and the exhaust streaks run below the tail. Keep new
+  features on the plan-view axes so the drawing stays one aircraft.
 
 ### D65 — Gauntlet arrivals come in bursts from map edges (decided 2026-11-02, built v0.1.132)
 
@@ -2539,11 +2571,15 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
   arc-length spiral around the head, so a body this long lands in a compact footprint. The coil is the
   arrival pose only; `followMegaChain` unrolls it as the head moves. Do not restore the straight-line
   spawn without measuring the footprint, or the body strings across the whole arena.
-- **Bosses may overhang the arena edge.** A mini-boss body clamps against `bossEdgePad` (half its
-  `hitR`), not its whole radius, so a silhouette that has to be big can sit through a wall instead of
-  being squeezed into the playfield. Half the body stays inside, which keeps it hittable and keeps its
-  attacks in the arena; spawn placement uses the same pad. Ordinary worms, players, pickups, hazards and
-  projectiles keep full-radius clamping. Do not spread this rule to non-boss bodies.
+- **Offscreen entrance (2026-11-02).** `spawnMegaWorm` places the head `entrance.offscreen` beyond the
+  arena's longest half-axis, then runs a 6.2 s arc around the arena center and inward to
+  `entrance.endRadiusMult` before handing off to the normal flight loop. It does no bite, whip or acid
+  during the entrance. Split halves start already in combat and skip the entrance. Do not clamp the head
+  back inside at spawn or restore the old assembly wait.
+- **The Mega Worm flies.** It has no arena clamp and no cover resolve: the head and every plate can
+  leave the floor on a pass, and the camera gets `CAMERA.bossVoidMargin` to look past the lip while it
+  does. It is still hittable anywhere, and its attacks still target the arena. Ordinary worms, players,
+  pickups, hazards and projectiles keep normal clamping. Do not add `bossEdgePad` back to the Mega Worm.
 
 - **Plates carry the health.** `segHp`/`segMaxHp` are per node (index 0 = head, k = segment k-1);
   `w.hp` stays a sane total for anything that reads it. `hitR`/`segR` replaced the hard-coded `WORM`
@@ -2557,21 +2593,73 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
   back half becomes its own boss with its head at the old tail tip, provided it holds at least two
   plates; a single detached plate is shredded rather than left as a headless body. Splits take free pool
   slots, so a cut with no room is shredded too. Never kill the worm outright when only the head breaks.
-- **Whip.** The main attack is a committed arc, not a chase: windup curls the head back, the active beat
-  drags it through `whip.sweepArc` (3.55 rad) around a pivot four plates behind it, and a player in the
-  path takes `whip.damage` plus a tangential throw. Hits are once per player per swing (`whipHit` mask);
-  it does not rely on iframes. Body contact is a separate, slower touch clock.
+- **Flyby, not a chase.** After the entrance, `updateMegaWorm` runs a three-phase flight: a wide orbit,
+  a committed pass through the target's position, then a climb-out. The pass locks `flyDX`/`flyDY` at commit, moves at
+  `flyby.speed`, and lands one aimed maw snap inside `snapRange`; body contact is still a separate touch
+  clock. The orbit point keeps moving, so the boss re-enters from a new angle. Do not restore the old
+  ground whip/bite chase: a 3x body cannot navigate cover. The one committed ground move is the slow tail
+  sweep below.
 - **Legs.** The last plate grows legs: 3.1x speed, a fast latched lunge bite and pairs of acid on the
   existing hostile projectile type 3, so deflect, friendly fire and cover already apply. Do not add a
   new projectile type for acid.
+- **Arrival cry (2026-11-02).** The entrance is a full lap (`sweep` 6.28) starting beyond the arena lip,
+  and it ends on `EV.MEGA_CRY`: a MIDI-note bird phrase (`audio.megaCry`), a 16-unit screen shake, a flash
+  and a pressure ring. `entrance.handoff` then holds the first pass for 1.1 s. The cry is an event, not a
+  renderer timer, so a guest and the host hear the same beat; keep it out of `Snapshot` like every other
+  local cue.
+- **Tail sweep.** The dormant whip fields are now the one slow, committed ground attack. It only starts
+  while the boss is orbiting (`flyPhase 0`), the pass clock has at least `whip.minLead` left, three or more
+  plates remain, and a body is within `whip.triggerRange` of the tail tip. The head freezes and the chain
+  is dragged through `whip.sweepArc` over `windup` + `active` (0.95 s each), dealing one and throwing along
+  the arc, never toward the caster; `whip.cooldown` (7.5 s) gates the next one. Do not turn it into a
+  chase: it is the reward for standing near the back half while the head is busy.
 - **Arrival is data.** `GAUNTLET.bossSchedule` entries are `{ kind, wave, repeatStep }`; each gate fires
   once per matching wave and is skipped while that kind is already live. Adding a boss, a harder repeat or
   a scripted level is a registry row plus a schedule entry, never a new arrival path. A boss must never
-  materialise beside the player: it uses the shared edge ingress. `?mega=1` is the QA-only boot hook and
-  never enters menus or `Snapshot`.
+  materialise beside the player: the Mega Worm uses its offscreen entrance; Idle Hands, Starfish and File
+  Blob use near-player staging. `?mega=1` is the QA-only boot hook and never enters menus or `Snapshot`.
+- **Hex plates (2026-11-02).** Every plate, the head socket, debris flakes and leg tips trace
+  `traceMegaHex`; cracks radiate across the hex. Do not reintroduce square `fillRect`/`strokeRect`
+  plates.
 - **Read.** There is no health bar: cracks climb out of a plate's seams as it loses health, a nearly
   dead plate shudders, and loose code debris drifts off the body in proportion to total damage. Tune
   crack counts in `drawMegaPlate`; keep the plate frames and the eye mark so the head is always legible.
+
+### D72 — Staged mini-boss entrances freeze the room (built 2026-11-02)
+
+The four staged bosses — File Blob, Mega Worm, Idle Hands and Starfish — own a deliberately longer entrance
+cut-in before their normal fight. `World.spawnMiniboss` starts `World.bossIntro` only for the initial arrival;
+splits and Starfish hatches use the ordinary spawn path and never replay it. `World.step` returns after
+advancing the intro, so players, threats, hazards and the round clock are frozen while the reveal runs.
+`bossIntro` is local presentation state and never enters a snapshot. The freeze is part of the read: do not
+trim these timings back to combat pace without checking the entrance on screen.
+
+- **Camera and title.** `Renderer.updateCameraCues` handles the intro before the ordinary boss cue, plays a
+  `CAMERA.bossIntroZoom` rig at priority 5 and tracks the live `bossIntro.x/y` each frame (the Mega Worm
+  crosses the room during its entrance). A short `SUB-AGENT // INBOUND` title card draws over the scene and
+  fades with the intro. Do not route a staged boss back through the old generic boss cue.
+- **File Blob (3.6 s).** The blob starts as one file glyph, holds the first cluster as a read, then packs
+  out to all 96 plates at full size. `drawBlob` derives both the shown count and the hull scale from
+  `BLOB.introTime`; the normal health-driven radius resumes after the freeze.
+- **Mega Worm (8.8 s).** It starts beyond the longest arena half-axis, follows the 6.8 s `entrance` arc around
+  and inward, then holds a 1.5 s roar with a solid maw and expanding rings before handing off to flight. The
+  entrance does not bite, whip, spit or damage bodies.
+- **Idle Hands (2.7 s).** Each hand rises from below its ground point while making one projected yaw through
+  the entrance: front, edge-on, back, edge-on, front. The yaw is `cos(2πu)` on the glyph's x-axis with a
+  small `sin(2πu)` in-plane twist; the palm eye is suppressed on the back half so the turn reads as a
+  front/back rotation rather than a flat mirror. It then grows and bounces into its normal silhouette. The
+  trio still starts in the same ring; only the visual emergence is staged. After the reveal, a hand behind
+  the player is steered to the nearest side; a front hand stays in the lower half. The target band is
+  `orbitYSide`/`orbitYFront`, and the arrival ring uses `spawnRingY`/`spawnYOffset`. Do not restore a
+  full vertical orbit or let a hand target the player's back: that put a palm over the player sprite and
+  above the camera frame, where it could not be read or tracked. Hovering hands (states 0 and 3) also run
+  a six-pass pair separation with `separation` 340 before the frame; slam, charge and redirect states are
+  exempt so committed attacks still land. Do not remove the margin or let the trio stack. This is
+  presentation-only and out of `Snapshot`.
+- **Starfish (2.9 s).** The center and its attached arms hang 620 units above the landing point for the first
+  18% of the entrance, then fall under acceleration instead of easing gently into the floor. A landing ring
+  tracks the target, then the body settles into the normal mouth/arm cycle.
+- **Storm Cloud** is not in this group yet; it keeps the ordinary combat camera cue.
 
 ## 8. Performance guardrails
 
@@ -2657,24 +2745,48 @@ and can commit to a finger charge.
   would mean re-wiring a dozen hit paths. Anything counting *ordinary* worms must test `bossKind < 0`,
   not `!mega`.
 - **Slam (the read).** The hand rises, squashes vertically, flips palm-out, then grows back down through
-  the floor onto a ground ring latched at the start of the tell (`slam.aoe` 118, 1 damage, 1050 knockback,
-  0.55 s windup, 0.18 s drop, 0.55 s recover, 3.2 s cooldown). The ground point is latched when the tell
-  begins, so stepping out of the ring is the counterplay. Landing emits `PROP_BREAK` for dust plus a white
-  landing seam in the renderer; there is no camera shake beyond those two. The renderer owns the squash
-  and flip, not the simulation.
-- **Finger charge.** The hand turns to point, shakes for 0.6 s, then fires along the latched direction at
-  900 units/s for 0.55 s, for 1 damage and 1520 knockback. Cover does not stop it: hands are airborne,
+  the floor onto a ground ring latched at the start of the tell (`slam.aoe` 240, 1 damage, 1050 knockback,
+  0.72 s windup, 0.26 s drop, 3.2 s cooldown). State 3 is **hold then rise**: the palm stays pressed flat
+  on the floor for `slam.hold` (1 s) and only then plays the 0.35 s rise-out. The hold is deliberately a
+  stopped, fully damageable body, so a slam is a damage window rather than a snap back to hover; do not
+  move `slam.recover` back over the hold or re-hide the palm behind an animation. The renderer marks it
+  with a slow white ring pulse at the palm (a cue, not a second hit ring). The ground point is latched when
+  the tell begins, so stepping out of the ring is the counterplay. Landing emits `PROP_BREAK` for dust plus
+  a white landing seam; there is no camera shake beyond those two. The renderer owns the squash and flip,
+  not the simulation.
+- **Finger charge.** The hand turns to point, shakes for 0.8 s, then fires along the latched direction at
+  800 units/s for 0.62 s, for 1 damage and 1520 knockback. The slower travel keeps roughly the old reach.
+  Cover does not stop it: hands are airborne,
   ignore cover, and only the arena wall ends a charge.
 - **The dash redirect.** A player dash that reaches a hand *while it is in its charge dash* does not
   dent it: it redirects the hand along the dash direction at 1100 units/s. A redirected hand that touches
   another hand deals `charge.deflectDamage` (14) to the partner, which is the boss's biggest punish and
-  the reason the trio is worth fighting together. Deflect credit goes to the player. Do not gate this on
-  the charged dash specifically; any dash that connects during the charge works.
-- **Identity.** The palm and the red eye are vector shapes, not a Unicode or Wingdings hand: the only
-  literal hands in the platform glyph stacks are emoji (which ignore `fillStyle` and would drop a bitmap
-  inside a one-hue body), and no monochrome hand glyph reads at 42 units. The symbol stack stays for
-  program identity. Palette: eye `#ff5a5a`, bone `#eadcd2`; no health bar, no cracks — a hand reads by its
-  palm eye and its state, and dies into the normal shard burst.
+  the reason the trio is worth fighting together. Both hands then enter stun state 7: they are launched
+  apart at `charge.stunKnockback` (900), spin for `charge.stunTime` (1 s), and cannot attack until the
+  lockout ends. Deflect credit goes to the player. Do not gate this on the charged dash specifically; any
+  dash that connects during the charge works.
+- **Identity.** The palm is a Unicode hand symbol, not a stroked plate: `✋` for the open palm, `☝` while
+  pointing, and `👁` for the palm eye, all drawn through the shared symbol stack with text-presentation
+  selectors. This reverses the earlier vector-only note on explicit design feedback (2026-11-02); the boss
+  should read as a hand mark like the primitive threats, not as a square palm with finger boxes. The
+  palm is filled entirely in the red accent over a dark-red silhouette pass; the eye is a fixed, unanimated
+  red glyph over an opaque black socket so the palm cannot show through its counters. Do not restore the
+  palm plate, four finger rectangles, the drawn ellipse eye, the pale palm fill, or the eye blink/width
+  animation. Palette: hand/eye `#ff5a5a`, eye socket `#000000`; no health bar, no cracks — a hand reads by
+  its palm eye and its state,
+  and dies into the normal shard burst.
+- **Render mode.** `drawIdleHand` saves the context and forces `source-over` because `drawWorms` sets
+  `lighter` for the whole worm pool. Do not draw the hand under additive blending; its layered fill, eye
+  socket and shadow bloom into each other and read as flashing. Restore the pool's blend mode on exit.
+- **Scale pass (2026-11-02).** The trio is now roughly three times its original body size: `radius` 126,
+  spawn ring 390/300, orbit 520–680, slam range 700, slam AOE 240 and rise 360. Health and damage are
+  unchanged; scale the spatial values together so three 126-radius hands never spawn inside each other.
+  The eye uses a capped 84 px font, so a 3x palm gets about a 2.2x eye and still reads as an eye rather
+  than a pupil filling the hand.
+- **Near-player staging (2026-11-02).** `spawnMiniboss` places Idle Hands, Starfish and File Blob around
+  the nearest live player instead of at the distant assault portal. Hands ring the player; the Starfish
+  center sits 440 units toward the arena center; the Blob 360 units, with the anchor clamped by its
+  footprint. Mega Worm and Storm Cloud keep their existing staging points.
 - **Tuning** lives in `tuning/threats.json` under `IDLE_HANDS`, exported from `config.ts`. `.tmp/idlehands-check.ts`
   covers the trio shape, the slam in and out of the ring, the redirect damage, kill credit and ingress.
   `?hands=1` is a QA-only boot hook beside `?mega=1`; it never enters menus or `Snapshot`.
@@ -2724,6 +2836,20 @@ The third mini-boss is **STARFISH** (`MINIBOSS.STARFISH = 2`, body `starfish`, g
 every 40). One center and five arms, and the arms are the boss: stripping them opens the mouth, and an arm
 left alive grows a whole new Starfish.
 
+- **Scale and silhouette (2026-11-02).** Core radius 96, `armRadius` 92, drawn arm width `armWidth` 0.84
+  and `armReach` 435, a girth pass over the 75/69/0.72/435 block, itself 1.5x over 50/46/290. The mouth
+  stays 150 and the angry chomp 195. Arms, reach, teeth and the boss staging pad all read from these
+  values, so scale the tuning block rather than the draw code. `armWidth` is the one draw factor kept in
+  tuning: it thickens the tapered silhouette (attached and detached) without making the collision circle
+  wider than `armRadius`. Reach is deliberately unchanged in the girth pass so the boss gets fatter, not
+  longer. A detached arm keeps the same curved, tapering arm silhouette and base stump as an attached arm;
+  do not restore the old leaf/boat outline.
+- **Obstacles do not stop it.** The center and its arms are boss bodies, not the generic chain worm:
+  `updateWorm` dispatches to the Starfish updaters before the shared `pushOutOfCover` resolve, so pillars,
+  walls and fixtures never shove them. They cross cover the way the Mega Worm crosses it; only the arena
+  bounds (with `bossEdgePad`) clamp them. Do not add `pushOutOfCover` to either updater, and keep the
+  dispatch branch above the normal worm path.
+
 - **Arms are bodies, not segments.** The center and all five arms are separate `Worm` pool entries tagged
   with `bossKind = STARFISH`; arms also carry `armState` (group, index, attached, hatch timer). That is
   what lets every existing weapon, beam, blast and bot scan hit a specific arm without new collision
@@ -2749,8 +2875,15 @@ left alive grows a whole new Starfish.
   detached arms crawling. Do not leave orphaned arms with a dead group.
 - **Rendering.** Arms are tapering curves with a whip and a curl-back, suckers down the length, and a stump
   when the bit is clear. The mouth is a ring of teeth whose opening tracks the suck state; the armless rim
-  gets a hot rotating ring. A detached arm draws its hatch ring as an arc that fills toward a new boss.
-  Palette: `#ff7ab8`, core `#ffd6e8`.
+  gets a hot rotating ring. A detached arm keeps the same curved arm silhouette and stump, with its hatch
+  ring as an arc that fills toward a new boss. Palette: `#ff7ab8`, core: `#ffd6e8`.
+- **Render mode.** `drawStarfish` and `drawStarfishArm` save the context and force `source-over`. The
+  worm pool draws with `lighter`; under additive blending the dark mouth and overlapping arm fills read as
+  holes and flash as the arms rotate. Do not remove either opt-out.
+- **Opaque body (2026-11-02).** The arm fills, center disc and detached arm draw at full alpha with a
+  brighter palette (`#ff9ecb` arms, `#8f2350` disc, `#c24c85` stumps). A translucent fill let the floor grid
+  read through the silhouette and the boss sank into the background. Keep body fills at alpha 1; the
+  position-interpolation `alpha` argument is not an opacity fade.
 - **Tuning** is `STARFISH` in `tuning/threats.json`. `?starfish=1` is the QA boot hook beside `?mega=1`
   and `?hands=1`. `.tmp/starfish-check.ts` covers shape, armor, detach, destroy credit, hatchery, the live
   cap, the suck/chomp, and the armless spine ring. Re-run `.tmp/memory-check.ts` after touching the damage
@@ -2762,36 +2895,48 @@ left alive grows a whole new Starfish.
 The fourth mini-boss is **FILE BLOB** (`MINIBOSS.BLOB = 3`, body `blob`, gauntlet wave 24, repeat every
 48). A stack of file icons that chips away as you shoot it, then tosses a glob that glues you in place.
 
+- **Scale and armor (2026-11-02).** The body is now roughly three times its old size: `rMax` 276,
+  `rMin` 102. The same 96 logical files occupy fixed golden-angle slots from the center outward, sized
+  against the full `BLOB.icons` roster and `BLOB.rMax`. A hit removes an outer slot without repacking or
+  rotating the survivors, so the pile keeps its shape and reads as an opaque haystack. `drawBlob` forces
+  `source-over`; the worm pool's `lighter` blend made the paper transparent. Do not shrink the plates back
+  down or restore additive blending.
+
 - **Icons are render-only.** `hp` *is* the live icon count (`BLOB.icons` 96); every point of damage removes
-  one icon. Nothing per-icon is simulated or allocated: each icon's angle, radius and size come from a
-  deterministic sine hash of its index, re-derived every frame. Do not add an icon entity array.
-- **Budget.** 96 logical icons × `BLOB.layers` (3) = 288 glyphs at full health, dropping with hp. Each
-  glyph is one filled paper path, one fold triangle and three bars — about ten canvas ops, so ~2.9k ops a
-  frame, in the same range as a busy particle frame. If a low-end target struggles, lower `layers` to 2
-  (192 glyphs) before touching `icons`; the layer count is the cheap dial because the same index list is
-  reused per layer with a small angle, radius and alpha offset. That reuse is the answer to "how do we
-  look like hundreds of files without simulating hundreds": the silhouette shrinks with hp, so density
-  and icon count fall together and the blob never looks like a full stack at low health.
+  one icon. Nothing per-icon is simulated or allocated: each icon's slot is a deterministic sine hash of
+  its index, fixed to the full roster and `BLOB.rMax`; `hp` only decides how many slots draw. Do not add an
+  icon entity array, reintroduce per-hit repacking, or rotate the slots with `st.clock`.
+- **Opaque backing (2026-11-02).** The hull is a solid `#1d4a60` fill with a bright `tint` rim, not a 0.16
+  tint wash, and the paper/ink palette is brighter (`#f8fdff` / `#1a2833`). The old hull let the floor read
+  through the pile, so the boss looked translucent. Keep the hull opaque; icons draw at full alpha.
+- **Budget.** 96 logical icons, one draw pass, dropping with hp. Each glyph is one filled paper path, one
+  fold triangle and three bars — about ten canvas ops, so roughly 1k ops a frame. This deliberately replaces
+  the old 3-shell + core stack (about 3.1k ops), which was heavy enough to hitch the render step. The
+  silhouette shrinks with hp, so density and icon count fall together and the blob never looks like a full
+  stack at low health.
 - **Skeleton.** The rim is `BLOB.nodes` (10) radial springs (`nodeR`, `nodeV`), each settling toward
-  `blobRadius(w) ± 5%` wobble. The renderer draws a closed curve through them and clamps every icon inside
-  the local radius, so icons ride the deformation instead of an abstract circle. Damage kicks the node
-  velocities along the hit direction, which is the whole "squash" response.
-- **Attack.** A slow drift toward the player, contact damage on a cooldown, and a lobbed glob: windup,
-  a 0.9 s arc, then a 122-unit AOE that deals 1 and applies the glue cage. The landing point is latched at
-  the windup, so moving is the answer.
+  `blobRadius(w) ± 5%` wobble. The renderer draws a closed curve through them; icon slots stay fixed at
+  `BLOB.rMax`, so damage deforms and shrinks the hull without shuffling the surviving files. Damage kicks
+  the node velocities along the hit direction, which is the whole "squash" response.
+- **Attack.** A faster chase (speed 58), contact damage on a cooldown, and two committed attacks. A lobbed
+  glob has a 0.7 s windup, a 0.9 s arc, then a 122-unit AOE that deals 1 and applies the glue cage. A
+  close-range **high jump slam** has a 0.45 s crouch, a 0.68 s airborne arc with a 280-unit lift, then a
+  190-unit AOE for 2 and 1400 knockback. Both landing points latch at the start of the tell, so moving is
+  the answer. Slam recovery is 0.55 s and its cooldown is 2.8 s; the glob rearm is 2.6 s.
 - **Glue is a root, not a web.** `Player.glueT` roots movement in `movement.ts`; it is deliberately not
   freed by a dash (unlike Fisher's web), and a landing cancels any dash the body was in. `glueHits` (3)
   is chipped by the single player projectile path (`spawnProjectile`) and `trySwing`, so shooting or
   swinging tears files off the cage instead of firing. Ghost's cloak (`cloakT`) clears it instantly;
   respawn clears it. Do not move the chip into a button handler — both entry points already cover every
   program's ranged and melee.
-- **Rendering.** File glyph is a folded-corner paper rectangle with three ink bars, tinted
-  `#dfe9ef`/`#202a34` with a `#7fd4ff` edge. A hit spawns a shed burst of up to ten icons falling out of
-  the rim. The glob in flight is nine files in a cluster, and the duct AOE is drawn as a ring at the
-  latched landing point. A glued body shows seven files orbiting it, drawn from state in `drawGlueCages`.
+- **Rendering.** File glyph is an opaque folded-corner paper rectangle with three ink bars and a dark ink
+  edge, tinted `#dfe9ef`/`#202a34`. Icons are drawn at the blob's world position, not at the local origin.
+  A hit spawns a shed burst of up to ten files falling out of the rim. The glob in flight is nine files in
+  a cluster, and the duct AOE is drawn as a ring at the latched landing point. A glued body shows seven
+  files orbiting it, drawn from state in `drawGlueCages`.
 - **Tuning** is `BLOB` in `tuning/threats.json`. `?blob=1` is the QA boot hook.
-  `.tmp/blob-check.ts` covers icon health, shed, shrink, the toss glue, the three-press escape, the Ghost
-  phase and kill credit.
+  `.tmp/blob-check.ts` covers icon health, shed, shrink, the high jump slam, the toss glue, the
+  three-press escape, the Ghost phase and kill credit.
 
 ### D71 — Storm Cloud: the ceiling owns the fight (built 2026-11-02)
 
@@ -2800,11 +2945,24 @@ repeat every 56). A boss-scale weather body that rains alternating rows under it
 telegraphed bolt. Everything it throws lives in the projectile pool, so guard, lash and player fire already
 apply; nothing here is a second collision system.
 
-- **One body, ceiling band.** It is a single worm-pool entry, `hitR` = `STORM_CLOUD.radius` (104) and
-  `hp` 104, with `storm` state. It homes on `bounds.top + hoverTop` (±`hoverBob`), tracks the player only at
-  `trackSpeed` (92), and slides away from a body inside `repelRadius` instead of hovering over it. It never
-  dives to the floor: the top of the map is its ground, so a player cannot stand on or get above it. Contact
-  damage is a cooldown-gated shove, not a chase.
+- **One body, ceiling band.** It is a single worm-pool entry, `hitR` = `STORM_CLOUD.radius` (312, 3× the
+  original 104) and `hp` 104, with `storm` state. It homes on `bounds.top + hoverTop` (±`hoverBob`), tracks
+  the player only at `trackSpeed` (92), and slides away from a body inside `repelRadius` instead of hovering
+  over it. It never dives to the floor: the top of the map is its ground, so a player cannot stand on or get
+  above it. Contact damage is a cooldown-gated shove, not a chase.
+- **Scale is a body change, not a rain change (2026-11-02).** `hoverTop` is negative (`-70`) so the enlarged
+  body's **underside** sits where the old 104-radius body's did (`top + 242`). Rain and lightning spawn at
+  `y + r + 8/10`, so holding the underside holds the rain origin, the cover rule and the lightning tell in
+  place while the cloud itself triples in size. The y clamp is the `hoverTop ± hoverBob` band for the same
+  reason; do not restore a `r * 0.3` floor, which would shove a 312-radius body 90 units down. `rain.width`
+  widens to 520 and `rain.count` to 5 so the lane still sits under the pile; density, cycle, damage and the
+  health pool are unchanged.
+- **No arena clamp, and cover is real (2026-11-02).** The body is no longer clamped to the floor bounds:
+  like the Mega Worm it may hang past the lip or leave the arena entirely, and `cullVoidThreats` skips it
+  for the same reason it skips Idle Hands. Only the ceiling band holds it, because that band is its ground.
+  Rain and lightning are ordinary hostile shots, so a pillar between the cloud and the floor eats both:
+  standing under a block is shelter from the rain and the bolt, and that same block stops your return fire
+  at the cloud. Keep the rain in the projectile pool; do not add a cover-free rain damage path.
 - **Rain is type 18.** A burst lays `rain.rows` rows of `rain.count` drops under the cloud, flipping
   direction each burst and offsetting every other row by half a gap. Drops fall at `rain.speed` and expire on
   their own fuse; they are hostile projectiles, so the existing player-bolt interception shoots them out of
@@ -2826,13 +2984,44 @@ apply; nothing here is a second collision system.
   That is the intended shape: a big boss that a good pilot can finish and an easy pilot usually cannot. If
   it needs another pass, move `rain.cycle`/`rain.count` first (density is the difficulty), then
   `lightning.cooldown`; leave `hp` alone unless the fight length itself is wrong.
-- **Rendering.** The body is a 7×4 grid of grey squares with per-square scale from a fixed `puff` array
-  (lighter blending, corner cells clipped so it reads as a cloud, not a box), an underside rain fringe, a
-  jagged windup line, and a strike flash. Drops are vector teardrops; bolts are jagged two-pass lances. No
-  emoji, for the same palette reason as the Sweep broom.
+- **Rendering.** The body is **84 opaque squares**: three loose 7×4 layers over the same lattice, each
+  square jittered, sized `0.23–0.40r` from the fixed 84-entry `puff` array and rotated up to about half a
+  radian so the grouping never reads as a grid. Source-over and a solid fill are load-bearing: the old pass
+  used `lighter` at low alpha, so every overlap stacked into a brighter patch and the viewer could count
+  the pile. Three layer shades carry the volume, a darker seam stroke keeps each square legible without
+  becoming a glow, and a hashed elliptical envelope leaves the rim ragged rather than oval. An underside
+  rain fringe, a jagged windup line and a strike flash follow. Drops are vector teardrops; bolts are jagged
+  two-pass lances. No emoji, for the same palette reason as the Sweep broom.
 - **Tuning** is `STORM_CLOUD` in `tuning/threats.json`; `?storm=1` is the QA boot hook. `.tmp/storm-check.ts`
   covers shape, the ceiling band, row emission, shooting a drop down, the reflect payoff and kill credit;
   `.tmp/storm-balance.ts` is the bot tuning harness.
+
+### D72 — BOSS RUSH: the mini-boss ladder (built 2026-11-02)
+
+BOSS RUSH is a gauntlet-mode ladder: no wave ramp, no fodder, one registered mini-boss at a time in
+`BOSS_RUSH_ORDER` (registry order). It exists for boss testing, balance passes and performance tuning, and
+as a playable local mode.
+
+- **Entry.** `SINGLE PLAYER > GAUNTLET` setup has a `BOSS RUSH` mode toggle; the local multiplayer stage has
+  the same toggle, which turns that lobby into same-screen co-op on the ladder. Online rooms stay
+  versus-only: mini-boss bodies are not in `Snapshot`, so networking them is a protocol decision, not a
+  menu row. Do not fake a guest-side boss.
+- **Runtime.** `World.bossRush` (trailing constructor flag) makes `updateGauntlet` hand its clock to
+  `updateBossRush`, before the network fixtures, boss wave gates and every family timer. Spawning still goes
+  through `spawnMiniboss`, so entrance beats, camera cues and pools are the ones the gauntlet already uses.
+  `BOSS_RUSH.firstDelay` and `.gap` are the only new timings.
+- **Advance and clear.** A boss is down when `minibossLiveCount(kind)` reaches zero; leftover parts of that
+  kind (Starfish arms, a split hand) are retired so they cannot leak into the next fight as a second boss.
+  After the last ladder entry, `bossRushCleared` and `gauntletOver` freeze the arena and the result plate
+  reads `BOSS RUSH // CLEAR` instead of the ring-broken copy. A rush never writes a gauntlet record.
+- **Co-op.** `setupGauntlet` seats every active local player on the training spawn spread, and deaths
+  respawn on the gauntlet timer instead of ending the run. That respawn rule is also what makes the mode
+  usable for tuning; keep the scored-gauntlet one-life branch gated on `!bossRush`.
+- **No fodder.** Arena replicators and every threat family timer are skipped. Do not re-enable ambient
+  spawns in a rush: a stray sentry or worm changes what a boss measurement means.
+- **QA.** `?bossrush=1` boots the solo ladder immediately. `.tmp/bossrush-check.ts` covers ladder order,
+  zero fodder, the inter-boss gap, clear state, co-op seating/respawn and that a scored gauntlet still ends
+  on a death.
 
 
 ## TEST RANGE sandbox
@@ -2853,3 +3042,19 @@ seeds a low `ATTRACT.bossWave` so the boss is the read rather than one silhouett
 spawns the boss across the room from the squad through `spawnMiniboss`. QA arenas (`qa: true`) are excluded
 from every attract arena pool, and a boss session requires at least 1500 units of width so the scaled Mega
 Worm has room. Do not spawn demo bosses from the wave gate as well; that would double the showcase.
+For reviewing the whole registry in one sitting, `?demo=1&boss=1` (or `?boss=1`) forces a boss into
+every session instead of every other one, and holds every showcase on the `qa` TEST RANGE so scale,
+movement and camera framing are judged without arena cover. It is a QA boot hook, not a player-facing
+mode; ordinary attract never selects a `qa` arena.
+A showcase session ends shortly after its boss dies; do not leave the kiosk in wave cleanup after the
+boss is already dead. The camera frames the boss head with `CAMERA.bossZoomMin`; the Mega Worm's chain is
+longer than the pane at combat scale, so its head is the subject and the tail may leave the frame. The
+Mega Worm floats above the floor: it ignores cover for movement, chain, bite and acid, and its plates are
+not clamped to the arena bounds. Ordinary worms stay cover-bound.
+A boss arrival plays a one-shot entrance rig: the camera pulls back to `CAMERA.bossIntroZoom` on the
+center of the assembled boss (head-to-tail midpoint for the Mega Worm) and holds, then blends into combat
+framing. The boss-present floor is a separate `CAMERA.bossZoomMin`, shallower than the entrance and deeper
+than a player-only fight. Do not reuse the entrance zoom as the combat floor; the entrance is a reveal,
+the fight needs the squad readable.
+While the entrance rig is the winning rig, the fit clamp must use the entrance floor instead of the combat
+floor, or the reveal's pull-back is cancelled on wide arenas.

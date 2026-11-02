@@ -373,6 +373,28 @@ export class AudioEngine {
     this.noise(0.1, 0.1, 2600, 500, 'bandpass');
   }
 
+  /**
+   * The Mega Worm's arrival cry. Pitches are written as MIDI note numbers and converted
+   * once, so the phrase reads as a bird call (a fast scream up, then a falling answer a
+   * fifth lower) instead of an arbitrary sweep. The low boom underneath is what the
+   * screen shake is timed to.
+   */
+  megaCry(): void {
+    const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
+    // Phrase one: the scream up and over.
+    this.tone('sawtooth', midi(74), midi(88), 0.3, 0.1);
+    this.tone('square', midi(81), midi(86), 0.22, 0.045, 0.05);
+    // Phrase two: the falling call, answered lower.
+    this.tone('sawtooth', midi(86), midi(69), 0.5, 0.09, 0.32);
+    this.tone('triangle', midi(74), midi(62), 0.55, 0.055, 0.36);
+    this.tone('square', midi(79), midi(67), 0.4, 0.04, 0.55);
+    // Body: the boom that carries the shake.
+    this.tone('sine', 96, 32, 0.9, 0.24);
+    this.tone('sawtooth', 74, 40, 0.5, 0.06, 0.02);
+    this.noise(0.7, 0.07, 2200, 260, 'bandpass');
+    this.noise(0.35, 0.1, 900, 90, 'lowpass', 0.05);
+  }
+
   dash(): void {
     this.noise(0.16, 0.1, 1400, 220, 'bandpass');
     this.tone('triangle', 500, 180, 0.1, 0.04);

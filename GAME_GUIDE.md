@@ -331,19 +331,19 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `USB HUB` | A round hub with four thumb-drive islands pushing out on a shared cycle. Only the hub and drives are floor; the gap grows to 230 units, so a dash can cross while the drives are travelling but not at full extension. While a drive extends, its current pushes outward; while it retracts, the current pulls inward, carrying players and threats off or onto the islands. Online: the drive clock is synced and the host resolves the ride. |
 | `SWIPE RIGHT` | A tall phone touchscreen showing a dating deck. Every 4.6 s the card swipes left or right and the whole floor slides 108 units that way, carrying every fighter and live shot toward the wall. A `YOU GOT A MATCH` popup rises from the center of the screen for a few seconds as real cover: it blocks bodies and shots, displaces anyone caught under it, then drops back into the floor. Online: the swipe and popup clocks are synced and the host owns the carry and collision. |
 | `ROCKET NAVIGATION` | A launch-control floor under a nav display. The rocket lifts from below the bottom lip while speed, altitude and trajectory count up. Its growing arc is a real barrier: a 24 s launch lays a continuous curved wall across the arena that bodies, dashes and shots cannot cross. The finished line splits the room for the rest of the round. Booster and fairing separation marks drift off the arc as presentation only. Local-only: the launch clock and barrier are not in the snapshot. |
-| `WEAPON SYSTEMS` | A fighter-jet status console: the aircraft is drawn in side profile over an instrument grid, with a status readout, a nose reticle and three chunky floor consoles — `FIRE` red, `EJECT` amber and `THRUST` blue — that also serve as cover. The jet is presentation; the consoles are the only static solids. Local-only. |
+| `WEAPON SYSTEMS` | A nose-up top-down fighter status console: the jet is drawn over an instrument grid with the cockpit and nose facing up, a status readout and a nose reticle. Three chunky floor consoles double as cover and sit beside the systems they name: `FIRE` red by the left wing root, `EJECT` amber beside the cockpit and `THRUST` blue by the tail. The jet is presentation; the consoles are the only static solids. Local-only. |
 | `SPEAK & FIND` | A bright children's talking-picture toy. A prompt screen calls out a picture (`FIND THE BOAT`, `FIND THE MOON`) and the matching card pulses while a magnifier sweeps the board. Four chunky letter keys are static cover. The prompt, cards and magnifier are display art; they do not grant items or score. Local-only presentation. |
-| `CAR NAVIGATION` | A GPS map screen with a serpentine route across the floor. The car drives from below the left lip to the upper-right map edge over 26 s; the travelled portion is a real barrier that bodies, dashes and shots cannot cross, and the finished route divides the arena into north and south halves. The car, stop pins, city blocks and speed/ETA/next-turn readout are presentation. Local-only: the route clock is not in the snapshot. |
+| `CAR NAVIGATION` | A GPS map screen in two districts. The west half is farmland: hedged fields, tree cover, a barn, a farmhouse, a silo and an old mill, with the route winding between them over a river bridge. The east half is a city street grid with block buildings, a civic park, a scale bar and a north arrow. The car drives the 32 s route from below the left lip to the right city edge. The road immediately behind it is a real barrier that bodies, dashes and shots cannot cross, but only the most recent 620 units stay live; older road recedes as the car advances, so the route never becomes a permanent full-map divider. Farms, city blocks, river, bridge, park and speed/ETA readout are presentation. Local-only: the route clock is not in the snapshot. |
 | `PONG` | A green phosphor CRT court with two automatic paddles. A square rally ball serves from the centre, bounces off the top and bottom walls, and is returned by the paddles; a missed ball scores and serves again. The ball is a real local hazard: a body on its line takes a segment and is shoved, and the ball ricochets away. The cabinet, scanlines, scoreboard and paddle labels are presentation, and the court has no static cover. Local-only: the rally ball and score are not in the snapshot. |
 | `AIRPORT` | The split-flap departure board is the entire floor: eighteen flight rows in two banks, nine arrivals and nine departures, with every text cell a flap element that cycles on its own clock — times, destinations, gates and statuses all change. A row warns, then lands with a wave of flaps and damages the whole bank band it occupies, not just the time cell. There is no terminal apron and no furniture, so the rows are your terrain: read which bank is about to land and move. Local-only: fixture arenas do not appear in online map rotation. |
 | `SPACE INVADERS` | A black arcade fleet floor. Players fight inside a five-row, ten-column formation of pixel invaders, with three green bunkers as the static cover. A simulated arcade cannon patrols the bottom, tracks the nearest body and fires upward shots; the shots damage players and gauntlet threats and stop on bunkers. The fleet, starfield, score readout and cannon are presentation; the shots are the hazard. Local-only: the cannon, aim line and shots are not in the snapshot. |
-| `FAX MACHINE` | A giant incoming fax sheet with corner toner drums and paper stacks as cover. A thermal print carriage shuttles left and right across the page; its vertical print bar damages players and gauntlet threats once per pass, then parks and reverses at each edge. The sheet copy, routing block and status labels are presentation. Local-only: the shuttle clock, page and phase are not in the snapshot. |
+| `FAX MACHINE` | A giant incoming fax sheet with corner toner drums and paper stacks as cover. A compact thermal print head traverses one row at a time, alternating left and right, and drops down one line between rows. Only the small moving head damages players and gauntlet threats, once per row; the rest of the row is just paper. The sheet copy, routing block and status labels are presentation. Local-only: the head clock, row, page and phase are not in the snapshot. |
 | `SMART PLUG` | A power-board floor with four dual-socket smart-plug modules as cover. The four socket-to-socket arcs form a circuit ring: green means safe, a red blink warns, and the red pulse damages anything caught in the live arcs once per pulse. The centre and the outside are safe pockets; wait for green to cross the ring. The board traces, LEDs and voltage readout are presentation. Local-only: the green/red clock and live arcs are not in the snapshot. |
 | `SMOKE DETECTOR` | A round detector face with a drop around its rim. Four floor smoke sensors arm the central siren when a body steps on one; it emits expanding sound rings that damage anything caught in the band. The siren runs in timed bursts, then re-arms. A mounted battery beside the siren has six health and can be shot out; destroying it breaks the alarm and disables the sensors for the round. The detector ridges, vents, LEDs and siren horn are presentation. Local-only: the alarm clock, waves and battery are not in the snapshot. |
 | `SMART WATCH` | A large watch face with a digital crown, minute ticks and four raised app complications as cover. A live second hand sweeps clockwise from twelve. A body the hand crosses takes a segment and is shoved, at most once per revolution; dashing and phased bodies avoid it. The hand is a floor projection, so cover does not stop it. Local-only: the hand clock is not in the snapshot. |
 | `BUSINESS LAPTOP` | A mail window with an endless inbox on the left and a message preview on the right. Four inbox cards scroll upward continuously; they block bodies and shots and keep moving when they wrap. The open message rewrites the right-side cover every eight seconds, with a new-message flash. Local-only: the inbox clock, card positions and preview layout are not in the snapshot. |
 | `SPREADSHEET` | A sheet window with a 6×4 grid of cell blocks and 70-unit corridors between them. The cells are solid cover and every one can be broken: a direct ranged shot spends one of its two hits, a cracked cell shows its damage, and a cleared cell opens its lane for the rest of the round. Bombs and the heavy beam stop on a cell without breaking it. A selection cursor walks the columns and the inspector names the selected cell. Corridors do not line up, so the sheet never becomes one straight run. Local-only: cell health, the cursor and the grid are not in the snapshot. |
-| `CHAT` | A chat window with four message bubbles rising continuously. Each bubble is solid cover, and the bubbles alternate the left and right half of the pane, so the open lane zig-zags as the thread scrolls. A bubble is only solid while it is fully inside the pane, so a wrapping bubble cannot block the spawn row. The pinned strip names the active line. Local-only: the bubble clock and positions are not in the snapshot. |
+| `CHAT` | A chat window with eight message bubbles rising continuously and 96-unit vertical gaps between them, wide enough for players and enemies to pass between rows. Each bubble is solid cover, and the bubbles alternate the left and right half of the pane, so the open lane zig-zags as the thread scrolls. Each bubble wraps below the pane on its own, so the thread stays endless instead of resetting as one block. A bubble is only solid while it is fully inside the pane, so a wrapping bubble cannot block the spawn row. The pinned strip names the active line. Local-only: the bubble clock and positions are not in the snapshot. |
 | `CAPCOM` | A 1968 mission-control floor split into four plates in a ring, each department laid out for its job. `CAPCOM` (flight control) sits in two offset tiers of wide flight desks facing a trajectory board. `FIDO` (flight dynamics) has three plotting tables, paper recorders and crossing plots. `GUIDO` (guidance) wraps a central gyro pedestal with corner navigation racks and a star-fix board. `EECOM` (electrical/environmental) lines its walls with switchgear and breaker cabinets around a service lane. Gaps are wider than a dash, so the ring is the only route. Local-only: room arenas do not appear in online map rotation. |
 | `AIR TRAFFIC` | An air traffic control scope: one circular radar floor with a slow sweep, range rings and a bearing graticule. Aircraft cross the scope on fixed schedules, and they are hazards, not scenery — a pass damages players and, in gauntlet, every threat family it crosses. Each aircraft hits a body once per pass, so dashing, phasing and i-frames are the answer. Six console desks sit on the scope as cover, and stepping off the disc is a drop. Local-only: fixture arenas do not appear in online map rotation. |
 | `SATELLITE` | A long orbital hull joined to two solar wings by narrow bridges, with a telescoping mast below and three capacitor pods above. Only those plates are floor; the gaps are open space. The wings warn, then burn anyone standing on them on independent 16 s cycles. Micro-meteors fall every 12.5 s. Destroy all three capacitors and the thrusters fire: a heat front climbs the whole map from the bottom for 14 s, then the satellite cools and the pods return. A hull-side **replicator** prints pulse units onto the deck every 4 s until it is destroyed: a satellite has no standing network port, so the infection left a machine behind instead. Online: the satellite clock, live meteors, capacitor states and reentry front are synced; the host still resolves every hit. |
@@ -440,7 +440,7 @@ snapshot. The compactor, keypad, scanner, browser, USB, swipe and satellite are 
 carried, so those maps also open online. The pipe/firewall arenas still stay local because their spawned
 threats are not in the snapshot. ROCKET NAVIGATION's launch wall, WEAPON SYSTEMS' cockpit console,
 SPEAK & FIND's card board, CAR NAVIGATION's route clock, PONG's rally ball, AIRPORT's flip clock,
-SPACE INVADERS' simulated cannon, FAX MACHINE's shuttle print bar, SMART PLUG's green/red circuit ring,
+SPACE INVADERS' simulated cannon, FAX MACHINE's moving print head, SMART PLUG's green/red circuit ring,
 SMOKE DETECTOR's alarm rings, SMART WATCH's second hand, BUSINESS LAPTOP's moving mail, SPREADSHEET's
 breakable cells and CHAT's rising bubbles are local-only display content and are not in that clock list.
 
@@ -590,40 +590,85 @@ readable side to watch instead of a squad appearing on top of you. Sentries, wor
 use the same ingress. If every edge point is blocked or too close, the burst waits rather than spawning
 next to you.
 
+### Boss entrances
+
+The room freezes for a deliberate beat while the camera cuts to a mini-boss and its title card appears.
+These are introductions, not separate fights: the boss is assembling or arriving, and control returns when
+the reveal finishes.
+
+- **File Blob:** one file pops up and holds, then a couple more, then the whole 96-plate pile packs out at full size.
+- **Mega Worm:** it swims in from beyond the arena on a slower arc, crosses around the fight and holds a longer roar before its first pass.
+- **Idle Hands:** the three palms rise slowly while yawing through a full turn—front, back, front—then grow and bounce up to their full size.
+- **Starfish:** the center and its arms hang overhead for a beat, then drop under their own weight and land with a thud.
+
 ### Mega Worm
 
-The first boss. It comes through an edge portal like everything else, but it is not one body: it is a
-chain of heavy plates with a head at the front. Every plate has its own health, so where you hit matters.
+The first boss. It starts beyond the arena edge and swims a full lap around the arena, then settles into
+its flight cycle. It is not one body: it is a chain of heavy plates with a head at the front. Every plate
+has its own health, so where you hit matters.
 
 - **Break the middle** and the tail half tears free as a second worm. The plate at the far tip opens its
   eyes and becomes that half's head. Two bosses is a real option, and usually a mistake.
 - **Break the head** and the plate right behind it opens its eyes and takes over. You cannot decapitate
   it; you can only shorten the head end the same way you shorten the tail.
-- **Whip.** When it curls its head back, clear the arc. The body then sweeps a wide half-circle and throws
-  anything it crosses, hard. One hit per swing.
+- **Flyby.** It circles wide, then commits to a pass straight through your position. The head snaps once
+  on the way past, and the whole plate chain hurts on contact. Watch the line it commits to and step off
+  it; it cannot adjust mid-pass.
+- **Arrival cry.** The lap ends with a bird-like call that shakes the screen. That is the handoff, not the
+  end of the fight: the first pass follows right after it, so keep moving through the cry.
+- **Tail sweep.** Stand near the back half while the head is circling and the whole body drags through a
+  slow arc around a mid-body pivot. The turn away is the tell, and it is much slower than a pass. It takes
+  a segment and throws you along the sweep; the head cannot chase you while it is committed.
 - **One plate left** and it grows legs: it sprints, lunges with a fast bite, and spits acid in pairs.
 - Damage reads as cracks spreading across a plate and loose code drifting off the body. A nearly dead
   plate shudders. There is no health bar.
-- It moves slowly for its size. The pressure is the sweep and the plates, not a chase.
+- It flies above the floor: cover does not stop it, and it can leave the arena bounds on a pass. The
+  pressure is the pass and the plates, not a chase.
 - **Scale pass (v0.1.143).** It now arrives at roughly three times its old size, with twice the plate
-  and head health. It spawns curled around its own head, so the first read is a coiled mass instead of a
-  body laid across the arena; the coil unrolls as it moves.
+  and head health. It starts offscreen curled around its own head, so the first read is a coiled mass
+  that unrolls during the entrance swim instead of a body laid across the arena.
+- **Hex plates.** The plates are hexagons, not square tiles. Cracks spread across the hex faces, and
+  loose code flakes off the body as the chain takes damage.
+
+## BOSS RUSH (single player and local co-op)
+
+A ladder through every mini-boss, one at a time, with no fodder between them. Turn it on with `BOSS RUSH` in
+the gauntlet setup, or with `BOSS RUSH` in the local multiplayer lobby for same-screen co-op. Online rooms
+stay versus-only: those bosses are local bodies and are not sent over the network.
+
+- Each boss arrives through its normal entrance and gets the room to itself. Clear it and the next one
+  enters after a short gap; the run clears when the last one is down.
+- Dying does not end a rush. You wait out the respawn and rejoin the same boss, so one session can walk the
+  whole ladder and a co-op partner dropping does not end the run.
+- There is no wave ramp, no sentry pack and no virus colony: the mode is the bosses. Use it to learn a fight
+  you have not met, or to practise the one that keeps finishing you.
 
 ## IDLE HANDS (mini-boss)
 
-Three hands hover around the floor with a red eye set in each palm. One boss, three bodies: the trio is
+Three hands hover around the floor with a Unicode eye (`👁`) set in each palm. One boss, three bodies: the trio is
 defeated when all three palms are gone, and each one you delete counts as a kill.
 
+- **Scale and tell pass.** The trio is roughly three times its old body size, with a wider arrival ring,
+  orbit and slam footprint. The palm is filled entirely in red, with the Unicode eye laid over an opaque
+  black socket. The eye is fixed rather than animated. The slam and charge tells are longer, and the charge
+  moves at 800 units/s without gaining reach.
+  The slam ring is tightened so the larger palm does not cover an unreasonable share of the floor.
 - **Slam.** A hand rears up, shrinks and flips palm-out, then drops onto a red ring on the ground. The ring
   is fixed the moment the tell starts, so walking out of it is the counter. Anything inside takes a
-  segment and a hard shove, with dust on the landing.
+  segment and a hard shove, with dust on the landing. After it lands the palm stays flat on the floor for
+  about a second with a slow white ring pulsing around it: that is your window, because it cannot move and
+  takes full damage. Shoot it there instead of chasing it while it hovers.
 - **Finger charge.** A hand turns to point at you, shakes, then fires forward along that line. Cover will
   not save you, but the shove is huge, so getting caught near a wall hurts.
 - **The redirect.** Dash into a hand while it is mid-charge and you do not scratch it: you turn it around.
-  A redirected hand slams into one of its partners for heavy damage. The trio is easiest to break by
-  feeding one hand into another.
+  A redirected hand slams into one of its partners for heavy damage. Both hands then tumble away spinning
+  for a second, stunned and unable to attack, so the collision creates a real punish window. The trio is
+  easiest to break by feeding one hand into another.
 - Hands float over cover, so do not expect a pillar to block their path. They do have to respect the
-  arena walls.
+  arena walls. A palm behind you slides to the nearest side; a palm ahead stays in the lower half. The trio
+  never settles over your character, so all three stay visible and their next tell is readable.
+- **Spacing.** The palms hold a 340-unit center margin, so they cannot stack into one silhouette. The
+  margin is released for committed slams and charges, where the hand-on-hand collision is the attack.
 - **Controls note:** the boss is designed for the single stick and the dash; there is no special input.
 
 ## MEMORY FRAGMENTS
@@ -649,6 +694,14 @@ A five-armed starfish with a mouth in the middle. The arms whip and curl, and ea
 spines every few seconds. The middle is plated while any arm is attached: shooting it early barely
 scratches it.
 
+- **Scale.** The core is more than three times a player's width and the five arms are long enough to sweep
+  most of the camera. The whole body is deliberately heavy: the center disc is wider and each arm is thick
+  along its full length, so the boss reads as one fat starfish rather than a disc with ribbons. A detached
+  arm keeps that thick curved shape, so a torn-off piece still reads as part of the boss rather than a
+  generic pod.
+- **Obstacles do not stop it.** Like the Mega Worm, the starfish crosses pillars and other cover instead of
+  being pushed around them. Only the arena edge constrains it.
+
 - **Strip an arm.** Enough shots to one arm tears it off. The stump stays on the body, and the mouth
   opens. A detached arm is *not* dead: it crawls away with a ring around it.
 - **Destroy the arm before the ring fills.** If the ring completes, the arm grows into a whole new
@@ -667,10 +720,17 @@ scratches it.
 A massive pile of file icons with no health bar: the pile *is* the health bar. Every point of damage knocks
 files off, and the blob visibly shrinks as the stack comes apart.
 
-- **Shoot the pile.** One damage removes one file. It starts wide and slow and gets smaller, so the last
-  quarter of the fight is a small, fast target rather than a second phase.
+- **Armor shell.** The pile is roughly three times its old size. Its files are large opaque plates in
+  fixed overlapping slots, so the body reads as a haystack rather than a hollow ring or a field of dots.
+  A hit removes a file without shuffling the rest of the pile.
+
+- **Shoot the pile.** One damage removes one file. It starts wide and gets smaller, and it now closes
+  distance faster, so the last quarter of the fight is a small, quick target rather than a second phase.
 - **Toss.** It lobs a clump of files into the air and the landing ring is fixed when the throw starts. The
   landing hurts and glues you in place with a cage of files.
+- **High jump slam.** Get close and it crouches, leaps high above the floor and comes down on the latched
+  point. The landing is a wide, heavy shockwave that hurts and throws you, but there is no glue on this
+  one. Watch the crouch and clear the ring.
 - **Break out.** Shoot or swing three times to tear the cage off. A dash will not free you, and neither will
   waiting quietly: the cage times out after a few seconds. Ghost's cloak phases straight out of it.
 - **Contact.** The body itself hurts on touch, so do not stand inside it while shooting.
@@ -678,10 +738,14 @@ files off, and the blob visibly shrinks as the stack comes apart.
 ## STORM CLOUD (mini-boss)
 
 A huge grey cloud that sits at the top of the arena and does not come down. It rains rows of drops under
-itself and throws lightning, and it slides sideways to stay above you.
+itself and throws lightning, and it slides sideways to stay above you. It can drift past the arena edge and
+back, but it never descends.
 
 - **Do not stand under it.** The lane directly beneath the cloud is where the rain lands. Step out to the
   side and shoot it from an angle; the cloud tracks slowly, so moving beats it.
+- **Use the cover.** A block between you and the cloud stops the rain and the bolt, so its far side is real
+  shelter. The rule cuts both ways: that same block stops your shots at the cloud, so step out to return
+  fire.
 - **Shoot the drops.** A raindrop is a real target: your ranged attack pops it out of the air. The rain is
   relentless enough that holding guard through a whole burst will burn the shield out, so pick drops off
   between shots instead of tanking them.
@@ -690,4 +754,6 @@ itself and throws lightning, and it slides sideways to stay above you.
   lash and send it back: a returned bolt tears a huge chunk out of the cloud, far more than a normal shot.
 - **It cannot be reached from above.** The cloud owns the ceiling. Fighting it is a ground fight: keep
   moving out of the lane, shoot drops, and save your reflect for the bolt.
-- **Big target, long fight.** Its body is the health bar; keep the pressure on between rain bursts.
+- **Big target, long fight.** Its body is the health bar; keep the pressure on between rain bursts. The
+  cloud fills most of the sky above the arena: its underside still sits at the same height, so the rain and
+  the bolt start where they always did even though the mass above them is three times the size.

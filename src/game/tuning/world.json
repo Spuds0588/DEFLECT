@@ -8,6 +8,8 @@
     "zoomMin": 0.88,
     "zoomMax": 1.03,
     "sharedZoomMin": 0.68,
+    "bossZoomMin": 0.55,
+    "bossIntroZoom": 0.36,
     "zoomFollow": 3.4,
     "splitZoom": 0.8,
     "splitGap": 4,
@@ -17,7 +19,8 @@
     "voidMargin": 90,
     "layoutSlowTime": 1.3,
     "layoutSlowHold": 1,
-    "layoutSlowScale": 0.35
+    "layoutSlowScale": 0.35,
+    "bossVoidMargin": 1000
   },
   "FALL": {
     "grace": 0.6,

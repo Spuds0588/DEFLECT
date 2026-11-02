@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.144';
+const BUILD = '0.1.145';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -218,6 +218,8 @@ const gauntletRecordsEl = el<HTMLOListElement>('gauntlet-records');
 const gauntletBestValue = el('gauntlet-best');
 const gauntletFriendlyBtn = el<HTMLButtonElement>('btn-gauntlet-friendly-fire');
 const gauntletFriendlyValue = el('gauntlet-friendly-fire-value');
+const gauntletRushBtn = el<HTMLButtonElement>('btn-gauntlet-rush');
+const gauntletRushValue = el('gauntlet-rush-value');
 const botCountEl = el('bot-count');
 const botTierEl = el('bot-tier');
 const botStageLabel = el('bot-stage-label');
@@ -289,6 +291,8 @@ const localStartBtn = el<HTMLButtonElement>('btn-local-start');
 const localSeatsEl = el('local-seats');
 const localArenaPickerEl = el('local-arena-picker');
 const localStatusLine = el('local-status');
+const localRushBtn = el<HTMLButtonElement>('btn-local-rush');
+const localRushValue = el('local-rush-value');
 const soloBackBtn = el<HTMLButtonElement>('btn-solo-back');
 const multiBackBtn = el<HTMLButtonElement>('btn-multi-back');
 const bootScreen = el('boot');
@@ -339,6 +343,8 @@ let attractSquadIndex = 0;
  */
 let attractSessionIndex = 0;
 let attractBossIndex = 0;
+/** True while this attract session still owes its showcase boss. */
+let attractBossAlive = false;
 const ATTRACT_BOSSES = [
   MINIBOSS.MEGA_WORM,
   MINIBOSS.IDLE_HANDS,
@@ -349,6 +355,8 @@ const ATTRACT_BOSSES = [
 let lastUserInputAt = performance.now();
 /** `?demo=true`: the attract pilot runs forever and ignores every wake input. */
 let demo = false;
+/** `?boss=1`: boss-review loop. Every attract session is a boss, cycling the registry. */
+let bossDemo = false;
 /** Saved Settings > Feedback choice for the canvas UI; the demo overrides it. */
 let uiEnabled = true;
 /** Remaining seconds of the local layout-change slow motion. */
@@ -382,6 +390,9 @@ let selectedProgram: number = PROGRAM_ID.PROBE;
 let settingsTab: SettingsTab = 'feedback';
 let gauntletRecords: GauntletRun[] = [];
 let gauntletRecorded = false;
+/** BOSS RUSH: a gauntlet ladder with no fodder, solo or local co-op. */
+let bossRush = false;
+let localBossRush = false;
 /** INFECTION runs on the gauntlet simulation; this flag swaps the setup, HUD and results. */
 let infectionRun = false;
 let infectionRecorded = false;
@@ -519,6 +530,9 @@ function boot(): void {
   // the page and takes precedence over the other boot hooks.
   const demoParam = params.get('demo');
   const demoMode = demoParam === '1' || demoParam === 'true';
+  // QA-only boss review: `?boss=1` is the kiosk loop with a boss in every session, so the
+  // whole registry can be watched without sitting through the ordinary sessions between.
+  bossDemo = params.get('boss') === '1';
   const attractParam = params.get('attract') === '1';
   const stressParam = Number(params.get('stress') ?? '0');
   const autoplayParam = Number(params.get('autoplay') ?? '0');
@@ -549,6 +563,7 @@ function boot(): void {
   starfishBoot = params.get('starfish') === '1';
   blobBoot = params.get('blob') === '1';
   stormBoot = params.get('storm') === '1';
+  bossRush = params.get('bossrush') === '1';
   const infectionParam = params.get('infection') === '1';
   const gauntletBot = Number(params.get('bot') ?? '0') >= 1;
   // QA-only inspection handle. Nothing in normal play reads it; it keeps split and
@@ -587,7 +602,7 @@ function boot(): void {
       audio,
     };
   }
-  if (demoMode) {
+  if (demoMode || bossDemo) {
     window.setTimeout(() => startDemo(), 250);
   } else if (attractParam) {
     window.setTimeout(() => startAttract(), 250);
@@ -595,7 +610,7 @@ function boot(): void {
     window.setTimeout(() => startStress(stressParam), 250);
   } else if (infectionParam) {
     window.setTimeout(() => startInfection(gauntletBot), 250);
-  } else if (gauntletParam >= 1 || megaBoot || handsBoot || starfishBoot || blobBoot || stormBoot || rangeParam) {
+  } else if (gauntletParam >= 1 || bossRush || megaBoot || handsBoot || starfishBoot || blobBoot || stormBoot || rangeParam) {
     window.setTimeout(() => startGauntlet(gauntletBot), 250);
   } else if (playtestMode) {
     window.setTimeout(startPlaytest, 250);
@@ -621,7 +636,10 @@ function bindUi(): void {
   localBtn.addEventListener('click', () => showMenuStage('local'));
   onlineBackBtn.addEventListener('click', () => showMenuStage('multi'));
   localBackBtn.addEventListener('click', () => showMenuStage('multi'));
-  localStartBtn.addEventListener('click', startLocalMatch);
+  localStartBtn.addEventListener('click', () => {
+    if (localBossRush) startLocalBossRush();
+    else startLocalMatch();
+  });
   tutorialSkipBtn.addEventListener('click', () => world?.skipTutorial());
   programBackBtn.addEventListener('click', () => programStageBack());
   soloBackBtn.addEventListener('click', () => showMenuStage('hub'));
@@ -641,6 +659,8 @@ function bindUi(): void {
   lobbySeriesBtn.addEventListener('click', cycleLobbySeries);
   lobbyMapRuleBtn.addEventListener('click', cycleLobbyMapRule);
   gauntletFriendlyBtn.addEventListener('click', toggleFriendlyFire);
+  gauntletRushBtn.addEventListener('click', toggleBossRush);
+  localRushBtn.addEventListener('click', toggleLocalBossRush);
   campaignFriendlyBtn.addEventListener('click', toggleFriendlyFire);
   el<HTMLButtonElement>('btn-bots-back').addEventListener('click', () => showMenuStage('soloArena'));
   el<HTMLButtonElement>('btn-tier-back').addEventListener('click', () => showMenuStage('soloBots'));
@@ -1200,7 +1220,7 @@ function selectArena(index: number): void {
  * snapshot, and the host resolves every hazard hit. Feed pipes and the firewall switch
  * are different: they spawn local threats and a sweep the snapshot does not carry.
  * ROCKET NAVIGATION's barrier clock, WEAPON SYSTEMS' console display, PONG's rally ball,
- * AIRPORT's flip board, SPACE INVADERS' cannon, FAX MACHINE's shuttle, SMART PLUG's
+ * AIRPORT's flip board, SPACE INVADERS' cannon, FAX MACHINE's print head, SMART PLUG's
  * circuit ring, SMOKE DETECTOR's alarm, SMART WATCH's second hand and BUSINESS LAPTOP's
  * scrolling inbox are local presentation too, so none may enter a hosted room until its
  * state is in Snapshot.
@@ -1534,9 +1554,25 @@ function toggleFriendlyFire(): void {
 function renderGauntletSetup(): void {
   const arena = getArena(arenaIndex);
   const def = programDef(selectedProgram);
-  gauntletStageLabel.textContent = `GAUNTLET // ${def.name} // ${arena.name}`;
+  gauntletStageLabel.textContent = bossRush
+    ? `BOSS RUSH // ${def.name} // ${arena.name}`
+    : `GAUNTLET // ${def.name} // ${arena.name}`;
+  gauntletRushBtn.setAttribute('aria-pressed', String(bossRush));
+  gauntletRushValue.textContent = bossRush ? 'ON' : 'OFF';
   renderFriendlyFire();
   renderGauntletRecords();
+}
+
+function toggleBossRush(): void {
+  bossRush = !bossRush;
+  renderGauntletSetup();
+  toast(`BOSS RUSH // ${bossRush ? 'ON' : 'OFF'}`);
+}
+
+function toggleLocalBossRush(): void {
+  localBossRush = !localBossRush;
+  renderLocalSeats();
+  toast(`LOCAL BOSS RUSH // ${localBossRush ? 'ON' : 'OFF'}`);
 }
 
 /**
@@ -2414,6 +2450,10 @@ function handleGameEvent(e: GameEvent, remote: boolean): void {
     case EV.THRALL:
       audio.eliminate();
       break;
+    case EV.MEGA_CRY:
+      audio.megaCry();
+      if (nearLocalExplosion(e.x, e.y)) playRumble('heavy');
+      break;
     case EV.WORM_HIT:
     case EV.VIRUS_HIT:
     case EV.SENTRY_HIT: {
@@ -2771,10 +2811,16 @@ function renderLocalSeats(): void {
   }
   const players = localSeats.activeCount();
   localStartBtn.disabled = players < 2 || busy;
+  const startValue = localStartBtn.querySelector('.option-value');
+  if (startValue) startValue.textContent = localBossRush ? 'BOSS RUSH' : 'FIRST TO 3';
+  localRushBtn.setAttribute('aria-pressed', String(localBossRush));
+  localRushValue.textContent = localBossRush ? 'ON' : 'OFF';
   localStatusLine.textContent =
     players < 2
       ? 'CONNECT A CONTROLLER TO JOIN // P1 IS KEYBOARD + MOUSE'
-      : `${players} PLAYERS READY // DROP IN ANY TIME DURING THE MATCH`;
+      : localBossRush
+        ? `${players} PLAYERS READY // BOSS LADDER, NO FODDER`
+        : `${players} PLAYERS READY // DROP IN ANY TIME DURING THE MATCH`;
 }
 
 function renderLocalArenaPicker(): void {
@@ -2868,6 +2914,63 @@ function startLocalMatch(): void {
   );
 }
 
+/**
+ * BOSS RUSH, local co-op: the same ladder on the gauntlet simulation, with every
+ * seated player active. It is not a networked mode; mini-boss bodies are not in
+ * `Snapshot`, so online rooms stay versus-only.
+ */
+function startLocalBossRush(): void {
+  if (busy) return;
+  localSeats.poll();
+  if (localSeats.activeCount() < 2) {
+    localStatusLine.textContent = 'NEED ONE CONTROLLER // P1 IS KEYBOARD + MOUSE';
+    return;
+  }
+  teardownSession();
+  hideOverlayInternal();
+  mode = 'local';
+  localSlot = 0;
+  stress = false;
+  autoplay = false;
+  const arena = getArena(arenaIndex);
+  const names = new Array(MAX_PLAYERS).fill('');
+  names[0] = getCallsign();
+  for (const seat of localSeats.seats) names[seat.slot] = seat.name;
+  const programs = botProgramList(localSeats.maxSeats - 1);
+  world = new World(
+    'gauntlet',
+    names,
+    0,
+    arena,
+    false,
+    selectedProgram,
+    0,
+    programs,
+    false,
+    null,
+    false,
+    'none',
+    0,
+    true,
+  );
+  world.friendlyFire = friendlyFire;
+  botInputs = [];
+  botBrains = [];
+  localSeats.writeFrames(localFrame, localFrames);
+  trainingInputs = localFrames;
+  input.keyboardOnly = true;
+  localSeatSignature = localSeats.signature();
+  renderer.setLocalSlots(localSeats.slots());
+  resetCounters();
+  fx.reset();
+  setScreen('game');
+  beginLoadSequence(`BOSS RUSH // ${arena.name}`);
+  audio.unlock();
+  audio.startMusic();
+  beginSessionLog();
+  console.log('[DEFLECT-STATE] Local boss rush', localSeats.activeCount(), 'players', arena.name);
+}
+
 function startTraining(): void {
   if (busy) return;
   teardownSession();
@@ -2927,7 +3030,22 @@ function startGauntlet(aiLocal = false): void {
   stress = false;
   autoplay = aiLocal;
   const arena = getArena(arenaIndex);
-  world = new World('gauntlet', [getCallsign()], 0, arena, false, selectedProgram);
+  world = new World(
+    'gauntlet',
+    [getCallsign()],
+    0,
+    arena,
+    false,
+    selectedProgram,
+    0,
+    null,
+    false,
+    null,
+    false,
+    'none',
+    0,
+    bossRush,
+  );
   world.friendlyFire = friendlyFire;
   if (megaBoot || handsBoot || starfishBoot || blobBoot || stormBoot) {
     const lead = world.players[0];
@@ -3033,6 +3151,7 @@ function startAttract(): void {
   attract = true;
   attractStartedAt = performance.now();
   attractRestartAt = 0;
+  attractBossAlive = false;
   teardownSession();
   hideOverlayInternal();
   mode = 'gauntlet';
@@ -3049,7 +3168,7 @@ function startAttract(): void {
   attractSquadIndex++;
   // Alternate ordinary wave runs and boss showcases. Both the idle attract loop and the
   // permanent `?demo=1` kiosk boot come through here, so they share the same rotation.
-  const bossSession = attractSessionIndex % 2 === 1;
+  const bossSession = bossDemo || attractSessionIndex % 2 === 1;
   attractSessionIndex++;
   const bossKind = bossSession ? ATTRACT_BOSSES[attractBossIndex++ % ATTRACT_BOSSES.length] : null;
   const arenaPool = ARENAS.filter((a) => {
@@ -3060,7 +3179,11 @@ function startAttract(): void {
     if (bossSession && width < 1500) return false;
     return true;
   });
-  const arena = arenaPool[Math.floor(Math.random() * arenaPool.length)];
+  // The boss-review boot holds every showcase on the QA test range: one huge open floor
+  // with no cover, so boss movement, scale and the camera pull are judged on their own.
+  // Ordinary attract and `?demo=1` keep the normal arena pool.
+  const qaArena = bossDemo ? ARENAS.find((a) => a.qa) : undefined;
+  const arena = qaArena ?? arenaPool[Math.floor(Math.random() * arenaPool.length)];
   const programPool = [...PROGRAMS];
   for (let i = programPool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -3080,6 +3203,7 @@ function startAttract(): void {
     const bx = Math.max(b.left + 240, Math.min(b.right - 240, lead.x + side * (b.right - b.left) * 0.34));
     const by = Math.max(b.top + 200, Math.min(b.bottom - 200, lead.y - 120));
     world.spawnMiniboss(bossKind, bx, by);
+    attractBossAlive = true;
   }
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
@@ -3102,7 +3226,7 @@ function startAttract(): void {
     `${squad}P`,
     programs.map((p) => programDef(p).name).join(' / '),
     arena.name,
-    bossKind === null ? 'wave' : 'BOSS',
+    bossKind === null ? 'wave' : bossDemo ? 'BOSS DEMO' : 'BOSS',
     bossKind === null ? ATTRACT.wave : MINIBOSSES.find((boss) => boss.id === bossKind)?.label ?? bossKind,
   );
 }
@@ -3133,7 +3257,13 @@ function updateAttract(now: number): void {
       exitAttract();
       return;
     }
-    if (world && world.gauntletOver) {
+    // A showcase ends with its boss, not with a long cleanup. Otherwise the kiosk
+    // spends most of a boss session on an empty wave after the boss is already dead.
+    if (world && attractBossAlive && !world.minibossAlive()) {
+      attractBossAlive = false;
+      attractRestartAt = now + ATTRACT.restart * 1000;
+    }
+    if (world && (world.gauntletOver || attractRestartAt !== 0)) {
       if (attractRestartAt === 0) attractRestartAt = now + ATTRACT.restart * 1000;
       else if (now >= attractRestartAt) {
         // startAttract guards on its own state; clear it so the restart is allowed.
@@ -4235,6 +4365,8 @@ function showGauntletOverOverlay(state: RenderState): void {
   const wave = Math.max(1, state.wave ?? 1);
   const seconds = Math.max(0, state.gauntletTime ?? 0);
   const kills = Math.max(0, state.gauntletKills ?? 0);
+  const rush = world?.bossRush === true;
+  const cleared = rush && world?.bossRushCleared === true;
   const previousBest = gauntletRecords[0];
   const newBest =
     !previousBest ||
@@ -4244,7 +4376,7 @@ function showGauntletOverOverlay(state: RenderState): void {
         (seconds === previousBest.seconds && kills > previousBest.kills)));
 
   let rank = 0;
-  if (!gauntletRecorded) {
+  if (!rush && !gauntletRecorded) {
     const run: GauntletRun = {
       name: getCallsign(),
       arenaId: arenaIndex,
@@ -4263,7 +4395,13 @@ function showGauntletOverOverlay(state: RenderState): void {
   }
 
   const place = rank > 0 ? `RANK #${rank} OF ${gauntletRecords.length}` : 'OUTSIDE TOP 8';
-  const resultLine = newBest ? 'NEW PERSONAL BEST' : place;
+  const resultLine = rush
+    ? cleared
+      ? 'LADDER CLEARED'
+      : 'LADDER ABANDONED'
+    : newBest
+      ? 'NEW PERSONAL BEST'
+      : place;
   const actions: OverlayAction[] = [
     { label: 'RETRY', primary: true, onClick: startGauntlet },
     { label: 'SETUP', onClick: returnToGauntletSetup },
@@ -4271,8 +4409,10 @@ function showGauntletOverOverlay(state: RenderState): void {
   ];
   setOverlay(
     'runover',
-    'GAUNTLET // RING BROKEN',
-    `WAVE ${wave} // ${formatGauntletTime(seconds)}`,
+    rush ? (cleared ? 'BOSS RUSH // CLEAR' : 'BOSS RUSH // LADDER BROKEN') : 'GAUNTLET // RING BROKEN',
+    rush
+      ? `BOSS ${Math.min(wave, world?.bossRushTotal ?? wave)} OF ${world?.bossRushTotal ?? wave} // ${formatGauntletTime(seconds)}`
+      : `WAVE ${wave} // ${formatGauntletTime(seconds)}`,
     `${kills} KILLS // ${resultLine} // ${state.arena.name}`,
     withSessionShare(actions, sessionResult('ring-broken', { wave, seconds, kills })),
   );

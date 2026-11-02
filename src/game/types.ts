@@ -93,7 +93,7 @@ export const SRC = {
   FLIP: 15,
   /** SPACE INVADERS simulated arcade cannon. No body, so the death camera falls through. */
   ARCADE: 16,
-  /** FAX MACHINE shuttle print bar. No body, so the death camera falls through. */
+  /** FAX MACHINE print head. No body, so the death camera falls through. */
   FAX: 17,
   /** SMART PLUG live circuit arc. No body, so the death camera falls through. */
   PLUG: 18,
@@ -152,6 +152,8 @@ export const EV = {
   BEAM_END: 41,
   /** Compress pressure: `power` is the new body scale; a burst passes 0. */
   COMPRESS: 42,
+  /** A mini-boss let out its arrival cry; `power` is the body radius. */
+  MEGA_CRY: 43,
 } as const;
 
 /** Breakable file boxes. The renderer maps each to one glyph. */
@@ -723,6 +725,17 @@ export interface Drone {
   poisonTickT: number;
 }
 
+export interface BossIntro {
+  kind: number;
+  label: string;
+  /** Seconds elapsed and total duration of the frozen entrance. */
+  t: number;
+  duration: number;
+  /** Current camera focus in world space. */
+  x: number;
+  y: number;
+}
+
 export interface GameEvent {
   kind: number;
   slot: number;
@@ -793,11 +806,11 @@ export interface StarfishArmState {
  * icon count, and the renderer derives every icon position from the node springs.
  */
 export interface BlobState {
-  /** 0 idle, 1 toss windup, 2 glob in flight, 3 recovery. */
+  /** 0 idle, 1 toss windup, 2 glob in flight, 3 toss recover, 4 slam windup, 5 airborne, 6 slam recover. */
   state: number;
   t: number;
   cd: number;
-  /** Glob arc endpoints and progress. */
+  /** Glob/slam arc endpoints and progress. */
   fromX: number;
   fromY: number;
   toX: number;
@@ -899,6 +912,21 @@ export interface Worm {
   storm: StormState | null;
   /** Mega Worm: a boss chain whose nodes carry their own health. */
   mega: boolean;
+  /** Mega Worm flight: 0 orbit, 1 committed pass, 2 climb-out. */
+  flyPhase: number;
+  /** Seconds in the current flight phase. */
+  flyT: number;
+  /** Seconds until the next pass is allowed. */
+  flyCd: number;
+  /** Committed pass direction. */
+  flyDX: number;
+  flyDY: number;
+  /** Mega Worm offscreen entrance: seconds left, start angle and start radius. */
+  entryT: number;
+  entryA: number;
+  entryR: number;
+  /** Mega Worm post-entry roar hold; drawn as a maw/ring beat. */
+  roarT: number;
   /** Per-node health. Index 0 is the head, index k is segment k-1. */
   segHp: Float32Array;
   segMaxHp: Float32Array;

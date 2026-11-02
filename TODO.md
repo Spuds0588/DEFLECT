@@ -72,11 +72,15 @@ Formerly: 2026-11-02 (PORTS)
 - [x] Probe: `.tmp/megaworm-check.ts`; `?mega=1` QA boot hook
 - [x] Memory fragments: downed players drop a stacking +1 HP / +20% speed / +25% damage shard, PvE only
 - [x] Campaign carry-over for stacks across nodes, with one drop per body per run
-- [x] File Blob: 96 icon health, 3-layer icon reuse, 10-node spring rim, shrink with damage
+- [x] File Blob: 96 icon health, 10-node spring rim, shrink with damage; 3x body and a single-pass center-out opaque file haystack
 - [x] Glue cage from the lobbed glob: dash-proof root, three attack presses to escape, Ghost cloak phases out
-- [x] Starfish: five detachable arms, hatch-into-a-new-boss rule, mouth suck/chomp, armless spine ring
+- [x] Starfish: five detachable arms, hatch-into-a-new-boss rule, mouth suck/chomp, armless spine ring; smaller core, bigger arms, detached arms keep their arm shape
 - [x] Arms as separate pool bodies so every weapon can target a specific arm; live-cap prevents boss floods
-- [x] Idle Hands: three floating palms, slam telegraph, finger charge, dash redirect
+- [x] Idle Hands: three floating palms, slam telegraph, finger charge, dash redirect; Unicode `✋`/`☝` hands and `👁` palm eye; ~3x body scale, solid red palm, fixed red eye on a black socket, layered shadow, slower tells, tighter slam ring, hand-on-hand stun
+- [x] Idle Hands entrance: rise from the ground while yawing front > back > front, with a slight in-plane twist and the eye hidden on the back half
+- [x] Slow the four staged mini-boss entrances; Starfish now hangs overhead, then falls under acceleration
+- [x] Idle Hands: front/side hover targeting so a palm never settles over the player sprite
+- [x] Idle Hands: 340-unit separation margin so the three palms cannot stack
 - [x] Hand bodies reuse the worm pool via `bossKind`, so every weapon and bot already hits them
 - [x] Mini-boss registry (`minibosses.ts`), `Worm.bossKind` and one `spawnMiniboss` entry point
 - [x] Data-driven wave gates (`GAUNTLET.bossSchedule`); bosses arrive through assault family 3
@@ -103,9 +107,10 @@ Formerly: 2026-11-02 (PORTS)
 
 ## Weapon systems jet (2026-11-02)
 
-- [x] Replace the polygon with `FIGHTER_SIDE`: nose, canopy, swept wing, tail plane, fin, intake, nozzle
+- [x] Replace the polygon with `FIGHTER_TOP`: nose-up plan view with both wings, canopy, tail planes, fin, intakes and nozzle
 - [x] One silhouette shared by the arena console and the arena picker; probe rejects a re-inlined blob
-- [x] Panel detail: spine, frame lines, roundel, exhaust streaks, side-profile caption
+- [x] Place `FIRE WEAPONS` by the wing root, `EJECTOR SEAT` by the cockpit and `THRUSTERS` by the tail
+- [x] Panel detail: centre spine, wing-root seams, hardpoints, exhaust streaks, top-profile caption
 - [x] Reticle moved onto the nose
 - [ ] Animate the control surfaces during the heavy-attack readout
 - [ ] A top-down companion silhouette for a future map that needs one
@@ -180,9 +185,10 @@ Formerly: 2026-11-02 (PORTS)
 - [x] Extend `ArenaLaptopDef` with `variant`, `bubbleW` and a `sheet` cell grid; BUSINESS LAPTOP keeps the mail default
 - [x] SPREADSHEET (id 30): 6×4 grid, 17 breakable cells, 70-unit corridors, selection cursor and cell inspector
 - [x] A direct ranged shot spends one of two cell hits; a cleared cell opens its lane until the round ends
-- [x] CHAT (id 31): four rising bubbles that alternate sides, plus the pinned composer strip
+- [x] CHAT (id 31): eight rising bubbles that alternate sides, plus the pinned composer strip
+- [x] Bubbles keep a 96-unit gap and wrap individually below the pane, so bodies pass between rows and the stream never resets as one block
 - [x] Bubbles are solid only while fully inside the pane, so a clipped card cannot block a spawn row
-- [x] Headless probe (`.tmp/laptop-variants-check.ts`): ids/order, cell destruction and round restore, cursor clock, bubble travel, spawn clearance across a full scroll and snapshot isolation
+- [x] Headless probe (`.tmp/laptop-variants-check.ts`): ids/order, cell destruction and round restore, cursor clock, bubble travel, gap clearance, one off-screen wrap per bubble per cycle, spawn clearance across a full scroll and snapshot isolation
 - [x] `npx tsc --noEmit`, `npm run build` and `npm run bench` clean
 - [ ] Headed pass: read the sheet corridors, the cracked-cell state and the alternating bubble lanes at play size
 - [ ] Optional: bot pathing around a cleared lane, plus a sheet-cursor or chat-conveyor hazard
@@ -253,14 +259,15 @@ Formerly: 2026-11-02 (PORTS)
 
 - [x] Add `fax` data to `ArenaDef`; id 25 after SPACE INVADERS
 - [x] Add a 1254×758 fax sheet with four corner toner-drum/paper-stack cover pieces
-- [x] Add a thermal print carriage that shuttles left and right across the page
-- [x] Make the vertical print bar a once-per-pass hazard for players, the drone and all gauntlet threat families
-- [x] Park and telegraph at each edge before reversing; add `SRC.FAX`
-- [x] Reset the shuttle, page and hit masks in `beginRound()`; keep all of it out of `SnapshotHazards` and `isOnlineArena`
+- [x] Add a compact thermal print carriage that traverses left and right across each row
+- [x] Feed down one line at the end of each row, alternating direction and cycling the page
+- [x] Make only the small head a once-per-row hazard for players, the drone and all gauntlet threat families
+- [x] Add the line-feed reversal beat and `SRC.FAX`
+- [x] Reset the head, row, page and hit masks in `beginRound()`; keep all of it out of `SnapshotHazards` and `isOnlineArena`
 - [x] Custom renderer and picker preview
-- [x] Headless probe (`.tmp/fax-arena-check.ts`): id/order, page stack, all four phases, rail bounds, live `SRC.FAX` hit and snapshot isolation
-- [ ] Headed pass: read the carriage, vertical bar and reversal telegraph at play size
-- [ ] Optional: add a bot dodge response to the print bar
+- [x] Headless probe (`.tmp/fax-arena-check.ts`): id/order, page stack, row count, all four phases, compact head bounds, live `SRC.FAX` hit and snapshot isolation
+- [ ] Headed pass: read the compact head, row steps and line-feed beat at play size
+- [ ] Optional: add a bot dodge response to the print head
 
 ---
 
@@ -313,12 +320,18 @@ Formerly: 2026-11-02 (PORTS)
 - [x] SPEAK & FIND: six-card picture board, spoken `FIND THE ...` prompt deck, pulsing target and sweeping magnifier
 - [x] Four chunky letter keys as static cover; cards, prompt and magnifier remain presentation
 - [x] CAR NAVIGATION: 26 s serpentine GPS route with speed/ETA/next-stop readout and named map pins
+- [x] CAR NAVIGATION reworked as a country-to-city map: farmland, farms, tree cover and a river west of the
+      split; a street grid with city blocks, a park, a scale bar and a north arrow east of it. Route is 32 s,
+      trail 620, and the city legs are square to the grid (v0.1.145).
+- [ ] Read the reworked map at couch distance and check the farm labels and district names do not clutter
+      the fight; trim labels rather than shrinking type.
 - [x] Make the route a real wall: 160 preallocated overlapping blocks in `solids`/`dashSolids`, with body, dash and shot collision
+- [x] Cap the live route at 560 units behind the car; older blocks recede so the wall cannot grow into a full-map divider
 - [x] Reset the route and clock in `beginRound()`; keep both maps out of `SnapshotHazards` and `isOnlineArena`
 - [x] Custom arena renderers and picker previews for both maps
-- [x] Headless probe (`.tmp/two-more-maps-check.ts`): ids/order, card/prompt coverage, route length and turns, block overlap, growth, reset and snapshot isolation
-- [ ] Headed pass: read the prompt/card hierarchy and the full serpentine wall at play size
-- [ ] Optional: teach bot nav about the growing car wall, or carry its clock in a snapshot if online support is requested
+- [x] Headless probe (`.tmp/two-more-maps-check.ts`): ids/order, card/prompt coverage, route length and turns, capped trail, block overlap, growth, reset and snapshot isolation
+- [ ] Headed pass: read the prompt/card hierarchy and the receding car trail at play size
+- [ ] Optional: teach bot nav about the moving car trail, or carry its clock in a snapshot if online support is requested
 
 ---
 
@@ -328,7 +341,7 @@ Formerly: 2026-11-02 (PORTS)
 - [x] ROCKET NAVIGATION: 24 s launch, nav telemetry, growing quadratic arc, atmosphere band and stage-separation debris
 - [x] Make the arc a real wall: 128 preallocated overlapping blocks in `solids`/`dashSolids`, with shot and body collision
 - [x] Reset the launch clock and wall in `beginRound()`; keep the state out of `SnapshotHazards`
-- [x] WEAPON SYSTEMS: fighter-jet status display, reticle and three console banks (`FIRE WEAPONS`, `EJECTOR SEAT`, `THRUSTERS`) as static cover
+- [x] WEAPON SYSTEMS: nose-up top-down fighter display, reticle and three console banks (`FIRE WEAPONS`, `EJECTOR SEAT`, `THRUSTERS`) placed by their aircraft systems
 - [x] Custom arena renderers and picker previews for both maps
 - [x] Exclude both maps from `isOnlineArena`; no snapshot or guest presentation yet
 - [x] Headless probe (`.tmp/two-new-maps-check.ts`): ids/order, arc endpoints, barrier growth, reset, hazard shape, console cover
@@ -3406,7 +3419,7 @@ arrive.
   or local match exists yet; the only local multi-body paths today are bots and the gauntlet thrall.
 - Story mode lists three local save slots, but nothing writes or reads a run: the first playable sector
   and the new-game/resume wiring do not exist. The slot format is already versioned in `saves.ts`.
-- ROCKET NAVIGATION's growing barrier, CAR NAVIGATION's growing route, AIRPORT's time-tile hazard, SPACE INVADERS' cannon shots, FAX MACHINE's shuttle print bar, SMART PLUG's circuit ring, SMOKE DETECTOR's alarm rings, SMART WATCH's second hand and BUSINESS LAPTOP's moving cards/preview cover are not in the bot nav grid or any snapshot. Bots can path through them, stand on a warning tile, eat a cannon shot, stand in the print bar, cross a live arc, step on a smoke sensor, walk through the hand or be pushed by a mail card; those maps are deliberately excluded from hosted rooms. PONG's rally ball is local-only and not part of bot pathing; its court has no static cover. WEAPON SYSTEMS' console banks and SPEAK & FIND's picture cards are static cover/presentation only; no jet weapon, eject action, thruster system or pickable card target exists.
+- ROCKET NAVIGATION's growing barrier, CAR NAVIGATION's moving route trail, AIRPORT's time-tile hazard, SPACE INVADERS' cannon shots, FAX MACHINE's moving print head, SMART PLUG's circuit ring, SMOKE DETECTOR's alarm rings, SMART WATCH's second hand and BUSINESS LAPTOP's moving cards/preview cover are not in the bot nav grid or any snapshot. Bots can path through them, stand on a warning tile, eat a cannon shot, stand in the print bar, cross a live arc, step on a smoke sensor, walk through the hand or be pushed by a mail card; those maps are deliberately excluded from hosted rooms. PONG's rally ball is local-only and not part of bot pathing; its court has no static cover. WEAPON SYSTEMS' console banks and SPEAK & FIND's picture cards are static cover/presentation only; no jet weapon, eject action, thruster system or pickable card target exists.
 - Compress is local-only like every program kit: a guest does not see a shrunk body and online still runs
   Probe. A compressed player's cover and arena-bound collision still use `PLAYER.radius` even though the
   drawn hull and projectile/bomb hitboxes shrink. A shrunk worm's contact and bite reach stay at the
@@ -3424,17 +3437,64 @@ arrive.
 - [x] Telegraphed bolt (type 19) with a 18-damage return on guard/lash
 - [x] Bot rain-lane avoidance in `avoidFurniture`; digital 3/9 deaths, rookie 6/9
 - [x] `?storm=1` QA hook, `.tmp/storm-check.ts` and `.tmp/storm-balance.ts`
+- [x] Storm Cloud body rebuilt as 84 opaque, individually rotated squares in three overlapping layers, so
+      the mass reads as a rough cloud and the stack count is hidden (v0.1.145).
 - [ ] Human playtest pass: confirm the lane is readable at couch distance and the bolt tell is long enough
 
 ## BOSS BOUNDS
 
 - [x] `bossEdgePad`: mini-boss bodies may overhang the arena edge by half their radius, applied to all five
 
+- [x] Starfish at 1.5x (core 75, arm 69, reach 435) with mouth/chomp and spines scaled to match; its center
+      and arms cross cover like the Mega Worm (v0.1.145).
+- [x] Starfish and File Blob interiors are opaque and brighter, so neither reads as a ghost over the floor
+      pattern (v0.1.145).
+- [ ] Check both bosses on the brightest arena patterns to confirm the new fills still separate from the
+      floor at a glance.
+- [x] Storm Cloud no longer clamps to the arena bounds, and rain/lightning stop on cover while return fire
+      at the cloud stops on the same block (v0.1.145).
+- [ ] Watch a Storm Cloud fight on a cover-heavy arena to confirm the block-shelter rule reads as intended
+      and the cloud does not park off the lip for long.
+- [x] Idle Hands' slam holds the palm flat and damageable for a full second before the rise-out, so the
+      slam is a real punish window (v0.1.145).
+- [ ] Play a trio fight and confirm the one-second palm hold reads as an opening rather than a stuck hand.
+- [x] BOSS RUSH: registry-ordered mini-boss ladder with no fodder, solo and local co-op, plus `?bossrush=1`
+      (v0.1.145).
+- [ ] Decide whether online rooms should get boss rush; it needs mini-boss bodies in `Snapshot`, which is a
+      protocol decision rather than a menu toggle.
+- [x] Starfish girth pass: thicker core and arms, same reach (`radius` 96, `armRadius` 92, `armWidth` 0.84)
+      (v0.1.145).
+- [ ] Look at the fatter Starfish in a fight and confirm the 92-radius arms do not crowd each other at the
+      hub or read as one merged shape.
+- [ ] Watch the scaled Starfish on a cover-heavy arena: arms should sweep over pillars, and the staging pad
+      should not pin it to the middle of small arenas.
+
 - [x] TEST RANGE sandbox arena (`?range=1`, hidden from pickers) for geometry-free boss reads.
 - [x] Mega Worm 3x silhouette, doubled health, curled arrival pose (v0.1.143).
+- [x] Mega Worm entrance is a full offscreen lap ending in a MIDI bird cry with a screen shake; the flyover
+      pass is held for the cry, and a slow tail sweep is back as the one committed ground attack (v0.1.145).
+- [ ] Watch a full Mega Worm fight and judge the tail sweep: it should punish loitering behind the chain
+      without out-shoving the pass.
 - [ ] Watch the 3x Mega Worm in a normal gauntlet arena; it may want a dedicated boss room rather than
       the shared threat pool.
 
 - [x] Attract and `?demo=1` alternate boss showcase sessions through the mini-boss registry (v0.1.144).
 - [ ] Watch a full kiosk cycle to confirm the boss session reads before the next run starts, especially the
       3x Mega Worm on the smallest eligible arena.
+
+- [ ] Review all five demo bosses with `?boss=1` and record tuning/presentation notes (v0.1.145).
+
+- [x] Boss camera framing and floating Mega Worm (v0.1.145).
+- [ ] Watch a full boss demo cycle after the camera/worm fixes and note any remaining framing or snag
+      issues per boss.
+
+- [ ] Review every boss on TEST RANGE via `?boss=1`, then re-check the same bosses on the regular arena
+      pool and tune framing/movement for cover-heavy maps (v0.1.145).
+
+- [x] ROCKET NAVIGATION trajectory is a shot-only dotted reflector; bodies and dashes cross (v0.1.145).
+- [ ] Play a ROCKET NAVIGATION match long enough to judge the reflected-fire buildup and whether the line
+      needs a bounce cap or a brighter hit flash.
+
+- [x] Mega Worm reworked as a flying boss with committed flyby passes and no arena clamp (v0.1.145).
+- [ ] Watch a full Mega Worm fight on TEST RANGE and tune pass speed, orbit radius, snap range and camera
+      margin from play.

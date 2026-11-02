@@ -50,7 +50,8 @@ export class TouchControls {
     window.addEventListener('pointermove', this.onPointerMove, { passive: false });
     window.addEventListener('pointerup', this.onWindowUp);
     window.addEventListener('pointercancel', this.onWindowUp);
-    window.addEventListener('blur', this.reset);
+    // Bind the callback: a bare method reference runs with `this === window`.
+    window.addEventListener('blur', () => this.reset());
     document.addEventListener('visibilitychange', this.onVisibility);
   }
 

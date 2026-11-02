@@ -1,4 +1,4 @@
-/** Mega Worm probe: plate damage, chain splits, head promotion, whip and the legs phase. */
+/** Mega Worm probe: plate damage, chain splits, head promotion, flyby passes and the legs phase. */
 import { GAUNTLET, MEGA_WORM, SIM_DT } from '../src/game/config';
 import { MINIBOSS, MINIBOSSES } from '../src/game/minibosses';
 import { ARENAS } from '../src/game/arenas';
@@ -40,6 +40,15 @@ const nodeY = (w: Worm, k: number) => (k === 0 ? w.y : w.segY[k - 1]);
   const p = world.players[0];
   const boss: Worm = priv.spawnMegaWorm(p.x + 320, p.y - 60) ?? fail('the boss never spawned');
   if (!boss.mega) fail('the spawned body is not flagged mega');
+  if (
+    boss.x >= arena.bounds.left &&
+    boss.x <= arena.bounds.right &&
+    boss.y >= arena.bounds.top &&
+    boss.y <= arena.bounds.bottom
+  ) {
+    fail('the boss spawned inside the arena instead of offscreen');
+  }
+  if (!(boss.entryT > 0)) fail('the boss skipped its entrance swim');
   const nodes = boss.segCount + 1;
   if (nodes !== MEGA_WORM.segments + 1) fail(`boss started with ${nodes} plates, expected ${MEGA_WORM.segments + 1}`);
   if (!(boss.hp > 60)) fail(`boss health is only ${boss.hp}`);
@@ -82,39 +91,42 @@ const nodeY = (w: Worm, k: number) => (k === 0 ? w.y : w.segY[k - 1]);
   console.log(JSON.stringify({ split: { front: boss.segCount + 1, back: back.segCount + 1 }, bossHp: Math.round(boss.hp) }));
 }
 
-// --- whip ------------------------------------------------------------------
+// --- flight -----------------------------------------------------------------
 {
   const { world, priv } = freshWorld();
   const p = world.players[0];
-  const boss: Worm = priv.spawnMegaWorm(p.x + 150, p.y) ?? fail('the boss never spawned');
+  const boss: Worm = priv.spawnMegaWorm(p.x + 320, p.y - 60) ?? fail('the boss never spawned');
   boss.spawnT = 0;
-  boss.whipCd = 0;
-  boss.touchCd = 999; // contact damage off: only the swing may hurt the player here
-  let started = false;
-  for (let i = 0; i < 240 && !started; i++) {
-    priv.updateWorm(boss, SIM_DT);
-    if (boss.whipT > 0) started = true;
-  }
-  if (!started) fail('the boss never committed a body whip with a player in range');
-  // Stand in the arc the committed swing is about to cross.
-  const target = boss.whipA + boss.whipDir * 1.15;
-  p.x = boss.whipPivotX + Math.cos(target) * boss.whipR;
-  p.y = boss.whipPivotY + Math.sin(target) * boss.whipR;
+  boss.flyCd = 0;
+  boss.touchCd = 999; // contact off: only the pass's aimed snap may hurt the player
   p.hp = 40;
   p.iframes = 0;
-  const hpBefore = p.hp;
-  let hitFrame = -1;
-  for (let i = 0; i < 120; i++) {
+  const startX = boss.x;
+  const startY = boss.y;
+  let sawPass = false;
+  let sawOutside = false;
+  let maxPhase = 0;
+  let maxDist = 0;
+  for (let i = 0; i < 700; i++) {
     priv.updateWorm(boss, SIM_DT);
-    if (p.hp < hpBefore) {
-      hitFrame = i;
-      break;
+    if (boss.flyPhase === 1) sawPass = true;
+    if (boss.flyPhase > maxPhase) maxPhase = boss.flyPhase;
+    maxDist = Math.max(maxDist, Math.hypot(boss.x - startX, boss.y - startY));
+    if (
+      boss.x < arena.bounds.left ||
+      boss.x > arena.bounds.right ||
+      boss.y < arena.bounds.top ||
+      boss.y > arena.bounds.bottom
+    ) {
+      sawOutside = true;
     }
   }
-  if (hitFrame < 0) fail('the body whip crossed the player without hitting');
-  const hits = boss.whipHit;
-  if (hits === 0) fail('the whip never latched a hit');
-  console.log(JSON.stringify({ whip: { damage: hpBefore - p.hp, mask: hits } }));
+  if (!sawPass) fail('the boss never committed to a flyby pass');
+  if (maxPhase < 2) fail('the pass never reached its climb-out phase');
+  if (!sawOutside) fail('the flyby never left the arena bounds');
+  if (maxDist < 300) fail('the boss barely moved during its flight cycle');
+  if (!(p.hp < 40)) fail('the pass snap never hit a player on the line');
+  console.log(JSON.stringify({ flight: { sawPass, sawOutside, maxPhase, hp: p.hp } }));
 }
 
 // --- last plate: legs, speed and acid --------------------------------------
@@ -123,6 +135,7 @@ const nodeY = (w: Worm, k: number) => (k === 0 ? w.y : w.segY[k - 1]);
   const p = world.players[0];
   const boss: Worm = priv.spawnMegaWorm(p.x + 300, p.y) ?? fail('the boss never spawned');
   boss.spawnT = 0;
+  boss.entryT = 0; // test the legs after the offscreen entrance has handed off
   boss.whipCd = 99; // keep the whip out of the way while the chain is chewed down
   let guard = 0;
   while (boss.segCount > 0 && guard++ < 40) {
@@ -196,6 +209,67 @@ const nodeY = (w: Worm, k: number) => (k === 0 ? w.y : w.segY[k - 1]);
     gated.world.worms.some((w) => w.active && w.bossKind >= 0);
   if (!queued) fail('the scheduled mini-boss wave never asked for a boss');
   console.log(JSON.stringify({ registry: { bosses: MINIBOSSES.length, gates: GAUNTLET.bossSchedule.length } }));
+}
+
+// --- arrival lap, cry and the slow tail sweep -------------------------------
+{
+  const { world, priv } = freshWorld();
+  const p = world.players[0];
+  const boss: Worm = priv.spawnMegaWorm(p.x, p.y) ?? fail('the boss never spawned');
+  boss.spawnT = 0;
+  if (!(boss.entryT > 0)) fail('the boss skipped the entrance lap');
+  const outside =
+    boss.x < arena.bounds.left ||
+    boss.x > arena.bounds.right ||
+    boss.y < arena.bounds.top ||
+    boss.y > arena.bounds.bottom;
+  if (!outside) fail('the boss did not start beyond the arena lip');
+  let steps = 0;
+  while (boss.entryT > 0 && steps++ < 900) priv.updateWorm(boss, SIM_DT);
+  if (boss.entryT > 0) fail('the entrance never finished');
+  if (!(boss.roarT > 0)) fail('the arrival never let out its cry');
+  if (!(boss.flyCd > MEGA_WORM.whip.minLead)) fail('the first pass was not held after the cry');
+  const hold = boss.flyCd;
+
+  // Tail sweep: park a body on the tail tip while the head is circling. Contact is
+  // muted so only the committed arc can do the damage under test.
+  boss.entryT = 0;
+  boss.roarT = 0;
+  boss.flyCd = 3;
+  boss.whipCd = 0;
+  boss.whipT = 0;
+  boss.whipHit = 0;
+  boss.touchCd = 999;
+  const tail = boss.segCount;
+  p.x = nodeX(boss, tail);
+  p.y = nodeY(boss, tail);
+  p.hp = 40;
+  p.iframes = 0;
+  p.alive = true;
+  p.cloakT = 0;
+  const sweepTotal = MEGA_WORM.whip.windup + MEGA_WORM.whip.active + MEGA_WORM.whip.recovery;
+  let started = false;
+  let hit = false;
+  for (let i = 0; i < 220; i++) {
+    // Once the windup is over, keep the body on the sweeping tail: this is the arc that
+    // is supposed to punish standing beside the chain, not the pre-sweep pose.
+    if (boss.whipT > 0 && sweepTotal - boss.whipT >= MEGA_WORM.whip.windup) {
+      p.x = nodeX(boss, boss.segCount);
+      p.y = nodeY(boss, boss.segCount);
+    }
+    priv.updateWorm(boss, SIM_DT);
+    if (boss.whipT > 0) started = true;
+    if (p.hp < 40) hit = true;
+  }
+  if (!started) fail('the tail never swept at a body beside the chain');
+  if (!hit) fail('the tail sweep never damaged a body on its arc');
+  if (!(boss.whipCd > 3)) fail(`the tail sweep did not take a real cooldown (${boss.whipCd.toFixed(2)})`);
+  console.log(
+    JSON.stringify({
+      arrival: { outside, cry: true, hold: Number(hold.toFixed(2)) },
+      tail: { hit, cooldown: Number(boss.whipCd.toFixed(2)), arc: MEGA_WORM.whip.sweepArc },
+    }),
+  );
 }
 
 console.log('megaworm-check: OK');

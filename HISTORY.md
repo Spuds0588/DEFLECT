@@ -5677,3 +5677,606 @@ wave sessions with a mini-boss fight.
 
 **Verification:** `npm run build` clean; the existing boss/arena probes still pass; bench unchanged
 (main-loop presentation only, no `World` step change).
+
+## 2026-11-02 — Boss review boot hook (v0.1.145)
+
+**Goal:** watch all five mini-bosses back to back for tuning notes without waiting through ordinary
+attract sessions.
+
+- `?boss=1` (or with `?demo=1`) forces the attract/kiosk loop into boss review: every session seeds
+  `ATTRACT.bossWave` and spawns the next registry boss, so the cycle covers the whole set quickly.
+- Ordinary attract and `?demo=1` still alternate fight/boss sessions; the hook only exists for QA and
+  never enters the menus.
+
+**Verification:** `npm run build` clean.
+
+## 2026-11-02 — Boss camera and floating Mega Worm (v0.1.145)
+
+**Goal:** boss demo review found the camera ignoring the boss and the scaled Mega Worm snagging
+on interior cover.
+
+- The camera's framing box now includes a live mini-boss head, so a boss outside the normal 640-unit
+  focus band still pulls the view and sets the fit zoom. The Mega Worm chain is too long to fit at combat
+  scale, so its head is the subject and the tail may trail off-screen. `CAMERA.bossZoomMin` (0.42) is the
+  deeper floor.
+- The Mega Worm floats above the floor: head, chain, bite and acid ignore cover, and plates are no longer
+  clamped to arena bounds, so the 3x body no longer bunches against pillars or the lip. Ordinary worms
+  remain cover-bound.
+- A showcase session now ends shortly after its boss dies instead of continuing through wave cleanup.
+- Fixed an unbound `blur` handler in the touch layer that threw on every session teardown.
+
+**Verification:** `npm run build` clean, aimed at the live demo.
+
+## 2026-11-02 — Boss entrance camera (v0.1.145)
+
+**Goal:** boss arrivals should read at scale before combat framing takes over.
+
+- The renderer now plays one entrance rig per assembled mini-boss, centered on the head-to-tail midpoint
+  for the Mega Worm. It pulls back to `CAMERA.bossIntroZoom` (0.36), holds, and blends out.
+- `CAMERA.bossZoomMin` is now the boss-present combat floor (0.55), separate from the entrance zoom and
+  from the player-only `sharedZoomMin` (0.68).
+
+**Verification:** `npm run build` clean.
+
+## 2026-11-02 — Boss review on the test range (v0.1.145)
+
+**Goal:** nail down each boss on the huge empty test arena before re-checking them on regular maps.
+
+- `?boss=1` / `?demo=1&boss=1` now selects the `qa` TEST RANGE for every showcase session.
+  Normal attract and `?demo=1` still exclude `qa` arenas and use the regular pool.
+- The boss cycle, entrance camera and post-boss restart are unchanged.
+
+**Verification:** `npm run build` clean.
+
+## 2026-11-02 — ROCKET NAVIGATION becomes a shot reflector (v0.1.145)
+
+**Goal:** make the rocket lane a source of escalating chaos instead of a wall.
+
+- The flown arc is now a dotted shot-only reflector. `rocketBarrierRects` left `baseSolids` and
+  `baseDashSolids`, so bodies, dashes, bots and waves cross it; projectiles bounce through a dedicated
+  `bounceRocketPath` that keeps hostile fire alive instead of dispersing it on cover.
+- The renderer draws both the planned route and the flown route as dotted lines; the thick solid band is gone.
+- Mines, traps, bombs, the super ball and the Aim Bot rail keep their existing no-bounce rules.
+
+**Verification:** `npm run build` clean; `.tmp/rocket-path-check.ts` covers body pass-through and
+player/hostile reflection.
+
+## 2026-11-02 — Mega Worm becomes a flying boss (v0.1.145)
+
+**Goal:** the 3x Mega Worm cannot work as a ground chaser; it needs flyby attacks and no arena limits.
+
+- Replaced the territory patrol plus whip/bite chase with three flight phases: wide orbit, a committed
+  pass through the target, and a climb-out. A pass locks its direction, moves at `MEGA_WORM.flyby.speed`,
+  and lands one aimed snap; body contact remains a separate touch clock.
+- Removed the head's arena clamp. The head and every plate can now leave the floor, and
+  `CAMERA.bossVoidMargin` lets the boss-aware camera look past the lip during a pass.
+- The old whip/bite fields and methods remain for data compatibility but are no longer driven.
+- Tuning lives in `MEGA_WORM.flyby`; ordinary worms keep their cover-bound behavior.
+
+**Verification:** `npm run build` clean; `.tmp/megaworm-check.ts` covers pass phases, leaving the arena,
+movement, the snap hit, splits, head promotion and the legs phase.
+
+## 2026-11-02 — Idle Hands switches to Unicode hand and eye marks (v0.1.145)
+
+**Goal:** replace the vector palm plate with the same symbol language the primitive threats use.
+
+- The open palm is `✋`, the committed point is `☝`, and the palm eye is `👁`, all through the shared
+  symbol font stack with text-presentation selectors. The square palm plate, four finger rectangles and
+  drawn ellipse eye are gone. A dark under-pass and a thin accent stroke keep the glyph readable over the
+  floor and its slam telegraph.
+- The charge trail repeats the hand glyph instead of square afterimages; the slam squash/flip and
+  deflected tumble still transform the glyph, and the hit flash is now a ring rather than a rectangle.
+- Verification: `npm run build` clean; the `?hands=1` screenshot at boss scale shows the tinted
+  monochrome hand and red Unicode eye; `.tmp/idlehands-check.ts` still passes.
+
+## 2026-11-02 — Idle Hands scale pass (v0.1.145)
+
+**Goal:** make the three palms read as mini-bosses at the same scale as the other giant bodies.
+
+- Body radius 42 -> 126. Spawn ring widened 130/100 -> 390/300, orbit 250-400 -> 520-680, slam range
+  380 -> 700, slam AOE 118 -> 350, rise 120 -> 360. Health and damage are unchanged.
+- Eye font capped at 84 px: the 3x palm gets a roughly 2.2x eye, so it remains clearly an eye instead of a
+  pupil that fills the hand. The palm glyph and charge trail follow `hitR` automatically.
+- Verification: `.tmp/idlehands-check.ts` passes (trio 3, radius 126, slam 1/AOE 350, redirect 14,
+  ingress 3/clear 559); `npm run build` clean; `?hands=1` visual at boss scale.
+
+## 2026-11-02 — Idle Hands red palm and slower tells (v0.1.145)
+
+**Goal:** fix the symbol color/layering and give the enlarged trio more readable attack timing.
+
+- The palm is now filled entirely in the red accent over a dark-red silhouette pass; the bone palm fill
+  is gone. The eye is drawn last over an opaque bone socket at full opacity, so the hand's counters cannot
+  show through the eye glyph.
+- Slam timing: 0.55/0.18/0.55 -> 0.72/0.26/0.70 seconds (windup/drop/recover). Finger charge: 0.6 -> 0.8 s
+  windup, 900 -> 800 units/s, 0.55 -> 0.62 s dash, keeping roughly the same ~496-unit travel.
+- Verification: `npm run build` clean; `.tmp/idlehands-check.ts` passes (trio, slam, redirect, ingress);
+  `?hands=1` visual confirms the red palm and opaque eye.
+
+## 2026-11-02 — Idle Hands slam AOE tightened (v0.1.145)
+
+**Goal:** keep the slam footprint fair after the palm scale-up.
+
+- Slam AOE radius 350 -> 240. The circle's area drops by roughly 53% while the ring still sits outside the
+  126-radius palm. Range, damage, knockback and the telegraph timing are unchanged.
+- Verification: `.tmp/idlehands-check.ts` still covers the in-ring hit and out-of-ring miss; `npm run build`
+  validates the tuning JSON.
+
+## 2026-11-02 — Idle Hands shadow and eye cleanup (v0.1.145)
+
+**Goal:** make the hover shadow layered and keep the palm eye a static red mark.
+
+- Replaced the single flat ellipse with three smaller concentric circles. The outer radius is 0.66r instead
+  of 0.95r, and the layers use 0.16/0.26/0.36 alpha so the center is more opaque than the old shadow.
+- Removed the eye's blink and width animation. The eye is now a static red `👁` glyph over an opaque black
+  socket, so the glyph's transparent counters no longer show the palm through it.
+- Verification: `npm run build` clean; `.tmp/idlehands-check.ts` passes (slam AOE 240); `?hands=1` visual
+  confirms the red eye on black and the smaller layered shadow.
+
+## 2026-11-02 — Idle Hands stops flashing (v0.1.145)
+
+**Goal:** remove the bright pulsing/flashing on the hand during its animations.
+
+- Root cause: `drawWorms` enables additive (`lighter`) blending for the whole worm pool, so the hand's
+  under-pass, red fill, black eye socket and layered shadow added into one another and bloomed as parts
+  overlapped. `drawIdleHand` now saves the context, forces `source-over`, and restores the pool mode on exit.
+- Removed the white hit-flash ring from the hand; hit reactions still use the normal particle/debris feedback.
+- Verification: `npm run build` clean; `.tmp/idlehands-check.ts` passes (slam AOE 240, redirect and ingress).
+
+## 2026-11-02 — File Blob icon armor and scale (v0.1.145)
+
+**Goal:** make the File Blob three times bigger and stop its file icons reading as tiny translucent dots.
+
+- Body radius 92 -> 276 (rMin 34 -> 102). The icon count, health and attack timing are unchanged.
+- File icons are now opaque, 33-51 px plates at full size, laid in three overlapping shells at 0.28/0.55/0.82
+  of the current rim plus a deterministic core cluster. They rotate tangentially so they overlap like armor.
+- Fixed the icon draw position: the shell icons now add the blob's world x/y. They were previously drawn at
+  the local origin, which left the body nearly empty.
+- `drawBlob` saves the context and forces `source-over`; the worm pool's additive blend was making the paper
+  transparent. Folded edges use a dark ink outline to separate overlapping plates.
+- Verification: `npm run build` clean; `.tmp/blob-check.ts` passes (radius 276, shrink, glue, Ghost phase,
+  overhang); `?range=1` QA view shows the filled plate pile.
+
+## 2026-11-02 — File Blob haystack packing (v0.1.145)
+
+**Goal:** fill the File Blob's center with an opaque haystack and cut the render load after the 3x scale-up.
+
+- Replaced the three shells plus core cluster (about 312 glyphs) with one center-out golden-angle packing of
+  all 96 health icons. The first plates cover the middle, the last plates ride the rim, and jittered rotation
+  and size keep it a pile rather than a wheel. Removed `BLOB.layers`; body plates are fully opaque.
+- The single pass drops the blob's icon draw cost from roughly 3.1k to 1k canvas operations, removing the
+  flashing/hitching seen with the dense three-shell version.
+- Verification: `npm run build` clean; `.tmp/blob-check.ts` passes (radius 276, shrink, glue, Ghost phase,
+  overhang); TEST RANGE visual shows a filled opaque plate pile.
+
+## 2026-11-02 — Idle Hands hand-on-hand stun (v0.1.145)
+
+**Goal:** make the hand redirect a real damage/stun window instead of resetting one hand and leaving the
+partner active.
+
+- A redirected hand hitting a partner still deals `charge.deflectDamage` 14 to the partner and 3 to itself.
+  Both hands now enter stun state 7, receive opposite `charge.stunKnockback` 900 impulses, and spin for
+  `charge.stunTime` 1 second before returning to hover. They cannot slam or charge during the lockout.
+- The renderer spins state 7 from its own timer, so the two hands visibly tumble away from the impact.
+- The stun duration/recoil are tuned under `IDLE_HANDS.charge`; the probe now checks both hands enter the
+  state, move apart, and remain stunned through the early window.
+- Verification: `npm run build` clean; `.tmp/idlehands-check.ts` passes with `stun: 1` and all previous
+  checks.
+
+## 2026-11-02 — Starfish proportions and detached-arm silhouette (v0.1.145)
+
+**Goal:** make the Starfish read as a smaller core with bigger arms, and stop detached arms turning into
+boat-shaped pods.
+
+- Core radius 62 -> 44. Arm radius 24 -> 32, arm reach 108 -> 150. Health, armor and attack timings are
+  unchanged.
+- Detached arms now draw the same curved, tapering arm path, suckers and ragged base stump as attached
+  arms, rotated by their crawl angle. The old leaf/boat quadratic outline is gone.
+- Verification: `npm run build` clean; `.tmp/starfish-check.ts` passes shape, detach, hatch cap, mouth and
+  angry-armless checks.
+
+## 2026-11-02 — Smaller-arena bosses stage near players (v0.1.145)
+
+**Goal:** stop Idle Hands, Starfish and File Blob from loading at distant ingress points offscreen.
+
+- `spawnMiniboss` now anchors those three around the nearest live player instead of using the assault
+  portal point. Idle Hands ring the player; Starfish centers 320 units toward the arena center; File Blob
+  centers 360 units, with the anchor clamped by the boss footprint. Mega Worm and Storm Cloud keep their
+  existing staging behavior.
+- The Idle Hands ingress probe now asserts a near but non-overlapping arrival; Starfish and Blob probes
+  remain clean.
+- Verification: `npm run build` clean; `.tmp/idlehands-check.ts` passes with ingress clearance 300;
+  `.tmp/starfish-check.ts` and `.tmp/blob-check.ts` pass.
+
+## 2026-11-02 — Bigger Starfish silhouette (v0.1.145)
+
+**Goal:** the Starfish still read too small after the first proportion pass.
+
+- Core radius 44 -> 50 (still below the original 62), arm radius 32 -> 46 and arm reach 150 -> 290.
+  Health, armor and attack timing are unchanged.
+- The near-player anchor moves from 320 to 440 units for the Starfish so the longer arms do not stage on
+  top of the player.
+- Verification: `npm run build` clean; `.tmp/starfish-check.ts`, `.tmp/idlehands-check.ts` and
+  `.tmp/blob-check.ts` all pass.
+
+## 2026-11-02 — Mega Worm offscreen entrance and hex plates (v0.1.145)
+
+**Goal:** give the Mega Worm a proper offscreen entrance and change its square plates to hexagons.
+
+- `spawnMegaWorm` no longer clamps the head inside the arena. It starts beyond the longest half-axis and
+  runs a timed `MEGA_WORM.entrance` arc around the arena center and inward before the normal flight loop.
+  The entrance has no bite, whip, or acid; split halves skip it and begin in combat.
+- Mega Worm plates, head socket, debris flakes, and leg tips now use `traceMegaHex`; cracks radiate across
+  the hex faces instead of square seams.
+- Verification: `npm run build` clean; `.tmp/megaworm-check.ts` passes, including the new offscreen-start
+  assertion, entrance flight, split/head promotion and legs/acid checks; `git diff --check` clean.
+
+## 2026-11-02 — Starfish solid render fix (v0.1.145)
+
+**Goal:** stop the Starfish flashing and losing portions while it is being watched in the browser.
+
+- Root cause: `drawWorms` enables additive (`lighter`) blending for the whole worm pool. Starfish was still
+  inheriting it, so its dark mouth and overlapping arm fills washed out and flashed as the arms rotated.
+- Both `drawStarfish` and `drawStarfishArm` now save the context and force `source-over`, restoring the pool
+  blend mode on exit.
+- Verification: `npm run build` clean; `.tmp/starfish-check.ts` passes; the browser frame now renders the
+  center solid without additive wash-through.
+
+## 2026-11-02 — Staged mini-boss entrances (v0.1.145)
+
+**Goal:** freeze the room for a short boss reveal, center the camera on the boss and show its entrance
+animation before combat resumes.
+
+- Added `World.bossIntro` / `BossIntro` as local presentation state. `step` advances only the intro while
+  the room is frozen; the camera tracks the live focus and a `SUB-AGENT // INBOUND` title card fades over
+  the scene.
+- File Blob grows from one glyph through 2–3 to the full 96-plate body. Idle Hands rise from the floor and
+  bounce to size. Starfish drops from above with a landing ring. Mega Worm keeps its offscreen swim and now
+  finishes with a roar before the normal flight loop.
+- Splits, hatched Starfish and Storm Cloud do not replay the entrance.
+- Added `.tmp/bossintro-check.ts` for the freeze, title and completion contract.
+- Verification: `npm run build` clean; bossintro, starfish, blob, idlehands and megaworm probes pass;
+  `git diff --check` clean.
+
+## 2026-11-02 — File Blob fixed slots and high jump slam (v0.1.145)
+
+**Goal:** stop every hit from repacking the whole file pile, and make the File Blob pressure the player
+instead of drifting passively.
+
+- Icon slots are fixed against the full `BLOB.icons` roster and `BLOB.rMax`; hp only controls how many
+  slots draw. Removed files leave holes and the survivors never repack or rotate.
+- Raised chase speed to 58 and shortened the glob rearm to 2.6 s.
+- Added the close-range high jump slam: 0.45 s crouch, 0.68 s airborne arc, 280-unit lift, 190-unit
+  landing AOE for 2 damage and 1400 knockback, then 0.55 s recovery and a 2.8 s cooldown. The landing
+  point is latched at the start, and the slam does not apply the toss glue.
+- `.tmp/blob-check.ts` now covers the windup/air/landing slam cycle and still covers toss glue, the
+  three-press escape, Ghost phase, shrink and kill credit.
+- Verification: `npm run build` clean; `blob-check` passes.
+
+## 2026-11-02 — CHAT bubble spacing and endless stream (v0.1.145)
+
+**Goal:** give bodies room to cross the CHAT lane and stop the whole thread from resetting as one block.
+
+- CHAT now authors eight bubbles with a 96-unit gap (up from four and 26), enough for players and enemies
+  to pass between rows.
+- `laptopCardY` wraps CHAT bubbles individually below the pane; a bubble that leaves the top re-enters
+  underneath while the others keep moving. MAIL keeps its original shared scroll.
+- Added four more chat lines so the visible stream does not repeat immediately. Updated
+  `.tmp/laptop-variants-check.ts` to cover gap clearance, one wrap per bubble per cycle, on-screen wrap
+  rejection and stable visible spacing; `.tmp/laptop-arena-check.ts` now finds arena 29 by id.
+- Verification: `npm run build` clean; laptop variants and mail probes pass; `git diff --check` clean.
+
+## 2026-11-02 — CAR NAVIGATION route recedes (v0.1.145)
+
+**Goal:** stop the car's travelled road from growing into a permanent wall across the whole arena.
+
+- Added `ArenaCarDef.trailLength` (560 units, about seven seconds of driving). `World.refreshCarBarrier`
+  now keeps only the blocks between `carProgress - trailLength/routeLength` and the car; older blocks are
+  zeroed. The rendered route and the map preview use the same window.
+- Added `carRouteLength` so the world and renderer share the authored arc length.
+- Updated `.tmp/two-more-maps-check.ts` for the capped trail, its moving leading edge, reset behavior and
+  snapshot isolation. It now looks up CAR NAVIGATION by id rather than a fixed arena index.
+- Verification: `npm run build` clean; `two-more-maps-check` passes; `git diff --check` clean.
+
+## 2026-11-02 — WEAPON SYSTEMS becomes a nose-up plan view (v0.1.145)
+
+**Goal:** make the fighter read as the arena's subject and put each control bank beside the aircraft
+system it names.
+
+- Replaced the side profile with `FIGHTER_TOP`, a nose-up plan view: both wings, tail planes, shoulder
+  intakes, forward canopy, centred tail fin and rear nozzle. The arena and picker still share one
+  silhouette.
+- Moved the static cover banks around the jet: `FIRE WEAPONS` beside the left wing root, `EJECTOR SEAT`
+  beside the cockpit, `THRUSTERS` beside the tail. `FCS CORE` and `HYDRAULIC` sit below the tail.
+- Reworked the console detail for the new axes: centre spine, wing-root seams, hardpoints, tail exhaust
+  streaks and a `TOP PROFILE` caption; the reticle now sits over the nose.
+- Updated spawns for the new cover layout and extended `.tmp/jet-check.ts` and
+  `.tmp/two-new-maps-check.ts` for the plan-view silhouette, bank placement and spawn clearance.
+- Verification: `npm run build` clean; jet and two-new-maps probes pass; `git diff --check` clean.
+
+## 2026-11-02 — FAX MACHINE prints row by row (v0.1.145)
+
+**Goal:** replace the full-height thermal bar with a semi-fast printer head that traverses each row and
+steps down one line before reversing.
+
+- `ArenaFaxDef` now owns a compact `headW` × `headH`, `rows` and `lineFeed` timing instead of a page-wide
+  bar and edge pause. The carriage prints even rows left-to-right and odd rows right-to-left, alternating at
+  every line feed; the page advances after all rows.
+- Added `faxRowAt()` and `faxHeadY()` beside the existing clock helpers. `World` clears its hit masks at each
+  row change and only the head rectangle is hot; `faxHits()` checks both axes.
+- Reworked the renderer and picker to draw a small carriage with a hot edge and end-of-row rail marks, not a
+  vertical beam. The status strip now reports the current line and row count.
+- Updated `.tmp/fax-arena-check.ts` for the compact head, 16 row steps, line-feed phases, bounded x/y travel
+  and a live `SRC.FAX` hit. Also refreshed the player-facing and architecture notes.
+- Verification: `npm run build` clean; `fax-arena-check` passes; `git diff --check` clean.
+
+## 2026-11-02 — Idle Hands entrance turn (v0.1.145)
+
+**Goal:** make the Idle Hands emergence more interesting by showing the palm's front, back and front again as
+it rises.
+
+- The entrance now drives `cos(2πu)` into the glyph's x-scale for one projected yaw and a small
+  `sin(2πu)` in-plane twist. At `u=0` the front faces the room, `u=0.5` is the back, and `u=1` returns to the
+  front as the hand settles.
+- The palm eye is suppressed on the back half only; normal states keep the fixed eye. The animation remains
+  render-only and does not change spawn timing, collision, attacks or `Snapshot`.
+- Verification: `npm run build` clean; `.tmp/idlehands-check.ts` and `.tmp/bossintro-check.ts` pass;
+  `git diff --check` clean.
+
+## 2026-11-02 — Idle Hands survives the post-entrance void cull (v0.1.145)
+
+**Goal:** stop the palms from vanishing after their entrance on the USB HUB.
+
+- `cullVoidThreats` now skips `MINIBOSS.IDLE_HANDS`. The trio floats over the hub's gaps, so the first
+  normal simulation tick after the entrance was deleting all three with the 9,999 off-floor hit.
+- The entrance animation, movement clamp and attack states are unchanged; the hands now stay active and
+  continue into their normal slam and charge behavior.
+- Extended `.tmp/idlehands-check.ts` with a USB HUB corner case that puts the trio over void before running
+  the cull, so the regression is covered without relying on a live capture.
+- Verification: `npm run build` clean; `idlehands-check` and `bossintro-check` pass; live USB HUB autopilot
+  run kept all three hands active after the reveal; `git diff --check` clean.
+
+## 2026-11-02 — Mini-boss entrances get a slower, heavier read (v0.1.145)
+
+**Goal:** make the staged mini-boss arrivals feel like a threat entering the room instead of a quick spawn.
+
+- Extended the staged entrance timings: File Blob `2.2` → `3.6 s`, Idle Hands `1.5` → `2.7 s`, Starfish
+  `1.7` → `2.9 s`, and Mega Worm `6.2` → `6.8 s` with its roar hold `1.0` → `1.5 s`.
+- Reworked the Starfish drop: it hangs 620 units overhead for the first 18% of the entrance, then falls with
+  an accelerating curve instead of the old smoothstep that slowed into the landing. The landing ring follows
+  the fall.
+- The Blob, Hands and Mega Worm animations inherit the longer timings from their existing tuning clocks, so
+  the camera freeze, title card and handoff stay synchronized.
+- Storm Cloud has no staged entrance yet; it keeps its existing build and combat cue.
+- Verification: `.tmp/bossintro-check.ts` reports MEGA WORM 8.8 s, IDLE HANDS 2.7 s, STARFISH 2.9 s and FILE
+  BLOB 3.6 s; `idlehands-check` passes; `npm run build` clean; `git diff --check` clean.
+
+## 2026-11-02 — Idle Hands hold a low hover band (v0.1.145)
+
+**Goal:** stop one palm from riding above the camera and keep the trio visible and trackable.
+
+- Replaced the full vertical hover orbit with a shallow, slightly low band (`orbitYBase` 0.09, `orbitYBob`
+  0.4). The palms now travel from just above the player down toward the floor instead of circling overhead.
+- Lowered the arrival ring to `spawnRingY` 240 / `spawnYOffset` 60 while keeping the horizontal ring and attack
+  ranges unchanged; the existing ingress clearance and no-spawn-on-player checks still pass.
+- Verification: `.tmp/idlehands-check.ts` reports `clear: 181`; live USB HUB autopilot showed all three hands
+  on screen after the reveal (screen y 98, 515, 554); `bossintro-check`, `npm run build` and `git diff --check`
+  clean.
+
+## 2026-11-02 — Idle Hands stay in front or at the player's side (v0.1.145)
+
+**Goal:** keep a palm from crossing over the player's sprite while preserving a readable hover formation.
+
+- There is no transparency pass: hands are drawn before players. The problem was the target bearing, which
+  allowed a rear hand to keep orbiting through the player's space.
+- `updateIdleHand` now maps a hand behind the player to the nearest side, and maps a front hand into the
+  lower half (`orbitYSide` 0.1, `orbitYFront` 0.45). The arrival ring uses the same front/side mapping with
+  `spawnRingY` 240 / `spawnYOffset` 60.
+- Added a probe check that runs the hover for 600 ticks and fails if any hand targets behind the player.
+- Verification: `.tmp/idlehands-check.ts` reports `hover: { behind: 0, hands: 3 }` and ingress `clear: 378`;
+  `bossintro-check` and `npm run build` pass; `git diff --check` clean.
+
+## 2026-11-02 — Idle Hands keep a separation margin (v0.1.145)
+
+**Goal:** stop the three floating palms from collapsing into one silhouette.
+
+- Added `IDLE_HANDS.separation` 340 and `World.separateIdleHands()`, a six-pass pair solver for hovering
+  hands (states 0 and 3). Slam, charge and redirect states stay exempt so the committed hand-on-hand
+  collision still lands.
+- Widened the spawn ring (`spawnRingY` 300) to guarantee the opening trio has the same margin; the ingress
+  clearance probe now reports `395`.
+- Added regression cases for an exact three-way stack and a 600-tick hover run; `idlehands-check` reports
+  `separation min 340/target 340`, `behind 0` and `clear 395`.
+- Verification: `idlehands-check`, `bossintro-check`, `npm run build`, `npm run bench` and `git diff --check`
+  all pass.
+
+## 2026-11-02 — Starfish at 1.5x, cover phasing stated (v0.1.145)
+
+**Goal:** give the Starfish the boss silhouette it was missing and make its obstacle rule explicit rather
+than incidental.
+
+- Scaled the whole tuning block 1.5x instead of the draw code: core `radius` 50 → 75, `armRadius` 46 → 69,
+  `armReach` 290 → 435, mouth `radius` 100 → 150, `angry.chompRadius` 130 → 195, `spineRadius` 6 → 9.
+  Rendering, attached-arm placement, teeth, the hatchery ring and the `bossNearPlayer` staging pad all read
+  from those values, so one block carries the size.
+- No health change: `hp` 84, `armHp` 8 and `armDetachedHp` 10 stay put, per the health-budget rule.
+- The center and arms already skipped `pushOutOfCover` because `updateWorm` dispatches the Starfish branch
+  before the shared worm path. Recorded that as the rule in both updaters (and AGENTS D69) so a later cover
+  fix cannot quietly start shoving the boss around, and added a probe that parks the center and a detached
+  arm inside a pillar and fails if either is ejected.
+
+**Verification:** `.tmp/starfish-check.ts` reports `scale { core 75, arm 69, reach 435, mouth 150 }` and
+`phasing { pillar 128x208, center 3, arm 7 }`; `idlehands-check`, `bossintro-check`, `npm run build` and
+`npm run bench` pass; `git diff --check` clean.
+
+**Next:** watch the scaled arms sweep a cover-heavy arena and check the staging pad on the smallest maps.
+
+## 2026-11-02 — CAR NAVIGATION becomes a country-to-city map (v0.1.145)
+
+**Goal:** the map floor read as a generic grid. Split it into two legible districts so the drive has a
+route with a story: farmland on the left, a real city grid on the right.
+
+- West of the new `ArenaCarDef.cityX` (990) the floor is farmland: eleven hedged parcels in three muted
+  tones, five tree-cover clusters, six farm buildings as the static cover (barn, farmhouse, silo with cap
+  and chute, old mill with four sails) and thin secondary county lanes. A meandering river runs the length
+  of the split, and the route crosses it on a drawn bridge deck.
+- East of the split the floor is a city: a 180-unit street grid drawn as casing then fill, block paper
+  between the streets, five city-block buildings with a roof hatch, a civic park with crossed paths, a
+  500 m scale bar and a north arrow. The route's city legs are now square to that grid, so the GPS line
+  visibly switches from a country lane to city streets.
+- Route rebuilt: 3.2k units over `duration` 32 s (~100 units/s, the old pace) with `trailLength` 620. Stops
+  are FARM MARKET, OLD MILL, TOLL GATE at the bridge and DOWNTOWN. `farmCount` and `labels` keep farm and
+  city buildings in one pillar list, so collision, bot nav and placement still read one array.
+- Every map detail is presentation; `pillars` remain the only static cover. Building clearances are
+  enforced by the new probe, not by eye: the tightest pillar sits well outside the barrier half-thickness
+  plus a player radius.
+
+**Verification:** `.tmp/car-arena-check.ts` passes: `districts { cityX 990, cityLegs 7, farms 4 }`,
+`clearance { worst 36, need 35 }`, every spawn clear of cover (76) and the route (57), the bridge under the
+crossing, 160 sampled blocks with 20.1-unit spacing under the 26-unit thickness, and a live trail inside
+the 620 cap at the halfway point and at route end. The probe caught one city block sitting 30 units from a
+street, which moved to a 36-unit gap. `npm run build` clean; `npm run bench` clean; `git diff --check` clean.
+
+**Next:** read the reworked map at couch distance and trim labels rather than shrinking type.
+
+## 2026-11-02 — Storm Cloud body is opaque overlapping squares (v0.1.145)
+
+**Goal:** the cloud read as a flat grid of faint squares. Give it a rough, stacked silhouette and stop the
+viewer from counting the pile.
+
+- The body is now 84 squares (three 7×4 layers over the same lattice) instead of one clipped 7×4 grid, each
+  with hashed position jitter, size `0.23–0.40r`, and its own rotation up to about half a radian. Layers are
+  offset so they overlap without landing on each other, and a hashed elliptical envelope leaves a ragged
+  rim. The `puff` array grew from 28 to 84 so every square breathes on its own phase.
+- Switched the body pass from `lighter` at 0.14 alpha to `source-over` with a fully opaque fill. Overlaps
+  used to accumulate brightness, which exposed the stack; now a square simply covers the one under it. Three
+  layer shades keep volume and a darker seam stroke keeps single squares legible without a glow.
+- Rain fringe, windup line, strike flash and every damage path are unchanged: this is presentation only.
+
+**Verification:** `.tmp/storm-check.ts` passes unchanged (shape, ceiling band, rain rows, shoot-down,
+lightning reflect, death, overhang); `.tmp/car-arena-check.ts` still passes; `npm run build` clean;
+`git diff --check` clean.
+
+**Next:** read the cloud at couch distance to confirm the square mass still reads as a threat tell, not noise.
+
+## 2026-11-02 — Mega Worm arrival cry and tail sweep (v0.1.145)
+
+**Goal:** make the arrival a real beat (offscreen, circle, cry, then attacks) and give the flyover kit one
+committed ground move.
+
+- The entrance is now a full lap (`sweep` 6.28, still 6.8 s). It ends on a new `EV.MEGA_CRY`: `audio.megaCry`
+  plays a MIDI-note bird phrase (a scream up and a falling answer over a low boom), `Fx` answers with a
+  16-unit shake, a flash and two pressure rings, and a distant body also gets the `heavy` rumble cue. The
+  first pass is held by `entrance.handoff` 1.1 s after the cry, so the call is the tell for the attack.
+- Contact damage now uses the full `knockback` 1300 instead of 60%; the pass and the plates are the
+  primary threat, as the flyover design intends.
+- The dormant whip fields are live again as the **tail sweep**: it fires only while orbiting, with at least
+  `whip.minLead` left before a pass, three or more plates, and a body inside `triggerRange` 460 of the tail
+  tip. Slowed to `windup` 0.95 + `active` 0.95, `sweepArc` 2.2, `cooldown` 7.5; it deals one and throws
+  along the arc. Nothing else about the flyby, split or legs phases changed.
+
+**Verification:** `.tmp/megaworm-check.ts` reports `arrival { outside true, cry true, hold 1.10 }` and
+`tail { hit true, cooldown > 3, arc 2.2 }` alongside the existing plate, split, flight and legs cases;
+`.tmp/storm-check.ts` and `.tmp/bossintro-check.ts` pass; `npm run build` clean; `npm run bench` clean;
+`git diff --check` clean.
+
+**Next:** watch a full Mega Worm fight and judge whether the tail sweep earns its 7.5 s cooldown.
+
+## 2026-11-02 — Starfish and File Blob interiors go opaque (v0.1.145)
+
+**Goal:** both bosses were blending into the floor because their bodies were translucent dark washes.
+
+- Starfish: arm fills moved from 0.32 alpha to a solid `#ff9ecb`, the center disc from `#3a1024` at 0.92 to
+  `#8f2350` at full alpha, stumps to `#c24c85` / `#5c1636`, and the detached arm matches. Strokes step up
+  to `cfg.color` at 2.2–3.5 px. The body no longer multiplies opacity by the position-interpolation
+  `alpha`, so the silhouette does not pulse with the render clock either.
+- File Blob: the hull is a solid `#1d4a60` fill with a 3 px `tint` rim instead of a 0.16 tint wash, and the
+  palette brightened (`paper` `#f8fdff`, `ink` `#1a2833`, `tint` `#9ce6ff`). Icons already drew at full
+  alpha; the backing was what let the floor read through the pile.
+- Presentation only: no health, hit, tuning-block or collision values changed.
+
+**Verification:** `.tmp/starfish-check.ts` and `.tmp/blob-check.ts` pass unchanged; `npm run build` clean;
+`git diff --check` clean; build output and dev server cleaned up.
+
+## 2026-11-02 — Storm Cloud leaves the arena bounds; cover shades the rain
+
+**Goal:** the cloud should fly past the arena edge like the other flying boss, and rain must be stopped by
+cover instead of falling through a block.
+
+- `updateStormCloud` dropped its `bossEdgePad` x-clamp, so the body can overhang or leave the floor; only
+  the ceiling band still holds it. `cullVoidThreats` now skips `MINIBOSS.STORM_CLOUD` so leaving the floor
+  does not delete it.
+- Cover needed no new damage path: rain (type 18) and lightning (type 19) are hostile shots, and
+  `bounceCoverRect` already consumes a hostile `type >= 3` shot on a pillar. A block now shelters the body
+  below it and blocks return fire at the cloud, which is the same rule, not a second one.
+- `.tmp/storm-check.ts` replaces the old "may overhang" case with an outside-the-arena case plus a cover
+  case: a rain row and a bolt over a block leak nothing, the body under it takes no damage, and a player
+  shot stops on the roof.
+
+**Verification:** `storm-check` and `megaworm-check` pass, `npm run build` clean, `npm run bench` clean,
+`git diff --check` clean; build output removed and no dev server left.
+
+## 2026-11-02 — Storm Cloud triples in size
+
+**Goal:** the storm cloud was too small to read as a boss-scale weather body.
+
+- `STORM_CLOUD.radius` 104 → 312. `hoverTop` 138 → -70 so the underside stays at `top + 242`; the rain
+  (`y + r + 8`) and lightning (`y + r + 10`) origins therefore do not move, which keeps cover shelter, the
+  lightning tell and the contact band where they were.
+- The y clamp is now the `hoverTop ± hoverBob` band. The old `top + r * 0.3` floor would have pushed a
+  312-radius body 90 units down into the arena.
+- `rain.width` 250 → 520 and `rain.count` 4 → 5 so the lane still sits under the wider pile; drop radius
+  6.5 → 8. Cycle, damage, ttl and the health pool are unchanged, so the size pass is not a difficulty pass.
+
+**Verification:** `storm-check` passes with `shape radius 312` and the cover case still leaking zero drops
+(`leaked 0`), `megaworm-check` passes, `npm run build` clean, `npm run bench` clean, `git diff --check`
+clean; build output removed.
+
+## 2026-11-02 — Idle Hands holds the slam palm down as a punish window
+
+**Goal:** a slam landed and immediately released to hover, so the hand was never a stable target.
+
+- `IDLE_HANDS.slam` gained `hold: 1` and `recover` dropped 0.70 → 0.35. State 3 is now hold-then-rise: the
+  palm stays pressed flat and stationary for a full second, fully damageable, then plays the rise-out.
+  Cooldown still starts when the hand releases to hover, so the total grounded time is 1.35 s.
+- `drawIdleHand` keeps `scaleY = 1` for the hold instead of easing it up, and pulses a faint white ring at
+  the palm as the "open to fire" cue. The landing seam now lasts the whole rise-out.
+- `.tmp/idlehands-check.ts` measures the hold and confirms the body is still damageable while it is down.
+
+**Verification:** `idlehands-check` reports `slamHold {seconds 1.35, damageable 3}` and passes; `storm-check`
+and `megaworm-check` pass, `npm run build` clean, `npm run bench` clean, `git diff --check` clean; build
+output removed.
+
+## 2026-11-02 — BOSS RUSH ladder for solo and local co-op
+
+**Goal:** a way to reach every mini-boss quickly for testing, balance passes and performance tuning, and a
+playable mode rather than a QA-only hook.
+
+- `World` takes a trailing `bossRush` flag. `updateGauntlet` hands its clock to `updateBossRush`, which walks
+  `BOSS_RUSH_ORDER` (derived from the mini-boss registry), spawns through `spawnMiniboss` so the normal
+  entrance beats and pools apply, and retires leftover parts of a defeated kind.
+- `BOSS_RUSH.firstDelay`/`.gap` are the only new timings. Fodder is off: no wave ramp, no assault queue, no
+  arena replicators.
+- `setupGauntlet` seats every active local player for co-op, and a boss-rush death respawns on the gauntlet
+  timer instead of ending the run; the scored gauntlet one-life branch is gated on `!bossRush`.
+- Menus: `BOSS RUSH` toggle in the gauntlet setup (solo) and in the local multiplayer lobby (co-op). The
+  result plate distinguishes `BOSS RUSH // CLEAR` from a broken ladder and skips gauntlet records. Online
+  rooms are unchanged: mini-boss bodies are not in `Snapshot`.
+- `?bossrush=1` boots the solo ladder. `.tmp/bossrush-check.ts` covers order, zero fodder, the gap, clear
+  state, co-op seating/respawn and the scored-gauntlet death rule.
+
+**Verification:** `bossrush-check` passes, `npm run build` clean, `npm run bench` clean, `git diff --check`
+clean; build output removed and no dev server left.
+
+## 2026-11-02 — Starfish girth pass
+
+**Goal:** the Starfish read as a disc with thin ribbons; the design asked for a fatter body and arms.
+
+- `STARFISH.radius` 75 → 96 and `armRadius` 69 → 92, so the core disc, mouth, teeth, teeth ring and arm
+  collision all thicken together. `armReach` stays 435: the boss gets fatter, not longer.
+- New `armWidth` 0.84 (was a hard-coded 0.72 draw factor) thickens the tapered arm silhouette for both the
+  attached and detached arms without widening the collision circle past `armRadius`.
+- `.tmp/starfish-check.ts` now logs the width alongside core, arm, reach and mouth so the silhouette values
+  stay visible in its report.
+
+**Verification:** `starfish-check` passes with the new scale, `npm run build` clean, `npm run bench` clean,
+`git diff --check` clean; build output removed and no dev server left.

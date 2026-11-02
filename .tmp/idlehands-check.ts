@@ -127,11 +127,32 @@ const hands = (world: World) =>
   priv.damageWorm(a, 1, 0, 1, 0, 0);
   if (a.hand!.state !== 6) fail('a dash into a charging hand did not redirect it');
   const hpB = b.hp;
-  for (let i = 0; i < 60; i++) priv.updateWorm(a, SIM_DT);
+  let collided = false;
+  for (let i = 0; i < 60; i++) {
+    priv.updateWorm(a, SIM_DT);
+    if (a.hand!.state === 7) {
+      collided = true;
+      break;
+    }
+  }
+  if (!collided) fail('the redirected hand never entered its stun');
+  if (b.hand!.state !== 7) fail('the partner hand was not stunned by the redirect');
   if (b.hp >= hpB) fail('the redirected hand never hit its partner');
   if (hpB - b.hp < IDLE_HANDS.charge.deflectDamage) fail('the redirect hit was not big damage');
+  const ax = a.x;
+  const ay = a.y;
+  const bx = b.x;
+  const by = b.y;
+  for (let i = 0; i < 10; i++) {
+    priv.updateWorm(a, SIM_DT);
+    priv.updateWorm(b, SIM_DT);
+  }
+  if (Math.hypot(a.x - ax, a.y - ay) < 1 || Math.hypot(b.x - bx, b.y - by) < 1) {
+    fail('stunned hands did not fly apart');
+  }
+  if (a.hand!.state !== 7 || b.hand!.state !== 7) fail('the stun ended too early');
   if (a.hand!.state === 5) fail('the redirected hand kept charging on its old line');
-  console.log(JSON.stringify({ deflect: { toPartner: hpB - b.hp, life: IDLE_HANDS.charge.deflectLife } }));
+  console.log(JSON.stringify({ deflect: { toPartner: hpB - b.hp, life: IDLE_HANDS.charge.deflectLife, stun: IDLE_HANDS.charge.stunTime } }));
 }
 
 // --- the trio dies and credits the player ----------------------------------
@@ -150,6 +171,78 @@ const hands = (world: World) =>
   if (priv.minibossLiveCount(MINIBOSS.IDLE_HANDS) !== 0) fail('the boss count still sees dead hands');
 }
 
+// --- hovering hands survive a void-floor cull -------------------------------
+{
+  const usbArena = ARENAS.find((a) => a.usb) ?? fail('no USB HUB arena to test the floor cull');
+  const world = new World('gauntlet', ['HANDS'], 0, usbArena);
+  const priv = world as any;
+  for (const w of world.worms) w.active = false;
+  const p = world.players[0];
+  p.x = (usbArena.bounds.left + usbArena.bounds.right) * 0.5;
+  p.y = (usbArena.bounds.top + usbArena.bounds.bottom) * 0.5;
+  p.alive = true;
+  priv.spawnMiniboss(MINIBOSS.IDLE_HANDS, p.x + 300, p.y) ?? fail('the trio never spawned on the USB HUB');
+  const trio = hands(world);
+  if (trio.length !== IDLE_HANDS.hands) fail('the USB HUB trio did not spawn');
+  // The hands are floating bodies and hover over the hub's gaps. A corner is
+  // definitely off the disc; the void cull must not delete them there.
+  for (const w of trio) {
+    w.spawnT = 0;
+    w.x = usbArena.bounds.left + 10;
+    w.y = usbArena.bounds.top + 10;
+    w.prevX = w.x;
+    w.prevY = w.y;
+  }
+  priv.cullVoidThreats();
+  if (hands(world).length !== IDLE_HANDS.hands) fail('the void floor cull deleted the floating hands');
+  console.log(JSON.stringify({ voidCull: { hands: hands(world).length } }));
+}
+
+// --- the trio keeps a hover margin and never stacks -------------------------
+{
+  const { world, priv } = freshWorld();
+  const p = world.players[0];
+  priv.spawnMiniboss(MINIBOSS.IDLE_HANDS, p.x + 300, p.y) ?? fail('the trio never spawned for the separation check');
+  const trio = hands(world);
+  const minPair = (): number => {
+    let min = Infinity;
+    for (let i = 0; i < trio.length; i++) {
+      for (let j = i + 1; j < trio.length; j++) {
+        min = Math.min(min, Math.hypot(trio[i].x - trio[j].x, trio[i].y - trio[j].y));
+      }
+    }
+    return min;
+  };
+  if (minPair() < IDLE_HANDS.separation - 1) fail('the trio spawned inside its separation margin');
+  for (const w of trio) {
+    w.spawnT = 0;
+    if (w.hand) w.hand.cd = 99;
+    w.x = p.x;
+    w.y = p.y;
+  }
+  priv.separateIdleHands();
+  if (minPair() < IDLE_HANDS.separation - 1) fail('the trio stayed stacked after separation');
+  console.log(JSON.stringify({ separation: { min: Math.round(minPair()), target: IDLE_HANDS.separation } }));
+}
+
+// --- the trio never targets the player's back -------------------------------
+{
+  const { world, priv } = freshWorld();
+  const p = world.players[0];
+  priv.spawnMiniboss(MINIBOSS.IDLE_HANDS, p.x + 300, p.y) ?? fail('the trio never spawned for the hover check');
+  for (const w of hands(world)) {
+    w.spawnT = 0;
+    if (w.hand) w.hand.cd = 99;
+  }
+  let behind = 0;
+  for (let i = 0; i < 600; i++) {
+    for (const w of hands(world)) priv.updateWorm(w, SIM_DT);
+    for (const w of hands(world)) if (w.y < p.y - 1) behind++;
+  }
+  if (behind > 0) fail('an idle hand targeted the player\'s back');
+  console.log(JSON.stringify({ hover: { behind, hands: hands(world).length } }));
+}
+
 // --- the trio arrives through the ordinary ingress family -------------------
 {
   const { world, priv } = freshWorld();
@@ -162,8 +255,43 @@ const hands = (world: World) =>
   }
   if (arrived !== IDLE_HANDS.hands) fail(`the ingress delivered ${arrived} hands instead of ${IDLE_HANDS.hands}`);
   const nearest = hands(world).reduce((m, w) => Math.min(m, Math.hypot(w.x - p.x, w.y - p.y)), Infinity);
-  if (nearest < GAUNTLET.assault.playerClear - 80) fail('the trio arrived on top of the player');
+  if (nearest < IDLE_HANDS.radius + 40) fail('the trio arrived on top of the player');
+  if (nearest > GAUNTLET.assault.playerClear) fail('the trio arrived too far from the player');
   console.log(JSON.stringify({ ingress: { hands: arrived, clear: Math.round(nearest) } }));
+}
+
+// --- the palm stays down long enough to punish ------------------------------
+{
+  const { world, priv } = freshWorld();
+  const p = world.players[0];
+  priv.spawnMiniboss(MINIBOSS.IDLE_HANDS, p.x + 180, p.y);
+  const w = hands(world)[0];
+  const h = w.hand ?? fail('no hand state');
+  w.spawnT = 0;
+  h.state = 1;
+  h.t = 0;
+  h.slamX = w.x;
+  h.slamY = w.y;
+  for (let i = 0; i < 200 && h.state !== 3; i++) priv.updateWorm(w, SIM_DT);
+  if (h.state !== 3) fail('the slam never landed');
+  const x = w.x;
+  const y = w.y;
+  const hpBefore = w.hp;
+  let ticks = 0;
+  while (h.state === 3 && ticks < 400) {
+    priv.updateWorm(w, SIM_DT);
+    ticks++;
+  }
+  const seconds = ticks * SIM_DT;
+  if (seconds < IDLE_HANDS.slam.hold - SIM_DT) fail(`the palm only stayed down ${seconds.toFixed(2)}s`);
+  if (Math.hypot(w.x - x, w.y - y) > 3) fail('the grounded palm drifted while it was held down');
+  h.state = 3;
+  h.t = 0;
+  priv.damageWorm(w, 3, 0, 0, 1, 0);
+  if (w.hp >= hpBefore) fail('the held palm was not damageable');
+  console.log(
+    JSON.stringify({ slamHold: { seconds: +seconds.toFixed(2), damageable: hpBefore - w.hp } }),
+  );
 }
 
 console.log('idlehands-check: OK');

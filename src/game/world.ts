@@ -1,4 +1,4 @@
-import type { AssaultPortal, Fragment } from './types';
+import type { AssaultPortal, BossIntro, Fragment } from './types';
 import { MEMORY } from './memory';
 import {
   AIMBOT,
@@ -24,6 +24,7 @@ import {
   FIREWALL,
   FALL,
   WEDGE,
+  BOSS_RUSH,
   GAUNTLET,
   KABOOM,
   KEYPAD,
@@ -75,7 +76,9 @@ import {
   SCANNER_STATE,
   faxCycle,
   faxHeadX,
+  faxHeadY,
   faxPhaseAt,
+  faxRowAt,
   FAX_STATE,
   plugCycle,
   plugPhaseAt,
@@ -96,6 +99,7 @@ import {
   SATELLITE_SOLAR_STATE,
   carRouteAt,
   carProgressAt,
+  carRouteLength,
   flipRowRectAt,
   flipTimeRectAt,
   flipRowStateAt,
@@ -150,7 +154,7 @@ import {
   createWorm,
 } from './entities';
 import { PROGRAM_ID, clampProgram, programDef } from './programs';
-import { MINIBOSS, minibossDef } from './minibosses';
+import { BOSS_RUSH_ORDER, MINIBOSS, minibossDef } from './minibosses';
 import { computeSpawns, stepPlayerMotion } from './movement';
 import { POWERUP_KIND, isTimedPowerup, powerupDef, rollPowerup } from './powerups';
 import { Rng } from './rng';
@@ -298,6 +302,18 @@ export class World {
   /** True after a scored gauntlet run has ended; the simulation holds the last frame. */
   gauntletOver = false;
   /**
+   * BOSS RUSH: a gauntlet-mode ladder that walks the mini-boss registry once with no
+   * fodder. It reuses the gauntlet simulation, entrance beats and threat pools, and it
+   * stays local content: nothing here is in `Snapshot`.
+   */
+  readonly bossRush: boolean;
+  /** True once the last boss of the ladder is down; the run freezes cleared. */
+  bossRushCleared = false;
+  /** 0-based ladder cursor: the boss on the floor, or the next one up. */
+  private bossRushIndex = 0;
+  private bossRushLive = false;
+  private bossRushGapT = 0;
+  /**
    * Local run rule for gauntlet and campaign. On, hostile fire can damage rival threat
    * families (the crossfire the docs call friendly fire). Off, a hostile shot passes
    * through worms, viruses and error blocks and only threatens players. Set once when
@@ -368,6 +384,8 @@ export class World {
   /** Escalation wave in gauntlet mode. Purely local presentation + spawn pacing. */
   wave = 1;
   waveBannerT = 0;
+  /** Frozen entrance cut-in; local presentation state, never networked. */
+  bossIntro: BossIntro | null = null;
   /**
    * Title-screen attract demo. Presentation only: it keeps the room topped up to the
    * live caps so the demo never thins out. Never set for a scored run, a campaign node
@@ -514,10 +532,11 @@ export class World {
   scannerT = 0;
   scannerPage = 0;
   scannerPhase: number = SCANNER_STATE.load;
-  /** Fax sheet and shuttle print head. Local-only. */
+  /** Fax sheet and compact row print head. Local-only. */
   readonly fax: ArenaFaxDef | null;
   faxT = 0;
   faxPage = 0;
+  faxRow = 0;
   faxPhase: number = FAX_STATE.readyLeft;
   /** SMART PLUG circuit ring. Local-only; the green/red clock is not in SnapshotHazards. */
   readonly plug: ArenaPlugDef | null;
@@ -641,7 +660,7 @@ export class World {
   /** Preallocated blocks that approximate the curved trajectory wall. */
   private readonly rocketBarrierRects: Rect[] = [];
   private readonly rocketScratch = { x: 0, y: 0 };
-  /** CAR NAVIGATION layout and its growing serpentine route wall. Local-only. */
+  /** CAR NAVIGATION layout and its capped, moving route trail. Local-only. */
   readonly car: ArenaCarDef | null;
   /** Seconds since the car started. Reset at the start of every round. */
   carT = 0;
@@ -760,12 +779,14 @@ export class World {
     infectionMode = false,
     campaignIntro: CampaignIntro = 'none',
     campaignClearKills = 0,
+    bossRush = false,
   ) {
     this.mode = mode;
     this.campaignIntro = campaignIntro;
     this.campaignKillsToClear = campaignClearKills > 0 ? campaignClearKills : CAMPAIGN.killsToClear;
     this.campaign = campaign;
     this.infectionMode = infectionMode;
+    this.bossRush = bossRush;
     this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
@@ -795,7 +816,9 @@ export class World {
       for (let i = 0; i < 10; i++) this.invaderShots.push({ active: false, x: 0, y: 0, vy: 0 });
       this.resetInvaders();
     }
-    const routeBarrierRects = [...this.rocketBarrierRects, ...this.carBarrierRects];
+    // The rocket arc is shot-only: it never blocks a body or a dash. The car route is
+    // still real geometry and keeps its body collision.
+    const routeBarrierRects = [...this.carBarrierRects];
     const staticSolids =
       routeBarrierRects.length > 0 ? [...arenaSolids(arena), ...routeBarrierRects] : arenaSolids(arena);
     this.baseSolids = staticSolids;
@@ -1116,8 +1139,28 @@ export class World {
     const left = this.arena.spawns[6];
     this.spawnX[0] = left.x;
     this.spawnY[0] = left.y;
-    clearPlayerForSpawn(p, left.x, left.y, 0);
-    p.thrall = false;
+    if (this.bossRush) {
+      // Local co-op: every seated player enters, spaced like a training squad. A solo
+      // rush takes the same path with one body.
+      let active = 0;
+      for (let i = 0; i < this.players.length; i++) if (this.players[i].active) active++;
+      computeSpawns(Math.max(1, active), this.arena, this.spawnX, this.spawnY);
+      this.spawnX[0] = left.x;
+      this.spawnY[0] = left.y;
+      for (let i = 0; i < this.players.length; i++) {
+        const body = this.players[i];
+        if (!body.active) continue;
+        const sx = i === 0 ? left.x : this.spawnX[i];
+        const sy = i === 0 ? left.y : this.spawnY[i];
+        this.spawnX[i] = sx;
+        this.spawnY[i] = sy;
+        clearPlayerForSpawn(body, sx, sy, Math.atan2(this.centerY - sy, this.centerX - sx));
+        body.thrall = false;
+      }
+    } else {
+      clearPlayerForSpawn(p, left.x, left.y, 0);
+      p.thrall = false;
+    }
     this.infection = 0;
     this.gauntletKills = 0;
     this.gauntletT = 0;
@@ -1173,12 +1216,19 @@ export class World {
     for (let i = 0; i < this.firewalls.length; i++) this.firewalls[i].active = false;
     for (let i = 0; i < this.errors.length; i++) this.errors[i].active = false;
     for (let i = 0; i < this.sentries.length; i++) this.sentries[i].active = false;
-    for (let i = 1; i < this.players.length; i++) {
-      this.players[i].active = false;
-      this.players[i].alive = false;
+    if (!this.bossRush) {
+      for (let i = 1; i < this.players.length; i++) {
+        this.players[i].active = false;
+        this.players[i].alive = false;
+      }
     }
+    this.bossRushIndex = 0;
+    this.bossRushLive = false;
+    this.bossRushGapT = BOSS_RUSH.firstDelay;
+    this.bossRushCleared = false;
     // A campaign node authors ports instead (D58); a sandbox arena may carry a replicator.
-    if (!this.campaign) this.spawnArenaReplicators();
+    // A rush is a boss test bed, so it does not seed arena fodder of its own.
+    if (!this.campaign && !this.bossRush) this.spawnArenaReplicators();
   }
 
   /**
@@ -2820,6 +2870,59 @@ export class World {
     return this.gauntletT;
   }
 
+  /** 1-based boss number for the HUD and the result plate. */
+  get bossRushStage(): number {
+    return Math.min(BOSS_RUSH_ORDER.length, this.bossRushIndex + 1);
+  }
+
+  get bossRushTotal(): number {
+    return BOSS_RUSH_ORDER.length;
+  }
+
+  /**
+   * BOSS RUSH: one mini-boss from the registry ladder at a time, no fodder, no wave
+   * ramp. The gap between kills is breathing room and the boss entrance beat, not a
+   * second spawn timer. Local content: the renderer and menus read this, snapshots do not.
+   */
+  private updateBossRush(dt: number): void {
+    if (this.gauntletOver) return;
+    const order = BOSS_RUSH_ORDER;
+    if (this.bossRushLive) {
+      const kind = order[this.bossRushIndex];
+      if (kind !== undefined && this.minibossLiveCount(kind) > 0) return;
+      // Leftover parts (Starfish arms, a split hand) are retired rather than carried
+      // into the next fight, where they would read as a second boss.
+      for (let i = 0; i < this.worms.length; i++) {
+        const w = this.worms[i];
+        if (w.active && w.bossKind === kind) w.active = false;
+      }
+      this.bossRushLive = false;
+      this.bossRushIndex++;
+      this.bossRushGapT = BOSS_RUSH.gap;
+    }
+    if (this.bossRushIndex >= order.length) {
+      this.bossRushCleared = true;
+      this.gauntletOver = true;
+      return;
+    }
+    if (this.bossRushGapT > 0) {
+      this.bossRushGapT = Math.max(0, this.bossRushGapT - dt);
+      return;
+    }
+    let target = this.players[0];
+    for (let i = 0; i < this.players.length; i++) {
+      const body = this.players[i];
+      if (body.active && body.alive) {
+        target = body;
+        break;
+      }
+    }
+    if (!target || !target.alive) return;
+    this.wave = this.bossRushIndex + 1;
+    this.spawnMiniboss(order[this.bossRushIndex], target.x + 340, target.y - 60);
+    this.bossRushLive = true;
+  }
+
   /**
    * 0..1 of the swarm cleared. `kills / (kills + live)` means a fresh bud pushes the
    * meter down, and only a floor with nothing left on it reaches 100%.
@@ -3045,6 +3148,12 @@ export class World {
     // death aftermath keeps running until the pilot starts the next run; a still frame
     // for the whole restart delay read as a paused game.
     if (this.mode === 'gauntlet' && this.gauntletOver && !this.attractMode) {
+      this.clearPressed(inputs);
+      return;
+    }
+    // A boss entrance owns the room until its camera beat and reveal finish.
+    if (this.bossIntro) {
+      this.updateBossIntro(dt);
       this.clearPressed(inputs);
       return;
     }
@@ -8934,14 +9043,46 @@ export class World {
     // while it stands, so the card cannot be used as a free firing slit.
     if (this.swipePopupSolid && this.bounceCoverRect(proj, this.swipePopupSolid)) return;
     if (this.satelliteTelescopeRect.h > 0 && this.bounceCoverRect(proj, this.satelliteTelescopeRect)) return;
-    for (let i = 0; i < this.rocketBarrierRects.length; i++) {
-      const r = this.rocketBarrierRects[i];
-      if (r.h > 0 && this.bounceCoverRect(proj, r)) return;
-    }
+    if (this.bounceRocketPath(proj)) return;
     for (let i = 0; i < this.carBarrierRects.length; i++) {
       const r = this.carBarrierRects[i];
       if (r.h > 0 && this.bounceCoverRect(proj, r)) return;
     }
+  }
+
+  /**
+   * ROCKET NAVIGATION's flown arc is a shot-only reflector. Bodies, dashes, bots and
+   * waves pass under it; every ordinary shot bounces instead of dying on cover. Hostile
+   * fire is kept alive on purpose, so the lane becomes a growing crossfire over a round.
+   * Mines, traps, bombs, the super ball and the rail round keep their own rules.
+   */
+  private bounceRocketPath(proj: Projectile): boolean {
+    if (
+      proj.type === 1 ||
+      proj.type === 2 ||
+      proj.type === 8 ||
+      proj.type === 9 ||
+      proj.type === 15 ||
+      proj.type === 17
+    ) {
+      return false;
+    }
+    for (let i = 0; i < this.rocketBarrierRects.length; i++) {
+      const r = this.rocketBarrierRects[i];
+      if (r.h <= 0 || !circleRect(proj.x, proj.y, proj.radius, r, hitScratch)) continue;
+      proj.x = hitScratch.px;
+      proj.y = hitScratch.py;
+      const vn = proj.vx * hitScratch.nx + proj.vy * hitScratch.ny;
+      if (vn < 0) {
+        proj.vx -= 2 * vn * hitScratch.nx;
+        proj.vy -= 2 * vn * hitScratch.ny;
+      }
+      this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 0);
+      proj.armed = true;
+      this.noteBounce(proj);
+      return true;
+    }
+    return false;
   }
 
   /** Shared shot/cover response for static pillars and the temporary swipe popup. */
@@ -9456,17 +9597,21 @@ export class World {
   }
 
   /**
-   * The rendered route and the body/shot wall share one progress value. Inactive
-   * blocks are zeroed instead of removed, so the solid list stays fixed.
+   * The rendered route and the body/shot wall share one progress value. Only the most
+   * recent `trailLength` of road stays live; older blocks are zeroed instead of removed,
+   * so the solid list stays fixed and the wall cannot grow into a full-map divider.
    */
   private refreshCarBarrier(): void {
     const car = this.car;
     if (!car) return;
     const active = Math.ceil(this.carProgress * car.segments);
+    const total = carRouteLength(car);
+    const trail = Math.max(0, car.trailLength) / Math.max(1, total);
+    const first = Math.floor(Math.max(0, this.carProgress - trail) * car.segments);
     const half = car.thickness * 0.5;
     for (let i = 0; i < this.carBarrierRects.length; i++) {
       const rect = this.carBarrierRects[i];
-      if (i >= active) {
+      if (i < first || i >= active) {
         rect.x = 0;
         rect.y = 0;
         rect.w = 0;
@@ -10075,8 +10220,8 @@ export class World {
   }
 
   /**
-   * The rendered arc and the body/shot wall share one progress value. Inactive blocks
-   * are zeroed instead of removed, so the solid list stays fixed and allocation-free.
+   * The rendered dotted line and the shot reflector share one progress value. The blocks
+   * are only read by projectiles; inactive blocks are zeroed, allocation-free.
    */
   private refreshRocketBarrier(): void {
     const rocket = this.rocket;
@@ -11007,7 +11152,7 @@ export class World {
         this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
         return;
       }
-      if (this.mode === 'gauntlet' && !this.gauntletPractice && p.slot === 0) {
+      if (this.mode === 'gauntlet' && !this.gauntletPractice && !this.bossRush && p.slot === 0) {
         if (this.infectionMode) this.infectionFailed = true;
         this.gauntletOver = true;
         p.respawnT = 0;
@@ -11570,6 +11715,7 @@ export class World {
   private resetFax(): void {
     this.faxT = 0;
     this.faxPage = 0;
+    this.faxRow = 0;
     this.faxPhase = this.fax ? faxPhaseAt(this.fax, 0) : FAX_STATE.readyLeft;
     this.clearFaxHits();
   }
@@ -11583,7 +11729,7 @@ export class World {
     this.faxHitDrone = false;
   }
 
-  /** Advance the shuttle, swap sheets at the end of a full out-and-back, then burn. */
+  /** Advance the carriage, step down rows and swap sheets at the end of a sheet, then burn. */
   private tickFax(dt: number): void {
     const fx = this.fax;
     if (!fx) return;
@@ -11597,13 +11743,16 @@ export class World {
     if (wrapped) {
       const pages = Math.max(1, fx.documents.length);
       this.faxPage = (this.faxPage + 1) % pages;
+      this.faxRow = 0;
+      this.clearFaxHits();
+    }
+    const row = faxRowAt(fx, this.faxT);
+    if (row !== this.faxRow) {
+      this.faxRow = row;
       this.clearFaxHits();
     }
     const phase = faxPhaseAt(fx, this.faxT);
-    if (phase !== this.faxPhase) {
-      this.faxPhase = phase;
-      if (phase === FAX_STATE.printRight || phase === FAX_STATE.printLeft) this.clearFaxHits();
-    }
+    if (phase !== this.faxPhase) this.faxPhase = phase;
     if (phase === FAX_STATE.printRight || phase === FAX_STATE.printLeft) this.burnFax();
   }
 
@@ -11613,22 +11762,25 @@ export class World {
     radius: number,
     fx: ArenaFaxDef,
     headX: number,
-    half: number,
+    headY: number,
+    halfW: number,
+    halfH: number,
   ): boolean {
-    if (y < fx.y - radius || y > fx.y + fx.h + radius) return false;
-    return Math.abs(x - headX) <= half + radius;
+    return Math.abs(x - headX) <= halfW + radius && Math.abs(y - headY) <= halfH + radius;
   }
 
   /**
-   * The thermal bar resolves after the bodies move, exactly like the scanner line.
-   * One hit per pass per body keeps the shuttle readable instead of melting a target
+   * The compact head resolves after the bodies move, exactly like the scanner line.
+   * One hit per row per body keeps the carriage readable instead of melting a target
    * that stands beside it for several frames.
    */
   private burnFax(): void {
     const fx = this.fax;
     if (!fx) return;
     const headX = faxHeadX(fx, this.faxT);
-    const half = fx.headW * 0.5;
+    const headY = faxHeadY(fx, this.faxT);
+    const halfW = fx.headW * 0.5;
+    const halfH = fx.headH * 0.5;
     const dirX = this.faxPhase === FAX_STATE.printRight ? 1 : -1;
 
     for (let i = 0; i < this.players.length; i++) {
@@ -11636,13 +11788,13 @@ export class World {
       if (!p.active || !p.alive || p.dashT > 0 || phased(p)) continue;
       const bit = 1 << p.slot;
       if (this.faxHitPlayers & bit) continue;
-      if (!this.faxHits(p.x, p.y, PLAYER.radius * p.shrink, fx, headX, half)) continue;
+      if (!this.faxHits(p.x, p.y, PLAYER.radius * p.shrink, fx, headX, headY, halfW, halfH)) continue;
       this.faxHitPlayers |= bit;
       this.damagePlayer(p, fx.damage, -1, dirX, 0, fx.knockback, SRC.FAX, -1);
     }
 
     if (this.mode === 'training' && this.drone.active && !this.faxHitDrone) {
-      if (this.faxHits(this.drone.x, this.drone.y, this.drone.radius, fx, headX, half)) {
+      if (this.faxHits(this.drone.x, this.drone.y, this.drone.radius, fx, headX, headY, halfW, halfH)) {
         this.faxHitDrone = true;
         this.damageDrone(fx.enemyDamage, -1);
       }
@@ -11654,9 +11806,9 @@ export class World {
       if (!w.active) continue;
       const bit = 1 << i;
       if (this.faxHitWorms & bit) continue;
-      let hit = this.faxHits(w.x, w.y, w.hitR, fx, headX, half);
+      let hit = this.faxHits(w.x, w.y, w.hitR, fx, headX, headY, halfW, halfH);
       for (let s = 0; s < w.segCount && !hit; s++) {
-        hit = this.faxHits(w.segX[s], w.segY[s], w.segR, fx, headX, half);
+        hit = this.faxHits(w.segX[s], w.segY[s], w.segR, fx, headX, headY, halfW, halfH);
       }
       if (!hit) continue;
       this.faxHitWorms |= bit;
@@ -11667,7 +11819,7 @@ export class World {
       if (!v.active) continue;
       const bit = 1 << i;
       if (this.faxHitViruses & bit) continue;
-      if (!this.faxHits(v.x, v.y, v.radius, fx, headX, half)) continue;
+      if (!this.faxHits(v.x, v.y, v.radius, fx, headX, headY, halfW, halfH)) continue;
       this.faxHitViruses |= bit;
       this.damageVirus(v, fx.enemyDamage, -1, dirX, 0);
     }
@@ -11676,7 +11828,7 @@ export class World {
       if (!s.active) continue;
       const bit = 1 << i;
       if (this.faxHitSentries & bit) continue;
-      if (!this.faxHits(s.x, s.y, s.radius, fx, headX, half)) continue;
+      if (!this.faxHits(s.x, s.y, s.radius, fx, headX, headY, halfW, halfH)) continue;
       this.faxHitSentries |= bit;
       this.damageSentry(s, fx.enemyDamage, -1, dirX, 0);
     }
@@ -11685,7 +11837,7 @@ export class World {
       if (!e.active) continue;
       const bit = 1 << i;
       if (this.faxHitErrors & bit) continue;
-      if (!this.faxHits(e.x, e.y, CASCADING_ERROR.blockSize * 0.5, fx, headX, half)) continue;
+      if (!this.faxHits(e.x, e.y, CASCADING_ERROR.blockSize * 0.5, fx, headX, headY, halfW, halfH)) continue;
       this.faxHitErrors |= bit;
       this.damageError(e, fx.enemyDamage, -1, 0, dirX);
     }
@@ -13955,6 +14107,11 @@ export class World {
 
   private updateGauntlet(dt: number): void {
     this.gauntletT += dt;
+    // The rush owns its own clock: no wave ramp, no assault queue, no network fixtures.
+    if (this.bossRush) {
+      this.updateBossRush(dt);
+      return;
+    }
     // Pipes feed both the normal sandbox and infection; the firewall starter is a
     // gauntlet-only set piece because infection has no firewall update pass.
     this.updateNetwork(dt);
@@ -14073,6 +14230,7 @@ export class World {
     }
 
     for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) this.updateWorm(this.worms[i], dt);
+    this.separateIdleHands();
     for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) this.updateVirus(this.viruses[i], dt);
     for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) this.updateSentry(this.sentries[i], dt);
     for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) this.updateFirewall(this.firewalls[i], dt);
@@ -14148,6 +14306,10 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
+      // Floating boss bodies are not standing on the plate. Idle Hands hover over
+      // the USB HUB's gaps, and the Storm Cloud may now hang past the lip, so the floor
+      // cull would delete a whole boss the moment its entrance ends.
+      if (w.bossKind === MINIBOSS.IDLE_HANDS || w.bossKind === MINIBOSS.STORM_CLOUD) continue;
       if (this.offFloor(w.x, w.y)) this.damageWorm(w, 9999, 0, 0, 0);
     }
     for (let i = 0; i < this.viruses.length; i++) {
@@ -15525,8 +15687,13 @@ export class World {
       }
       if (!w) break;
       const a = base + (k / cfg.hands) * Math.PI * 2;
-      const sx = x + Math.cos(a) * 130;
-      const sy = y + Math.sin(a) * 100;
+      // The trio's arrival ring scales with the body, so three 126-radius hands
+      // do not spawn inside each other. Keep it wide but front/side only: the
+      // hands are a floor fight, not an overhead canopy.
+      const front = Math.max(0, Math.sin(a));
+      const side = Math.cos(a) >= 0 ? 1 : -1;
+      const sx = x + (front > 0 ? Math.cos(a) : side) * 390;
+      const sy = y + cfg.spawnYOffset + front * cfg.spawnRingY;
       w.active = true;
       w.mega = false;
       w.bossKind = MINIBOSS.IDLE_HANDS;
@@ -15547,7 +15714,7 @@ export class World {
       w.phase = this.rng.range(0, Math.PI * 2);
       w.hp = cfg.hp;
       w.maxHp = cfg.hp;
-      w.spawnT = cfg.spawnTime;
+      w.spawnT = cfg.introTime;
       w.hitFlash = 0;
       w.touchCd = 0;
       w.pinT = 0;
@@ -15613,12 +15780,25 @@ export class World {
     const dist = Math.hypot(pdx, pdy) || 1;
     h.t += dt;
 
-    if (h.state === 0) {
+    if (h.state === 7) {
+      // A redirected hand has slammed into its partner. Both hands spin away
+      // under their knock velocity and cannot act until the lockout ends.
+      if (h.t >= cfg.charge.stunTime) {
+        h.state = 0;
+        h.t = 0;
+        h.cd = cfg.charge.cooldown * 0.5;
+      }
+    } else if (h.state === 0) {
       // Hover at a working distance: close in on a far player, give ground when crowded.
       const orbit = Math.min(cfg.orbitMax, Math.max(cfg.orbitMin, dist));
       const ang = Math.atan2(w.y - p.y, w.x - p.x) + Math.sin(w.phase * 0.42 + h.bob) * 0.22;
-      const tx = p.x + Math.cos(ang) * orbit;
-      const ty = p.y + Math.sin(ang) * orbit;
+      // A hand behind the player is steered to the nearest side; a front hand stays
+      // in the lower half. This keeps the palm from sitting over the player's sprite
+      // and gives every tell a clear silhouette to track.
+      const front = Math.max(0, Math.sin(ang));
+      const side = Math.cos(ang) >= 0 ? 1 : -1;
+      const tx = p.x + (front > 0 ? Math.cos(ang) : side) * orbit;
+      const ty = p.y + orbit * (cfg.orbitYSide + front * cfg.orbitYFront);
       const dx = tx - w.x;
       const dy = ty - w.y;
       const d = Math.hypot(dx, dy) || 1;
@@ -15665,7 +15845,10 @@ export class World {
         this.slamImpact(w);
       }
     } else if (h.state === 3) {
-      if (h.t >= cfg.slam.recover) {
+      // Palm-down hold first, then the rise-out. The hold is the punish window: the
+      // body is stopped and fully hittable, so a slam gives the player something to
+      // shoot instead of snapping back to hover the moment it lands.
+      if (h.t >= cfg.slam.hold + cfg.slam.recover) {
         h.state = 0;
         h.t = 0;
         h.cd = cfg.slam.cooldown;
@@ -15721,14 +15904,25 @@ export class World {
         const rr = w.hitR + other.hitR;
         if (dx * dx + dy * dy > rr * rr) continue;
         const d = Math.hypot(dx, dy) || 1;
+        const nx = dx / d;
+        const ny = dy / d;
         // The redirected hand is the weapon: the partner takes the big hit.
-        this.damageHand(other, cfg.charge.deflectDamage, 0, dx / d, dy / d, 600);
-        this.damageHand(w, 3, 0, -dx / d, -dy / d, 0);
+        this.damageHand(other, cfg.charge.deflectDamage, 0, nx, ny, 600);
+        this.damageHand(w, 3, 0, -nx, -ny, 0);
         this.emit(EV.EXPLODE, -1, w.x, w.y, 70);
+        // Both bodies recoil apart and spin for the stun window instead of one
+        // simply resetting to hover. This is the boss's real punish window.
+        if (other.active && other.hand) {
+          other.hand.state = 7;
+          other.hand.t = 0;
+          other.kx += nx * cfg.charge.stunKnockback;
+          other.ky += ny * cfg.charge.stunKnockback;
+        }
         if (w.active) {
-          h.state = 0;
+          h.state = 7;
           h.t = 0;
-          h.cd = 1.2;
+          w.kx -= nx * cfg.charge.stunKnockback;
+          w.ky -= ny * cfg.charge.stunKnockback;
         }
         break;
       }
@@ -15752,6 +15946,61 @@ export class World {
     }
     w.x = bx;
     w.y = by;
+  }
+
+  /**
+   * Keep the trio from collapsing into one silhouette while they hover. Attack states
+   * are exempt: a slam is a committed path, and the charge redirect needs two bodies
+   * to meet. The margin is wider than two hitboxes because the palm glyph reads wider
+   * than its collision circle.
+   */
+  private separateIdleHands(): void {
+    const min = IDLE_HANDS.separation;
+    const minSq = min * min;
+    for (let pass = 0; pass < 6; pass++) {
+      for (let i = 0; i < this.worms.length; i++) {
+        const a = this.worms[i];
+        if (!a.active || a.bossKind !== MINIBOSS.IDLE_HANDS || !a.hand || a.spawnT > 0) continue;
+        if (a.hand.state !== 0 && a.hand.state !== 3) continue;
+        for (let j = i + 1; j < this.worms.length; j++) {
+          const b = this.worms[j];
+          if (!b.active || b.bossKind !== MINIBOSS.IDLE_HANDS || !b.hand || b.spawnT > 0) continue;
+          if (b.hand.state !== 0 && b.hand.state !== 3) continue;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 >= minSq) continue;
+          let d = Math.sqrt(d2);
+          let nx = 0;
+          let ny = 0;
+          if (d > 0.001) {
+            nx = dx / d;
+            ny = dy / d;
+          } else {
+            // Exact overlap has no normal. Give each hand its own deterministic
+            // escape direction so the first frame cannot leave them stacked.
+            const angle = a.phase + i * 2.399963;
+            nx = Math.cos(angle);
+            ny = Math.sin(angle);
+            d = 0.001;
+          }
+          const push = (min - d) * 0.5;
+          a.x -= nx * push;
+          a.y -= ny * push;
+          b.x += nx * push;
+          b.y += ny * push;
+        }
+      }
+    }
+    // A pair near a wall can be pushed past the arena lip; keep the hover bodies in
+    // bounds after the pass, just as their normal movement does.
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active || w.bossKind !== MINIBOSS.IDLE_HANDS || !w.hand || w.spawnT > 0) continue;
+      const pad = this.bossEdgePad(w);
+      w.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.x));
+      w.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.y));
+    }
   }
 
   /** The landing frame: dust, a shove, and damage inside the telegraph ring. */
@@ -15831,7 +16080,7 @@ export class World {
     return n;
   }
 
-  private spawnStarfish(x: number, y: number): Worm | null {
+  private spawnStarfish(x: number, y: number, intro = false): Worm | null {
     const cfg = STARFISH;
     const center = this.spawnWorm(x, y);
     if (!center) return null;
@@ -15844,7 +16093,7 @@ export class World {
     center.hitR = cfg.radius;
     center.segR = cfg.radius * 0.6;
     center.hp = center.maxHp = cfg.hp;
-    center.spawnT = cfg.spawnTime;
+    center.spawnT = intro ? cfg.introTime : cfg.spawnTime;
     center.starfish = {
       group,
       clock: 0,
@@ -15869,7 +16118,7 @@ export class World {
       arm.hitR = cfg.armRadius;
       arm.segR = cfg.armRadius * 0.7;
       arm.hp = arm.maxHp = cfg.armHp;
-      arm.spawnT = cfg.spawnTime * 0.55;
+      arm.spawnT = intro ? cfg.introTime : cfg.spawnTime * 0.55;
       arm.angle = a + Math.PI * 0.5;
       arm.armState = {
         group,
@@ -15887,6 +16136,12 @@ export class World {
     return center;
   }
 
+  /**
+   * The center owns its own motion. It is a boss body, not the generic chain worm, so
+   * it never runs `pushOutOfCover`: pillars and fixtures are crossed, the way the Mega
+   * Worm crosses them. Only the arena bounds (with the boss overhang pad) clamp it.
+   * `updateWorm` dispatches here before the shared cover resolve; keep it that way.
+   */
   private updateStarfish(center: Worm, dt: number): void {
     const cfg = STARFISH;
     const st = center.starfish;
@@ -16008,6 +16263,8 @@ export class World {
     }
   }
 
+  /** Attached arms are posed by the center; a detached arm crawls. Neither path resolves
+   * cover, so a torn-off arm keeps its line rather than being shoved around a pillar. */
   private updateStarfishArm(arm: Worm, dt: number): void {
     const cfg = STARFISH;
     const as = arm.armState;
@@ -16203,7 +16460,7 @@ export class World {
     w.hitR = BLOB.rMax;
     w.segR = BLOB.rMax * 0.8;
     w.hp = w.maxHp = BLOB.icons;
-    w.spawnT = 1;
+    w.spawnT = BLOB.introTime;
     w.blob = {
       state: 0,
       t: 0,
@@ -16265,13 +16522,27 @@ export class World {
         this.damagePlayer(p, BLOB.contactDamage, -1, dx / dist, dy / dist, BLOB.contactKnockback, SRC.WORM, this.worms.indexOf(w));
       }
       st.cd -= dt;
-      if (st.cd <= 0 && dist <= BLOB.tossRange && p.alive) {
-        st.state = 1;
-        st.t = 0;
-        st.toX = p.x;
-        st.toY = p.y;
-        st.fromX = w.x;
-        st.fromY = w.y;
+      if (st.cd <= 0 && p.alive) {
+        const pad = this.bossEdgePad(w);
+        const tx = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, p.x));
+        const ty = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, p.y));
+        if (dist <= BLOB.slam.range) {
+          // A close runner gets a committed high jump rather than another lob.
+          st.state = 4;
+          st.t = 0;
+          st.globT = 0;
+          st.fromX = w.x;
+          st.fromY = w.y;
+          st.toX = tx;
+          st.toY = ty;
+        } else if (dist <= BLOB.tossRange) {
+          st.state = 1;
+          st.t = 0;
+          st.toX = p.x;
+          st.toY = p.y;
+          st.fromX = w.x;
+          st.fromY = w.y;
+        }
       }
     } else if (st.state === 1) {
       st.t += dt;
@@ -16287,12 +16558,38 @@ export class World {
         st.t = 0;
         this.blobLand(w, st.toX, st.toY);
       }
-    } else {
+    } else if (st.state === 3) {
       st.t += dt;
       if (st.t >= BLOB.recover) {
         st.state = 0;
         st.t = 0;
         st.cd = BLOB.cooldown;
+      }
+    } else if (st.state === 4) {
+      st.t += dt;
+      if (st.t >= BLOB.slam.windup) {
+        st.state = 5;
+        st.t = 0;
+        st.globT = 0;
+      }
+    } else if (st.state === 5) {
+      st.globT += dt;
+      const u = Math.min(1, st.globT / Math.max(0.001, BLOB.slam.airTime));
+      w.x = st.fromX + (st.toX - st.fromX) * u;
+      w.y = st.fromY + (st.toY - st.fromY) * u;
+      if (st.globT >= BLOB.slam.airTime) {
+        w.x = st.toX;
+        w.y = st.toY;
+        st.state = 6;
+        st.t = 0;
+        this.blobSlam(w);
+      }
+    } else {
+      st.t += dt;
+      if (st.t >= BLOB.slam.recover) {
+        st.state = 0;
+        st.t = 0;
+        st.cd = BLOB.slam.cooldown;
       }
     }
 
@@ -16309,6 +16606,24 @@ export class World {
     const pad = this.bossEdgePad(w);
     w.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.x));
     w.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.y));
+  }
+
+  /** High jump landing: a radial body check with a heavier shove than the glob. */
+  private blobSlam(w: Worm): void {
+    const cfg = BLOB.slam;
+    this.emit(EV.PROP_BREAK, -1, w.x, w.y, 180);
+    this.emit(EV.EXPLODE, -1, w.x, w.y, cfg.aoe);
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.thrall || p.travelT > 0) continue;
+      const dx = p.x - w.x;
+      const dy = p.y - w.y;
+      const reach = cfg.aoe + PLAYER.radius;
+      if (dx * dx + dy * dy > reach * reach) continue;
+      const d = Math.hypot(dx, dy) || 1;
+      this.damagePlayer(p, cfg.damage, -1, dx / d, dy / d, cfg.knockback, SRC.WORM, this.worms.indexOf(w));
+      if (p.alive) this.emit(EV.WORM_HIT, -1, p.x, p.y, 2, 0, 0);
+    }
   }
 
   /** The tossed glob lands: damage plus a file cage that has to be shot or swung off. */
@@ -16382,7 +16697,8 @@ export class World {
     const cfg = STORM_CLOUD;
     const w = this.spawnWorm(x, y);
     if (!w) return null;
-    const puff = new Float32Array(28);
+    // One breathing scale per rendered square (three 7x4 layers).
+    const puff = new Float32Array(84);
     for (let i = 0; i < puff.length; i++) puff[i] = this.rng.range(0.82, 1.18);
     w.bossKind = MINIBOSS.STORM_CLOUD;
     w.mega = false;
@@ -16454,9 +16770,13 @@ export class World {
         : Math.cos(st.clock * 0.6) * cfg.trackSpeed * 0.4;
     w.x += drift * dt;
     w.y += Math.max(-cfg.repelSpeed, Math.min(cfg.repelSpeed, (homeY - w.y) * 2.6)) * dt;
-    const xPad = this.bossEdgePad(w);
-    w.x = Math.max(this.arena.bounds.left + xPad, Math.min(this.arena.bounds.right - xPad, w.x));
-    w.y = Math.max(this.arena.bounds.top + r * 0.3, Math.min(this.arena.bounds.top + cfg.hoverTop + cfg.hoverBob, w.y));
+    // No arena clamp: like the Mega Worm, the body is a flying boss and may overhang or
+    // leave the floor entirely. Only its own ceiling band holds it, because that band is
+    // its ground. The band is relative to `hoverTop`, not to a radius fraction, so a much
+    // larger body can sit with its underside at the same height instead of being pushed
+    // down into the arena.
+    const bandTop = this.arena.bounds.top + cfg.hoverTop;
+    w.y = Math.max(bandTop - cfg.hoverBob, Math.min(bandTop + cfg.hoverBob, w.y));
     w.angle = Math.PI * 0.5;
 
     if (st.contactCd > 0) st.contactCd = Math.max(0, st.contactCd - dt);
@@ -16589,6 +16909,11 @@ export class World {
     return w.hitR * 0.5;
   }
 
+  /** True while any mini-boss body is on the floor. Presentation polls this. */
+  minibossAlive(): boolean {
+    return this.minibossLiveCount() > 0;
+  }
+
   /** Live bodies of one mini-boss kind; -1 counts every mini-boss on the floor. */
   private minibossLiveCount(kind = -1): number {
     let live = 0;
@@ -16604,18 +16929,125 @@ export class World {
   }
 
   /**
+   * Idle Hands, Starfish and File Blob are smaller-arena bosses; edge ingress can load
+   * them offscreen. Anchor them around the nearest live player instead. Hands ring the
+   * player, the other two sit a short distance toward the arena center. Mega Worm and
+   * Storm Cloud keep their own staging points.
+   */
+  private bossNearPlayer(body: string, x?: number, y?: number): { x: number; y: number } {
+    const p = this.threatTarget(x ?? this.centerX, y ?? this.centerY);
+    if (!p || !p.alive) return { x: x ?? this.centerX, y: y ?? this.centerY };
+    if (body === 'idle-hands') return { x: p.x, y: p.y };
+    let dx = this.centerX - p.x;
+    let dy = this.centerY - p.y;
+    if (Math.hypot(dx, dy) < 1) {
+      dx = (x ?? this.centerX) - p.x;
+      dy = (y ?? this.centerY) - p.y;
+    }
+    if (Math.hypot(dx, dy) < 1) {
+      dx = 1;
+      dy = 0;
+    }
+    const d = Math.hypot(dx, dy);
+    const distance = body === 'blob' ? 360 : 440;
+    const pad = body === 'blob' ? BLOB.rMax : STARFISH.armReach + STARFISH.armRadius;
+    const b = this.arena.bounds;
+    return {
+      x: Math.max(b.left + pad, Math.min(b.right - pad, p.x + (dx / d) * distance)),
+      y: Math.max(b.top + pad, Math.min(b.bottom - pad, p.y + (dy / d) * distance)),
+    };
+  }
+
+  /**
    * The single entry point for mini-bosses. Anything that can spawn a threat can spawn one
    * of these by id; the wave gate and any scripted level call this, not a bespoke method.
    */
   spawnMiniboss(kind: number, x?: number, y?: number): Worm | null {
     const def = minibossDef(kind);
     if (!def) return null;
-    if (def.body === 'segmented-worm') return this.spawnMegaWorm(x, y, kind);
-    if (def.body === 'idle-hands') return this.spawnIdleHands(x ?? this.centerX, y ?? this.centerY);
-    if (def.body === 'starfish') return this.spawnStarfish(x ?? this.centerX, y ?? this.centerY);
-    if (def.body === 'blob') return this.spawnBlob(x ?? this.centerX, y ?? this.centerY);
-    if (def.body === 'storm-cloud') return this.spawnStormCloud(x ?? this.centerX, (y ?? this.centerY) - 180);
-    return null;
+    let boss: Worm | null = null;
+    if (def.body === 'segmented-worm') boss = this.spawnMegaWorm(x, y, kind);
+    else if (def.body === 'idle-hands') {
+      const p = this.bossNearPlayer('idle-hands', x, y);
+      boss = this.spawnIdleHands(p.x, p.y);
+    } else if (def.body === 'starfish') {
+      const p = this.bossNearPlayer('starfish', x, y);
+      boss = this.spawnStarfish(p.x, p.y, true);
+    } else if (def.body === 'blob') {
+      const p = this.bossNearPlayer('blob', x, y);
+      boss = this.spawnBlob(p.x, p.y);
+    } else if (def.body === 'storm-cloud') {
+      boss = this.spawnStormCloud(x ?? this.centerX, (y ?? this.centerY) - 180);
+    }
+    // Storm Cloud still uses the combat camera cue; the four staged bosses own the
+    // room for their entrance beat below.
+    if (boss && kind !== MINIBOSS.STORM_CLOUD && this.mode === 'gauntlet' && !this.attractMode) {
+      this.beginBossIntro(kind, boss);
+    }
+    return boss;
+  }
+
+  /** Start the frozen entrance beat for one of the staged bosses. */
+  private beginBossIntro(kind: number, boss: Worm): void {
+    if (this.bossIntro) return;
+    const def = minibossDef(kind);
+    if (!def) return;
+    const duration =
+      kind === MINIBOSS.MEGA_WORM
+        ? MEGA_WORM.entrance.time + MEGA_WORM.entrance.roar + 0.5
+        : kind === MINIBOSS.BLOB
+          ? BLOB.introTime
+          : kind === MINIBOSS.IDLE_HANDS
+            ? IDLE_HANDS.introTime
+            : STARFISH.introTime;
+    this.bossIntro = { kind, label: def.label, t: 0, duration, x: boss.x, y: boss.y };
+  }
+
+  /**
+   * The entrance owns the simulation clock: only the boss reveal advances, and the
+   * camera reads `bossIntro` from the world. Inputs are cleared by `step`.
+   */
+  private updateBossIntro(dt: number): void {
+    const intro = this.bossIntro;
+    if (!intro) return;
+    intro.t = Math.min(intro.duration, intro.t + dt);
+    let focus: Worm | null = null;
+    let sx = 0;
+    let sy = 0;
+    let count = 0;
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active || w.bossKind !== intro.kind || w.armState) continue;
+      if (!focus) focus = w;
+      if (w.spawnT > 0) w.spawnT = Math.max(0, w.spawnT - dt);
+      sx += w.x;
+      sy += w.y;
+      count++;
+    }
+    if (focus) {
+      if (intro.kind === MINIBOSS.MEGA_WORM) {
+        if (focus.entryT > 0) this.updateMegaEntrance(focus, dt, false);
+        else if (focus.roarT > 0) focus.roarT = Math.max(0, focus.roarT - dt);
+        this.followMegaChain(focus, dt);
+        intro.x = focus.x;
+        intro.y = focus.y;
+      } else if (count > 0) {
+        intro.x = sx / count;
+        intro.y = sy / count;
+      }
+    }
+    if (intro.t >= intro.duration) {
+      for (let i = 0; i < this.worms.length; i++) {
+        const w = this.worms[i];
+        if (!w.active || w.bossKind !== intro.kind) continue;
+        w.spawnT = 0;
+        if (w.mega) {
+          w.entryT = 0;
+          w.roarT = 0;
+        }
+      }
+      this.bossIntro = null;
+    }
   }
 
   private megaTotalHp(w: Worm): number {
@@ -16635,7 +17067,12 @@ export class World {
       }
     }
     if (!w) return null;
-    const spawn = x !== undefined && y !== undefined ? { x, y } : this.arena.spawns[this.wormAnchorIndex()];
+    const b = this.arena.bounds;
+    const maxHalf = Math.max(b.right - b.left, b.bottom - b.top) * 0.5;
+    const hintX = x ?? this.centerX;
+    const hintY = y ?? this.centerY;
+    let hintA = Math.atan2(hintY - this.centerY, hintX - this.centerX);
+    if (Math.hypot(hintX - this.centerX, hintY - this.centerY) < 1) hintA = this.rng.range(0, Math.PI * 2);
     w.active = true;
     w.mega = true;
     w.bossKind = kind;
@@ -16643,9 +17080,13 @@ export class World {
     w.hitR = MEGA_WORM.headRadius;
     w.segR = MEGA_WORM.segmentRadius;
     w.shrink = 1;
-    const spawnPad = this.bossEdgePad(w);
-    w.x = Math.max(this.arena.bounds.left + spawnPad, Math.min(this.arena.bounds.right - spawnPad, spawn.x));
-    w.y = Math.max(this.arena.bounds.top + spawnPad, Math.min(this.arena.bounds.bottom - spawnPad, spawn.y));
+    // Start the head outside the floor. The entrance route below brings it around
+    // the arena and over the fight instead of dropping it into the player's lap.
+    w.entryA = hintA;
+    w.entryR = maxHalf + MEGA_WORM.headRadius + MEGA_WORM.entrance.offscreen;
+    w.entryT = MEGA_WORM.entrance.time;
+    w.x = this.centerX + Math.cos(hintA) * w.entryR;
+    w.y = this.centerY + Math.sin(hintA) * w.entryR;
     w.prevX = w.x;
     w.prevY = w.y;
     w.vx = 0;
@@ -16653,13 +17094,19 @@ export class World {
     w.kx = 0;
     w.ky = 0;
     w.angle = Math.atan2(this.centerY - w.y, this.centerX - w.x);
+    w.flyPhase = 0;
+    w.flyT = 0;
+    w.flyCd = MEGA_WORM.entrance.handoff;
+    w.flyDX = Math.cos(w.angle);
+    w.flyDY = Math.sin(w.angle);
+    w.roarT = 0;
     w.anchorX = w.x;
     w.anchorY = w.y;
     w.patrolX = w.x;
     w.patrolY = w.y;
     w.aggroT = 0;
     w.segCount = MEGA_WORM.segments;
-    w.spawnT = MEGA_WORM.spawnTime;
+    w.spawnT = 0;
     w.touchCd = 0;
     w.hitFlash = 0;
     w.infected = false;
@@ -16694,14 +17141,8 @@ export class World {
       // Arc-length step keeps neighbouring plates about one spacing apart on the spiral.
       curlA += MEGA_WORM.spacing / Math.max(1, curlR);
       curlR += MEGA_WORM.spacing * curl.grow;
-      const sx = Math.max(
-        this.arena.bounds.left + w.segR,
-        Math.min(this.arena.bounds.right - w.segR, w.x + Math.cos(curlA) * curlR),
-      );
-      const sy = Math.max(
-        this.arena.bounds.top + w.segR,
-        Math.min(this.arena.bounds.bottom - w.segR, w.y + Math.sin(curlA) * curlR),
-      );
+      const sx = w.x + Math.cos(curlA) * curlR;
+      const sy = w.y + Math.sin(curlA) * curlR;
       w.segX[i] = sx;
       w.segY[i] = sy;
       w.segPrevX[i] = sx;
@@ -16851,6 +17292,15 @@ export class World {
     const inY = to > 0 ? parent.segY[to - 1] : parent.y;
     piece.angle = Math.atan2(inY - piece.y, inX - piece.x);
     piece.phase = parent.phase + 1.7;
+    piece.flyPhase = 0;
+    piece.flyT = 0;
+    piece.flyCd = MEGA_WORM.flyby.openDelay * 0.6;
+    piece.flyDX = Math.cos(piece.angle);
+    piece.flyDY = Math.sin(piece.angle);
+    piece.roarT = 0;
+    piece.entryT = 0;
+    piece.entryA = 0;
+    piece.entryR = 0;
     piece.spawnT = MEGA_WORM.spawnTime * 0.55;
     piece.touchCd = 0.7;
     piece.hitFlash = 0.22;
@@ -16920,6 +17370,7 @@ export class World {
     if (w.whipCd > 0) w.whipCd = Math.max(0, w.whipCd - dt);
     if (w.acidT > 0) w.acidT = Math.max(0, w.acidT - dt);
     if (w.eyeT > 0) w.eyeT = Math.max(0, w.eyeT - dt);
+    if (w.flyCd > 0) w.flyCd = Math.max(0, w.flyCd - dt);
     if (w.spawnT > 0) {
       w.spawnT = Math.max(0, w.spawnT - dt);
       w.vx = 0;
@@ -16936,127 +17387,175 @@ export class World {
     }
 
     w.legs = w.segCount === 0;
+    if (w.entryT > 0) {
+      this.updateMegaEntrance(w, dt);
+      return;
+    }
     const p = this.threatTarget(w.x, w.y);
     const pdx = p.x - w.x;
     const pdy = p.y - w.y;
     const dist = Math.hypot(pdx, pdy);
-    const awake = p.alive && p.cloakT <= 0 && dist < MEGA_WORM.aggroRadius;
-    if (awake) w.aggroT = MEGA_WORM.aggroTime;
-    else w.aggroT = Math.max(0, w.aggroT - dt);
-
-    // Body whip first: it owns the whole body for a beat, so nothing else may steer.
-    if (w.whipT > 0 || (w.whipCd <= 0 && awake && !w.legs && dist < MEGA_WORM.whip.range)) {
-      if (w.whipT <= 0) this.beginMegaWhip(w, pdx, pdy);
+    // The tail sweep is the one committed ground move in a flyover kit: it waits for a
+    // long cooldown, refuses to start while a pass is due, and needs a body near the
+    // back half. The head freezes and the chain is dragged around the pivot.
+    if (w.whipT > 0) {
       this.stepMegaWhip(w, dt);
       this.followMegaChain(w, dt);
       this.megaTouch(w, p);
       return;
     }
-
-    const attack = w.legs ? MEGA_WORM.legs : MEGA_WORM.bite;
-    let moving = false;
-    if (w.biteT > 0) {
-      const elapsed = attack.windup + attack.active + attack.recovery - w.biteT;
-      const biteTurn = (w.legs ? MEGA_WORM.legs.turnRateBite : MEGA_WORM.bite.turnRate) * dt;
-      const face = Math.atan2(w.biteDirY, w.biteDirX);
-      let diff = face - w.angle;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      w.angle += Math.max(-biteTurn, Math.min(biteTurn, diff));
-      if (elapsed < attack.windup) {
-        w.vx = 0;
-        w.vy = 0;
-      } else if (elapsed < attack.windup + attack.active) {
-        w.vx = w.biteDirX * attack.lungeSpeed;
-        w.vy = w.biteDirY * attack.lungeSpeed;
-      } else {
-        w.vx = 0;
-        w.vy = 0;
-      }
-      w.biteT = Math.max(0, w.biteT - dt);
-      moving = true;
-      const reach = w.hitR + PLAYER.radius + attack.reach;
-      if (
-        elapsed >= attack.windup &&
-        elapsed < attack.windup + attack.active &&
-        !w.biteHit &&
-        p.alive &&
-        p.cloakT <= 0
-      ) {
-        const bdx = p.x - w.x;
-        const bdy = p.y - w.y;
-        const forward = bdx * w.biteDirX + bdy * w.biteDirY;
-        if (
-          forward > 0 &&
-          bdx * bdx + bdy * bdy <= reach * reach &&
-          !this.lineBlocked(w.x, w.y, p.x, p.y)
-        ) {
-          const d = Math.hypot(bdx, bdy) || 1;
-          w.biteHit = true;
-          w.aggroT = MEGA_WORM.aggroTime;
-          this.damagePlayer(
-            p,
-            attack.damage,
-            -1,
-            bdx / d,
-            bdy / d,
-            attack.knockback,
-            SRC.WORM,
-            this.worms.indexOf(w),
-          );
-        }
+    if (
+      w.flyPhase === 0 &&
+      w.whipCd <= 0 &&
+      w.segCount >= 3 &&
+      w.flyCd > MEGA_WORM.whip.minLead &&
+      p.alive &&
+      p.cloakT <= 0
+    ) {
+      const tx = this.megaNodeX(w, w.segCount);
+      const ty = this.megaNodeY(w, w.segCount);
+      if (Math.hypot(p.x - tx, p.y - ty) < MEGA_WORM.whip.triggerRange) {
+        this.beginMegaWhip(w, pdx, pdy);
+        this.stepMegaWhip(w, dt);
+        this.followMegaChain(w, dt);
+        return;
       }
     }
+    if (p.alive && p.cloakT <= 0 && dist < MEGA_WORM.aggroRadius) {
+      w.aggroT = MEGA_WORM.aggroTime;
+    } else {
+      w.aggroT = Math.max(0, w.aggroT - dt);
+    }
 
-    if (!moving) {
-      // A slow body: the mass is the threat, not the pursuit.
-      let tx = p.x;
-      let ty = p.y;
-      if (w.aggroT <= 0) {
-        tx = w.anchorX + Math.cos(w.phase * 0.32) * MEGA_WORM.patrolRadius;
-        ty = w.anchorY + Math.sin(w.phase * 0.27) * MEGA_WORM.patrolRadius * 0.7;
-      }
-      let desired = Math.atan2(ty - w.y, tx - w.x);
-      desired += Math.sin(w.phase * 0.9) * 0.08;
-      let diff = desired - w.angle;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      const turn = (w.legs ? MEGA_WORM.legs.turnRate : MEGA_WORM.turnRate) * dt;
-      w.angle += Math.max(-turn, Math.min(turn, diff));
-      const speed = w.legs
-        ? MEGA_WORM.speed * MEGA_WORM.legs.speedMult
-        : MEGA_WORM.speed * (w.aggroT > 0 ? 1 : MEGA_WORM.patrolSpeedMult);
-      w.vx = Math.cos(w.angle) * speed;
-      w.vy = Math.sin(w.angle) * speed;
-
-      if (
-        w.biteCd <= 0 &&
-        awake &&
-        dist < attack.range &&
-        !this.lineBlocked(w.x, w.y, p.x, p.y)
-      ) {
+    const fly = MEGA_WORM.flyby;
+    if (w.flyPhase === 0) {
+      // A wide circuit outside the fight, then a committed pass through the target.
+      // The orbit point keeps moving, so a long kiosk loop does not repeat one angle.
+      const orbit = fly.orbitRadius;
+      const a = w.phase * fly.orbitRate;
+      const tx = p.x + Math.cos(a) * orbit;
+      const ty = p.y + Math.sin(a) * orbit;
+      this.steerMega(w, tx, ty, fly.cruiseSpeed, fly.turnRate, dt);
+      if (w.flyCd <= 0 && p.alive && p.cloakT <= 0) this.beginMegaFlyby(w, p);
+    } else if (w.flyPhase === 1) {
+      w.flyT += dt;
+      const speed = fly.speed * (w.legs ? fly.legsSpeedMult : 1);
+      w.vx = w.flyDX * speed;
+      w.vy = w.flyDY * speed;
+      this.faceMega(w, Math.atan2(w.flyDY, w.flyDX), fly.faceRate, dt);
+      if (!w.biteHit && p.alive && p.cloakT <= 0 && dist < fly.snapRange) {
+        // One maw pass per committed run. The body still hurts on contact; this is the
+        // aimed bite that makes a pass worth dodging rather than merely enduring.
         const d = dist || 1;
-        w.biteT = attack.windup + attack.active + attack.recovery;
-        w.biteCd = attack.cooldown;
-        w.biteHit = false;
-        w.biteDirX = pdx / d;
-        w.biteDirY = pdy / d;
+        w.biteHit = true;
+        w.aggroT = MEGA_WORM.aggroTime;
+        this.damagePlayer(
+          p,
+          fly.snapDamage,
+          -1,
+          pdx / d,
+          pdy / d,
+          fly.snapKnockback,
+          SRC.WORM,
+          this.worms.indexOf(w),
+        );
+      }
+      const passed = (w.x - p.x) * w.flyDX + (w.y - p.y) * w.flyDY > fly.exitRange;
+      if (passed || w.flyT >= fly.passTime) {
+        w.flyPhase = 2;
+        w.flyT = 0;
+      }
+    } else {
+      w.flyT += dt;
+      const speed = fly.speed * fly.exitSpeedMult;
+      w.vx = w.flyDX * speed;
+      w.vy = w.flyDY * speed;
+      this.faceMega(w, Math.atan2(w.flyDY, w.flyDX), fly.faceRate, dt);
+      if (w.flyT >= fly.recoverTime) {
+        w.flyPhase = 0;
+        w.flyT = 0;
+        w.flyCd = fly.cooldown * (w.legs ? 0.55 : 1);
       }
     }
 
+    // Flight has no arena clamp: the head can leave the floor on a pass and come back.
     w.x += (w.vx + w.kx) * dt;
     w.y += (w.vy + w.ky) * dt;
     w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
     w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
-    if (!this.openWalls) {
-      const pad = this.bossEdgePad(w);
-      w.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.x));
-      w.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.y));
-    }
-    this.pushOutOfCover(w, w.hitR);
     this.followMegaChain(w, dt);
     this.megaTouch(w, p);
     if (w.legs) this.spitAcid(w, p);
+  }
+
+  /**
+   * The entrance is intentionally outside the normal orbit: one long, readable arc that
+   * starts beyond the arena lip, sweeps around it and closes over the floor. It has no
+   * bite, whip or acid; the first combat pass starts only after the handoff.
+   */
+  private updateMegaEntrance(w: Worm, dt: number, allowTouch = true): void {
+    const cfg = MEGA_WORM.entrance;
+    w.entryT = Math.max(0, w.entryT - dt);
+    const elapsed = cfg.time - w.entryT;
+    const raw = Math.min(1, elapsed / cfg.time);
+    const eased = raw * raw * (3 - 2 * raw);
+    const half = Math.max(this.arena.bounds.right - this.arena.bounds.left, this.arena.bounds.bottom - this.arena.bounds.top) * 0.5;
+    const angle = w.entryA + cfg.sweep * (0.08 + 0.92 * eased);
+    const radius = w.entryR + (half * cfg.endRadiusMult - w.entryR) * eased;
+    this.steerMega(
+      w,
+      this.centerX + Math.cos(angle) * radius,
+      this.centerY + Math.sin(angle) * radius,
+      cfg.speed,
+      cfg.turnRate,
+      dt,
+    );
+    w.x += (w.vx + w.kx) * dt;
+    w.y += (w.vy + w.ky) * dt;
+    w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
+    w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
+    this.followMegaChain(w, dt);
+    if (allowTouch) this.megaTouch(w, this.threatTarget(w.x, w.y));
+    if (w.entryT <= 0) {
+      w.entryT = 0;
+      w.flyPhase = 0;
+      w.flyT = 0;
+      w.flyCd = cfg.handoff;
+      // The lap ends in a bird cry: the event owns the audio and the screen shake, the
+      // roar timer owns the maw/ring beat that was already here.
+      this.emit(EV.MEGA_CRY, -1, w.x, w.y, w.hitR);
+      w.roarT = cfg.roar;
+    }
+  }
+
+  /** Turn the head toward a point and cruise at a fixed speed. */
+  private steerMega(w: Worm, tx: number, ty: number, speed: number, turnRate: number, dt: number): void {
+    this.faceMega(w, Math.atan2(ty - w.y, tx - w.x), turnRate, dt);
+    w.vx = Math.cos(w.angle) * speed;
+    w.vy = Math.sin(w.angle) * speed;
+  }
+
+  /** Angular approach with a hard per-frame turn cap, so a pass is readable. */
+  private faceMega(w: Worm, desired: number, turnRate: number, dt: number): void {
+    let diff = desired - w.angle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const turn = turnRate * dt;
+    w.angle += Math.max(-turn, Math.min(turn, diff));
+  }
+
+  /** Commit to a pass: lock a direction through the target and keep it until the exit. */
+  private beginMegaFlyby(w: Worm, p: Player): void {
+    const fly = MEGA_WORM.flyby;
+    const side = Math.sin(w.phase * 1.7) >= 0 ? 1 : -1;
+    const a = Math.atan2(p.y - w.y, p.x - w.x) + side * fly.angleOffset;
+    w.flyDX = Math.cos(a);
+    w.flyDY = Math.sin(a);
+    w.flyPhase = 1;
+    w.flyT = 0;
+    w.biteHit = false;
+    w.aggroT = MEGA_WORM.aggroTime;
+    w.biteCd = fly.cooldown;
   }
 
   private followMegaChain(w: Worm, dt: number): void {
@@ -17076,19 +17575,8 @@ export class World {
         w.segY[i] += (targetY - w.segY[i]) * k;
         w.segAngle[i] = Math.atan2(ay - w.segY[i], ax - w.segX[i]);
       }
-      w.segX[i] = Math.max(
-        this.arena.bounds.left + w.segR,
-        Math.min(this.arena.bounds.right - w.segR, w.segX[i]),
-      );
-      w.segY[i] = Math.max(
-        this.arena.bounds.top + w.segR,
-        Math.min(this.arena.bounds.bottom - w.segR, w.segY[i]),
-      );
-      for (let s = 0; s < this.solids.length; s++) {
-        if (!circleRect(w.segX[i], w.segY[i], w.segR, this.solids[s], hitScratch)) continue;
-        w.segX[i] = hitScratch.px;
-        w.segY[i] = hitScratch.py;
-      }
+      // Plates hang above the floor too: no bounds clamp and no cover resolve, so the
+      // chain can trail over a pillar or past the arena lip instead of bunching up.
     }
   }
 
@@ -17202,7 +17690,7 @@ export class World {
       -1,
       hx / d,
       hy / d,
-      MEGA_WORM.knockback * 0.6,
+      MEGA_WORM.knockback,
       SRC.WORM,
       this.worms.indexOf(w),
     );
@@ -17216,7 +17704,6 @@ export class World {
     const dx = p.x - w.x;
     const dy = p.y - w.y;
     if (dx * dx + dy * dy > cfg.acidRange * cfg.acidRange) return;
-    if (this.lineBlocked(w.x, w.y, p.x, p.y)) return;
     w.acidT = cfg.acidInterval;
     const base = Math.atan2(dy, dx);
     const sx = w.x + Math.cos(base) * (w.hitR + 6);

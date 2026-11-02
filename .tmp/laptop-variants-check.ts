@@ -7,11 +7,10 @@ const fail = (message: string): never => {
   throw new Error(message);
 };
 
-if (ARENAS.length !== 34) fail(`expected 34 arenas, got ${ARENAS.length}`);
-const sheetArena = ARENAS[30];
-const chatArena = ARENAS[31];
-if (sheetArena.id !== 30 || sheetArena.name !== 'SPREADSHEET') fail('SPREADSHEET is not arena 30');
-if (chatArena.id !== 31 || chatArena.name !== 'CHAT') fail('CHAT is not arena 31');
+const sheetArena = ARENAS.find((arena) => arena.id === 30) ?? fail('SPREADSHEET is not arena 30');
+const chatArena = ARENAS.find((arena) => arena.id === 31) ?? fail('CHAT is not arena 31');
+if (sheetArena.name !== 'SPREADSHEET') fail('SPREADSHEET is not arena 30');
+if (chatArena.name !== 'CHAT') fail('CHAT is not arena 31');
 
 // --- SPREADSHEET ---------------------------------------------------------------
 const sheetDef = sheetArena.laptop?.sheet ?? fail('SPREADSHEET has no sheet grid');
@@ -80,8 +79,10 @@ if (sheetWorld.laptopCursor !== 0) fail('round reset did not rewind the cursor')
 // --- CHAT ----------------------------------------------------------------------
 const chatLap = chatArena.laptop ?? fail('CHAT has no laptop record');
 if (chatLap.variant !== 'chat') fail('CHAT is not the chat variant');
-if (chatLap.messages.length !== 4) fail('CHAT expects four bubble lines');
+if (chatLap.messages.length !== 8) fail('CHAT expects eight bubble lines');
+if (chatLap.cards !== 8) fail('CHAT expects eight bubbles on the conveyor');
 if (chatLap.messages.some((message) => message.layout.length > 0)) fail('CHAT messages must not add preview cover');
+if (chatLap.cardGap < PLAYER.radius * 3) fail(`chat gap ${chatLap.cardGap} is too narrow for bodies`);
 const bubble = chatLap.bubbleW ?? 0.58;
 if (!(bubble > 0.3 && bubble < 1)) fail('chat bubbles must leave an open lane');
 
@@ -109,6 +110,42 @@ for (let t = 0; t < 14; t += 0.5) {
 }
 if (buildSnapshotHazards(chatWorld) !== null) fail('CHAT leaked into SnapshotHazards');
 if (!(laptopCardY(chatLap, 0, 0) > laptopCardY(chatLap, 0, 1))) fail('chat card clock does not travel upward');
+// Each bubble wraps below the pane on its own; a wrap must never happen on-screen or move the
+// whole list at once.
+const chatTop = chatLap.inbox.y;
+const chatBottom = chatTop + chatLap.inbox.h;
+const chatStep = chatLap.cardH + chatLap.cardGap;
+const chatCycle = (chatStep * chatLap.cards) / chatLap.speed;
+for (let i = 0; i < chatLap.cards; i++) {
+  let prev = laptopCardY(chatLap, i, 0);
+  let wraps = 0;
+  for (let t = SIM_DT; t <= chatCycle + SIM_DT; t += SIM_DT) {
+    const y = laptopCardY(chatLap, i, t);
+    const dy = y - prev;
+    if (dy > 0.001) {
+      wraps += 1;
+      if (!(prev + chatLap.cardH <= chatTop && y >= chatBottom)) {
+        fail(`bubble ${i} wrapped on-screen at t=${t.toFixed(2)}`);
+      }
+    }
+    prev = y;
+  }
+  if (wraps !== 1) fail(`bubble ${i} wrapped ${wraps} times in one cycle`);
+}
+// Visible bubbles keep the authored gap all the way through the cycle.
+for (let t = 0; t < chatCycle; t += 1) {
+  const tops: number[] = [];
+  for (let i = 0; i < chatLap.cards; i++) {
+    const y = laptopCardY(chatLap, i, t);
+    if (y >= chatTop && y + chatLap.cardH <= chatBottom) tops.push(y);
+  }
+  tops.sort((a, b) => a - b);
+  for (let i = 1; i < tops.length; i++) {
+    if (tops[i] - (tops[i - 1] + chatLap.cardH) < chatLap.cardGap - 0.01) {
+      fail(`visible bubbles crowd each other at t=${t.toFixed(1)}`);
+    }
+  }
+}
 
 console.log(
   JSON.stringify({

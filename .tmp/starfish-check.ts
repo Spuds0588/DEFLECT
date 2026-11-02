@@ -149,4 +149,86 @@ const centers = (world: World) =>
   console.log(JSON.stringify({ cleared: centers(world).length }));
 }
 
+// --- scale ------------------------------------------------------------------
+{
+  const { world, priv, center } = fresh();
+  if (center.hitR !== STARFISH.radius) fail(`the center is ${center.hitR} wide instead of ${STARFISH.radius}`);
+  const arms = armsOf(world, center.starfish!.group);
+  for (const arm of arms) {
+    if (arm.hitR !== STARFISH.armRadius) fail(`an arm is ${arm.hitR} wide instead of ${STARFISH.armRadius}`);
+    const off = Math.hypot(arm.x - center.x, arm.y - center.y);
+    if (Math.abs(off - STARFISH.armReach) > 0.01) {
+      fail(`an arm sits ${off.toFixed(1)} from the center instead of ${STARFISH.armReach}`);
+    }
+  }
+  if (Math.abs(priv.bossEdgePad(center) - STARFISH.radius * 0.5) > 1e-6) {
+    fail('the boss overhang pad is not half the center radius');
+  }
+  console.log(
+    JSON.stringify({
+      scale: {
+        core: center.hitR,
+        arm: STARFISH.armRadius,
+        width: STARFISH.armWidth,
+        reach: STARFISH.armReach,
+        mouth: STARFISH.mouth.radius,
+      },
+    }),
+  );
+}
+
+// --- pillars and walls never shove the boss --------------------------------
+{
+  const covered = ARENAS.find(
+    (a) => a.pillars.length > 0 && a.bounds.right - a.bounds.left > 1400 && a.bounds.bottom - a.bounds.top > 900,
+  );
+  if (!covered) fail('no arena with cover is available for the phasing check');
+  const midX = (covered!.bounds.left + covered!.bounds.right) * 0.5;
+  const midY = (covered!.bounds.top + covered!.bounds.bottom) * 0.5;
+  let solid = covered!.pillars[0];
+  let bestD = Infinity;
+  for (const s of covered!.pillars) {
+    const d = Math.hypot(s.x + s.w * 0.5 - midX, s.y + s.h * 0.5 - midY);
+    if (d < bestD) {
+      bestD = d;
+      solid = s;
+    }
+  }
+  const world = new World('gauntlet', ['STAR'], 0, covered!);
+  const priv = world as any;
+  for (const w of world.worms) w.active = false;
+  for (const v of world.viruses) v.active = false;
+  for (const s of world.sentries) s.active = false;
+  for (const e of world.errors) e.active = false;
+  const p = world.players[0];
+  const cx = solid.x + solid.w * 0.5;
+  const cy = solid.y + solid.h * 0.5;
+  p.x = cx + 700;
+  p.y = cy;
+  p.alive = true;
+  p.hp = p.maxHp = 6;
+  p.iframes = 0;
+  p.cloakT = 0;
+  const center = priv.spawnMiniboss(MINIBOSS.STARFISH, cx, cy) as Worm;
+  center.x = cx;
+  center.y = cy;
+  center.spawnT = 0;
+  const arm = armsOf(world, center.starfish!.group)[0];
+  arm.spawnT = 0;
+  const half = Math.min(solid.w, solid.h) * 0.5;
+  for (let i = 0; i < 4; i++) priv.updateWorm(center, SIM_DT);
+  const drift = Math.hypot(center.x - cx, center.y - cy);
+  if (drift >= half) fail(`cover shoved the center ${drift.toFixed(1)} out of a ${solid.w}x${solid.h} pillar`);
+  // A detached arm crawls, but its path is never resolved against cover either.
+  priv.damageWorm(arm, STARFISH.armHp, 0, 1, 0, 0);
+  arm.x = cx;
+  arm.y = cy;
+  for (let i = 0; i < 4; i++) priv.updateWorm(arm, SIM_DT);
+  const armDrift = Math.hypot(arm.x - cx, arm.y - cy);
+  if (armDrift >= half) fail(`cover shoved a detached arm ${armDrift.toFixed(1)} out of the pillar`);
+  console.log(
+    JSON.stringify({ phasing: { pillar: `${solid.w}x${solid.h}`, center: Math.round(drift), arm: Math.round(armDrift) } }),
+  );
+}
+
 console.log('starfish-check: OK');

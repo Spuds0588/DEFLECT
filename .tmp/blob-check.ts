@@ -1,4 +1,4 @@
-/** File blob probe: icon health, shed, shrink, toss glue, chip-out, Ghost phase and kill credit. */
+/** File blob probe: icon health, shed, shrink, slam, toss glue, chip-out, Ghost phase and kill credit. */
 import { BLOB, SIM_DT } from '../src/game/config';
 import { MINIBOSS, MINIBOSSES } from '../src/game/minibosses';
 import { ARENAS } from '../src/game/arenas';
@@ -59,11 +59,35 @@ function fresh(): { world: World; priv: any; blob: Worm } {
   console.log(JSON.stringify({ shrink: { from: Math.round(r0), to: Math.round(blob.hitR), dead: !blob.active } }));
 }
 
+// --- close range: high jump slam --------------------------------------------
+{
+  const { world, priv, blob } = fresh();
+  const p = world.players[0];
+  p.x = blob.x + 300;
+  p.y = blob.y;
+  blob.blob!.cd = 0;
+  blob.blob!.state = 0;
+  p.hp = 8;
+  let sawWindup = false;
+  let sawAir = false;
+  let sawLanding = false;
+  for (let i = 0; i < 300; i++) {
+    priv.updateWorm(blob, SIM_DT);
+    if (blob.blob!.state === 4) sawWindup = true;
+    if (blob.blob!.state === 5) sawAir = true;
+    if (blob.blob!.state === 6) sawLanding = true;
+  }
+  if (!sawWindup || !sawAir || !sawLanding) fail('the close-range slam did not complete its windup/air/landing cycle');
+  if (p.hp >= 8) fail('the slam landing did no damage');
+  if (p.glueT > 0) fail('the slam incorrectly applied the toss glue');
+  console.log(JSON.stringify({ slam: { windup: sawWindup, air: sawAir, landing: sawLanding, hp: p.hp } }));
+}
+
 // --- toss, glue and chip-out ------------------------------------------------
 {
   const { world, priv, blob } = fresh();
   const p = world.players[0];
-  p.x = blob.x + 260;
+  p.x = blob.x + BLOB.slam.range + 50;
   p.y = blob.y;
   blob.blob!.cd = 0;
   blob.blob!.state = 0;

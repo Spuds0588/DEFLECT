@@ -97,6 +97,19 @@ export class CameraDirector {
     this.refresh();
   }
 
+  /** Moves the active rig(s) at a priority without restarting their blend clock. */
+  track(x: number, y: number, priority: number): void {
+    let changed = false;
+    for (let i = 0; i < this.rigs.length; i++) {
+      const r = this.rigs[i];
+      if (!r.active || r.priority !== priority) continue;
+      r.x = x;
+      r.y = y;
+      changed = true;
+    }
+    if (changed) this.refresh();
+  }
+
   /** Advances every active rig and picks the winner. Call once per rendered frame. */
   update(dt: number): void {
     for (let i = 0; i < this.rigs.length; i++) {

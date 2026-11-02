@@ -1,6 +1,6 @@
 import type { AssaultPortal, Fragment } from './types';
 import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, STARFISH, BLOB, STORM_CLOUD, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
-import type { AimMark, CopyMark, InvaderShot } from './types';
+import type { AimMark, BossIntro, CopyMark, InvaderShot } from './types';
 import {
   discArmAngle,
   discArmLength,
@@ -17,7 +17,9 @@ import {
   scannerPhaseAt,
   SCANNER_STATE,
   faxHeadX,
+  faxHeadY,
   faxPhaseAt,
+  faxRowAt,
   FAX_STATE,
   plugPhaseAt,
   PLUG_STATE,
@@ -30,11 +32,12 @@ import {
   SATELLITE_SOLAR_STATE,
   carProgressAt,
   carRouteAt,
+  carRouteLength,
   flipRowFlapProgressAt,
   flipRowStateAt,
   flipRowTimeAt,
   flipFieldAt,
-  FIGHTER_SIDE,
+  FIGHTER_TOP,
   flipRowRectAt,
   FLIP_STATE,
   rocketArcAt,
@@ -74,6 +77,15 @@ import { beamReach } from './collision';
 
 /** Reused sheet-cell rect for the SPREADSHEET draw path: one allocation, not one per cell. */
 const laptopCellDraw = { x: 0, y: 0, w: 0, h: 0 };
+
+/**
+ * Idle Hands is a symbol boss, not a stroked anatomical hand. The variation selectors
+ * request the text faces so the shared symbol stack can keep the marks monochrome;
+ * the open palm stays upright and the pointing hand turns along the latched charge.
+ */
+const IDLE_HAND_OPEN = '✋\uFE0E';
+const IDLE_HAND_POINT = '☝\uFE0E';
+const IDLE_HAND_EYE = '👁\uFE0E';
 
 export interface RenderState {
   /** Radar arena sweep clock, seconds since the level began. */
@@ -120,6 +132,8 @@ export interface RenderState {
   gauntletKills?: number;
   wave?: number;
   waveBannerT?: number;
+  /** Frozen mini-boss entrance; absent outside a local boss reveal. */
+  bossIntro?: BossIntro | null;
   gauntletOver?: boolean;
   gauntletTime?: number;
   /** Campaign script running on the gauntlet simulation. */
@@ -465,6 +479,9 @@ export class Renderer {
   private director = new CameraDirector();
   private lastWave = -1;
   private lastCampaignKind = -1;
+  /** One entrance rig per assembled boss, not one per frame. */
+  private bossCueLive = false;
+  private bossCueKind = -1;
   /** Campaign-only presentation state for the holding room's scripted beats. */
   private campaignCiviliansLost = false;
   private campaignBarsFlashT = 0;
@@ -573,6 +590,8 @@ export class Renderer {
     this.director.clear();
     this.lastWave = -1;
     this.lastCampaignKind = -1;
+    this.bossCueLive = false;
+    this.bossCueKind = -1;
     this.lastViewCount = 0;
     this.layoutChanged = false;
     this.lastMasks.fill(0);
@@ -774,6 +793,7 @@ export class Renderer {
     }
 
     if (introDone && this.showUi) this.drawHud(state, t);
+    if (introDone) this.drawBossIntroTitle(state);
     // One readiness dock per local player at a screen corner, and one shared minimap.
     // The minimap sits top-center when there is more than one local, so it belongs to
     // the whole screen rather than to one pane.
@@ -806,6 +826,66 @@ export class Renderer {
             priority: 3,
           });
         }
+      }
+    }
+    // A staged mini-boss owns the camera for its frozen entrance. The rig follows the
+    // live focus because the Mega Worm crosses the room while it swims in.
+    const intro = state.bossIntro;
+    if (intro) {
+      if (!this.bossCueLive || this.bossCueKind !== intro.kind) {
+        this.bossCueLive = true;
+        this.bossCueKind = intro.kind;
+        this.director.play({
+          x: intro.x,
+          y: intro.y,
+          followSlot: -1,
+          zoom: CAMERA.bossIntroZoom,
+          hold: intro.duration + 0.8,
+          blendIn: 0.35,
+          blendOut: 0.55,
+          weight: 1,
+          priority: 5,
+        });
+      } else {
+        this.director.track(intro.x, intro.y, 5);
+      }
+    } else {
+      // Non-staged bosses (Storm Cloud) keep the short combat cue.
+      let boss: Worm | null = null;
+      if (state.worms) {
+        for (let i = 0; i < state.worms.length; i++) {
+          const w = state.worms[i];
+          if (!w.active || w.bossKind < 0 || w.armState || w.spawnT > 0) continue;
+          boss = w;
+          break;
+        }
+      }
+      if (boss && (!this.bossCueLive || this.bossCueKind !== boss.bossKind)) {
+        this.bossCueLive = true;
+        this.bossCueKind = boss.bossKind;
+        // Center between the head and the last plate so a long Mega Worm body reads as
+        // one silhouette instead of the rig hanging on its face.
+        let cueX = boss.x;
+        let cueY = boss.y;
+        if (boss.mega && boss.segCount > 0) {
+          const tail = boss.segCount - 1;
+          cueX = (boss.x + boss.segX[tail]) * 0.5;
+          cueY = (boss.y + boss.segY[tail]) * 0.5;
+        }
+        this.director.play({
+          x: cueX,
+          y: cueY,
+          followSlot: -1,
+          zoom: CAMERA.bossIntroZoom,
+          hold: 1.5,
+          blendIn: 0.55,
+          blendOut: 1.1,
+          weight: 1,
+          priority: 4,
+        });
+      } else if (!boss) {
+        this.bossCueLive = false;
+        this.bossCueKind = -1;
       }
     }
     if (state.mode === 'gauntlet' && !state.campaign && state.sentries && (state.waveBannerT ?? 0) > 0) {
@@ -1334,6 +1414,38 @@ export class Renderer {
       if (py > groupMaxY) groupMaxY = py;
       leadAlive = true;
     }
+    // A live mini-boss belongs in the frame even when it sits outside the normal
+    // 640-unit focus pull. The Mega Worm's chain is longer than a screen, so leaving it
+    // out puts the boss in a pane corner or off-screen while the camera hugs the squad.
+    let bossFramed = false;
+    let bossMinX = Infinity;
+    let bossMinY = Infinity;
+    let bossMaxX = -Infinity;
+    let bossMaxY = -Infinity;
+    const bossWorms = state.worms;
+    if (bossWorms) {
+      for (let i = 0; i < bossWorms.length; i++) {
+        const w = bossWorms[i];
+        if (!w.active || w.bossKind < 0 || w.armState) continue;
+        bossFramed = true;
+        // Frame the head, not the whole Mega Worm chain. At 3x the 13 plates span
+        // roughly 2460 units, and fitting all of it would shrink the squad to dots.
+        // The head is the subject; the trailing body may leave the pane.
+        const rad = w.hitR;
+        if (w.x - rad < bossMinX) bossMinX = w.x - rad;
+        if (w.y - rad < bossMinY) bossMinY = w.y - rad;
+        if (w.x + rad > bossMaxX) bossMaxX = w.x + rad;
+        if (w.y + rad > bossMaxY) bossMaxY = w.y + rad;
+      }
+    }
+    if (leadAlive && bossFramed) {
+      // Frame the squad and the boss together. The combined box moves the anchor and
+      // sets the fit zoom, so a boss arriving across the room is never just outside it.
+      if (bossMinX < groupMinX) groupMinX = bossMinX;
+      if (bossMinY < groupMinY) groupMinY = bossMinY;
+      if (bossMaxX > groupMaxX) groupMaxX = bossMaxX;
+      if (bossMaxY > groupMaxY) groupMaxY = bossMaxY;
+    }
     if (leadAlive) {
       anchorX = (groupMinX + groupMaxX) * 0.5;
       anchorY = (groupMinY + groupMaxY) * 0.5;
@@ -1347,6 +1459,14 @@ export class Renderer {
         const dy = lerp(p.prevY, p.y, alpha) - anchorY;
         const d = Math.hypot(dx, dy);
         if (d > this.camSpread) this.camSpread = d;
+      }
+      if (bossFramed) {
+        // The boss head drives the pull-back too, so its silhouette is not treated as
+        // one more threat inside the normal 640-unit focus band.
+        const bx = Math.max(Math.abs(bossMinX - anchorX), Math.abs(bossMaxX - anchorX));
+        const by = Math.max(Math.abs(bossMinY - anchorY), Math.abs(bossMaxY - anchorY));
+        const bossSpread = Math.hypot(bx, by);
+        if (bossSpread > this.camSpread) this.camSpread = bossSpread;
       }
     } else if (local && local.active && this.findSpectateTarget(state, local)) {
       anchorX = this.spectateX;
@@ -1431,6 +1551,9 @@ export class Renderer {
     // It eases in, holds, and hands control back; a full blend may leave the avatar off
     // frame on purpose, which is why it stays opt-in and short.
     const rig = this.director.active ? this.director : null;
+    // The boss entrance is a deliberate reveal and may undercut the combat floor.
+    // Without this the fit clamp cancels most of its pull-back on a wide frame.
+    const bossEntrance = !!rig && rig.zoom <= CAMERA.bossIntroZoom + 0.001;
     let rigZoom = 1;
     if (rig) {
       let rx = rig.x;
@@ -1469,7 +1592,10 @@ export class Renderer {
       const fitZoom = Math.min(view.w / boxW, view.h / boxH);
       // A single shared view may pull back past combat zoom to keep the group together;
       // a split pane only needs the normal floor because the layout already sized it.
-      const floor = zoomBase * (this.viewCount > 1 ? CAMERA.zoomMin : CAMERA.sharedZoomMin);
+      // A boss needs a deeper floor than a player-only fight: the Mega Worm's chain can
+      // exceed the arena width, and the normal combat floor would still clip it. The
+      // entrance rig owns the frame while it runs, so it gets the entrance floor.
+      const floor = zoomBase * (bossEntrance ? CAMERA.bossIntroZoom : bossFramed ? CAMERA.bossZoomMin : this.viewCount > 1 ? CAMERA.zoomMin : CAMERA.sharedZoomMin);
       if (fitZoom < zoomTarget) zoomTarget = Math.max(floor, fitZoom);
     }
 
@@ -1480,8 +1606,12 @@ export class Renderer {
     const spanX = b.right - b.left;
     const spanY = b.bottom - b.top;
     // On an open arena the frame may sit past the lip, so the drop is visible before
-    // anyone steps on it. Walled arenas keep the old hard clamp.
-    const outerPad = arena.walls === 'open' ? CAMERA.voidMargin : 0;
+    // anyone steps on it. A flying boss needs the same look-past-the-lip space, or its
+    // pass leaves the pane the moment it crosses the arena edge.
+    const outerPad = Math.max(
+      arena.walls === 'open' ? CAMERA.voidMargin : 0,
+      bossFramed ? CAMERA.bossVoidMargin : 0,
+    );
     const camMinX = b.left - outerPad;
     const camMaxX = b.right - viewW + outerPad;
     const camMinY = b.top - outerPad;
@@ -2059,9 +2189,9 @@ export class Renderer {
   }
 
   /**
-   * Fax bed: a pale incoming sheet under a thermal carriage that shuttles left and
-   * right. Its vertical print bar is the arena hazard, so the carriage and the bar
-   * share one x derived from `faxHeadX()`.
+   * Fax bed: a pale incoming sheet under a compact thermal carriage. The head
+   * traverses one row, feeds down a line, then traverses the next row in reverse.
+   * Only the head itself is the arena hazard.
    */
   private drawFax(state: RenderState, t: number): void {
     const fx = state.arena.fax;
@@ -2070,6 +2200,8 @@ export class Renderer {
     const clock = state.faxT ?? 0;
     const phase = state.faxPhase ?? faxPhaseAt(fx, clock);
     const headX = faxHeadX(fx, clock);
+    const headY = faxHeadY(fx, clock);
+    const row = faxRowAt(fx, clock);
     const pageIndex = state.faxPage ?? 0;
     const title = fx.documents.length > 0
       ? fx.documents[((pageIndex % fx.documents.length) + fx.documents.length) % fx.documents.length]
@@ -2077,7 +2209,8 @@ export class Renderer {
     const moving = phase === FAX_STATE.printRight || phase === FAX_STATE.printLeft;
     const dir = phase === FAX_STATE.printRight ? 1 : -1;
     const blink = 0.35 + 0.65 * Math.abs(Math.sin(t * 15));
-    const half = fx.headW * 0.5;
+    const halfW = fx.headW * 0.5;
+    const halfH = fx.headH * 0.5;
 
     ctx.save();
     // Heavy fax chassis and a recessed paper slot.
@@ -2125,62 +2258,43 @@ export class Renderer {
     ctx.lineTo(fx.x + fx.w + 12, fx.y + fx.h + 5);
     ctx.stroke();
 
-    // The hot print bar. Parked, it becomes a blinking dashed guide.
+    // Rail marks at the edges show the current row without drawing a beam across it.
+    ctx.fillStyle = 'rgba(255, 195, 92, 0.34)';
+    ctx.fillRect(fx.x - 12, headY - 1, 14, 3);
+    ctx.fillRect(fx.x + fx.w - 2, headY - 1, 14, 3);
+
+    // Only this compact carriage is hot; the rest of the row is just paper.
     if (moving) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = THREAT_COLORS.firewall;
-      ctx.lineCap = 'butt';
+      ctx.fillStyle = 'rgba(255, 154, 88, 0.18)';
       ctx.beginPath();
-      ctx.moveTo(headX, fx.y + 5);
-      ctx.lineTo(headX, fx.y + fx.h - 5);
-      ctx.globalAlpha = 0.12;
-      ctx.lineWidth = fx.headW + 22;
-      ctx.stroke();
-      ctx.globalAlpha = 0.36;
-      ctx.lineWidth = fx.headW;
-      ctx.stroke();
-      ctx.globalAlpha = 0.7;
-      ctx.lineWidth = 8;
-      ctx.stroke();
-      ctx.globalAlpha = 0.96;
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-      ctx.strokeStyle = '#fff2d8';
-      ctx.globalAlpha = 0.52;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.restore();
-    } else {
-      ctx.save();
-      ctx.globalAlpha = 0.16 + 0.28 * blink;
-      ctx.strokeStyle = THREAT_COLORS.firewall;
-      ctx.lineWidth = fx.headW + 10;
+      ctx.ellipse(headX, headY, halfW + 17, halfH + 12, 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255, 244, 207, 0.12)';
       ctx.beginPath();
-      ctx.moveTo(headX, fx.y + 5);
-      ctx.lineTo(headX, fx.y + fx.h - 5);
-      ctx.stroke();
-      ctx.globalAlpha = 0.72 * blink;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([10, 8]);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.ellipse(headX, headY, halfW + 6, halfH + 4, 0, 0, TWO_PI);
+      ctx.fill();
       ctx.restore();
     }
 
-    // Carriage blocks make the vertical bar read as a print head, not a free beam.
-    ctx.fillStyle = moving ? '#ff9a58' : '#5b4632';
-    ctx.fillRect(headX - half - 8, fx.y - 22, fx.headW + 16, 18);
-    ctx.fillRect(headX - half - 8, fx.y + fx.h + 5, fx.headW + 16, 15);
+    ctx.fillStyle = moving ? '#ffad62' : '#5b4632';
+    roundRect(ctx, headX - halfW, headY - halfH, fx.headW, fx.headH, 6);
+    ctx.fill();
+    ctx.strokeStyle = moving ? '#fff0c8' : 'rgba(255, 195, 92, 0.38)';
+    ctx.lineWidth = moving ? 2 : 1;
+    roundRect(ctx, headX - halfW + 0.5, headY - halfH + 0.5, fx.headW - 1, fx.headH - 1, 6);
+    ctx.stroke();
     ctx.fillStyle = '#1a1410';
     for (let i = 0; i < 6; i++) {
-      ctx.fillRect(headX - half + 4 + i * (fx.headW - 8) * 0.2, fx.y - 18, 4, 5);
+      ctx.fillRect(headX - halfW + 5 + i * (fx.headW - 10) * 0.2, headY - halfH + 6, 4, 5);
     }
-    ctx.fillStyle = moving ? '#fff4cf' : 'rgba(255, 228, 177, 0.34)';
-    ctx.fillRect(headX - half, fx.y - 4, fx.headW, 3);
+    ctx.fillStyle = moving ? '#fff4cf' : `rgba(255, 228, 177, ${0.18 + blink * 0.2})`;
+    ctx.fillRect(headX - halfW + 8, headY + halfH - 4, fx.headW - 16, 3);
 
     // Status lives in the chassis margins, clear of the sheet copy.
-    let status = moving ? (dir > 0 ? 'PRINTING RIGHT' : 'PRINTING LEFT') : 'HEAD PARKED // REVERSING';
+    const rowLabel = `LINE ${String(row + 1).padStart(2, '0')}/${String(fx.rows).padStart(2, '0')}`;
+    const status = moving ? (dir > 0 ? 'PRINTING RIGHT' : 'PRINTING LEFT') : 'LINE FEED // NEXT ROW';
     ctx.globalAlpha = 0.78;
     ctx.font = FONT_SMALL;
     ctx.textAlign = 'left';
@@ -2189,7 +2303,7 @@ export class Renderer {
     ctx.fillText('FAX // TX 004', fx.x - 4, fx.y - 17);
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(255, 224, 177, 0.6)';
-    ctx.fillText(`SHEET ${String(pageIndex + 1).padStart(2, '0')} // ${status}`, fx.x + fx.w + 5, fx.y - 17);
+    ctx.fillText(`SHEET ${String(pageIndex + 1).padStart(2, '0')} // ${rowLabel} // ${status}`, fx.x + fx.w + 5, fx.y - 17);
     ctx.globalAlpha = 1;
     ctx.restore();
   }
@@ -4962,10 +5076,11 @@ export class Renderer {
     ctx.fillStyle = 'rgba(124, 247, 204, 0.58)';
     ctx.fillText('ATMOSPHERE EXIT', b.left + 24, b.top + 96);
 
-    // Full planned trajectory, then the portion already flown as the solid nav line.
+    // Full planned trajectory, then the flown portion. Both are dotted: the line is a
+    // shot reflector, not a wall, so it must not read as solid.
     ctx.strokeStyle = 'rgba(124, 247, 204, 0.22)';
     ctx.lineWidth = 2;
-    ctx.setLineDash([9, 13]);
+    ctx.setLineDash([2, 12]);
     ctx.beginPath();
     for (let i = 0; i <= 48; i++) {
       rocketArcAt(rocket, i / 48, point);
@@ -4976,10 +5091,13 @@ export class Renderer {
     ctx.setLineDash([]);
 
     if (progress > 0) {
-      const steps = Math.max(2, Math.ceil(progress * 72));
+      const steps = Math.max(2, Math.ceil(progress * 96));
       ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(124, 247, 204, 0.18)';
-      ctx.lineWidth = 24;
+      // Dots, not a band: shots bounce along the route while bodies walk straight
+      // through it. A faint halo keeps the reflector readable over the floor pattern.
+      ctx.setLineDash([1.5, 13]);
+      ctx.strokeStyle = 'rgba(124, 247, 204, 0.16)';
+      ctx.lineWidth = 15;
       ctx.beginPath();
       for (let i = 0; i <= steps; i++) {
         rocketArcAt(rocket, (i / steps) * progress, point);
@@ -4988,8 +5106,9 @@ export class Renderer {
       }
       ctx.stroke();
       ctx.strokeStyle = '#7cf7cc';
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 5;
       ctx.stroke();
+      ctx.setLineDash([]);
       ctx.lineCap = 'butt';
     }
 
@@ -5145,16 +5264,15 @@ export class Renderer {
     ctx.fillStyle = 'rgba(255, 107, 92, 0.05)';
     ctx.fillRect(b.left, b.top, 420, b.bottom - b.top);
 
-    // Fighter side profile, traced from FIGHTER_SIDE so the console and the picker agree.
+    // Nose-up plan view, traced from FIGHTER_TOP so the console and the picker agree.
     const jet = weapon.jet;
-    const cy = jet.y + jet.h * 0.48;
     ctx.lineJoin = 'round';
-    for (let i = 0; i < FIGHTER_SIDE.length; i++) {
-      const shape = FIGHTER_SIDE[i];
+    for (let i = 0; i < FIGHTER_TOP.length; i++) {
+      const shape = FIGHTER_TOP[i];
       ctx.beginPath();
       for (let p = 0; p < shape.points.length; p++) {
         const px = jet.x + shape.points[p][0] * jet.w;
-        const py = cy + shape.points[p][1] * jet.h;
+        const py = jet.y + shape.points[p][1] * jet.h;
         if (p === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
@@ -5184,35 +5302,37 @@ export class Renderer {
       ctx.stroke();
     }
 
-    // Panel detail: spine, two frame lines, a roundel and the exhaust streaks.
+    // Top-down panel detail: center spine, wing-root seams, hardpoints and exhaust.
     ctx.strokeStyle = 'rgba(255, 170, 140, 0.35)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(jet.x + jet.w * 0.34, cy - jet.h * 0.012);
-    ctx.lineTo(jet.x + jet.w * 0.8, cy - jet.h * 0.008);
+    ctx.moveTo(jet.x + jet.w * 0.5, jet.y + jet.h * 0.08);
+    ctx.lineTo(jet.x + jet.w * 0.5, jet.y + jet.h * 0.92);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(jet.x + jet.w * 0.52, cy + jet.h * 0.03);
-    ctx.lineTo(jet.x + jet.w * 0.52, cy - jet.h * 0.016);
-    ctx.moveTo(jet.x + jet.w * 0.6, cy + jet.h * 0.032);
-    ctx.lineTo(jet.x + jet.w * 0.6, cy - jet.h * 0.016);
+    ctx.moveTo(jet.x + jet.w * 0.41, jet.y + jet.h * 0.46);
+    ctx.lineTo(jet.x + jet.w * 0.59, jet.y + jet.h * 0.46);
+    ctx.moveTo(jet.x + jet.w * 0.43, jet.y + jet.h * 0.7);
+    ctx.lineTo(jet.x + jet.w * 0.57, jet.y + jet.h * 0.7);
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(255, 214, 170, 0.5)';
-    ctx.beginPath();
-    ctx.arc(jet.x + jet.w * 0.6, cy + jet.h * 0.004, 10, 0, TWO_PI);
-    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 214, 170, 0.62)';
+    for (const hardpoint of [0.24, 0.76]) {
+      ctx.beginPath();
+      ctx.arc(jet.x + jet.w * hardpoint, jet.y + jet.h * 0.52, 3, 0, TWO_PI);
+      ctx.fill();
+    }
     ctx.strokeStyle = 'rgba(255, 150, 80, 0.55)';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(jet.x + jet.w * 0.96, cy - jet.h * 0.012);
-    ctx.lineTo(jet.x + jet.w * 1.01, cy - jet.h * 0.02);
-    ctx.moveTo(jet.x + jet.w * 0.96, cy + jet.h * 0.012);
-    ctx.lineTo(jet.x + jet.w * 1.01, cy + jet.h * 0.004);
+    ctx.moveTo(jet.x + jet.w * 0.45, jet.y + jet.h * 0.96);
+    ctx.lineTo(jet.x + jet.w * 0.43, jet.y + jet.h * 1.04);
+    ctx.moveTo(jet.x + jet.w * 0.55, jet.y + jet.h * 0.96);
+    ctx.lineTo(jet.x + jet.w * 0.57, jet.y + jet.h * 1.04);
     ctx.stroke();
     ctx.fillStyle = 'rgba(255, 214, 170, 0.6)';
     ctx.font = FONT_TINY;
     ctx.textAlign = 'center';
-    ctx.fillText('F-19 SPECTRE // SIDE PROFILE', jet.x + jet.w * 0.5, jet.y + jet.h - 8);
+    ctx.fillText('F-19 SPECTRE // TOP PROFILE', jet.x + jet.w * 0.5, jet.y + jet.h + 20);
     ctx.textAlign = 'left';
 
     // Status readout.
@@ -5235,8 +5355,8 @@ export class Renderer {
     ctx.fillText('ARM   GUN / MISSILE', b.left + 58, b.top + 196);
 
     // Target reticle over the jet's nose.
-    const rx = jet.x + jet.w * 0.1;
-    const ry = cy - 6;
+    const rx = jet.x + jet.w * 0.5;
+    const ry = jet.y + jet.h * 0.07;
     ctx.strokeStyle = 'rgba(255, 220, 160, 0.8)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -5442,7 +5562,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** CAR NAVIGATION: a map screen with a serpentine route that becomes a wall. */
+  /** CAR NAVIGATION: a map screen with a capped, receding route trail. */
   private drawCarArena(
     state: RenderState | undefined,
     groundA: number,
@@ -5464,54 +5584,252 @@ export class Renderer {
     ctx.fillStyle = '#06151e';
     ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
 
-    // Map furniture: a city grid, a park and a river. These are presentation only.
-    ctx.strokeStyle = 'rgba(98, 217, 255, 0.08)';
-    ctx.lineWidth = 1;
-    for (let x = b.left + 72; x < b.right; x += 72) {
+    // The floor is a printed map: farmland west of the river, a street grid and city
+    // blocks east of it. All of it is map paper; the only real geometry is the pillar
+    // list (farms, then city blocks) and the advancing route barrier.
+    const mapA = Math.min(1, groundA * 1.25);
+    ctx.globalAlpha = mapA;
+    ctx.fillStyle = 'rgba(122, 148, 160, 0.055)';
+    ctx.fillRect(car.cityX, b.top, b.right - car.cityX, b.bottom - b.top);
+
+    // Land parcels, each with a hedgerow outline.
+    const fieldTones = ['rgba(62, 104, 74, 0.26)', 'rgba(80, 118, 84, 0.2)', 'rgba(54, 92, 70, 0.17)'];
+    for (let i = 0; i < car.fields.length; i++) {
+      const f = car.fields[i];
+      ctx.fillStyle = fieldTones[f.tone % fieldTones.length];
+      ctx.fillRect(f.x, f.y, f.w, f.h);
+      ctx.strokeStyle = 'rgba(126, 182, 136, 0.16)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(f.x + 0.5, f.y + 0.5, f.w - 1, f.h - 1);
+    }
+
+    // Tree cover: one fixed golden-angle blob per cluster, so a copse reads as many
+    // trees without per-tree state.
+    ctx.fillStyle = 'rgba(70, 124, 86, 0.3)';
+    for (let c = 0; c < car.woods.length; c++) {
+      const grove = car.woods[c];
+      for (let i = 0; i < 14; i++) {
+        const a = i * 2.399963 + grove.x * 0.013;
+        const rr = grove.r * Math.sqrt((i + 0.5) / 14);
+        ctx.beginPath();
+        ctx.arc(grove.x + Math.cos(a) * rr, grove.y + Math.sin(a) * rr, 6 + (i % 3) * 2, 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+
+    // Country lanes: thin secondary roads, low contrast, never cover.
+    ctx.strokeStyle = 'rgba(176, 202, 176, 0.18)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(b.left, b.top + 260);
+    ctx.lineTo(b.left + 260, b.top + 300);
+    ctx.lineTo(b.left + 500, b.top + 230);
+    ctx.lineTo(b.left + 720, b.top + 280);
+    ctx.lineTo(car.cityX - 40, b.top + 240);
+    ctx.moveTo(b.left + 40, b.top + 800);
+    ctx.lineTo(b.left + 300, b.top + 690);
+    ctx.lineTo(b.left + 520, b.top + 700);
+    ctx.lineTo(b.left + 700, b.top + 770);
+    ctx.lineTo(car.cityX - 30, b.top + 800);
+    ctx.stroke();
+
+    // River: one meandering band with a lighter core. The water is paper, not a body or
+    // shot blocker, and the route crosses it on the bridge deck.
+    const river = car.river;
+    if (river.length > 1) {
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(38, 92, 138, 0.62)';
+      ctx.lineWidth = 34;
       ctx.beginPath();
-      ctx.moveTo(x, b.top);
+      ctx.moveTo(river[0].x, river[0].y);
+      for (let i = 1; i < river.length - 1; i++) {
+        ctx.quadraticCurveTo(
+          river[i].x,
+          river[i].y,
+          (river[i].x + river[i + 1].x) * 0.5,
+          (river[i].y + river[i + 1].y) * 0.5,
+        );
+      }
+      ctx.lineTo(river[river.length - 1].x, river[river.length - 1].y);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(112, 178, 220, 0.24)';
+      ctx.lineWidth = 12;
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+    ctx.fillStyle = '#16323d';
+    ctx.fillRect(car.bridge.x, car.bridge.y, car.bridge.w, car.bridge.h);
+    ctx.strokeStyle = 'rgba(196, 232, 240, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(car.bridge.x, car.bridge.y, car.bridge.w, car.bridge.h);
+    for (let x = car.bridge.x + 12; x < car.bridge.x + car.bridge.w - 6; x += 16) {
+      ctx.beginPath();
+      ctx.moveTo(x, car.bridge.y + 3);
+      ctx.lineTo(x, car.bridge.y + car.bridge.h - 3);
+      ctx.stroke();
+    }
+
+    // City: street casing, then the pale street fill, then block paper between them.
+    const grid = car.gridStep;
+    ctx.strokeStyle = 'rgba(160, 194, 206, 0.1)';
+    ctx.lineWidth = 9;
+    for (let x = car.gridX; x <= b.right; x += grid) {
+      ctx.beginPath();
+      ctx.moveTo(x, car.gridY);
       ctx.lineTo(x, b.bottom);
       ctx.stroke();
     }
-    for (let y = b.top + 72; y < b.bottom; y += 72) {
+    for (let y = car.gridY; y <= b.bottom; y += grid) {
       ctx.beginPath();
-      ctx.moveTo(b.left, y);
+      ctx.moveTo(car.gridX, y);
       ctx.lineTo(b.right, y);
       ctx.stroke();
     }
-    ctx.fillStyle = 'rgba(70, 160, 120, 0.16)';
+    ctx.strokeStyle = 'rgba(214, 238, 244, 0.15)';
+    ctx.lineWidth = 2;
+    for (let x = car.gridX; x <= b.right; x += grid) {
+      ctx.beginPath();
+      ctx.moveTo(x, car.gridY);
+      ctx.lineTo(x, b.bottom);
+      ctx.stroke();
+    }
+    for (let y = car.gridY; y <= b.bottom; y += grid) {
+      ctx.beginPath();
+      ctx.moveTo(car.gridX, y);
+      ctx.lineTo(b.right, y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(180, 204, 212, 0.045)';
+    for (let x = car.gridX; x + grid <= b.right; x += grid) {
+      for (let y = car.gridY; y + grid <= b.bottom; y += grid) {
+        ctx.fillRect(x + 8, y + 8, grid - 16, grid - 16);
+      }
+    }
+
+    // Civic park: a green block with a crossed path.
+    const park = car.park;
+    ctx.fillStyle = 'rgba(78, 142, 96, 0.32)';
+    ctx.fillRect(park.x, park.y, park.w, park.h);
+    ctx.strokeStyle = 'rgba(150, 208, 156, 0.34)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(park.x + 0.5, park.y + 0.5, park.w - 1, park.h - 1);
+    ctx.setLineDash([7, 7]);
     ctx.beginPath();
-    ctx.ellipse(b.left + 1040, b.top + 500, 150, 80, -0.25, 0, TWO_PI);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(70, 190, 170, 0.28)';
-    ctx.setLineDash([8, 9]);
+    ctx.moveTo(park.x + park.w * 0.5, park.y + 6);
+    ctx.lineTo(park.x + park.w * 0.5, park.y + park.h - 6);
+    ctx.moveTo(park.x + 8, park.y + park.h * 0.5);
+    ctx.lineTo(park.x + park.w - 8, park.y + park.h * 0.5);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(50, 124, 180, 0.18)';
-    ctx.beginPath();
-    ctx.moveTo(b.left + 250, b.top + 100);
-    ctx.bezierCurveTo(b.left + 210, b.top + 300, b.left + 390, b.top + 420, b.left + 300, b.top + 610);
-    ctx.lineTo(b.left + 360, b.top + 610);
-    ctx.bezierCurveTo(b.left + 450, b.top + 420, b.left + 280, b.top + 300, b.left + 315, b.top + 100);
-    ctx.closePath();
-    ctx.fill();
 
-    // City blocks double as the arena's static cover.
-    const blockLabels = ['GARAGE', 'PLAZA', 'TOLL', 'PARK', 'SERVICE'];
+    // Pillars are the map's buildings and the arena's only static cover. Farm buildings
+    // come first; the city blocks that follow get a roof hatch.
     for (let i = 0; i < arena.pillars.length; i++) {
       const rect = arena.pillars[i];
-      ctx.fillStyle = '#102a37';
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-      ctx.strokeStyle = 'rgba(98, 217, 255, 0.38)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-      ctx.fillStyle = 'rgba(98, 217, 255, 0.16)';
-      ctx.fillRect(rect.x + 8, rect.y + 8, rect.w - 16, 7);
+      const farm = i < car.farmCount;
+      if (farm) {
+        ctx.fillStyle = '#143522';
+        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.strokeStyle = 'rgba(176, 220, 178, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+        const hx = rect.x + rect.w * 0.5;
+        const hy = rect.y + rect.h * 0.5;
+        if (i === 2) {
+          // Silo: cap ring and a chute line.
+          ctx.strokeStyle = 'rgba(214, 240, 212, 0.42)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(hx, hy, Math.min(rect.w, rect.h) * 0.34, 0, TWO_PI);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(hx, rect.y + 6);
+          ctx.lineTo(hx, rect.y + rect.h - 6);
+          ctx.stroke();
+        } else if (i === 3) {
+          // Old mill: four sails off the hub.
+          ctx.strokeStyle = 'rgba(214, 240, 212, 0.42)';
+          ctx.lineWidth = 2;
+          for (let s = 0; s < 4; s++) {
+            const a = s * (Math.PI * 0.5) + 0.35;
+            ctx.beginPath();
+            ctx.moveTo(hx, hy);
+            ctx.lineTo(hx + Math.cos(a) * rect.w * 0.42, hy + Math.sin(a) * rect.h * 0.42);
+            ctx.stroke();
+          }
+        } else {
+          // Barn / farmhouse: ridge line and a dark door.
+          ctx.fillStyle = 'rgba(196, 232, 190, 0.5)';
+          ctx.fillRect(rect.x + 8, rect.y + 8, rect.w - 16, 4);
+          ctx.fillStyle = '#0a1f14';
+          ctx.fillRect(hx - 7, rect.y + rect.h - 18, 14, 18);
+        }
+      } else {
+        ctx.fillStyle = '#17303c';
+        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.strokeStyle = 'rgba(98, 217, 255, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.strokeStyle = 'rgba(98, 217, 255, 0.16)';
+        ctx.lineWidth = 1;
+        for (let h = 10; h < rect.h + rect.w; h += 12) {
+          const x1 = rect.x + Math.max(0, h - rect.h);
+          const y1 = rect.y + Math.min(h, rect.h);
+          const x2 = rect.x + Math.min(h, rect.w);
+          const y2 = rect.y + Math.max(0, h - rect.w);
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
+      }
       ctx.font = FONT_TINY;
       ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(211, 247, 255, 0.58)';
-      ctx.fillText(blockLabels[i] ?? 'BLOCK', rect.x + rect.w * 0.5, rect.y + rect.h * 0.62);
+      ctx.fillStyle = farm ? 'rgba(214, 240, 206, 0.62)' : 'rgba(203, 240, 250, 0.62)';
+      ctx.fillText(car.labels[i] ?? '', rect.x + rect.w * 0.5, rect.y + rect.h + 12);
     }
+
+    // Map district names, a scale bar and a north arrow. These are the small print on a
+    // real map screen; keep them low contrast so they never read as gameplay.
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(186, 226, 190, 0.34)';
+    ctx.fillText('CLOVER FIELDS', b.left + 26, b.top + 44);
+    ctx.fillText('WYRE RIVER', car.cityX - 150, b.top + 566);
+    ctx.fillStyle = 'rgba(188, 226, 238, 0.34)';
+    ctx.fillText('GRID DISTRICT', car.gridX + 18, b.bottom - 26);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(168, 214, 172, 0.4)';
+    ctx.fillText('CIVIC PARK', park.x + park.w * 0.5, park.y + park.h * 0.5 + 3);
+    ctx.strokeStyle = 'rgba(190, 228, 236, 0.45)';
+    ctx.lineWidth = 1.5;
+    const scaleX = b.right - 216;
+    const scaleY = b.bottom - 26;
+    ctx.beginPath();
+    ctx.moveTo(scaleX, scaleY);
+    ctx.lineTo(scaleX + 120, scaleY);
+    ctx.moveTo(scaleX, scaleY - 5);
+    ctx.lineTo(scaleX, scaleY + 5);
+    ctx.moveTo(scaleX + 60, scaleY - 4);
+    ctx.lineTo(scaleX + 60, scaleY + 4);
+    ctx.moveTo(scaleX + 120, scaleY - 5);
+    ctx.lineTo(scaleX + 120, scaleY + 5);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(200, 234, 242, 0.5)';
+    ctx.textAlign = 'left';
+    ctx.fillText('500 m', scaleX + 132, scaleY + 4);
+    const northX = b.right - 48;
+    const northY = b.bottom - 70;
+    ctx.strokeStyle = 'rgba(200, 234, 242, 0.5)';
+    ctx.beginPath();
+    ctx.moveTo(northX, northY + 18);
+    ctx.lineTo(northX, northY - 14);
+    ctx.moveTo(northX - 6, northY - 4);
+    ctx.lineTo(northX, northY - 14);
+    ctx.lineTo(northX + 6, northY - 4);
+    ctx.stroke();
+    ctx.fillText('N', northX + 8, northY - 12);
 
     // Planned route in a faint dashed stroke, then the driven portion as the wall.
     ctx.strokeStyle = 'rgba(98, 217, 255, 0.25)';
@@ -5527,13 +5845,16 @@ export class Renderer {
     ctx.setLineDash([]);
 
     if (progress > 0) {
-      const steps = Math.max(2, Math.ceil(progress * 96));
+      const trail = Math.min(progress, car.trailLength / Math.max(1, carRouteLength(car)));
+      const start = Math.max(0, progress - trail);
+      const span = progress - start;
+      const steps = Math.max(2, Math.ceil(span * 96));
       ctx.lineCap = 'round';
       ctx.strokeStyle = 'rgba(98, 217, 255, 0.18)';
       ctx.lineWidth = 26;
       ctx.beginPath();
       for (let i = 0; i <= steps; i++) {
-        carRouteAt(car, (i / steps) * progress, point);
+        carRouteAt(car, start + (i / steps) * span, point);
         if (i === 0) ctx.moveTo(point.x, point.y);
         else ctx.lineTo(point.x, point.y);
       }
@@ -5603,7 +5924,7 @@ export class Renderer {
     ctx.fillText('CAR NAVIGATION', readoutX + 16, readoutY + 30);
     ctx.font = FONT_TINY;
     ctx.fillStyle = 'rgba(160, 235, 255, 0.58)';
-    ctx.fillText('ROUTE 21 // MAP LOCK', readoutX + 16, readoutY + 50);
+    ctx.fillText('ROUTE 21 // COUNTRY > CITY', readoutX + 16, readoutY + 50);
     ctx.fillStyle = '#e8fbff';
     ctx.fillText(`SPEED   ${Math.round(34 + progress * 46)} KM/H`, readoutX + 16, readoutY + 78);
     ctx.fillText(`ETA     ${Math.max(0, Math.round((1 - progress) * car.duration))} SEC`, readoutX + 16, readoutY + 100);
@@ -8659,9 +8980,13 @@ export class Renderer {
     const h = w.hand;
     if (!h) return;
     const ctx = this.ctx;
+    // drawWorms sets additive blending for the whole worm pool. This hand is a
+    // solid glyph, so it must render source-over or its layers bloom and flash.
+    // Opt out locally, then restore the pool's blend mode on exit.
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
     const cfg = IDLE_HANDS;
     const accent = cfg.color;
-    const bone = cfg.bone;
     const x = lerp(w.prevX, w.x, alpha);
     const y = lerp(w.prevY, w.y, alpha);
     const r = w.hitR;
@@ -8674,6 +8999,11 @@ export class Renderer {
     let shakeY = 0;
     let point = 0;
     let spin = 0;
+    let introScale = 1;
+    let introY = 0;
+    let introScaleX = 1;
+    let introFacing = 1;
+    let introRot = 0;
 
     if (h.state === 1) {
       const u = Math.min(1, h.t / slam.windup);
@@ -8686,8 +9016,11 @@ export class Renderer {
       scaleY = 0.32 + 0.68 * u;
       flipped = u < 0.45;
     } else if (h.state === 3) {
-      const u = Math.min(1, h.t / slam.recover);
-      scaleY = 1 + 0.18 * (1 - u) * (1 - u);
+      // Flat for the hold, then the rise-out. The pressed palm is the readable
+      // "hit me now" frame; do not ease it up during the hold.
+      const rise = h.t - slam.hold;
+      const u = rise <= 0 ? 0 : Math.min(1, rise / slam.recover);
+      scaleY = rise <= 0 ? 1 : 1 + 0.18 * (1 - u) * (1 - u);
     } else if (h.state === 4) {
       point = Math.min(1, h.t / cfg.charge.windup);
       shakeX = Math.sin(t * 66) * 4.5 * point;
@@ -8699,16 +9032,43 @@ export class Renderer {
     } else if (h.state === 6) {
       spin = t * 16;
       scaleY = 0.82;
+    } else if (h.state === 7) {
+      // Hand-on-hand redirect: both palms tumble away for the stun window.
+      spin = h.t * 18;
+      scaleY = 0.86;
     }
 
-    // Ground shadow tightens as the hand rises, then snaps wide on the landing.
+    if (w.spawnT > 0) {
+      const u = Math.max(0, Math.min(1, 1 - w.spawnT / Math.max(0.001, IDLE_HANDS.introTime)));
+      const rise = Math.min(1, u / 0.55);
+      const eased = rise * rise * (3 - 2 * rise);
+      introY = (1 - eased) * r * 1.8;
+      const bounce = u > 0.55 ? 1 + Math.sin(((u - 0.55) / 0.45) * Math.PI) * 0.22 : 1;
+      introScale = Math.max(0.12, (0.2 + 0.8 * eased) * bounce);
+      // One projected yaw through the entrance: front, edge-on, back, edge-on,
+      // front again. The in-plane twist keeps the turn from reading as a flat flip.
+      const yaw = u * TWO_PI;
+      introScaleX = Math.cos(yaw);
+      introFacing = introScaleX;
+      introRot = Math.sin(yaw) * 0.16;
+    }
+
+    const pointing = point > 0.45;
+
+    // Ground shadow: three concentric layers, smaller than the old single ellipse.
+    // The inner layers are more opaque, so the hand reads as hovering rather than
+    // as a flat sticker. The footprint stays under the palm.
     ctx.save();
-    ctx.globalAlpha = 0.2 * alpha;
     ctx.fillStyle = '#000000';
     const shadow = Math.max(0.32, 1 - lift / (slam.riseHeight * 2.2));
-    ctx.beginPath();
-    ctx.ellipse(x, y + r * 0.85, r * 0.95 * shadow, r * 0.32 * shadow, 0, 0, TWO_PI);
-    ctx.fill();
+    const shadowR = r * 0.66 * shadow;
+    for (let layer = 0; layer < 3; layer++) {
+      ctx.globalAlpha = alpha * (0.16 + layer * 0.1);
+      const scale = 1 - layer * 0.28;
+      ctx.beginPath();
+      ctx.arc(x, y + r * 0.82, shadowR * scale, 0, TWO_PI);
+      ctx.fill();
+    }
     ctx.restore();
 
     // Telegraph ring on the ground, growing through the windup and the drop.
@@ -8730,98 +9090,92 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Charge trail: three ghosts behind the palm while it is flying.
+    // Charge trail: three hand ghosts behind the palm while it is flying.
     if (h.state === 5 || h.state === 6) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = symbolFont(r * 2.1);
+      const trailGlyph = pointing ? IDLE_HAND_POINT : IDLE_HAND_OPEN;
       for (let k = 3; k >= 1; k--) {
         ctx.globalAlpha = 0.1 * k * alpha;
         ctx.fillStyle = h.state === 6 ? '#ffffff' : accent;
         const bx = x - h.dirX * k * r * 0.9;
         const by = y - h.dirY * k * r * 0.9;
-        ctx.fillRect(bx - r * 0.5, by - r * 0.5, r, r);
+        ctx.fillText(trailGlyph, bx, by);
       }
       ctx.restore();
     }
 
     ctx.save();
-    ctx.translate(x + shakeX, y - lift + shakeY);
-    ctx.rotate(w.angle + Math.PI * 0.25 + spin);
-    ctx.scale(1, flipped ? -scaleY : scaleY);
+    ctx.translate(x + shakeX, y - lift + shakeY + introY);
+    // The open palm stays upright; the pointing hand turns its finger along the
+    // latched charge direction. The deflected state adds its own tumble.
+    const aim =
+      pointing && Math.hypot(h.dirX, h.dirY) > 0.001
+        ? Math.atan2(h.dirY, h.dirX) + Math.PI * 0.5
+        : 0;
+    ctx.rotate(aim + spin + introRot);
+    ctx.scale(introScale * introScaleX, introScale * (flipped ? -scaleY : scaleY));
 
-    // Palm plate.
-    const pw = r * 1.25;
-    const ph = r * 1.05;
-    ctx.globalAlpha = 0.18 * alpha;
+    // The palm and its digits are one text glyph, not a stroked plate. `✋` is the
+    // open palm; `☝` replaces it while the hand commits to a point. Text-presentation
+    // selectors keep the mark on the monochrome symbol path where the host has it.
+    const handGlyph = pointing ? IDLE_HAND_POINT : IDLE_HAND_OPEN;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = symbolFont(r * 2.45);
+
+    // The palm is entirely red. A dark-red under-pass keeps the silhouette on the
+    // grid, but no bone plate or pale palm shows through the glyph.
+    ctx.globalAlpha = 0.8 * alpha;
+    ctx.fillStyle = '#5c0f18';
+    ctx.fillText(handGlyph, 0, 0);
+
+    ctx.globalAlpha = 0.96 * alpha;
     ctx.fillStyle = accent;
-    ctx.fillRect(-pw - 7, -ph - 7, pw * 2 + 14, ph * 2 + 14);
-    ctx.globalAlpha = 0.88 * alpha;
-    ctx.fillStyle = '#17100f';
-    ctx.fillRect(-pw, -ph, pw * 2, ph * 2);
-    ctx.globalAlpha = 0.9;
-    ctx.strokeStyle = bone;
-    ctx.lineWidth = 2.4;
-    ctx.strokeRect(-pw, -ph, pw * 2, ph * 2);
+    ctx.fillText(handGlyph, 0, 0);
 
-    // Four digits; the index extends when the hand points.
-    for (let f = 0; f < 4; f++) {
-      const fw = r * 0.3;
-      const fx = -pw + r * 0.24 + f * (r * 0.44);
-      const base = ph;
-      const fold = f === 0 ? 0 : r * 0.1 * point;
-      const len = f === 0 && point > 0 ? r * (0.7 + 0.9 * point) : r * 0.72 * (1 - 0.55 * (f === 0 ? 0 : point));
-      ctx.globalAlpha = 0.85;
-      ctx.fillStyle = '#17100f';
-      ctx.fillRect(fx, base - fold, fw, len);
-      ctx.globalAlpha = 0.75;
-      ctx.strokeStyle = bone;
-      ctx.lineWidth = 1.6;
-      ctx.strokeRect(fx, base - fold, fw, len);
+    // Palm eye: fixed, unanimated, and red. The opaque black socket is drawn first
+    // so the hand cannot show through the glyph's transparent counters; the red
+    // eye then sits on top at full opacity. Do not add a blink or width pulse.
+    // The entrance hides it on the back half so the yaw reads as front/back.
+    if (introFacing > 0.05) {
+      ctx.save();
+      ctx.translate(0, pointing ? r * 0.2 : r * 0.06);
+      // The eye is the read, but it must not grow at the same rate as the palm:
+      // a 3x hand gets roughly a 2.2x eye, keeping the glyph legible instead of
+      // turning the palm into one giant pupil.
+      const eyeSize = Math.min(r * 0.9, 84);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, eyeSize * 0.62, eyeSize * 0.48, 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = accent;
+      ctx.font = symbolFont(eyeSize);
+      ctx.fillText(IDLE_HAND_EYE, 0, 0);
+      ctx.restore();
     }
-    // Thumb.
-    ctx.globalAlpha = 0.8;
-    ctx.fillStyle = '#17100f';
-    ctx.fillRect(-pw - r * 0.34, -r * 0.1, r * 0.34, r * 0.72);
-    ctx.strokeStyle = bone;
-    ctx.lineWidth = 1.6;
-    ctx.strokeRect(-pw - r * 0.34, -r * 0.1, r * 0.34, r * 0.72);
 
-    // Palm eye. It widens while the hand is committing and narrows when it hovers.
-    const wide = h.eyeT > 0 || h.state === 1 || h.state === 4 || h.state === 5;
-    const open = wide ? 1 : 0.5 + 0.2 * Math.sin(t * 1.8 + h.bob);
-    ctx.globalAlpha = 0.55;
-    ctx.fillStyle = '#120206';
-    ctx.fillRect(-r * 0.55, -r * 0.3, r * 1.1, r * 0.6);
-    ctx.globalAlpha = 0.95;
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(-r * 0.55, -r * 0.3, r * 1.1, r * 0.6);
-    ctx.fillStyle = accent;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, r * 0.2 * (0.6 + 0.4 * open), r * 0.16 * open, 0, 0, TWO_PI);
-    ctx.fill();
-    ctx.fillStyle = '#120206';
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.07, 0, TWO_PI);
-    ctx.fill();
-    ctx.globalAlpha = 0.75;
-    ctx.strokeStyle = '#120206';
-    ctx.lineWidth = 2.4;
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.5, -r * 0.02 + (1 - open) * r * 0.12);
-    ctx.lineTo(r * 0.5, -r * 0.02 + (1 - open) * r * 0.12);
-    ctx.stroke();
-
-    if (w.hitFlash > 0) {
-      ctx.globalAlpha = Math.min(1, w.hitFlash * 5);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(-pw - 4, -ph - 4, pw * 2 + 8, ph * 2 + 8);
-    }
     ctx.restore();
 
+    // Punish window: while the palm is held flat, a slow ring pulse says the body
+    // is stopped and open to fire. It is a cue, not a second hit ring.
+    if (h.state === 3 && h.t < slam.hold) {
+      ctx.save();
+      ctx.globalAlpha = (0.14 + 0.09 * Math.sin(t * 7)) * alpha;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y + r * 0.5, slam.aoe * 0.55, 0, TWO_PI);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Landing seam: a white ring under the palm on the frame it hits.
-    if (h.state === 3 && h.t < slam.recover * 0.45) {
+    if (h.state === 3 && h.t < slam.recover) {
       const u = Math.min(1, h.t / (slam.recover * 0.45));
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -8833,6 +9187,7 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
     }
+    ctx.restore();
   }
 
 
@@ -8851,10 +9206,33 @@ export class Renderer {
     const r = center.hitR;
     const hurt = 1 - Math.max(0, center.hp) / Math.max(1, center.maxHp);
     const body = hurt > 0.6 ? '#d9588f' : cfg.color;
+    const introT = Math.max(0.001, STARFISH.introTime);
+    const introRaw = center.spawnT > 0 ? Math.max(0, Math.min(1, 1 - center.spawnT / introT)) : 1;
+    // Hold the body overhead for a beat, then let gravity take it. The old
+    // smoothstep came down quickly and slowed into the landing, which read as a
+    // soft float. A squared fall keeps the arrival heavy and gives the room time
+    // to read the silhouette before it hits.
+    const hang = 0.18;
+    const fall = Math.max(0, (introRaw - hang) / (1 - hang));
+    const fallEase = fall * fall;
+    const drop = (1 - fallEase) * 620;
 
     ctx.save();
-    ctx.translate(x, y);
-    ctx.globalAlpha = 0.9 * alpha;
+    // drawWorms uses additive blending for the worm pool; that makes the Starfish's
+    // dark mouth and overlapping arms flash and read as holes. Keep this boss solid.
+    ctx.globalCompositeOperation = 'source-over';
+    if (center.spawnT > 0) {
+      ctx.globalAlpha = Math.min(1, fallEase * 1.4) * 0.4 * alpha;
+      ctx.strokeStyle = cfg.color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 18, 0, TWO_PI);
+      ctx.stroke();
+    }
+    ctx.translate(x, y - drop);
+    // The boss body is opaque: a translucent starfish let the floor grid read through
+    // its arms and the whole silhouette sank into the background.
+    ctx.globalAlpha = 1;
 
     // Arms. Each is a tapering curve that curls back toward the rim.
     for (let i = 0; i < cfg.arms; i++) {
@@ -8863,10 +9241,10 @@ export class Renderer {
       if (!alive) {
         ctx.save();
         ctx.rotate(a);
-        ctx.globalAlpha = 0.5 * alpha;
-        ctx.fillStyle = '#5b2340';
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#c24c85';
         ctx.fillRect(r * 0.8, -7, r * 0.3, 14);
-        ctx.strokeStyle = '#39142a';
+        ctx.strokeStyle = '#5c1636';
         ctx.lineWidth = 2;
         ctx.strokeRect(r * 0.8, -7, r * 0.3, 14);
         ctx.restore();
@@ -8889,16 +9267,16 @@ export class Renderer {
         const u = s / steps;
         const along = r * 0.7 + u * (cfg.armReach * 0.78);
         const side = Math.sin(u * Math.PI) * (cfg.armRadius * 1.6 * curl) + u * u * cfg.armRadius * whip;
-        const width = (1 - u) * cfg.armRadius * 0.72 + 2.5;
+        const width = (1 - u) * cfg.armRadius * cfg.armWidth + 2.5;
         ctx.lineTo(along, side + width);
       }
       ctx.closePath();
-      ctx.fillStyle = body;
-      ctx.globalAlpha = 0.32 * alpha;
+      ctx.fillStyle = '#ff9ecb';
+      ctx.globalAlpha = 1;
       ctx.fill();
-      ctx.globalAlpha = 0.95 * alpha;
+      ctx.globalAlpha = 1;
       ctx.strokeStyle = cfg.color;
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.6;
       ctx.stroke();
       // Suckers: a short row of pale dots down each arm.
       ctx.fillStyle = cfg.core;
@@ -8912,15 +9290,15 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Center disc.
-    ctx.globalAlpha = (center.hitFlash > 0 ? 1 : 0.92) * alpha;
-    ctx.fillStyle = center.hitFlash > 0 ? '#ffffff' : '#3a1024';
+    // Center disc: solid, bright, and the read that carries the boss at a glance.
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = center.hitFlash > 0 ? '#ffffff' : '#8f2350';
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, TWO_PI);
     ctx.fill();
-    ctx.globalAlpha = 0.95 * alpha;
-    ctx.strokeStyle = body;
-    ctx.lineWidth = 3;
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = cfg.color;
+    ctx.lineWidth = 3.5;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, TWO_PI);
     ctx.stroke();
@@ -8932,7 +9310,7 @@ export class Renderer {
     else if (st.state === 3) open = Math.max(0, 1 - st.t / STARFISH.mouth.recover);
     const maw = r * (0.32 + 0.28 * open);
     ctx.globalAlpha = 0.95 * alpha;
-    ctx.fillStyle = '#120309';
+    ctx.fillStyle = '#1c0510';
     ctx.beginPath();
     ctx.arc(0, 0, maw, 0, TWO_PI);
     ctx.fill();
@@ -8973,23 +9351,53 @@ export class Renderer {
     const r = arm.hitR;
     const wiggle = Math.sin(t * 6 + as.phase) * 0.5;
     ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
     ctx.translate(x, y);
     ctx.rotate(arm.angle + wiggle * 0.6);
     ctx.globalAlpha = 0.9 * alpha;
-    ctx.fillStyle = arm.hitFlash > 0 ? '#ffffff' : cfg.color;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = arm.hitFlash > 0 ? '#ffffff' : '#ff9ecb';
+    // Keep the same curved, tapering arm silhouette the attached arm uses. A
+    // detached arm is still an arm, not a leaf or a boat.
+    const curl = Math.sin(t * 1.4 + as.phase) * 0.5;
+    const whip = Math.sin(t * 2.1 + as.phase) * 0.28;
+    const base = -cfg.armReach * 0.3;
+    const span = cfg.armReach * 0.78;
+    const steps = 8;
     ctx.beginPath();
-    ctx.moveTo(-r * 0.6, -r * 0.55);
-    ctx.quadraticCurveTo(r * 1.4, -r * 0.9, r * 2.0, -r * 0.1);
-    ctx.quadraticCurveTo(r * 1.2, r * 0.9, -r * 0.6, r * 0.55);
+    for (let s = 0; s <= steps; s++) {
+      const u = s / steps;
+      const along = base + u * span;
+      const side = Math.sin(u * Math.PI) * (cfg.armRadius * 1.6 * curl) + u * u * cfg.armRadius * whip;
+      if (s === 0) ctx.moveTo(along, side);
+      else ctx.lineTo(along, side);
+    }
+    for (let s = steps; s >= 0; s--) {
+      const u = s / steps;
+      const along = base + u * span;
+      const side = Math.sin(u * Math.PI) * (cfg.armRadius * 1.6 * curl) + u * u * cfg.armRadius * whip;
+      const width = (1 - u) * cfg.armRadius * 0.72 + 2.5;
+      ctx.lineTo(along, side + width);
+    }
     ctx.closePath();
     ctx.fill();
-    ctx.globalAlpha = 0.8;
-    ctx.strokeStyle = cfg.core;
-    ctx.lineWidth = 1.8;
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = cfg.color;
+    ctx.lineWidth = 2.2;
     ctx.stroke();
+    // Suckers down the detached arm.
+    ctx.fillStyle = cfg.core;
+    for (let s = 1; s < 5; s++) {
+      const u = s / 5;
+      const along = base + u * span;
+      const side = Math.sin(u * Math.PI) * (cfg.armRadius * 1.6 * curl) + u * u * cfg.armRadius * whip;
+      ctx.globalAlpha = 0.5 * alpha;
+      ctx.fillRect(along - 1.5, side + 2, 3, 3);
+    }
     // Ragged stump at the base.
-    ctx.fillStyle = '#3a1024';
-    ctx.fillRect(-r * 0.85, -r * 0.4, r * 0.4, r * 0.8);
+    ctx.fillStyle = '#5c1636';
+    ctx.globalAlpha = 1;
+    ctx.fillRect(base - 6, -r * 0.65, 12, r * 1.3);
     ctx.restore();
 
     // Hatch ring: fills back up as the arm grows a new Starfish.
@@ -9055,29 +9463,55 @@ export class Renderer {
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.globalCompositeOperation = 'lighter';
+    // The cloud is a pile of opaque squares. The old pass drew them with `lighter` at a
+    // low alpha, so every overlap stacked into a brighter patch and the mass read as a
+    // flat grid. Source-over with a solid fill hides the depth: you see the squares
+    // that are on top, never how many sit under them.
+    ctx.globalCompositeOperation = 'source-over';
     const cols = 7;
     const rows = 4;
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const i = row * cols + col;
-        const k = st.puff[i % st.puff.length] * (0.7 + 0.3 * build);
-        const u = (col + 0.5) / cols - 0.5;
-        const v = (row + 0.5) / rows - 0.5;
-        // Clip the corners so the square grid reads as weather, not a rectangle.
-        if (Math.abs(u) * 1.35 + Math.abs(v) * 1.9 > 0.88) continue;
-        const px = u * r * 1.78;
-        const py = v * r * 1.0 + Math.sin(st.clock * 1.7 + i * 0.7) * 3;
-        const size = r * 0.3 * k;
-        ctx.globalAlpha = (row === rows - 1 ? 0.22 : 0.14) * alpha;
-        ctx.fillStyle = cfg.color;
-        ctx.fillRect(px - size * 0.5, py - size * 0.5, size, size);
-        ctx.globalAlpha = 0.42 * alpha;
-        ctx.strokeStyle = row >= rows - 2 ? cfg.bolt : '#61707f';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(px - size * 0.5, py - size * 0.5, size, size);
+    const layers = 3;
+    ctx.scale(0.72 + 0.28 * build, 0.72 + 0.28 * build);
+    for (let layer = 0; layer < layers; layer++) {
+      ctx.fillStyle = layer === 0 ? '#8497ab' : layer === 1 ? cfg.color : '#b3c6d8';
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const i = (layer * rows + row) * cols + col;
+          const h1 = Math.abs(Math.sin(i * 12.9898 + 3.7) * 43758.5453) % 1;
+          const h2 = Math.abs(Math.sin(i * 78.233 + 1.3) * 12345.6789) % 1;
+          const h3 = Math.abs(Math.sin(i * 39.425 + 7.1) * 24634.6345) % 1;
+          const h4 = Math.abs(Math.sin(i * 93.989 + 4.4) * 98123.4567) % 1;
+          // Three loose offsets over the same 7x4 lattice: the layers overlap without
+          // landing on each other, which is what turns the grid into a rough mass.
+          const u = (col + 0.5) / cols - 0.5 + (layer - 1) * 0.035;
+          const v = (row + 0.5) / rows - 0.5 + (layer - 1) * 0.022;
+          // Elliptical envelope with a hashed edge, so a few squares sit proud of the
+          // rim instead of the outline reading as a clean oval.
+          const ell = (u / 0.56) ** 2 + (v / 0.4) ** 2;
+          if (ell > 0.72 + h1 * 0.34) continue;
+          const k = st.puff[i % st.puff.length] * (0.8 + 0.2 * build);
+          const px = u * r * 1.84 + (h2 - 0.5) * r * 0.07;
+          const py = v * r * 1.06 + (h3 - 0.5) * r * 0.08 + Math.sin(st.clock * 1.7 + i * 0.7) * 2.4;
+          const size = r * (0.23 + h4 * 0.17) * k;
+          // A loose per-square rotation: whole turns would read as a pattern, so the
+          // range stays under a radian and drifts by layer.
+          const rot = (h2 - 0.5) * 0.95 + (layer - 1) * 0.16;
+          ctx.save();
+          ctx.translate(px, py);
+          ctx.rotate(rot);
+          ctx.globalAlpha = 1;
+          ctx.fillRect(-size * 0.5, -size * 0.5, size, size);
+          // A darker seam, not a glow: it keeps the individual squares legible while
+          // the fill stays fully opaque.
+          ctx.globalAlpha = 0.3;
+          ctx.strokeStyle = row >= rows - 1 && layer === layers - 1 ? cfg.bolt : '#41536a';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(-size * 0.5, -size * 0.5, size, size);
+          ctx.restore();
+        }
       }
     }
+    ctx.globalAlpha = alpha;
 
     // Underside fringe: short rain strokes, so the cloud looks like it is raining even
     // between rows. It is decoration; the real drops are projectiles.
@@ -9134,7 +9568,7 @@ export class Renderer {
       const py = lerp(p.prevY, p.y, alpha);
       for (let i = 0; i < 7; i++) {
         const a = t * 1.4 + (i / 7) * Math.PI * 2;
-        this.drawFileIcon(px + Math.cos(a) * 26, py + Math.sin(a) * 26, 6, a, 0.85 * alpha);
+        this.drawFileIcon(px + Math.cos(a) * 26, py + Math.sin(a) * 26, Math.max(10, BLOB.rMax * 0.05), a, 0.85 * alpha);
       }
       ctx.save();
       ctx.globalAlpha = 0.3 * alpha;
@@ -9178,9 +9612,11 @@ export class Renderer {
     ctx.fillRect(-w * 0.32, -h * 0.12, w * 0.64, Math.max(1, size * 0.07));
     ctx.fillRect(-w * 0.32, h * 0.02, w * 0.64, Math.max(1, size * 0.07));
     ctx.fillRect(-w * 0.32, h * 0.16, w * 0.4, Math.max(1, size * 0.07));
-    ctx.globalAlpha = alpha * 0.35;
-    ctx.strokeStyle = BLOB.tint;
-    ctx.lineWidth = 1;
+    // A dark ink edge separates overlapping plates; the paper fill itself is
+    // opaque whenever the caller passes a full alpha.
+    ctx.globalAlpha = alpha * 0.55;
+    ctx.strokeStyle = BLOB.ink;
+    ctx.lineWidth = Math.max(1, size * 0.04);
     ctx.strokeRect(-w * 0.5, -h * 0.5, w, h);
     ctx.restore();
   }
@@ -9194,12 +9630,37 @@ export class Renderer {
     const st = w.blob;
     if (!st) return;
     const ctx = this.ctx;
+    // drawWorms enables additive blending for the worm pool. File plates must be
+    // opaque and read as stacked armor, so opt this boss out locally.
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
     const cfg = BLOB;
     const x = lerp(w.prevX, w.x, alpha);
     const y = lerp(w.prevY, w.y, alpha);
     const frac = Math.max(0, Math.min(1, w.hp / Math.max(1, w.maxHp)));
-    const baseR = BLOB.rMin + (BLOB.rMax - BLOB.rMin) * Math.pow(frac, 0.55);
+    const fullR = BLOB.rMin + (BLOB.rMax - BLOB.rMin) * Math.pow(frac, 0.55);
+    const introT = Math.max(0.001, BLOB.introTime);
+    const introRaw = w.spawnT > 0 ? Math.max(0, Math.min(1, 1 - w.spawnT / introT)) : 1;
+    const introEase = introRaw * introRaw * (3 - 2 * introRaw);
+    const introScale = 0.18 + 0.82 * introEase;
+    const baseR = fullR * introScale;
+    // Icon slots are packed against the full roster, not the live count. A hit removes
+    // a slot; it never repacks the survivors into a new spiral.
+    const layoutR = BLOB.rMax * introScale;
     const nodes = st.nodeR.length;
+    let jumpLift = 0;
+    let bodyScale = 1;
+    if (st.state === 4) {
+      bodyScale = 1 - 0.12 * Math.min(1, st.t / Math.max(0.001, BLOB.slam.windup));
+    } else if (st.state === 5) {
+      const u = Math.min(1, st.globT / Math.max(0.001, BLOB.slam.airTime));
+      jumpLift = -Math.sin(u * Math.PI) * BLOB.slam.height;
+      bodyScale = 1 + 0.08 * Math.sin(u * Math.PI);
+    } else if (st.state === 6) {
+      const u = Math.min(1, st.t / Math.max(0.001, BLOB.slam.recover));
+      bodyScale = 1 - 0.16 * (1 - u) * (1 - u);
+    }
+    const drawY = y + jumpLift;
 
     const radiusAt = (angle: number): number => {
       const span = Math.PI * 2;
@@ -9215,45 +9676,56 @@ export class Renderer {
 
     // Body hull: a closed curve through the spring rim.
     ctx.save();
-    ctx.translate(x, y);
-    ctx.globalAlpha = 0.16 * alpha;
-    ctx.fillStyle = cfg.tint;
+    ctx.translate(x, drawY);
+    ctx.scale(bodyScale, bodyScale);
+    // Solid backing under the paper. The old 0.16 tint let the floor and any arena
+    // pattern read straight through the pile, which made the blob look like a ghost.
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#1d4a60';
     ctx.beginPath();
     for (let i = 0; i <= nodes; i++) {
       const a = (i / nodes) * Math.PI * 2;
-      const r = radiusAt(a);
+      const r = radiusAt(a) * introScale;
       if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
       else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
     }
     ctx.closePath();
     ctx.fill();
-    ctx.globalAlpha = 0.4 * alpha;
     ctx.strokeStyle = cfg.tint;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.stroke();
     ctx.restore();
 
-    // Icons: one logical list, drawn once per depth layer.
+    // Icons: one logical list, packed from the center outward in a sunflower
+    // spiral. The plates are fully opaque and overlap like a haystack. This one
+    // pass replaces the old three-shell stack (and its core cluster), so the
+    // render cost drops from roughly 312 glyphs to 96.
     const live = Math.max(0, Math.min(cfg.icons, Math.ceil(w.hp)));
-    const layers = cfg.layers;
-    for (let layer = 0; layer < layers; layer++) {
-      const depth = layer / Math.max(1, layers - 1);
-      for (let i = 0; i < live; i++) {
-        // Deterministic hash: no per-icon storage, no allocation.
-        const h1 = Math.sin((i + 1) * 12.9898 + st.shedSeed * 0.013) * 43758.5453;
-        const h2 = Math.sin((i + 1) * 78.233 + 3.1) * 43758.5453;
-        const h3 = Math.sin((i + 1) * 39.425 + 7.7) * 43758.5453;
-        const fa = h1 - Math.floor(h1);
-        const fr = h2 - Math.floor(h2);
-        const fs = h3 - Math.floor(h3);
-        const a = fa * Math.PI * 2 + st.clock * 0.06 + layer * 0.13;
-        const r = radiusAt(a) * (0.2 + 0.72 * Math.sqrt(fr)) * (0.9 + depth * 0.1);
-        const ix = Math.cos(a) * r + (depth - 0.5) * 5;
-        const iy = Math.sin(a) * r * 0.94 + (depth - 0.5) * 4;
-        const size = (6 + fs * 3) * (0.82 + depth * 0.22);
-        const fade = (0.32 + depth * 0.6) * alpha;
-        this.drawFileIcon(ix, iy, size, a * 0.5 + fs, fade);
-      }
+    const staged =
+      introRaw < 0.22
+        ? 1 + Math.floor((introRaw / 0.22) * 2)
+        : 3 + Math.floor((live - 3) * Math.pow(Math.max(0, (introRaw - 0.22) / 0.78), 2.2));
+    const drawCount = w.spawnT > 0 ? Math.min(live, Math.max(1, staged)) : live;
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < drawCount; i++) {
+      // Deterministic hash: no per-icon storage, no allocation. The divisor is the
+      // full icon roster, so removing index 95 never moves index 94.
+      const h1 = Math.sin((i + 1) * 12.9898 + st.shedSeed * 0.013) * 43758.5453;
+      const h2 = Math.sin((i + 1) * 78.233 + 3.1) * 43758.5453;
+      const h3 = Math.sin((i + 1) * 39.425 + 7.7) * 43758.5453;
+      const fa = h1 - Math.floor(h1);
+      const fr = h2 - Math.floor(h2);
+      const fs = h3 - Math.floor(h3);
+      // Fixed center-out slot: every icon owns the same angle and radius for the
+      // whole fight. Low-health survivors are the central slots; hits only remove
+      // the outer plates, so the shrinking hull still contains them.
+      const u = Math.sqrt((i + 0.5) / Math.max(1, BLOB.icons));
+      const a = i * golden + (fa - 0.5) * 0.22;
+      const r = layoutR * u * 0.9;
+      const ix = Math.cos(a) * r;
+      const iy = Math.sin(a) * r * 0.94;
+      const size = layoutR * (0.16 + fs * 0.04);
+      this.drawFileIcon(x + ix * bodyScale, drawY + iy * bodyScale, size * bodyScale, a + (fr - 0.5) * 1.1, 1);
     }
 
     // Shed burst: icons knocked off by the last hit, falling out of the rim.
@@ -9266,8 +9738,32 @@ export class Renderer {
         const speed = baseR * (0.9 + fa);
         const px = x + Math.cos(a) * (speed * u);
         const py = y + Math.sin(a) * (speed * u) + 120 * u * u;
-        this.drawFileIcon(px, py, 7, a + u * 4, (1 - u) * 0.9 * alpha);
+        this.drawFileIcon(px, py, Math.max(10, baseR * 0.1), a + u * 4, (1 - u) * 0.9 * alpha);
       }
+    }
+
+    // Slam telegraph and touchdown: a readable ring on the ground while the body
+    // is crouched or airborne, then a bright flash when it lands.
+    if (st.state === 4 || st.state === 6) {
+      const u = st.state === 4 ? Math.min(1, st.t / Math.max(0.001, BLOB.slam.windup)) : Math.min(1, st.t / Math.max(0.001, BLOB.slam.recover));
+      ctx.save();
+      ctx.globalAlpha = (st.state === 4 ? 0.2 + 0.35 * u : 0.45 * (1 - u)) * alpha;
+      ctx.strokeStyle = cfg.tint;
+      ctx.lineWidth = st.state === 4 ? 2 : 4;
+      ctx.beginPath();
+      ctx.arc(st.toX, st.toY, BLOB.slam.aoe * (st.state === 4 ? 0.4 + 0.6 * u : 0.8 + 0.2 * u), 0, TWO_PI);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (st.state === 5) {
+      const u = Math.min(1, st.globT / Math.max(0.001, BLOB.slam.airTime));
+      ctx.save();
+      ctx.globalAlpha = 0.18 * (1 - u) * alpha;
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.ellipse(st.toX, st.toY, BLOB.slam.aoe * (0.35 + 0.45 * u), BLOB.slam.aoe * 0.14 * u, 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
     }
 
     // Toss: the glob is a small cluster of files in the air.
@@ -9278,8 +9774,8 @@ export class Renderer {
       const spin = t * 3;
       for (let i = 0; i < 9; i++) {
         const a = spin + (i / 9) * Math.PI * 2;
-        const rr = 14 + (i % 3) * 6;
-        this.drawFileIcon(gx + Math.cos(a) * rr, gy + Math.sin(a) * rr, 7, a, 0.9 * alpha);
+        const rr = baseR * 0.16 + (i % 3) * baseR * 0.06;
+        this.drawFileIcon(gx + Math.cos(a) * rr, gy + Math.sin(a) * rr, Math.max(10, baseR * 0.1), a, 0.9 * alpha);
       }
       if (st.state === 2) {
         ctx.save();
@@ -9292,7 +9788,7 @@ export class Renderer {
         ctx.restore();
       }
     }
-
+    ctx.restore();
   }
 
   /**
@@ -9329,7 +9825,11 @@ export class Renderer {
       const s = 2 + (k % 3);
       ctx.globalAlpha = 0.16 + 0.18 * (0.5 + 0.5 * Math.sin(t * 3.4 + k * 1.7));
       ctx.fillStyle = base;
-      ctx.fillRect(px - s, py - s, s * 2, s * 2);
+      ctx.save();
+      ctx.translate(px, py);
+      this.traceMegaHex(s);
+      ctx.fill();
+      ctx.restore();
     }
 
     for (let k = nodes - 1; k >= 1; k--) {
@@ -9354,19 +9854,58 @@ export class Renderer {
     ctx.globalCompositeOperation = 'source-over';
     const er = w.hitR;
     ctx.fillStyle = '#14030a';
-    ctx.fillRect(-er * 0.62, -er * 0.62, er * 1.24, er * 1.24);
+    this.traceMegaHex(er * 0.62);
+    ctx.fill();
     const flare = w.eyeT > 0 ? 0.5 + 0.5 * Math.sin(t * 26) : 0;
     ctx.fillStyle = w.eyeT > 0 ? '#ffffff' : '#ffe9e4';
-    ctx.fillRect(-er * 0.52, -er * 0.3, er * 0.32, er * 0.32);
-    ctx.fillRect(er * 0.2, -er * 0.3, er * 0.32, er * 0.32);
+    for (const ex of [-0.36, 0.36]) {
+      ctx.save();
+      ctx.translate(ex * er, -er * 0.14);
+      this.traceMegaHex(er * 0.18);
+      ctx.fill();
+      ctx.restore();
+    }
     if (flare > 0) {
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = flare * 0.6;
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 3;
-      ctx.strokeRect(-er * 1.1, -er * 1.1, er * 2.2, er * 2.2);
+      this.traceMegaHex(er * 1.1);
+      ctx.stroke();
     }
     ctx.restore();
+
+    // The entrance roar: a solid maw and expanding pressure rings after the swim-in.
+    if (w.roarT > 0) {
+      const u = 1 - w.roarT / Math.max(0.001, MEGA_WORM.entrance.roar);
+      ctx.save();
+      ctx.translate(hx, hy);
+      ctx.rotate(w.angle);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 0.92 * (1 - u * 0.25);
+      ctx.fillStyle = '#120309';
+      ctx.beginPath();
+      ctx.moveTo(w.hitR * 0.2, 0);
+      ctx.lineTo(w.hitR * 1.02, -w.hitR * 0.44);
+      ctx.lineTo(w.hitR * 1.24, 0);
+      ctx.lineTo(w.hitR * 1.02, w.hitR * 0.44);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#ffd9cf';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let k = 0; k < 3; k++) {
+        const ring = w.hitR * (0.7 + k * 0.42 + u * 0.8);
+        ctx.globalAlpha = (0.38 - k * 0.09) * (1 - u) * 1.6;
+        ctx.strokeStyle = '#ffd9cf';
+        ctx.lineWidth = 3 - k * 0.7;
+        ctx.beginPath();
+        ctx.arc(0, 0, ring, -0.78, 0.78);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     // Last plate: eight legs, twitching faster than the body can turn.
     if (w.legs) {
@@ -9387,7 +9926,11 @@ export class Renderer {
         ctx.stroke();
         ctx.globalAlpha = 0.9;
         ctx.fillStyle = base;
-        ctx.fillRect(Math.cos(a) * reach - 3, Math.sin(a) * reach - 3, 6, 6);
+        ctx.save();
+        ctx.translate(Math.cos(a) * reach, Math.sin(a) * reach);
+        this.traceMegaHex(4);
+        ctx.fill();
+        ctx.restore();
       }
       ctx.restore();
     }
@@ -9418,7 +9961,21 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** One boss plate: heavy frame, dark core and a crack pattern that tracks its health. */
+  /** Trace a flat-topped hexagon centered on the current canvas origin. */
+  private traceMegaHex(radius: number): void {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+      const x = Math.cos(a) * radius;
+      const y = Math.sin(a) * radius;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+
+  /** One boss plate: heavy hex frame, dark core and cracks that track its health. */
   private drawMegaPlate(
     x: number,
     y: number,
@@ -9435,17 +9992,21 @@ export class Renderer {
     ctx.rotate(angle + Math.PI * 0.25);
     ctx.globalAlpha = 0.1 + 0.1 * (1 - frac);
     ctx.fillStyle = base;
-    ctx.fillRect(-size - 9, -size - 9, size * 2 + 18, size * 2 + 18);
+    this.traceMegaHex(size + 9);
+    ctx.fill();
     ctx.globalAlpha = 0.92;
     ctx.fillStyle = '#1a0509';
-    ctx.fillRect(-size, -size, size * 2, size * 2);
+    this.traceMegaHex(size);
+    ctx.fill();
     ctx.globalAlpha = 0.5 + 0.45 * frac;
     ctx.strokeStyle = base;
     ctx.lineWidth = 3;
-    ctx.strokeRect(-size, -size, size * 2, size * 2);
+    this.traceMegaHex(size);
+    ctx.stroke();
     ctx.globalAlpha = 0.28 + 0.3 * frac;
     ctx.lineWidth = 1.2;
-    ctx.strokeRect(-size * 0.68, -size * 0.68, size * 1.36, size * 1.36);
+    this.traceMegaHex(size * 0.68);
+    ctx.stroke();
 
     if (frac < 0.999) {
       const cracks = Math.min(6, Math.ceil((1 - frac) * 6));
@@ -9456,16 +10017,17 @@ export class Renderer {
         const seed = Math.sin((index + 5) * 12.9898 + c * 78.233) * 43758.5453;
         const r1 = seed - Math.floor(seed);
         const r2 = Math.abs(Math.sin(seed * 1.7));
-        const edge = Math.floor(r1 * 4) % 4;
-        const along = (r2 - 0.5) * 1.5 * size;
-        const sx = edge === 0 ? -size : edge === 1 ? size : along;
-        const sy = edge === 2 ? -size : edge === 3 ? size : along;
-        const mx = (sx + (r2 - 0.5) * size) * 0.62;
-        const my = (sy + (r1 - 0.5) * size) * 0.62;
+        const a = index * 2.399 + c * 1.7 + (r1 - 0.5) * 0.5;
+        const sx = Math.cos(a) * size * (0.82 + r2 * 0.16);
+        const sy = Math.sin(a) * size * (0.82 + r2 * 0.16);
+        const mx = Math.cos(a + 0.18) * size * (0.46 + r1 * 0.12);
+        const my = Math.sin(a + 0.18) * size * (0.46 + r1 * 0.12);
+        const ex = Math.cos(a - 0.12) * size * 0.16;
+        const ey = Math.sin(a - 0.12) * size * 0.16;
         ctx.beginPath();
         ctx.moveTo(sx, sy);
-        ctx.lineTo(mx + (r1 - 0.5) * size * 0.35, my);
-        ctx.lineTo(mx * 0.26, my * 0.26);
+        ctx.lineTo(mx, my);
+        ctx.lineTo(ex, ey);
         ctx.stroke();
       }
       // A plate near collapse shudders on its own.
@@ -9473,7 +10035,8 @@ export class Renderer {
         ctx.globalAlpha = 0.3 + 0.3 * Math.sin(t * 18 + index);
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1.6;
-        ctx.strokeRect(-size * 0.9, -size * 0.9, size * 1.8, size * 1.8);
+        this.traceMegaHex(size * 0.9);
+        ctx.stroke();
       }
     }
     ctx.restore();
@@ -14767,6 +15330,31 @@ export class Renderer {
     ctx.font = FONT_TINY;
     ctx.fillStyle = 'rgba(190, 226, 240, 0.55)';
     ctx.fillText(`TIME ${clock}`, VIEW_W * 0.5, y + 34);
+    ctx.restore();
+  }
+
+  /** Quick boss title card, drawn above the arena HUD during the frozen entrance. */
+  private drawBossIntroTitle(state: RenderState): void {
+    const intro = state.bossIntro;
+    if (!intro) return;
+    const ctx = this.ctx;
+    const fadeIn = Math.min(1, intro.t / 0.25);
+    const fadeOut = Math.min(1, (intro.duration - intro.t) / 0.35);
+    const alpha = Math.max(0, Math.min(fadeIn, fadeOut));
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.68;
+    ctx.fillStyle = 'rgba(3, 7, 12, 1)';
+    ctx.fillRect(VIEW_W * 0.5 - 190, VIEW_H * 0.24 - 20, 380, 58);
+    ctx.globalAlpha = alpha;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = FONT_MID;
+    ctx.fillStyle = '#ffd6e8';
+    ctx.fillText(intro.label, VIEW_W * 0.5, VIEW_H * 0.24);
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(255, 190, 220, 0.78)';
+    ctx.fillText('SUB-AGENT // INBOUND', VIEW_W * 0.5, VIEW_H * 0.24 + 20);
     ctx.restore();
   }
 
