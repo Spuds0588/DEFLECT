@@ -19,7 +19,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **CAMPAIGN:** `BUILD ROOT`, the first playable story level, with three local save slots. More levels are coming soon.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
-- Thirteen programs, twenty arenas.
+- Thirteen programs, twenty-two arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
@@ -324,6 +324,8 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `SWIPE RIGHT` | A tall phone touchscreen showing a dating deck. Every 4.6 s the card swipes left or right and the whole floor slides 108 units that way, carrying every fighter and live shot toward the wall. A `YOU GOT A MATCH` popup rises from the center of the screen for a few seconds as real cover: it blocks bodies and shots, displaces anyone caught under it, then drops back into the floor. Online: the swipe and popup clocks are synced and the host owns the carry and collision. |
 | `ROCKET NAVIGATION` | A launch-control floor under a nav display. The rocket lifts from below the bottom lip while speed, altitude and trajectory count up. Its growing arc is a real barrier: a 24 s launch lays a continuous curved wall across the arena that bodies, dashes and shots cannot cross. The finished line splits the room for the rest of the round. Booster and fairing separation marks drift off the arc as presentation only. Local-only: the launch clock and barrier are not in the snapshot. |
 | `WEAPON SYSTEMS` | A fighter-jet status screen built as a cockpit floor. Three large console banks are real cover: `FIRE WEAPONS`, `EJECTOR SEAT` and `THRUSTERS`. The jet silhouette, status readouts and target reticle are display art; the buttons do not grant a jet weapon, eject a body or change thrust. Local-only presentation with static cover. |
+| `SPEAK & FIND` | A bright children's talking-picture toy. A prompt screen calls out a picture (`FIND THE BOAT`, `FIND THE MOON`) and the matching card pulses while a magnifier sweeps the board. Four chunky letter keys are static cover. The prompt, cards and magnifier are display art; they do not grant items or score. Local-only presentation. |
+| `CAR NAVIGATION` | A GPS map screen with a serpentine route across the floor. The car drives from below the left lip to the upper-right map edge over 26 s; the travelled portion is a real barrier that bodies, dashes and shots cannot cross, and the finished route divides the arena into north and south halves. The car, stop pins, city blocks and speed/ETA/next-turn readout are presentation. Local-only: the route clock is not in the snapshot. |
 | `SATELLITE` | A long orbital hull joined to two solar wings by narrow bridges, with a telescoping mast below and three capacitor pods above. Only those plates are floor; the gaps are open space. The wings warn, then burn anyone standing on them on independent 16 s cycles. Micro-meteors fall every 12.5 s. Destroy all three capacitors and the thrusters fire: a heat front climbs the whole map from the bottom for 14 s, then the satellite cools and the pods return. Online: the satellite clock, live meteors, capacitor states and reentry front are synced; the host still resolves every hit. |
 
 ### Ordinary programs
@@ -413,8 +415,9 @@ It is the intended way to turn an arena emitter into a boss-fight weapon.
 A hosted match never arms the emitters: they remain local content and nothing about them enters a
 snapshot. The compactor, keypad, scanner, browser, USB, swipe and satellite are different: their clocks are
 carried, so those maps also open online. The pipe/firewall arenas still stay local because their spawned
-threats are not in the snapshot. ROCKET NAVIGATION's launch wall and WEAPON SYSTEMS' cockpit console are
-local-only display content and are not in that clock list.
+threats are not in the snapshot. ROCKET NAVIGATION's launch wall, WEAPON SYSTEMS' cockpit console,
+SPEAK & FIND's card board and CAR NAVIGATION's route clock are local-only display content and are not in
+that clock list.
 
 ## Attract demo and kiosk
 

@@ -4749,3 +4749,33 @@ measure browser/network loss or jitter separately, and a late pong can leave the
 
 **Next:** run a two-client room and verify RTT, snapshot cadence, disconnect fallback and the legacy-peer
 `--` state.
+
+## 2026-11-02 — SPEAK & FIND and CAR NAVIGATION (v0.1.115)
+
+**Goal:** add the requested children's find toy and the map-screen car route without inventing a second
+engine layer.
+
+- Added `ArenaSeekDef` and `ArenaCarDef`; SPEAK & FIND is id 20 and CAR NAVIGATION is id 21, after the
+  earlier display maps.
+- SPEAK & FIND draws a moulded talking-toy floor with six picture cards, a cycling `FIND THE ...` prompt,
+  a pulsing matching card, a sweeping magnifier and four chunky letter keys that are the static cover.
+  The prompt and cards are presentation only; they do not grant pickups, score or new collision.
+- CAR NAVIGATION draws a GPS/map floor with a city grid, river, park, named pins and a speed/ETA/next-stop
+  readout. The serpentine route starts below the left lip and ends at the upper-right map edge over 26 s.
+- The travelled route is real cover: 160 preallocated overlapping `Rect`s are sampled from the shared
+  polyline into `solids` and `dashSolids`, blocking bodies, dashes and shots. The route resets in
+  `beginRound()`. Neither map adds `SnapshotHazards` fields or enters hosted rooms.
+- Added custom renderers and picker previews. Updated README, GAME_GUIDE, AGENTS D49 and TODO.
+
+**Verification:** `.tmp/two-more-maps-check.ts` passes 22-arena order, six cards and prompts, four cover
+keys, a 2044-unit serpentine route with five turns, 160-block overlap, early growth, complete wall, reset,
+and `SnapshotHazards === null`. `npm run build` passes (includes `tsc --noEmit`): 817.96 kB JS /
+228.29 kB gzip, 51.04 kB CSS / 11.39 kB gzip, with the existing chunk-size warning. `npm run bench` clean:
+8P max projectiles 0.067 ms avg / 0.127 ms p99; gauntlet max 0.154 ms avg / 0.489 ms p99, 28.4 threats.
+`git diff --check` clean.
+
+**Limitations:** neither new map was played in a headed session. The car wall is not in the bot nav grid
+and is local-only; the SPEAK & FIND cards are display art rather than collectible targets.
+
+**Next:** play both maps at full size, then decide whether the car route needs a bot-nav representation or
+an online snapshot clock.

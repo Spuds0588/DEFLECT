@@ -2092,6 +2092,30 @@ lobby `RTT` stat and the `MP STATUS` panel in the game HUD.
 - Known limitation: no two-real-client latency/loss test exists yet. `pollStatus` is rate-limited to one
   ping every two seconds and never retries a lost ping immediately.
 
+### D49 — SPEAK & FIND and CAR NAVIGATION are local display arenas (built 2026-11-02)
+
+Both are authored `ArenaDef` content beside the earlier display maps. `seek` and `car` are additive
+records; ids **20** and **21** follow WEAPON SYSTEMS. Neither changes player health, kits or damage.
+
+- **SPEAK & FIND** is a children's talking-picture toy. `ArenaSeekDef` owns the prompt deck, picture cards
+  and display rectangle. The renderer cycles a prompt, pulses the matching card and sweeps a magnifier;
+  those are presentation only. The four chunky letter keys are the arena's static cover. The cards never
+  become pickups, targets or collision.
+- **CAR NAVIGATION** is a GPS/map screen. `ArenaCarDef.route` is an ordered serpentine polyline; `World`
+  samples it into 160 preallocated overlapping `Rect`s in `solids` and `dashSolids`. `carT` and
+  `carProgress` drive both the rendered route and the barrier, exactly like the rocket arc. The finished
+  route divides the map; the car, pins, map buildings and speed/ETA readout are presentation. `beginRound()`
+  resets the route, and the route blocks use the same body, dash and shot collision path as the rocket
+  wall.
+- Keep both maps **local-only** through `isOnlineArena`; their clocks are not in `SnapshotHazards` and a
+  guest has no route/card presentation. Do not add either to hosted rooms or series without a protocol
+  decision and guest tests.
+- The car barrier needs 160 blocks so its sampled spacing stays below the authored thickness. Do not lower
+  the segment count without checking the longest route leg; a gap would become a walkable hole.
+- Known limitation: the precomputed bot nav grid does not include the growing car wall (the same limit as
+  the rocket arc), so bots can path through it while it is short. This is acceptable for the local display
+  arena until the barrier gets a nav representation or online support.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

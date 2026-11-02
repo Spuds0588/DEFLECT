@@ -394,6 +394,55 @@ export interface ArenaWeaponDef {
   jet: Rect;
 }
 
+/** One spoken picture prompt on the SPEAK & FIND toy. */
+export interface ArenaSeekPromptDef {
+  text: string;
+  /** Index into `ArenaSeekDef.cards`. */
+  card: number;
+}
+
+/** A picture card printed on the toy's floor. Presentation only; never collision. */
+export interface ArenaSeekCardDef extends Rect {
+  label: string;
+  mark: string;
+  color: string;
+}
+
+/**
+ * SPEAK & FIND: a bright children's talking toy. The prompt, speaker, picture cards
+ * and magnifier are local presentation; the chunky letter keys are the static cover.
+ */
+export interface ArenaSeekDef {
+  /** Prompt screen footprint. */
+  display: Rect;
+  prompts: ArenaSeekPromptDef[];
+  cards: ArenaSeekCardDef[];
+}
+
+/** One named stop on the CAR NAVIGATION route. */
+export interface ArenaCarStopDef {
+  /** 0..1 route progress. */
+  at: number;
+  label: string;
+}
+
+/**
+ * CAR NAVIGATION: a GPS/map display with a serpentine car route. The travelled
+ * portion is a real growing barrier; the car, pins and map furniture are presentation.
+ * Local-only because the host owns the route clock.
+ */
+export interface ArenaCarDef {
+  /** Ordered serpentine polyline. The first and last points may sit outside the bounds. */
+  route: Point2[];
+  /** Seconds from route start to a completed barrier. */
+  duration: number;
+  /** Collision blocks sampled along the route. */
+  segments: number;
+  /** Width of one collision block, in world units. */
+  thickness: number;
+  stops: ArenaCarStopDef[];
+}
+
 /**
  * A breakable file box. Bodies step over it; shots and lashes delete it in one or two
  * hits. Kind is a `PROP` id, which picks the mark on the box.
@@ -704,6 +753,10 @@ export interface ArenaDef {
   rocket?: ArenaRocketDef;
   /** WEAPON SYSTEMS fighter-jet status console. Local-only presentation. */
   weapon?: ArenaWeaponDef;
+  /** SPEAK & FIND children's toy floor. Local-only presentation. */
+  seek?: ArenaSeekDef;
+  /** CAR NAVIGATION map and growing serpentine route barrier. Local-only. */
+  car?: ArenaCarDef;
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
   /** Tutorial room floors and labels. Presentation only; never collision. */
@@ -766,6 +819,30 @@ const weaponButtons: ArenaWeaponButtonDef[] = [
   { x: 1190, y: 214, w: 280, h: 132, label: 'FIRE WEAPONS', kind: 0 },
   { x: 1190, y: 420, w: 280, h: 132, label: 'EJECTOR SEAT', kind: 1 },
   { x: 1190, y: 626, w: 280, h: 132, label: 'THRUSTERS', kind: 2 },
+];
+
+// A serpentine GPS route. It crosses the arena once, so the finished wall divides the
+// floor into a north and south half rather than fencing off a pocket.
+const carRoute: Point2[] = [
+  { x: 30, y: 880 },
+  { x: 250, y: 940 },
+  { x: 450, y: 800 },
+  { x: 650, y: 740 },
+  { x: 850, y: 860 },
+  { x: 1050, y: 820 },
+  { x: 1250, y: 660 },
+  { x: 1450, y: 700 },
+  { x: 1650, y: 520 },
+  { x: 1830, y: 440 },
+];
+
+const seekCards: ArenaSeekCardDef[] = [
+  { x: 410, y: 304, w: 240, h: 170, label: 'BOAT', mark: '🚤', color: '#4cc9f0' },
+  { x: 770, y: 304, w: 240, h: 170, label: 'MOON', mark: '🌙', color: '#ffd166' },
+  { x: 1130, y: 304, w: 240, h: 170, label: 'FROG', mark: '🐸', color: '#7bd88f' },
+  { x: 410, y: 574, w: 240, h: 170, label: 'STAR', mark: '⭐', color: '#ffb86b' },
+  { x: 770, y: 574, w: 240, h: 170, label: 'FISH', mark: '🐟', color: '#7ee0ff' },
+  { x: 1130, y: 574, w: 240, h: 170, label: 'APPLE', mark: '🍎', color: '#ff6b73' },
 ];
 
 const browserPages: ArenaBrowserPageDef[] = [
@@ -1726,6 +1803,86 @@ export const ARENAS: readonly ArenaDef[] = [
       jet: { x: 176, y: 244, w: 780, h: 500 },
     },
   },
+  {
+    id: 20,
+    name: 'SPEAK & FIND',
+    tagline: 'Say the word. Find the picture.',
+    hudLabel: 'ARENA // SPEAK & FIND',
+    accent: '#ff8ad4',
+    accentSoft: 'rgba(255, 138, 212, 0.32)',
+    accentFaint: 'rgba(255, 138, 212, 0.034)',
+    signature: 2,
+    bounds: { left: 80, top: 60, right: 1780, bottom: 1000 },
+    // Four chunky letter keys frame the toy and double as the only static cover.
+    pillars: [
+      { x: 120, y: 180, w: 170, h: 100 },
+      { x: 1500, y: 200, w: 160, h: 100 },
+      { x: 120, y: 760, w: 160, h: 100 },
+      { x: 1510, y: 760, w: 150, h: 100 },
+    ],
+    spawns: [
+      { x: 236, y: 142 },
+      { x: 760, y: 150 },
+      { x: 1280, y: 140 },
+      { x: 1660, y: 380 },
+      { x: 1660, y: 900 },
+      { x: 1240, y: 920 },
+      { x: 700, y: 920 },
+      { x: 230, y: 900 },
+    ],
+    seek: {
+      display: { x: 650, y: 82, w: 460, h: 92 },
+      cards: seekCards,
+      prompts: [
+        { text: 'FIND THE BOAT', card: 0 },
+        { text: 'FIND THE MOON', card: 1 },
+        { text: 'FIND THE FROG', card: 2 },
+        { text: 'FIND THE STAR', card: 3 },
+        { text: 'FIND THE FISH', card: 4 },
+        { text: 'FIND THE APPLE', card: 5 },
+      ],
+    },
+  },
+  {
+    id: 21,
+    name: 'CAR NAVIGATION',
+    tagline: 'Recalculating. The route stays.',
+    hudLabel: 'ARENA // CAR NAVIGATION',
+    accent: '#62d9ff',
+    accentSoft: 'rgba(98, 217, 255, 0.32)',
+    accentFaint: 'rgba(98, 217, 255, 0.034)',
+    signature: 3,
+    bounds: { left: 80, top: 60, right: 1780, bottom: 1000 },
+    pillars: [
+      { x: 120, y: 250, w: 150, h: 96 },
+      { x: 610, y: 150, w: 160, h: 88 },
+      { x: 1470, y: 180, w: 160, h: 96 },
+      { x: 930, y: 900, w: 170, h: 72 },
+      { x: 1540, y: 820, w: 140, h: 96 },
+    ],
+    spawns: [
+      { x: 250, y: 140 },
+      { x: 760, y: 128 },
+      { x: 1260, y: 128 },
+      { x: 1660, y: 280 },
+      { x: 1700, y: 900 },
+      { x: 1200, y: 930 },
+      { x: 480, y: 930 },
+      { x: 180, y: 620 },
+    ],
+    car: {
+      route: carRoute,
+      duration: 26,
+      segments: 160,
+      thickness: 26,
+      stops: [
+        { at: 0.22, label: 'PICKUP' },
+        { at: 0.48, label: 'TOLL GATE' },
+        { at: 0.74, label: 'SCENIC ROUTE' },
+        { at: 0.96, label: 'DESTINATION' },
+      ],
+    },
+  },
 ];
 
 /** 0..1 trajectory progress at `t` seconds after launch. */
@@ -1739,6 +1896,48 @@ export function rocketArcAt(rocket: ArenaRocketDef, k: number, out: Point2): Poi
   const u = 1 - p;
   out.x = u * u * rocket.launch.x + 2 * u * p * rocket.control.x + p * p * rocket.end.x;
   out.y = u * u * rocket.launch.y + 2 * u * p * rocket.control.y + p * p * rocket.end.y;
+  return out;
+}
+
+/** 0..1 route progress at `t` seconds after the car starts. */
+export function carProgressAt(car: ArenaCarDef, t: number): number {
+  return Math.max(0, Math.min(1, t / Math.max(0.001, car.duration)));
+}
+
+/** Point at normalized arc-length `k` along the serpentine route. */
+export function carRouteAt(car: ArenaCarDef, k: number, out: Point2): Point2 {
+  const route = car.route;
+  if (route.length === 0) {
+    out.x = 0;
+    out.y = 0;
+    return out;
+  }
+  if (route.length === 1) {
+    out.x = route[0].x;
+    out.y = route[0].y;
+    return out;
+  }
+  let total = 0;
+  for (let i = 1; i < route.length; i++) {
+    total += Math.hypot(route[i].x - route[i - 1].x, route[i].y - route[i - 1].y);
+  }
+  let remaining = Math.max(0, Math.min(1, k)) * total;
+  for (let i = 1; i < route.length; i++) {
+    const a = route[i - 1];
+    const b = route[i];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+    if (remaining <= length || i === route.length - 1) {
+      const f = length > 0.0001 ? remaining / length : 0;
+      out.x = a.x + dx * f;
+      out.y = a.y + dy * f;
+      return out;
+    }
+    remaining -= length;
+  }
+  out.x = route[route.length - 1].x;
+  out.y = route[route.length - 1].y;
   return out;
 }
 
@@ -2318,6 +2517,97 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
       ctx.font = '700 7px ui-monospace, monospace';
       ctx.textAlign = 'center';
       ctx.fillText(button.kind === 0 ? 'FIRE' : button.kind === 1 ? 'EJECT' : 'THRUST', mapX(button.x + button.w * 0.5), mapY(button.y + button.h * 0.55));
+    }
+    return;
+  }
+
+  if (arena.car) {
+    const car = arena.car;
+    ctx.fillStyle = '#06151e';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(bounds.left) + 0.5, mapY(bounds.top) + 0.5, previewW - 1, previewH - 1);
+    ctx.strokeStyle = 'rgba(98, 217, 255, 0.12)';
+    for (let x = bounds.left + 90; x < bounds.right; x += 90) {
+      ctx.beginPath();
+      ctx.moveTo(mapX(x), mapY(bounds.top));
+      ctx.lineTo(mapX(x), mapY(bounds.bottom));
+      ctx.stroke();
+    }
+    for (let y = bounds.top + 90; y < bounds.bottom; y += 90) {
+      ctx.beginPath();
+      ctx.moveTo(mapX(bounds.left), mapY(y));
+      ctx.lineTo(mapX(bounds.right), mapY(y));
+      ctx.stroke();
+    }
+    const p = { x: 0, y: 0 };
+    ctx.strokeStyle = 'rgba(98, 217, 255, 0.26)';
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    for (let i = 0; i <= 32; i++) {
+      carRouteAt(car, i / 32, p);
+      if (i === 0) ctx.moveTo(mapX(p.x), mapY(p.y));
+      else ctx.lineTo(mapX(p.x), mapY(p.y));
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const previewProgress = 0.58;
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let i = 0; i <= 36; i++) {
+      carRouteAt(car, (i / 36) * previewProgress, p);
+      if (i === 0) ctx.moveTo(mapX(p.x), mapY(p.y));
+      else ctx.lineTo(mapX(p.x), mapY(p.y));
+    }
+    ctx.stroke();
+    carRouteAt(car, previewProgress, p);
+    ctx.fillStyle = '#ffe38a';
+    ctx.fillRect(mapX(p.x) - 3, mapY(p.y) - 2, 6, 4);
+    for (let i = 0; i < car.stops.length; i++) {
+      carRouteAt(car, car.stops[i].at, p);
+      ctx.fillStyle = arena.accent;
+      ctx.beginPath();
+      ctx.arc(mapX(p.x), mapY(p.y), 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return;
+  }
+
+  if (arena.seek) {
+    const seek = arena.seek;
+    ctx.fillStyle = '#21121d';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(bounds.left) + 0.5, mapY(bounds.top) + 0.5, previewW - 1, previewH - 1);
+    const display = seek.display;
+    ctx.fillStyle = '#071418';
+    ctx.fillRect(mapX(display.x), mapY(display.y), display.w * sx, display.h * sy);
+    ctx.strokeStyle = '#ffb84d';
+    ctx.strokeRect(mapX(display.x) + 0.5, mapY(display.y) + 0.5, display.w * sx - 1, display.h * sy - 1);
+    ctx.fillStyle = '#fff2c7';
+    ctx.font = '700 7px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(seek.prompts[0]?.text ?? 'FIND', mapX(display.x + display.w * 0.5), mapY(display.y + display.h * 0.58));
+    for (let i = 0; i < seek.cards.length; i++) {
+      const card = seek.cards[i];
+      ctx.fillStyle = '#111a20';
+      ctx.fillRect(mapX(card.x), mapY(card.y), card.w * sx, card.h * sy);
+      ctx.strokeStyle = card.color;
+      ctx.lineWidth = i === 0 ? 1.5 : 1;
+      ctx.strokeRect(mapX(card.x) + 0.5, mapY(card.y) + 0.5, card.w * sx - 1, card.h * sy - 1);
+      ctx.fillStyle = card.color;
+      ctx.font = '7px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+      ctx.fillText(card.mark, mapX(card.x + card.w * 0.5), mapY(card.y + card.h * 0.72));
+    }
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const rect = arena.pillars[i];
+      ctx.fillStyle = '#ffcf5a';
+      ctx.fillRect(mapX(rect.x), mapY(rect.y), rect.w * sx, rect.h * sy);
+      ctx.strokeStyle = '#ffe9a8';
+      ctx.strokeRect(mapX(rect.x) + 0.5, mapY(rect.y) + 0.5, rect.w * sx - 1, rect.h * sy - 1);
     }
     return;
   }

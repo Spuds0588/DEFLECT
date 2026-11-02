@@ -74,6 +74,8 @@ import {
   satelliteSolarStateAt,
   satelliteTelescopeRectAt,
   SATELLITE_SOLAR_STATE,
+  carRouteAt,
+  carProgressAt,
   rocketArcAt,
   rocketProgressAt,
   swipeDirectionAt,
@@ -85,6 +87,7 @@ import {
   type ArenaKeypadDef,
   type ArenaPropDef,
   type ArenaSatelliteDef,
+  type ArenaCarDef,
   type ArenaRocketDef,
   type ArenaScannerDef,
   type ArenaSwipeDef,
@@ -486,6 +489,14 @@ export class World {
   /** Preallocated blocks that approximate the curved trajectory wall. */
   private readonly rocketBarrierRects: Rect[] = [];
   private readonly rocketScratch = { x: 0, y: 0 };
+  /** CAR NAVIGATION layout and its growing serpentine route wall. Local-only. */
+  readonly car: ArenaCarDef | null;
+  /** Seconds since the car started. Reset at the start of every round. */
+  carT = 0;
+  /** 0..1 route progress. The renderer and the collision blocks share it. */
+  carProgress = 0;
+  private readonly carBarrierRects: Rect[] = [];
+  private readonly carScratch = { x: 0, y: 0 };
   /** Shared solar/telescope clock, seconds into the run. */
   satelliteT = 0;
   /** Countdown to the next meteor shower. */
@@ -574,13 +585,19 @@ export class World {
         this.rocketBarrierRects.push({ x: 0, y: 0, w: 0, h: 0 });
       }
     }
-    const staticSolids = this.rocket
-      ? [...arenaSolids(arena), ...this.rocketBarrierRects]
-      : arenaSolids(arena);
+    this.car = arena.car ?? null;
+    if (this.car) {
+      for (let i = 0; i < this.car.segments; i++) {
+        this.carBarrierRects.push({ x: 0, y: 0, w: 0, h: 0 });
+      }
+    }
+    const routeBarrierRects = [...this.rocketBarrierRects, ...this.carBarrierRects];
+    const staticSolids =
+      routeBarrierRects.length > 0 ? [...arenaSolids(arena), ...routeBarrierRects] : arenaSolids(arena);
     this.campaignBarSolids = campaign ? campaignCellBarRects(arena) : [];
     this.solids =
       this.campaignBarSolids.length > 0 ? [...staticSolids, ...this.campaignBarSolids] : staticSolids;
-    this.dashSolids = [...arena.pillars, ...this.rocketBarrierRects, ...this.campaignBarSolids];
+    this.dashSolids = [...arena.pillars, ...routeBarrierRects, ...this.campaignBarSolids];
     this.keypad = arena.keypad ?? null;
     this.keypadStates = new Uint8Array(this.keypad?.keys.length ?? 0);
     this.keypadPrevStates = new Uint8Array(this.keypadStates.length);
@@ -2419,6 +2436,7 @@ export class World {
     if (this.swipe) this.resetSwipe();
     if (this.satellite) this.resetSatellite();
     if (this.rocket) this.resetRocket();
+    if (this.car) this.resetCar();
     const active = this.activeCount();
     if (active === 0) return;
     computeSpawns(active, this.arena, this.spawnTmpX, this.spawnTmpY);
@@ -2516,6 +2534,7 @@ export class World {
     if (this.swipe && canAct) this.tickSwipe(dt);
     if (this.satellite && canAct) this.tickSatellite(dt);
     if (this.rocket && canAct) this.tickRocket(dt);
+    if (this.car && canAct) this.tickCar(dt);
     for (let i = 0; i < this.bumperFlash.length; i++) {
       if (this.bumperFlash[i] > 0) this.bumperFlash[i] = Math.max(0, this.bumperFlash[i] - dt);
     }
@@ -8233,6 +8252,10 @@ export class World {
       const r = this.rocketBarrierRects[i];
       if (r.h > 0 && this.bounceCoverRect(proj, r)) return;
     }
+    for (let i = 0; i < this.carBarrierRects.length; i++) {
+      const r = this.carBarrierRects[i];
+      if (r.h > 0 && this.bounceCoverRect(proj, r)) return;
+    }
   }
 
   /** Shared shot/cover response for static pillars and the temporary swipe popup. */
@@ -8728,6 +8751,48 @@ export class World {
     this.rocketT = 0;
     this.rocketProgress = 0;
     this.refreshRocketBarrier();
+  }
+
+  /** Reset the car route before a new round. */
+  private resetCar(): void {
+    this.carT = 0;
+    this.carProgress = 0;
+    this.refreshCarBarrier();
+  }
+
+  /** Advance the route and rebuild the collision blocks that approximate it. */
+  private tickCar(dt: number): void {
+    const car = this.car;
+    if (!car) return;
+    this.carT += dt;
+    this.carProgress = carProgressAt(car, this.carT);
+    this.refreshCarBarrier();
+  }
+
+  /**
+   * The rendered route and the body/shot wall share one progress value. Inactive
+   * blocks are zeroed instead of removed, so the solid list stays fixed.
+   */
+  private refreshCarBarrier(): void {
+    const car = this.car;
+    if (!car) return;
+    const active = Math.ceil(this.carProgress * car.segments);
+    const half = car.thickness * 0.5;
+    for (let i = 0; i < this.carBarrierRects.length; i++) {
+      const rect = this.carBarrierRects[i];
+      if (i >= active) {
+        rect.x = 0;
+        rect.y = 0;
+        rect.w = 0;
+        rect.h = 0;
+        continue;
+      }
+      carRouteAt(car, (i + 1) / car.segments, this.carScratch);
+      rect.x = this.carScratch.x - half;
+      rect.y = this.carScratch.y - half;
+      rect.w = car.thickness;
+      rect.h = car.thickness;
+    }
   }
 
   /** Advance the launch and rebuild the collision blocks that approximate the arc. */

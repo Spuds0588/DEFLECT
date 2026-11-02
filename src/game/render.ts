@@ -19,6 +19,8 @@ import {
   satelliteSolarStateAt,
   satelliteTelescopeExtensionAt,
   SATELLITE_SOLAR_STATE,
+  carProgressAt,
+  carRouteAt,
   rocketArcAt,
   rocketProgressAt,
   swipeDirectionAt,
@@ -132,6 +134,9 @@ export interface RenderState {
   /** ROCKET NAVIGATION launch clock and 0..1 trajectory progress. Local-only. */
   rocketT?: number;
   rocketProgress?: number;
+  /** CAR NAVIGATION route clock and 0..1 progress. Local-only. */
+  carT?: number;
+  carProgress?: number;
   /** Phone-pad phase and per-key state. The shared clock travels in Snapshot. */
   keypadT?: number;
   keypadStates?: ArrayLike<number>;
@@ -411,6 +416,7 @@ export class Renderer {
   private spectateY = 0;
   private lastRenderT = 0;
   private readonly rocketArcScratch = { x: 0, y: 0 };
+  private readonly carRouteScratch = { x: 0, y: 0 };
   private introT = INTRO_LEN;
   private introActive = false;
   private dustArena = -1;
@@ -4015,6 +4021,337 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** SPEAK & FIND: a bright talking toy with picture cards and chunky letter keys. */
+  private drawSeekArena(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const seek = arena?.seek;
+    if (!arena || !seek) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const prompt = seek.prompts.length > 0 ? seek.prompts[Math.floor(t / 4.2) % seek.prompts.length] : null;
+
+    ctx.save();
+    ctx.fillStyle = '#0a070b';
+    ctx.fillRect(b.left - 40, b.top - 40, b.right - b.left + 80, b.bottom - b.top + 80);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#21121d';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+
+    // Moulded plastic shell with a warm printed board underneath.
+    ctx.fillStyle = '#3a1a2d';
+    ctx.fillRect(b.left + 22, b.top + 18, b.right - b.left - 44, b.bottom - b.top - 36);
+    ctx.fillStyle = '#4c2039';
+    ctx.fillRect(b.left + 34, b.top + 28, b.right - b.left - 68, b.bottom - b.top - 56);
+    ctx.strokeStyle = 'rgba(255, 206, 147, 0.4)';
+    ctx.lineWidth = 5;
+    ctx.strokeRect(b.left + 22, b.top + 18, b.right - b.left - 44, b.bottom - b.top - 36);
+    ctx.globalAlpha = groundA * 0.4;
+    ctx.fillStyle = '#ffb6de';
+    for (let x = b.left + 54; x < b.right - 40; x += 58) {
+      for (let y = b.top + 56; y < b.bottom - 32; y += 58) {
+        ctx.fillRect(x, y, 3, 3);
+      }
+    }
+    ctx.globalAlpha = groundA;
+
+    ctx.font = FONT_MID;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#ffe1a8';
+    ctx.fillText('SPEAK & FIND', b.left + 50, b.top + 52);
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(255, 216, 173, 0.58)';
+    ctx.fillText('TALKING PICTURE BOARD // LEVEL 1', b.left + 50, b.top + 72);
+
+    // Speaker grille, so the toy reads as something that talks back.
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 3; j++) {
+        ctx.beginPath();
+        ctx.arc(b.left + 64 + j * 15, b.top + 104 + i * 15, 4, 0, TWO_PI);
+        ctx.fillStyle = 'rgba(255, 212, 164, 0.34)';
+        ctx.fill();
+      }
+    }
+
+    // Prompt screen: the card prompt is the loudest object on the floor.
+    const display = seek.display;
+    ctx.fillStyle = '#071418';
+    ctx.fillRect(display.x, display.y, display.w, display.h);
+    ctx.strokeStyle = '#ffb84d';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(display.x, display.y, display.w, display.h);
+    ctx.fillStyle = 'rgba(255, 184, 77, 0.16)';
+    ctx.fillRect(display.x + 10, display.y + 10, display.w - 20, display.h - 20);
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff2c7';
+    ctx.fillText(prompt?.text ?? 'FIND THE PICTURE', display.x + display.w * 0.5, display.y + 40);
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(255, 226, 168, 0.6)';
+    ctx.fillText('LISTEN  //  LOOK  //  TOUCH', display.x + display.w * 0.5, display.y + 66);
+
+    // Picture cards. The prompted card gets a bright rim and a pulsing halo.
+    for (let i = 0; i < seek.cards.length; i++) {
+      const card = seek.cards[i];
+      const hot = prompt?.card === i;
+      if (hot) {
+        const pulse = 0.5 + Math.sin(t * 5.5) * 0.2;
+        ctx.strokeStyle = `rgba(255, 246, 195, ${0.34 + pulse * 0.3})`;
+        ctx.lineWidth = 10;
+        ctx.strokeRect(card.x - 8, card.y - 8, card.w + 16, card.h + 16);
+      }
+      ctx.fillStyle = '#111a20';
+      ctx.fillRect(card.x, card.y, card.w, card.h);
+      ctx.strokeStyle = card.color;
+      ctx.lineWidth = hot ? 5 : 3;
+      ctx.strokeRect(card.x, card.y, card.w, card.h);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.055)';
+      ctx.fillRect(card.x + 10, card.y + 10, card.w - 20, card.h - 42);
+      ctx.font = '48px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(card.mark, card.x + card.w * 0.5, card.y + card.h * 0.46);
+      ctx.font = FONT_TINY;
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = hot ? '#fff4c9' : 'rgba(230, 247, 255, 0.68)';
+      ctx.fillText(card.label, card.x + card.w * 0.5, card.y + card.h - 18);
+    }
+
+    // The searching magnifier sweeps across the cards, never a game body.
+    const sweep = (Math.sin(t * 0.75) + 1) * 0.5;
+    const lensX = b.left + 420 + sweep * 850;
+    const lensY = b.top + 520 + Math.sin(t * 1.2) * 70;
+    ctx.strokeStyle = 'rgba(255, 230, 171, 0.78)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(lensX, lensY, 34, 0, TWO_PI);
+    ctx.stroke();
+    ctx.lineWidth = 9;
+    ctx.beginPath();
+    ctx.moveTo(lensX + 25, lensY + 25);
+    ctx.lineTo(lensX + 60, lensY + 60);
+    ctx.stroke();
+
+    // Four letter keys are static cover and the toy's physical controls.
+    const keyLabels = ['A', 'B', 'C', 'D'];
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const rect = arena.pillars[i];
+      ctx.fillStyle = '#ffcf5a';
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillStyle = '#ffe9a8';
+      ctx.fillRect(rect.x + 8, rect.y + 8, rect.w - 16, rect.h - 16);
+      ctx.strokeStyle = 'rgba(80, 38, 24, 0.72)';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.font = FONT_MID;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#5a2d1c';
+      ctx.fillText(keyLabels[i] ?? '?', rect.x + rect.w * 0.5, rect.y + rect.h * 0.58);
+      ctx.font = FONT_TINY;
+      ctx.fillStyle = 'rgba(90, 45, 28, 0.62)';
+      ctx.fillText('PRESS', rect.x + rect.w * 0.5, rect.y + rect.h - 12);
+    }
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(255, 177, 220, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.restore();
+  }
+
+  /** CAR NAVIGATION: a map screen with a serpentine route that becomes a wall. */
+  private drawCarArena(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const car = arena?.car;
+    if (!arena || !car) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const progress = Math.max(0, Math.min(1, state?.carProgress ?? carProgressAt(car, state?.carT ?? 0)));
+    const point = this.carRouteScratch;
+
+    ctx.save();
+    ctx.fillStyle = '#02080d';
+    ctx.fillRect(b.left - 40, b.top - 40, b.right - b.left + 80, b.bottom - b.top + 80);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#06151e';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+
+    // Map furniture: a city grid, a park and a river. These are presentation only.
+    ctx.strokeStyle = 'rgba(98, 217, 255, 0.08)';
+    ctx.lineWidth = 1;
+    for (let x = b.left + 72; x < b.right; x += 72) {
+      ctx.beginPath();
+      ctx.moveTo(x, b.top);
+      ctx.lineTo(x, b.bottom);
+      ctx.stroke();
+    }
+    for (let y = b.top + 72; y < b.bottom; y += 72) {
+      ctx.beginPath();
+      ctx.moveTo(b.left, y);
+      ctx.lineTo(b.right, y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(70, 160, 120, 0.16)';
+    ctx.beginPath();
+    ctx.ellipse(b.left + 1040, b.top + 500, 150, 80, -0.25, 0, TWO_PI);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(70, 190, 170, 0.28)';
+    ctx.setLineDash([8, 9]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(50, 124, 180, 0.18)';
+    ctx.beginPath();
+    ctx.moveTo(b.left + 250, b.top + 100);
+    ctx.bezierCurveTo(b.left + 210, b.top + 300, b.left + 390, b.top + 420, b.left + 300, b.top + 610);
+    ctx.lineTo(b.left + 360, b.top + 610);
+    ctx.bezierCurveTo(b.left + 450, b.top + 420, b.left + 280, b.top + 300, b.left + 315, b.top + 100);
+    ctx.closePath();
+    ctx.fill();
+
+    // City blocks double as the arena's static cover.
+    const blockLabels = ['GARAGE', 'PLAZA', 'TOLL', 'PARK', 'SERVICE'];
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const rect = arena.pillars[i];
+      ctx.fillStyle = '#102a37';
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.strokeStyle = 'rgba(98, 217, 255, 0.38)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillStyle = 'rgba(98, 217, 255, 0.16)';
+      ctx.fillRect(rect.x + 8, rect.y + 8, rect.w - 16, 7);
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(211, 247, 255, 0.58)';
+      ctx.fillText(blockLabels[i] ?? 'BLOCK', rect.x + rect.w * 0.5, rect.y + rect.h * 0.62);
+    }
+
+    // Planned route in a faint dashed stroke, then the driven portion as the wall.
+    ctx.strokeStyle = 'rgba(98, 217, 255, 0.25)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 14]);
+    ctx.beginPath();
+    for (let i = 0; i <= 48; i++) {
+      carRouteAt(car, i / 48, point);
+      if (i === 0) ctx.moveTo(point.x, point.y);
+      else ctx.lineTo(point.x, point.y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (progress > 0) {
+      const steps = Math.max(2, Math.ceil(progress * 96));
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(98, 217, 255, 0.18)';
+      ctx.lineWidth = 26;
+      ctx.beginPath();
+      for (let i = 0; i <= steps; i++) {
+        carRouteAt(car, (i / steps) * progress, point);
+        if (i === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = '#62d9ff';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+
+    // Stops are map pins: they mark the route but never become pickups.
+    for (let i = 0; i < car.stops.length; i++) {
+      const stop = car.stops[i];
+      const reached = progress >= stop.at;
+      carRouteAt(car, stop.at, point);
+      ctx.fillStyle = reached ? '#ffe38a' : 'rgba(255, 227, 138, 0.28)';
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, reached ? 7 : 5, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 227, 138, 0.54)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 13, 0, TWO_PI);
+      ctx.stroke();
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = reached ? '#ffe9ae' : 'rgba(255, 233, 174, 0.44)';
+      ctx.fillText(stop.label, point.x, point.y - 20);
+    }
+
+    // Car at the tip, banked along the route tangent.
+    if (progress > 0) {
+      carRouteAt(car, progress, point);
+      const tipX = point.x;
+      const tipY = point.y;
+      carRouteAt(car, Math.max(0, progress - 0.015), point);
+      const heading = Math.atan2(tipY - point.y, tipX - point.x);
+      ctx.save();
+      ctx.translate(tipX, tipY);
+      ctx.rotate(heading);
+      ctx.fillStyle = 'rgba(2, 8, 13, 0.72)';
+      ctx.fillRect(-20, -14, 40, 28);
+      ctx.fillStyle = '#ffcf5a';
+      ctx.fillRect(-17, -10, 34, 20);
+      ctx.fillStyle = '#0b202a';
+      ctx.fillRect(-8, -8, 16, 16);
+      ctx.fillStyle = '#fff6d2';
+      ctx.fillRect(12, -7, 4, 5);
+      ctx.fillRect(12, 3, 4, 5);
+      ctx.fillStyle = '#ff6b5c';
+      ctx.fillRect(-19, -7, 3, 4);
+      ctx.fillRect(-19, 3, 3, 4);
+      ctx.restore();
+    }
+
+    // GPS readout card. It is deliberately a map overlay, not a new HUD element.
+    const readoutX = b.left + 42;
+    const readoutY = b.top + 126;
+    ctx.fillStyle = 'rgba(3, 15, 22, 0.9)';
+    ctx.fillRect(readoutX, readoutY, 332, 176);
+    ctx.strokeStyle = 'rgba(98, 217, 255, 0.42)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(readoutX, readoutY, 332, 176);
+    ctx.font = FONT_MID;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#d8f8ff';
+    ctx.fillText('CAR NAVIGATION', readoutX + 16, readoutY + 30);
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(160, 235, 255, 0.58)';
+    ctx.fillText('ROUTE 21 // MAP LOCK', readoutX + 16, readoutY + 50);
+    ctx.fillStyle = '#e8fbff';
+    ctx.fillText(`SPEED   ${Math.round(34 + progress * 46)} KM/H`, readoutX + 16, readoutY + 78);
+    ctx.fillText(`ETA     ${Math.max(0, Math.round((1 - progress) * car.duration))} SEC`, readoutX + 16, readoutY + 100);
+    ctx.fillText(`ROUTE   ${Math.round(progress * 100)}% DRIVEN`, readoutX + 16, readoutY + 122);
+    let nextStop = 'DESTINATION';
+    for (let i = 0; i < car.stops.length; i++) {
+      if (progress < car.stops[i].at) {
+        nextStop = car.stops[i].label;
+        break;
+      }
+    }
+    ctx.fillStyle = '#ffe38a';
+    ctx.fillText(`NEXT    ${nextStop}`, readoutX + 16, readoutY + 148);
+    ctx.fillStyle = 'rgba(98, 217, 255, 0.18)';
+    ctx.fillRect(readoutX + 16, readoutY + 158, 300, 5);
+    ctx.fillStyle = '#62d9ff';
+    ctx.fillRect(readoutX + 16, readoutY + 158, 300 * progress, 5);
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(98, 217, 255, 0.68)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.restore();
+  }
+
   private drawArena(
     t: number,
     arena: ArenaDef,
@@ -4044,6 +4381,14 @@ export class Renderer {
     }
     if (arena.swipe) {
       this.drawSwipeArena(arena, groundA, frameA, t, swipeT, swipePopupT);
+      return;
+    }
+    if (arena.car) {
+      this.drawCarArena(satelliteState, groundA, frameA, t);
+      return;
+    }
+    if (arena.seek) {
+      this.drawSeekArena(satelliteState, groundA, frameA, t);
       return;
     }
     if (arena.rocket) {

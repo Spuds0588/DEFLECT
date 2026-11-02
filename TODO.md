@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-02 (multiplayer status telemetry)
+Last updated: 2026-11-02 (SPEAK & FIND and CAR NAVIGATION)
 
 ---
 
@@ -28,6 +28,21 @@ Last updated: 2026-11-02 (multiplayer status telemetry)
 - [x] Hide the panel with `GAME UI`, loading and overlays; older peers degrade to `--`
 - [x] `npx tsc --noEmit` clean
 - [ ] Two-real-client pass: verify RTT, snapshot cadence, disconnect fallback and legacy-peer `--` state
+
+---
+
+## SPEAK & FIND and CAR NAVIGATION (2026-11-02)
+
+- [x] Add `seek` and `car` data to `ArenaDef`; ids 20 and 21 after WEAPON SYSTEMS
+- [x] SPEAK & FIND: six-card picture board, spoken `FIND THE ...` prompt deck, pulsing target and sweeping magnifier
+- [x] Four chunky letter keys as static cover; cards, prompt and magnifier remain presentation
+- [x] CAR NAVIGATION: 26 s serpentine GPS route with speed/ETA/next-stop readout and named map pins
+- [x] Make the route a real wall: 160 preallocated overlapping blocks in `solids`/`dashSolids`, with body, dash and shot collision
+- [x] Reset the route and clock in `beginRound()`; keep both maps out of `SnapshotHazards` and `isOnlineArena`
+- [x] Custom arena renderers and picker previews for both maps
+- [x] Headless probe (`.tmp/two-more-maps-check.ts`): ids/order, card/prompt coverage, route length and turns, block overlap, growth, reset and snapshot isolation
+- [ ] Headed pass: read the prompt/card hierarchy and the full serpentine wall at play size
+- [ ] Optional: teach bot nav about the growing car wall, or carry its clock in a snapshot if online support is requested
 
 ---
 
@@ -3115,7 +3130,7 @@ arrive.
   or local match exists yet; the only local multi-body paths today are bots and the gauntlet thrall.
 - Story mode lists three local save slots, but nothing writes or reads a run: the first playable sector
   and the new-game/resume wiring do not exist. The slot format is already versioned in `saves.ts`.
-- ROCKET NAVIGATION's growing barrier is not in the bot nav grid or any snapshot. Bots can path through it while it is short, and the map is deliberately excluded from hosted rooms. WEAPON SYSTEMS' console banks are static cover and presentation only; no jet weapon, eject action or thruster system exists.
+- ROCKET NAVIGATION's growing barrier and CAR NAVIGATION's growing route are not in the bot nav grid or any snapshot. Bots can path through them while short, and both maps are deliberately excluded from hosted rooms. WEAPON SYSTEMS' console banks and SPEAK & FIND's picture cards are static cover/presentation only; no jet weapon, eject action, thruster system or pickable card target exists.
 - Compress is local-only like every program kit: a guest does not see a shrunk body and online still runs
   Probe. A compressed player's cover and arena-bound collision still use `PLAYER.radius` even though the
   drawn hull and projectile/bomb hitboxes shrink. A shrunk worm's contact and bite reach stay at the
