@@ -5205,3 +5205,31 @@ and it is authored only on SATELLITE.
 
 **Next:** author replicators on the remaining offline or hardwired campaign devices, then give the
 sub-agents their schedule.
+
+## 2026-11-02 — CAPCOM: a 1968 mission-control plate arena (v0.1.128)
+
+**Goal:** a new arena on the space theme, built from the plate grammar rather than another single floor.
+
+- Arena 32 `CAPCOM`: four plates in a 2×2 ring, one department each — CAPCOM (flight control), FIDO
+  (flight dynamics), GUIDO (guidance) and EECOM (electrical/environmental). All four bridge decks start
+  open, and the gaps are wider than a dash, so the ring is the only route between departments.
+- New room theme `console`: a bank of five CRT stations per plate with drifting phosphor traces, knobs and
+  a paper strip, a plotting board with a grid and a live trajectory marker, and a running `T+mm:ss` mission
+  clock. The department name comes from the room label, so another department is a data entry rather than
+  another draw function.
+- Console banks are the cover pillars (four per plate), with two spawn stations per plate and eight loose
+  teletype and tape props across the floor.
+- The picker now draws `arena.bridges` for island arenas, so CAPCOM's ring is visible before a load.
+  `isOnlineArena` already excludes `rooms`, so the arena is local-only like QUARANTINE.
+- `ARENAS` is 33 entries now; `.tmp/laptop-variants-check.ts` was updated to assert that count.
+
+**Verification:** `.tmp/capcom-check.ts` passes (four non-overlapping plates, one console room per plate,
+four open decks, a gap wider than a dash, plate centres walkable, decks walkable, the gap void, spawns and
+cover on plates, no ingress on a fighting map). `.tmp/islands-ports-check.ts` and
+`.tmp/laptop-variants-check.ts` still pass. `npm run build` passes. `npm run bench` is clean: gauntlet max
+0.190 ms avg / 0.577 ms p99.
+
+**Limitations:** every department uses the same console-bank layout, the mission clock is presentation
+rather than an objective, and no campaign node uses the floor yet.
+
+**Next:** give each department its own console layout, then pick a node that uses the floor.

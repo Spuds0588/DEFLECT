@@ -40,7 +40,7 @@ export interface ArenaTraversalDef {
 }
 
 /** A tutorial room's visual identity. The floor is presentation; walls stay in `pillars`. */
-export type ArenaRoomTheme = 'office' | 'holding' | 'board' | 'router';
+export type ArenaRoomTheme = 'office' | 'holding' | 'board' | 'router' | 'console';
 
 /**
  * One room in a connected tutorial arena. `x,y,w,h` is the room's footprint; a circle
@@ -160,6 +160,8 @@ export const ROOM_THEME_COLORS: Record<ArenaRoomTheme, { floor: string; line: st
   holding: { floor: '#1d2027', line: 'rgba(255, 192, 110, 0.15)', accent: '#ffbd66', deep: '#11141a' },
   board: { floor: '#08231d', line: 'rgba(96, 255, 196, 0.15)', accent: '#63ffc4', deep: '#04110e' },
   router: { floor: '#151b27', line: 'rgba(110, 190, 255, 0.16)', accent: '#66c8ff', deep: '#0a0e16' },
+  // 1968 mission control: phosphor green on graphite, amber for the live indicator.
+  console: { floor: '#0b1a14', line: 'rgba(124, 232, 168, 0.14)', accent: '#8ef0c0', deep: '#04100a' },
 };
 
 /**
@@ -2815,6 +2817,115 @@ export const ARENAS: readonly ArenaDef[] = [
       bubbleW: 0.56,
     },
   },
+  {
+    id: 32,
+    name: 'CAPCOM',
+    tagline: 'Four consoles. One trajectory. Hold the room.',
+    hudLabel: 'ARENA // CAPCOM',
+    accent: '#7ce8a8',
+    accentSoft: 'rgba(124, 232, 168, 0.32)',
+    accentFaint: 'rgba(124, 232, 168, 0.034)',
+    signature: 0,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    // Four plates in a ring, one department each. Console banks are the cover, so the
+    // furniture and the fiction are the same objects.
+    pillars: [
+      { x: 120, y: 140, w: 190, h: 52 },
+      { x: 120, y: 300, w: 190, h: 52 },
+      { x: 560, y: 140, w: 190, h: 52 },
+      { x: 560, y: 300, w: 190, h: 52 },
+      { x: 120, y: 780, w: 190, h: 52 },
+      { x: 120, y: 930, w: 190, h: 52 },
+      { x: 560, y: 780, w: 190, h: 52 },
+      { x: 560, y: 930, w: 190, h: 52 },
+      { x: 1170, y: 780, w: 190, h: 52 },
+      { x: 1170, y: 930, w: 190, h: 52 },
+      { x: 1610, y: 780, w: 190, h: 52 },
+      { x: 1610, y: 930, w: 190, h: 52 },
+      { x: 1170, y: 140, w: 190, h: 52 },
+      { x: 1170, y: 300, w: 190, h: 52 },
+      { x: 1610, y: 140, w: 190, h: 52 },
+      { x: 1610, y: 300, w: 190, h: 52 },
+    ],
+    // Two stations per plate, clear of the console banks.
+    spawns: [
+      { x: 380, y: 120 },
+      { x: 380, y: 380 },
+      { x: 380, y: 720 },
+      { x: 380, y: 1010 },
+      { x: 1430, y: 720 },
+      { x: 1430, y: 1010 },
+      { x: 1430, y: 120 },
+      { x: 1430, y: 380 },
+    ],
+    // Teletype paper and tape reels: loose debris, same as any other arena's files.
+    props: [
+      { x: 330, y: 220, w: 38, h: 28, kind: PROP.DOC },
+      { x: 700, y: 220, w: 38, h: 28, kind: PROP.AUDIO },
+      { x: 330, y: 860, w: 38, h: 28, kind: PROP.ZIP },
+      { x: 700, y: 860, w: 38, h: 28, kind: PROP.VIDEO },
+      { x: 1380, y: 860, w: 38, h: 28, kind: PROP.DOC },
+      { x: 1760, y: 860, w: 38, h: 28, kind: PROP.ZIP },
+      { x: 1380, y: 220, w: 38, h: 28, kind: PROP.AUDIO },
+      { x: 1760, y: 220, w: 38, h: 28, kind: PROP.VIDEO },
+    ],
+    islands: [
+      { x: 48, y: 48, w: 810, h: 396 },
+      { x: 48, y: 664, w: 810, h: 382 },
+      { x: 1098, y: 664, w: 844, h: 382 },
+      { x: 1098, y: 48, w: 844, h: 396 },
+    ],
+    rooms: [
+      {
+        shape: 'rect',
+        x: 48,
+        y: 48,
+        w: 810,
+        h: 396,
+        theme: 'console',
+        label: 'CAPCOM',
+        sub: 'FLIGHT CONTROL // 1968',
+      },
+      {
+        shape: 'rect',
+        x: 48,
+        y: 664,
+        w: 810,
+        h: 382,
+        theme: 'console',
+        label: 'FIDO',
+        sub: 'FLIGHT DYNAMICS // TRAJECTORY',
+      },
+      {
+        shape: 'rect',
+        x: 1098,
+        y: 664,
+        w: 844,
+        h: 382,
+        theme: 'console',
+        label: 'EECOM',
+        sub: 'ELECTRICAL // ENVIRONMENTAL',
+      },
+      {
+        shape: 'rect',
+        x: 1098,
+        y: 48,
+        w: 844,
+        h: 396,
+        theme: 'console',
+        label: 'GUIDO',
+        sub: 'GUIDANCE // NAVIGATION',
+      },
+    ],
+    // A ring: all four decks are open, and the gaps are wider than a dash so the ring is
+    // the only route between departments.
+    bridges: [
+      { x: 400, y: 444, w: 150, h: 220, label: 'A' },
+      { x: 1440, y: 444, w: 150, h: 220, label: 'B' },
+      { x: 858, y: 160, w: 240, h: 140, label: 'C' },
+      { x: 858, y: 800, w: 240, h: 140, label: 'D' },
+    ],
+  },
 ];
 
 /** 0..1 trajectory progress at `t` seconds after launch. */
@@ -4024,6 +4135,15 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
+  }
+
+  // Island decks read as lighter plates in the picker, so the route is visible.
+  if (arena.bridges) {
+    ctx.fillStyle = 'rgba(190, 235, 220, 0.42)';
+    for (let i = 0; i < arena.bridges.length; i++) {
+      const b = arena.bridges[i];
+      ctx.fillRect(mapX(b.x), mapY(b.y), Math.max(1, b.w * sx), Math.max(1, b.h * sy));
+    }
   }
 
   // Multi-deck floor: raised deck tint, open trench, deck plate, then the transit plates.

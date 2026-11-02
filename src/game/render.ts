@@ -6831,6 +6831,7 @@ export class Renderer {
       if (room.theme === 'office') this.drawOfficeRoom(room, cx, cy, radius, alpha);
       else if (room.theme === 'holding') this.drawHoldingRoom(room, t, alpha);
       else if (room.theme === 'board') this.drawBoardRoom(arena, room, alpha);
+      else if (room.theme === 'console') this.drawConsoleRoom(room, t, alpha);
       else this.drawRouterRoom(room, t, alpha);
       ctx.restore();
 
@@ -7353,6 +7354,119 @@ export class Renderer {
     ctx.globalAlpha = 0.3 * alpha;
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.fillText('PORT 03 // UPLINK', room.x + room.w * 0.5, room.y + room.h * 0.5 + 28);
+  }
+
+  /**
+   * A 1968 mission-control floor: a bank of CRT stations along the back, a plotting board
+   * with a live trajectory, and a mission clock. The department name comes from the room
+   * label, so a new console department is a data entry, not a new draw function.
+   */
+  private drawConsoleRoom(room: ArenaRoomDef, t: number, alpha: number): void {
+    const ctx = this.ctx;
+    const theme = ROOM_THEME_COLORS.console;
+    const cx = room.x + room.w * 0.5;
+
+    // Console bank along the top edge. Each station is a housing, a CRT trace and knobs.
+    const count = 5;
+    const bankW = Math.min(room.w - 80, 620);
+    const bankX = cx - bankW * 0.5;
+    const screenW = bankW / count;
+    for (let i = 0; i < count; i++) {
+      const sx = bankX + i * screenW;
+      const sy = room.y + 22;
+      ctx.globalAlpha = 0.6 * alpha;
+      ctx.fillStyle = 'rgba(8, 14, 12, 0.9)';
+      ctx.fillRect(sx + 6, sy, screenW - 12, 74);
+      ctx.globalAlpha = 0.5 * alpha;
+      ctx.strokeStyle = theme.line;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 6.5, sy + 0.5, screenW - 13, 73);
+      // CRT face with a phosphor trace that drifts on its own phase.
+      ctx.globalAlpha = 0.75 * alpha;
+      ctx.fillStyle = '#04160f';
+      ctx.fillRect(sx + 12, sy + 6, Math.max(4, screenW - 24), 40);
+      ctx.globalAlpha = 0.5 * alpha;
+      ctx.strokeStyle = theme.accent;
+      ctx.beginPath();
+      for (let k = 0; k <= 18; k++) {
+        const px = sx + 14 + ((screenW - 28) * k) / 18;
+        const py = sy + 26 - Math.sin(t * (1.1 + i * 0.17) + k * 0.55 + i) * 9;
+        if (k === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      // Knobs and a paper strip.
+      ctx.globalAlpha = 0.4 * alpha;
+      ctx.fillStyle = theme.accent;
+      for (let k = 0; k < 3; k++) {
+        ctx.beginPath();
+        ctx.arc(sx + 18 + k * 14, sy + 60, 3, 0, TWO_PI);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 0.22 * alpha;
+      ctx.fillStyle = '#e8f6ee';
+      ctx.fillRect(sx + screenW * 0.55, sy + 56, Math.max(6, screenW * 0.3), 10);
+    }
+
+    // Plotting board: a grid, a rising trajectory and a marker at the live point.
+    const boardW = Math.min(260, room.w * 0.32);
+    const boardX = room.x + room.w - boardW - 24;
+    const boardY = room.y + 118;
+    const boardH = Math.min(150, room.h * 0.4);
+    ctx.globalAlpha = 0.5 * alpha;
+    ctx.fillStyle = 'rgba(6, 20, 14, 0.85)';
+    ctx.fillRect(boardX, boardY, boardW, boardH);
+    ctx.globalAlpha = 0.32 * alpha;
+    ctx.strokeStyle = theme.line;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boardX + 0.5, boardY + 0.5, boardW - 1, boardH - 1);
+    ctx.beginPath();
+    for (let gx = boardX + 16; gx < boardX + boardW - 8; gx += 24) {
+      ctx.moveTo(gx + 0.5, boardY + 6);
+      ctx.lineTo(gx + 0.5, boardY + boardH - 6);
+    }
+    for (let gy = boardY + 16; gy < boardY + boardH - 8; gy += 24) {
+      ctx.moveTo(boardX + 6, gy + 0.5);
+      ctx.lineTo(boardX + boardW - 6, gy + 0.5);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 0.75 * alpha;
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    for (let k = 0; k <= 20; k++) {
+      const u = k / 20;
+      const px = boardX + 18 + (boardW - 36) * u;
+      const py = boardY + boardH - 18 - (boardH - 42) * Math.sin(u * Math.PI * 0.62);
+      if (k === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    const live = (t * 0.22) % 1;
+    const mx = boardX + 18 + (boardW - 36) * live;
+    const my = boardY + boardH - 18 - (boardH - 42) * Math.sin(live * Math.PI * 0.62);
+    ctx.globalAlpha = 0.9 * alpha;
+    ctx.fillStyle = '#ffd27a';
+    ctx.fillRect(mx - 2.5, my - 2.5, 5, 5);
+
+    // Mission clock under the board.
+    const secs = Math.floor(t) % 60;
+    const mins = Math.floor(t / 60) % 60;
+    ctx.globalAlpha = 0.36 * alpha;
+    ctx.fillStyle = theme.accent;
+    ctx.font = '700 20px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(
+      `T+${mins > 9 ? '' : '0'}${mins}:${secs > 9 ? '' : '0'}${secs}`,
+      boardX + boardW * 0.5,
+      boardY + boardH + 26,
+    );
+
+    // Department stencil, low contrast so it never competes with the plate label.
+    ctx.globalAlpha = 0.16 * alpha;
+    ctx.font = '700 24px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillText(room.label.split(' ')[0], cx, room.y + room.h - 24);
   }
 
   /** The final uplink. It is a wall fixture until the campaign exit is scripted. */

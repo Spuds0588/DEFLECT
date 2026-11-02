@@ -2405,6 +2405,26 @@ returns.
   ordinary networked device; a printer inside a laptop screen is not the story.
 - SATELLITE is the first fixture: a hull-side copier printing pulse units every 4 s at 24 health.
 
+### D61 — CAPCOM is a mission-control plate arena (decided 2026-11-02, built v0.1.128)
+
+CAPCOM (id 32) is the 1960s mission-control arena: four separate plates in a 2×2 ring, each one a
+department — CAPCOM (flight control), FIDO (flight dynamics), GUIDO (guidance) and EECOM
+(electrical/environmental). The point is that the floor reads as the room it is imitating rather than four
+copies of one console bank.
+
+- It uses the plate grammar from D59: the plates are the only floor, and all four decks start open because
+  this is a versus and gauntlet map, not a campaign node. Gaps stay wider than a dash so the ring is the
+  route.
+- The `console` room theme draws the CRT bank, the plotting board with a live trajectory and the mission
+  clock. The department name comes from the room label, so a new department is a data entry, not another
+  draw function. Do not fork a theme per department.
+- Console banks are the cover pillars, so the furniture and the fiction are the same objects. A new
+  department's cover belongs in `pillars`, not in the theme.
+- Room arenas stay out of hosted rotation (`isOnlineArena` excludes `rooms`), so CAPCOM is local-only like
+  QUARANTINE. Do not add an online path for it without a protocol decision.
+- It authors no `ingress` and no `replicator`: it is a fighting map. Ingress fixtures belong to campaign and
+  infection nodes.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

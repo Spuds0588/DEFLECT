@@ -60,6 +60,18 @@ Formerly: 2026-11-02 (PORTS)
 
 ---
 
+## CAPCOM (2026-11-02)
+
+- [x] Arena 32: four department plates in a 2×2 ring (CAPCOM, FIDO, GUIDO, EECOM) with four open decks
+- [x] `console` room theme: CRT bank, plotting board with a live trajectory, mission clock, department stencil
+- [x] Console banks double as the cover pillars; two stations per plate for spawns
+- [x] Headless probe: plates do not overlap, every deck starts open, gaps beat a dash, spawns and cover sit on plates
+- [ ] Give each department a distinct console layout instead of one shared bank
+- [ ] A mission-clock or abort objective for a future campaign node on this floor
+- [ ] Decide whether plate arenas can ever enter hosted rotation (needs a protocol decision first)
+
+---
+
 ## Replicators (2026-11-02)
 
 - [x] Record the second ingress: a machine that prints one family where a network port would be nonsense
