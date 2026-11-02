@@ -770,6 +770,8 @@ export interface Worm {
   biteHit: boolean;
   biteDirX: number;
   biteDirY: number;
+  /** Mini-boss registry id (`minibosses.ts`), -1 for an ordinary worm. */
+  bossKind: number;
   /** Mega Worm: a boss chain whose nodes carry their own health. */
   mega: boolean;
   /** Per-node health. Index 0 is the head, index k is segment k-1. */

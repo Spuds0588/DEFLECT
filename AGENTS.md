@@ -2515,6 +2515,11 @@ every weapon, blast, hazard, bot scan and minimap read already walks `world.worm
 them all. It occupies `MEGA_WORM.slots` extra pool bodies beyond `GAUNTLET.maxWorms`, and every cap that
 counts normal worms excludes `mega`.
 
+Mini-bosses are registry content, not special cases. `src/game/minibosses.ts` lists each boss with an id,
+label, tuning block and body shape; `Worm.bossKind` carries that id; and `World.spawnMiniboss(kind, x, y)`
+is the only entry point. Assault family 3 carries the id in its existing `kind` field, so a mini-boss is
+delivered by the same edge portal as a sentry, worm or virus and can be scheduled by any wave or level.
+
 - **Plates carry the health.** `segHp`/`segMaxHp` are per node (index 0 = head, k = segment k-1);
   `w.hp` stays a sane total for anything that reads it. `hitR`/`segR` replaced the hard-coded `WORM`
   radii in the worm collision sites, so a single loop serves both body sizes. Do not reintroduce a
@@ -2534,10 +2539,11 @@ counts normal worms excludes `mega`.
 - **Legs.** The last plate grows legs: 3.1x speed, a fast latched lunge bite and pairs of acid on the
   existing hostile projectile type 3, so deflect, friendly fire and cover already apply. Do not add a
   new projectile type for acid.
-- **Arrival.** Gauntlet queues assault family 3 on wave `MEGA_WORM.wave` (8) and every
-  `repeatStep` (14) after, only when no boss is up. It uses the same edge portal as every other family;
-  a boss must never materialise beside the player. `?mega=1` is the QA-only boot hook and never enters
-  menus or `Snapshot`.
+- **Arrival is data.** `GAUNTLET.bossSchedule` entries are `{ kind, wave, repeatStep }`; each gate fires
+  once per matching wave and is skipped while that kind is already live. Adding a boss, a harder repeat or
+  a scripted level is a registry row plus a schedule entry, never a new arrival path. A boss must never
+  materialise beside the player: it uses the shared edge ingress. `?mega=1` is the QA-only boot hook and
+  never enters menus or `Snapshot`.
 - **Read.** There is no health bar: cracks climb out of a plate's seams as it loses health, a nearly
   dead plate shudders, and loose code debris drifts off the body in proportion to total damage. Tune
   crack counts in `drawMegaPlate`; keep the plate frames and the eye mark so the head is always legible.

@@ -8477,6 +8477,7 @@ export class Renderer {
     for (let i = 0; i < worms.length; i++) {
       const w = worms[i];
       if (!w.active || w.held) continue;
+      // `mega` is the body shape; a future mini-boss branches on `bossKind` here.
       if (w.mega) {
         this.drawMegaWorm(w, alpha, t);
         continue;

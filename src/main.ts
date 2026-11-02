@@ -1,3 +1,4 @@
+import { MINIBOSS } from './game/minibosses';
 import { ATTRACT, AUTO_ATTACK, CAMERA, CAMPAIGN, HAPTICS, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
 import { FIRST_CAMPAIGN_LEVEL, PLAYABLE_CAMPAIGN_LEVELS } from './game/campaign';
 import { ARENAS, drawArenaPreview, getArena, type ArenaDef } from './game/arenas';
@@ -58,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.133';
+const BUILD = '0.1.134';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -2886,7 +2887,7 @@ function startGauntlet(aiLocal = false): void {
   world.friendlyFire = friendlyFire;
   if (megaBoot) {
     const lead = world.players[0];
-    world.spawnMegaWorm(lead.x + 380, lead.y - 90);
+    world.spawnMiniboss(MINIBOSS.MEGA_WORM, lead.x + 380, lead.y - 90);
   }
   trainingInputs = [localFrame];
   botInputs = new Array(MAX_PLAYERS);

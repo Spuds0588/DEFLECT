@@ -70,6 +70,9 @@ Formerly: 2026-11-02 (PORTS)
 - [x] Arrives through the edge ingress on wave 8, repeating every 14 waves
 - [x] Cracks and code debris instead of a health bar
 - [x] Probe: `.tmp/megaworm-check.ts`; `?mega=1` QA boot hook
+- [x] Mini-boss registry (`minibosses.ts`), `Worm.bossKind` and one `spawnMiniboss` entry point
+- [x] Data-driven wave gates (`GAUNTLET.bossSchedule`); bosses arrive through assault family 3
+- [ ] Second mini-boss entry, plus a level that spawns two kinds at once
 - [ ] Give the acid its own green render instead of reusing hostile bolt art
 - [ ] Boss health and phase read on the minimap so an off-screen split is visible
 - [ ] Second boss silhouette once this one has been played; keep the plate language

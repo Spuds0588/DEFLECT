@@ -27,7 +27,7 @@
     "wormMinInterval": 12,
     "maxWorms": 2,
     "wormCapStep": 20,
-    "megaWave": 8,
+    "bossSchedule": [{ "kind": 0, "wave": 8, "repeatStep": 14 }],
     "virusSpawnDelay": 10,
     "virusInterval": 28,
     "virusMinInterval": 11,

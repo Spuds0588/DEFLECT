@@ -145,6 +145,7 @@ import {
   createWorm,
 } from './entities';
 import { PROGRAM_ID, clampProgram, programDef } from './programs';
+import { MINIBOSS, minibossDef } from './minibosses';
 import { computeSpawns, stepPlayerMotion } from './movement';
 import { POWERUP_KIND, isTimedPowerup, powerupDef, rollPowerup } from './powerups';
 import { Rng } from './rng';
@@ -393,8 +394,8 @@ export class World {
   private spawnTmpX = new Float32Array(MAX_PLAYERS);
   private spawnTmpY = new Float32Array(MAX_PLAYERS);
   private wormSpawnT: number = GAUNTLET.wormSpawnDelay;
-  /** Wave the last mega ingress was queued on; one boss per gate. */
-  private megaWave = -1;
+  /** Last wave each mini-boss gate fired on; one boss per gate entry. */
+  private bossGateWave: number[] = new Array(GAUNTLET.bossSchedule.length).fill(-1);
   private virusSpawnT: number = GAUNTLET.virusSpawnDelay;
   private firewallSpawnT: number = GAUNTLET.firewallSpawnDelay;
   /** Shared clock for arena emitters. `offset` per emitter staggers the beams. */
@@ -13797,18 +13798,18 @@ export class World {
       }
     }
 
-    // The boss gate. It uses the same edge ingress as every other arrival, so a boss
-    // is announced by a portal on the rim rather than appearing beside the player.
+    // Mini-boss gates. The schedule is data, so a harder level or a later wave can ask
+    // for any registered mini-boss. Every gate uses the same edge ingress as the other
+    // families: a boss is announced by a portal on the rim, never beside a body.
     if (!this.campaign && !this.infectionMode && !this.gauntletPractice) {
-      const gate = this.wave - MEGA_WORM.wave;
-      if (
-        gate >= 0 &&
-        gate % MEGA_WORM.repeatStep === 0 &&
-        this.megaWave !== this.wave &&
-        this.megaLiveCount() === 0
-      ) {
-        this.megaWave = this.wave;
-        this.queueAssault(3, 0, 1);
+      for (let i = 0; i < GAUNTLET.bossSchedule.length; i++) {
+        const gate = GAUNTLET.bossSchedule[i];
+        const since = this.wave - gate.wave;
+        if (since < 0 || since % gate.repeatStep !== 0) continue;
+        if (this.bossGateWave[i] === this.wave) continue;
+        if (this.minibossLiveCount(gate.kind) > 0) continue;
+        this.bossGateWave[i] = this.wave;
+        this.queueAssault(3, gate.kind, 1);
       }
     }
 
@@ -14425,7 +14426,7 @@ export class World {
     if (family === 0) this.spawnSentry(kind as 0 | 1 | 2 | 3, x, y, true);
     else if (family === 1) this.spawnWorm(x, y);
     else if (family === 2) this.spawnVirus(x, y);
-    else if (family === 3) this.spawnMegaWorm(x, y);
+    else if (family === 3) this.spawnMiniboss(kind, x, y);
     this.emit(EV.PROP_HIT, 0, portal.x, portal.y, 1);
   }
 
@@ -15208,6 +15209,7 @@ export class World {
     const spawn = x !== undefined && y !== undefined ? { x, y } : this.arena.spawns[this.wormAnchorIndex()];
     w.active = true;
     w.mega = false;
+    w.bossKind = -1;
     w.held = held;
     w.hitR = w.hitR;
     w.segR = w.segR;
@@ -15320,12 +15322,27 @@ export class World {
     return node === 0 ? w.y : w.segY[node - 1];
   }
 
-  private megaLiveCount(): number {
+  /** Live bodies of one mini-boss kind; -1 counts every mini-boss on the floor. */
+  private minibossLiveCount(kind = -1): number {
     let live = 0;
     for (let i = 0; i < this.worms.length; i++) {
-      if (this.worms[i].active && this.worms[i].mega) live++;
+      const w = this.worms[i];
+      if (!w.active || w.bossKind < 0) continue;
+      if (kind >= 0 && w.bossKind !== kind) continue;
+      live++;
     }
     return live;
+  }
+
+  /**
+   * The single entry point for mini-bosses. Anything that can spawn a threat can spawn one
+   * of these by id; the wave gate and any scripted level call this, not a bespoke method.
+   */
+  spawnMiniboss(kind: number, x?: number, y?: number): Worm | null {
+    const def = minibossDef(kind);
+    if (!def) return null;
+    if (def.segmentedWorm) return this.spawnMegaWorm(x, y, kind);
+    return null;
   }
 
   private megaTotalHp(w: Worm): number {
@@ -15336,7 +15353,7 @@ export class World {
   }
 
   /** Land a boss. Its plates are strung out behind the head along its facing. */
-  spawnMegaWorm(x?: number, y?: number): Worm | null {
+  private spawnMegaWorm(x?: number, y?: number, kind: number = MINIBOSS.MEGA_WORM): Worm | null {
     let w: Worm | null = null;
     for (let i = 0; i < this.worms.length; i++) {
       if (!this.worms[i].active) {
@@ -15348,6 +15365,7 @@ export class World {
     const spawn = x !== undefined && y !== undefined ? { x, y } : this.arena.spawns[this.wormAnchorIndex()];
     w.active = true;
     w.mega = true;
+    w.bossKind = kind;
     w.held = false;
     w.hitR = MEGA_WORM.headRadius;
     w.segR = MEGA_WORM.segmentRadius;
@@ -15534,6 +15552,7 @@ export class World {
     const nodes = to - from + 1;
     piece.active = true;
     piece.mega = true;
+    piece.bossKind = parent.bossKind;
     piece.held = false;
     piece.hitR = MEGA_WORM.headRadius;
     piece.segR = MEGA_WORM.segmentRadius;

@@ -1,5 +1,6 @@
 /** Mega Worm probe: plate damage, chain splits, head promotion, whip and the legs phase. */
-import { MEGA_WORM, SIM_DT } from '../src/game/config';
+import { GAUNTLET, MEGA_WORM, SIM_DT } from '../src/game/config';
+import { MINIBOSS, MINIBOSSES } from '../src/game/minibosses';
 import { ARENAS } from '../src/game/arenas';
 import { World } from '../src/game/world';
 import type { Worm } from '../src/game/types';
@@ -152,6 +153,43 @@ const nodeY = (w: Worm, k: number) => (k === 0 ? w.y : w.segY[k - 1]);
   if (boss.active) fail('the last plate did not die');
   if (world.gauntletKills <= killsBefore) fail('the boss kill was not credited to the player');
   if (boss.active) fail('the final plate did not die');
+}
+
+
+// --- mini-boss registry, ingress family and wave gate ----------------------
+{
+  const def = MINIBOSSES.find((d) => d.id === MINIBOSS.MEGA_WORM) ?? fail('the Mega Worm is missing from the mini-boss registry');
+  if (!def.segmentedWorm) fail('the registry lost the segmented-worm body flag');
+  if (!GAUNTLET.bossSchedule.some((g) => g.kind === MINIBOSS.MEGA_WORM)) {
+    fail('no gauntlet wave gate schedules the Mega Worm');
+  }
+
+  // A boss travels through the same ingress family as any other arrival.
+  const { world, priv } = freshWorld();
+  const p = world.players[0];
+  if (world.worms.some((w) => w.active && w.bossKind >= 0)) fail('a mini-boss was already on the floor');
+  priv.queueAssault(3, MINIBOSS.MEGA_WORM, 1);
+  let arrived = false;
+  for (let i = 0; i < 1200 && !arrived; i++) {
+    priv.updateGauntlet(SIM_DT);
+    arrived = world.worms.some((w) => w.active && w.bossKind === MINIBOSS.MEGA_WORM);
+  }
+  if (!arrived) fail('a mini-boss queued through the ingress family never arrived');
+  const boss = world.worms.find((w) => w.active && w.bossKind === MINIBOSS.MEGA_WORM);
+  if (!boss || !boss.mega) fail('the arrived mini-boss is not a boss body');
+  if (Math.hypot(boss.x - p.x, boss.y - p.y) < GAUNTLET.assault.playerClear - 80) {
+    fail('the mini-boss arrived on top of the player');
+  }
+
+  // The wave gate reads the schedule rather than a constant per boss.
+  const gated = freshWorld();
+  gated.world.gauntletT = (GAUNTLET.bossSchedule[0].wave - 1) * GAUNTLET.waveDuration + 1;
+  for (let i = 0; i < 12; i++) gated.priv.updateGauntlet(SIM_DT);
+  const queued =
+    (gated.priv.assaultQueueCount as number) > 0 ||
+    gated.world.worms.some((w) => w.active && w.bossKind >= 0);
+  if (!queued) fail('the scheduled mini-boss wave never asked for a boss');
+  console.log(JSON.stringify({ registry: { bosses: MINIBOSSES.length, gates: GAUNTLET.bossSchedule.length } }));
 }
 
 console.log('megaworm-check: OK');

@@ -5402,3 +5402,28 @@ pair of acid balls and the final plate credits the kill. `npm run build` passes;
 split has no minimap marker yet.
 
 **Next:** acid art, a minimap boss marker, then a second boss on the same plate language.
+
+## 2026-11-02 — Mini-bosses are registry content (v0.1.134)
+
+**Goal:** make the Mega Worm a spawnable enemy rather than a one-off. Later levels should mix and match
+mini-bosses, and gauntlet should be able to schedule them into any wave.
+
+- `src/game/minibosses.ts` is the registry: id, key, label, tuning block and body shape per mini-boss.
+  `Worm.bossKind` carries the registry id (-1 for an ordinary worm), and a split half inherits it.
+- `World.spawnMiniboss(kind, x, y)` is the single entry point. The QA hook and the gauntlet gate both use
+  it; `spawnMegaWorm` is now the private body builder behind it.
+- Assault family 3 carries the boss id in its existing `kind` field, so a mini-boss is delivered by the
+  same edge portal as a sentry, worm or virus. There is no second arrival path for bosses.
+- `GAUNTLET.bossSchedule` replaces the hard-coded wave/repeat constants: entries are `{ kind, wave,
+  repeatStep }`, gated per entry with `bossGateWave` and skipped while that kind is already live. A harder
+  level or a second boss is a data entry plus a registry row.
+- Rendering still branches on the body shape (`w.mega`); a mini-boss with its own silhouette adds a
+  `bossKind` branch beside it.
+
+**Verification:** `.tmp/megaworm-check.ts` passes, including its new section: the registry lists the Mega
+Worm, a boss queued as assault family 3 arrives through a portal no closer than the ingress clearance, and
+the wave-8 schedule asks for a boss. Every prior plate, split, whip and legs check still passes.
+`npm run build` is clean; the assault, jet, flipboard, radar, islands-ports and laptop-variants probes still
+pass. `npm run bench`: gauntlet max 0.108 ms avg / 0.406 ms p99.
+
+**Next:** a second registry entry to prove mixing, then a scripted level that spawns two kinds at once.
