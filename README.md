@@ -409,3 +409,10 @@ full-radius clamping.
 
 The Mega Worm now arrives at roughly three times its old silhouette, doubled health and a slower turn,
 coiled around its own head so the body does not string across the room on spawn.
+
+
+## Demo boss rotation
+
+The attract loop and `?demo=1` alternate ordinary seeded wave runs with boss showcases. Each showcase
+cycles one of the five mini-bosses, seeded on a shallow wave so the boss is the subject, and spawns it
+across the room from the squad. The next session returns to a normal run.

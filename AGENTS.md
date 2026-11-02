@@ -2842,3 +2842,14 @@ fixtures, voids or hazards, eight perimeter spawns. It exists so a boss or a kit
 geometry collision and spawn placement get a vote. `?range=1` boots a gauntlet run there (`&bot=1` adds
 the autopilot, `&mega=1` spawns the Mega Worm). It is filtered from the arena picker and is not selected
 by normal play; do not ship it as a menu arena or a campaign node.
+
+
+## Demo boss rotation
+
+Both the idle attract demo and the permanent `?demo=1` kiosk boot run through `startAttract`, so the boss
+rotation lives there and not in a second demo path. Sessions alternate: an ordinary seeded wave run, then a
+boss showcase, repeating. The showcase cycles the five registry mini-bosses (`ATTRACT_BOSSES`) in order,
+seeds a low `ATTRACT.bossWave` so the boss is the read rather than one silhouette in a wave-72 crowd, and
+spawns the boss across the room from the squad through `spawnMiniboss`. QA arenas (`qa: true`) are excluded
+from every attract arena pool, and a boss session requires at least 1500 units of width so the scaled Mega
+Worm has room. Do not spawn demo bosses from the wave gate as well; that would double the showcase.

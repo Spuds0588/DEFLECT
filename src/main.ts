@@ -1,4 +1,4 @@
-import { MINIBOSS } from './game/minibosses';
+import { MINIBOSS, MINIBOSSES } from './game/minibosses';
 import { ATTRACT, AUTO_ATTACK, CAMERA, CAMPAIGN, HAPTICS, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
 import { FIRST_CAMPAIGN_LEVEL, PLAYABLE_CAMPAIGN_LEVELS } from './game/campaign';
 import { ARENAS, drawArenaPreview, getArena, type ArenaDef } from './game/arenas';
@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.143';
+const BUILD = '0.1.144';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -332,6 +332,20 @@ let attractStartedAt = 0;
 let attractRestartAt = 0;
 /** Kiosk rotation: 1, 2, 3 local pilots, then back to 1. */
 let attractSquadIndex = 0;
+/**
+ * Kiosk boss rotation: every other session is a boss showcase, cycling the registry.
+ * `attractSessionIndex` counts sessions, `attractBossIndex` picks the boss, so the loop
+ * reads as fight -> boss -> fight -> boss rather than dumping a boss into every run.
+ */
+let attractSessionIndex = 0;
+let attractBossIndex = 0;
+const ATTRACT_BOSSES = [
+  MINIBOSS.MEGA_WORM,
+  MINIBOSS.IDLE_HANDS,
+  MINIBOSS.STARFISH,
+  MINIBOSS.BLOB,
+  MINIBOSS.STORM_CLOUD,
+] as const;
 let lastUserInputAt = performance.now();
 /** `?demo=true`: the attract pilot runs forever and ignores every wake input. */
 let demo = false;
@@ -3033,12 +3047,19 @@ function startAttract(): void {
   const sizes = ATTRACT.squadSizes.length > 0 ? ATTRACT.squadSizes : [1];
   const squad = Math.max(1, Math.min(3, sizes[attractSquadIndex % sizes.length]));
   attractSquadIndex++;
-  const arenaPool =
-    squad >= 3
-      ? ARENAS.filter(
-          (a) => a.walls !== 'open' && a.bounds.right - a.bounds.left <= ATTRACT.wideSquadArenaMax,
-        )
-      : ARENAS;
+  // Alternate ordinary wave runs and boss showcases. Both the idle attract loop and the
+  // permanent `?demo=1` kiosk boot come through here, so they share the same rotation.
+  const bossSession = attractSessionIndex % 2 === 1;
+  attractSessionIndex++;
+  const bossKind = bossSession ? ATTRACT_BOSSES[attractBossIndex++ % ATTRACT_BOSSES.length] : null;
+  const arenaPool = ARENAS.filter((a) => {
+    if (a.qa) return false;
+    const width = a.bounds.right - a.bounds.left;
+    // Three local pilots need one camera pane, and a boss needs room for its silhouette.
+    if (squad >= 3 && (a.walls === 'open' || width > ATTRACT.wideSquadArenaMax)) return false;
+    if (bossSession && width < 1500) return false;
+    return true;
+  });
   const arena = arenaPool[Math.floor(Math.random() * arenaPool.length)];
   const programPool = [...PROGRAMS];
   for (let i = programPool.length - 1; i > 0; i--) {
@@ -3049,7 +3070,17 @@ function startAttract(): void {
   const names = ['DEMO', 'LINK', 'RELAY'].slice(0, squad);
   world = new World('gauntlet', names, 0, arena, false, programs[0], 0, programs);
   world.seedAttractSquad(squad);
-  world.seedAttractRun(ATTRACT.wave);
+  world.seedAttractRun(bossKind === null ? ATTRACT.wave : ATTRACT.bossWave);
+  if (bossKind !== null) {
+    // Land the boss across the room from the squad, clamped inside the floor. The spawn
+    // path still owns boss edge padding and the arrival portal.
+    const b = arena.bounds;
+    const lead = world.players[0];
+    const side = lead.x < (b.left + b.right) / 2 ? 1 : -1;
+    const bx = Math.max(b.left + 240, Math.min(b.right - 240, lead.x + side * (b.right - b.left) * 0.34));
+    const by = Math.max(b.top + 200, Math.min(b.bottom - 200, lead.y - 120));
+    world.spawnMiniboss(bossKind, bx, by);
+  }
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
   trainingInputs = botInputs;
@@ -3071,8 +3102,8 @@ function startAttract(): void {
     `${squad}P`,
     programs.map((p) => programDef(p).name).join(' / '),
     arena.name,
-    'wave',
-    ATTRACT.wave,
+    bossKind === null ? 'wave' : 'BOSS',
+    bossKind === null ? ATTRACT.wave : MINIBOSSES.find((boss) => boss.id === bossKind)?.label ?? bossKind,
   );
 }
 

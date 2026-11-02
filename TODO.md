@@ -3434,3 +3434,7 @@ arrive.
 - [x] Mega Worm 3x silhouette, doubled health, curled arrival pose (v0.1.143).
 - [ ] Watch the 3x Mega Worm in a normal gauntlet arena; it may want a dedicated boss room rather than
       the shared threat pool.
+
+- [x] Attract and `?demo=1` alternate boss showcase sessions through the mini-boss registry (v0.1.144).
+- [ ] Watch a full kiosk cycle to confirm the boss session reads before the next run starts, especially the
+      3x Mega Worm on the smallest eligible arena.

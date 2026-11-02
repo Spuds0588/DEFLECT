@@ -5661,3 +5661,19 @@ larger silhouette the boss wanted.
 
 **Next:** watch the 3x boss in a normal arena; the shared threat pool may hand it a room it cannot fit, so a
 dedicated boss room is the likely follow-up.
+
+## 2026-11-02 — Boss showcases in the attract/demo rotation (v0.1.144)
+
+**Goal:** the demo is also boss-fight content, so the kiosk loop and `?demo=1` should alternate ordinary
+wave sessions with a mini-boss fight.
+
+- `startAttract` now alternates sessions: even sessions seed `ATTRACT.wave` (72), odd sessions seed the new
+  shallow `ATTRACT.bossWave` (3) and spawn one registry mini-boss across the room from the squad.
+- The boss cycle runs Mega Worm -> Idle Hands -> Starfish -> File Blob -> Storm Cloud through
+  `ATTRACT_BOSSES`, so a kiosk that runs for a while shows all five rather than repeating one.
+- `qa` arenas are excluded from every attract arena pool (the new TEST RANGE must never appear on a
+  showfloor), and boss sessions require at least 1500 units of width so the 3x Mega Worm fits.
+- Both demo paths share this function: the idle attract timer and the permanent `?demo=1` boot.
+
+**Verification:** `npm run build` clean; the existing boss/arena probes still pass; bench unchanged
+(main-loop presentation only, no `World` step change).

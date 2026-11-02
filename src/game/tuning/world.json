@@ -199,6 +199,7 @@
   "ATTRACT": {
     "idle": 24,
     "wave": 72,
+    "bossWave": 3,
     "refill": 5,
     "restart": 4,
     "squadSizes": [1, 2, 3],
