@@ -216,6 +216,7 @@ one destination, not collecting separate stages.
 | **Lift** | Shared hub for several destinations | Choose a floor, move the whole local party |
 | **Gate** | A link that unlocks after a condition | Boss kill, switch break, or all side nodes cleared |
 | **Port** | Enemy ingress: a red square that emits threats | Stand clear of its lane; damage it until it closes |
+| **Replicator** | Enemy ingress where a port would be nonsense: a machine printing one family | Shoot the machine until it stops printing |
 | **Boss node** | One large encounter with phases | Sector exit stays closed until the boss is dead |
 
 No geometry is carried in snapshots. A future sector runtime would send the sector id and node id and use

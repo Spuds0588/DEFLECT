@@ -263,4 +263,28 @@ world.players[0].active = true;
 (world as any).updateCampaign(0.016, [null]);
 if (world.campaignPhase !== 'cleared') fail('standing in the party port did not clear the node');
 
+// --- Replicators: the second ingress -------------------------------------------
+const satArena = ARENAS[arenaIndexById(17)];
+if (satArena.name !== 'SATELLITE') fail(`arena 17 is ${satArena.name}`);
+if (!satArena.replicator || satArena.replicator.length === 0) fail('SATELLITE has no replicator');
+const satWorld = new World('gauntlet', ['INMATE'], 0, satArena);
+const reps = satWorld.props.filter((p) => p.replicator === true);
+if (reps.length !== satArena.replicator.length) fail(`expected ${satArena.replicator.length} replicators, got ${reps.length}`);
+if (satWorld.portTotal !== 0) fail('a replicator must not count as a campaign port');
+// The emitter keeps copies 240 units from the player, so park the operator at the far
+// end: spawn clearance is not what this case is testing.
+satWorld.players[0].x = 640;
+satWorld.players[0].y = 1700;
+for (const s of satWorld.sentries) s.active = false;
+reps[0].portalT = 0;
+(satWorld as any).updatePortals(0.02);
+if (satWorld.sentries.filter((s) => s.active).length === 0) fail('the replicator printed nothing');
+(satWorld as any).damageProp(reps[0], reps[0].hp, 0, 0);
+if (satWorld.portsClosed !== 0) fail('closing a replicator counted as a campaign port');
+if (!((reps[0].portalCloseT ?? 0) > 0)) fail('the replicator did not close');
+for (const s of satWorld.sentries) s.active = false;
+reps[0].portalT = 0;
+(satWorld as any).updatePortals(0.5);
+if (satWorld.sentries.some((s) => s.active)) fail('a closed replicator kept printing');
+
 console.log('islands-ports-check: OK');

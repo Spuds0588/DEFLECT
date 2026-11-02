@@ -91,6 +91,26 @@ export interface ArenaBridgeDef extends Rect {
 }
 
 /**
+ * An enemy replicator, for a device where an open network port would be nonsense: a
+ * satellite link, an offline box, anything without a standing connection. It is a
+ * machine that prints copies of one threat family onto the floor, and it shares the
+ * port's damage and close rules. It releases no bridge and never counts toward a
+ * campaign port tally. Authored per arena, local content, never in a snapshot.
+ */
+export interface ArenaReplicatorDef {
+  x: number;
+  y: number;
+  /** Chassis footprint, a square. */
+  size: number;
+  /** Hits the machine survives before it stops printing. */
+  hp: number;
+  /** The one family it copies: 0 sentry, 1 virus, 2 worm. */
+  family: number;
+  /** Seconds between copies while it is powered. */
+  interval: number;
+}
+
+/**
  * One enemy ingress port. A red square that leaks square particles and emits threats
  * until it is damaged enough to close. Ports are authored per arena (never rolled), and
  * they are local content: campaign and infection only, never in a snapshot.
@@ -1159,6 +1179,8 @@ export interface ArenaDef {
   islands?: readonly Rect[];
   /** Enemy ingress ports for campaign and infection. Local content; out of Snapshot. */
   ingress?: readonly ArenaIngressDef[];
+  /** Enemy replicators for devices where an open port would not make sense. Local-only. */
+  replicator?: readonly ArenaReplicatorDef[];
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
   /** Tutorial room floors and labels. Presentation only; never collision. */
@@ -2102,6 +2124,9 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 780, y: 1200 },
       { x: 820, y: 1520 },
     ],
+    // A satellite link is not a standing connection, so the infection left a copier on
+    // the hull instead: it prints pulse units that flood the network when the link is up.
+    replicator: [{ x: 640, y: 1000, size: 84, hp: 24, family: 0, interval: 4 }],
     props: [
       { x: 480, y: 280, w: 64, h: 84, kind: 2, hp: 4, capacitor: true },
       { x: 608, y: 280, w: 64, h: 84, kind: 1, hp: 4, capacitor: true },

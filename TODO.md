@@ -60,6 +60,18 @@ Formerly: 2026-11-02 (PORTS)
 
 ---
 
+## Replicators (2026-11-02)
+
+- [x] Record the second ingress: a machine that prints one family where a network port would be nonsense
+- [x] `ArenaDef.replicator`, sharing the port clock, damage path and close beat, excluded from the campaign tally
+- [x] Draw the amber chassis, the travelling print bar and the copies on the tray
+- [x] First fixture on SATELLITE: pulse units, 24 health, a copy every 4 s
+- [x] Headless probe: it spawns, prints, closes, stops printing, and never counts as a campaign port
+- [ ] Author replicators on the other offline or hardwired devices as their campaign nodes land
+- [ ] Decide whether a replicator can print a *variant* of a family (armoured, faster) instead of a plain copy
+
+---
+
 ## Campaign spine (2026-11-02)
 
 - [x] Record the island-hopping spine: clear each network's infections to earn its uplink, and end the run by finding and deleting the rogue AI agent behind the spread

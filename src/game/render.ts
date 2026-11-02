@@ -6615,6 +6615,10 @@ export class Renderer {
     for (let i = 0; i < props.length; i++) {
       const b = props[i];
       if (!b.portal) continue;
+      if (b.replicator) {
+        this.drawReplicator(b, t);
+        continue;
+      }
       const closing = (b.portalCloseT ?? 0) > 0;
       if (!b.active && !closing) continue;
       const exit = b.portalExit === true;
@@ -6670,6 +6674,58 @@ export class Renderer {
       }
       ctx.restore();
     }
+  }
+
+  /**
+   * A replicator: amber hardware with a travelling print bar and a slot laying copies of
+   * one family onto the tray. It reads as a machine someone installed, not a connection.
+   */
+  private drawReplicator(b: Prop, t: number): void {
+    const ctx = this.ctx;
+    const closing = (b.portalCloseT ?? 0) > 0;
+    if (!b.active && !closing) return;
+    const close = closing ? Math.max(0, Math.min(1, (b.portalCloseT ?? 0) / 0.9)) : 1;
+    const w = b.w * close;
+    const h = b.h * close;
+    const x = b.x + (b.w - w) * 0.5;
+    const y = b.y + (b.h - h) * 0.5;
+    const cx = x + w * 0.5;
+    ctx.save();
+    ctx.globalAlpha = close;
+    ctx.fillStyle = '#120b04';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#ffb347';
+    ctx.lineWidth = Math.max(2, 3 * close);
+    ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+    // The print bar sweeps top to bottom; one pass is one copy.
+    const scan = ((t * 0.55) % 1) * Math.max(1, h - 14) + 7;
+    ctx.globalAlpha = 0.7 * close;
+    ctx.fillStyle = '#ffd27a';
+    ctx.fillRect(x + 5, y + scan, Math.max(1, w - 10), 2);
+    // Print slot along the bottom edge.
+    ctx.globalAlpha = 0.9 * close;
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(x + w * 0.18, y + h - 9, w * 0.64, 5);
+    // Copies sliding out of the slot onto the tray.
+    ctx.fillStyle = '#ff4d4d';
+    for (let k = 0; k < 3; k++) {
+      const phase = (t * 0.7 + k * 0.33) % 1;
+      const size = 5 + phase * 3;
+      const px = cx + (k - 1) * (w * 0.22) + Math.sin(t * 1.4 + k) * 2;
+      const py = y + h - 4 + phase * 12;
+      ctx.globalAlpha = (0.85 - phase * 0.6) * close;
+      ctx.fillRect(px - size * 0.5, py, size, size);
+    }
+    if (!closing) {
+      const max = Math.max(1, b.portalMaxHp ?? b.hp);
+      const hp = Math.max(0, Math.min(1, b.hp / max));
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = 'rgba(20, 12, 4, 0.9)';
+      ctx.fillRect(x, y - 13, w, 5);
+      ctx.fillStyle = '#ffb347';
+      ctx.fillRect(x, y - 13, w * hp, 5);
+    }
+    ctx.restore();
   }
 
   /**

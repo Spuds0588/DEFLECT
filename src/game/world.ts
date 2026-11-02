@@ -1134,6 +1134,8 @@ export class World {
       this.players[i].active = false;
       this.players[i].alive = false;
     }
+    // A campaign node authors ports instead (D58); a sandbox arena may carry a replicator.
+    if (!this.campaign) this.spawnArenaReplicators();
   }
 
   /**
@@ -1295,6 +1297,49 @@ export class World {
     }
   }
 
+  /**
+   * Enemy replicators. A device with no believable open port gets a machine that prints
+   * copies of one family instead. It shares the port clock, the damage path and the close
+   * beat, but it releases no bridge and is never part of a campaign port tally.
+   */
+  private spawnArenaReplicators(): void {
+    // A restart rebuilds the floor: drop any replicator left from the previous run.
+    for (let i = this.props.length - 1; i >= 0; i--) {
+      if (this.props[i].replicator) this.props.splice(i, 1);
+    }
+    const list = this.arena.replicator;
+    if (!list) return;
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i];
+      this.props.push({
+        active: true,
+        kind: 0,
+        x: r.x - r.size * 0.5,
+        y: r.y - r.size * 0.5,
+        w: r.size,
+        h: r.size,
+        hp: r.hp,
+        hitFlash: 0,
+        dropT: 0,
+        vx: 0,
+        vy: 0,
+        tx: 0,
+        ty: 0,
+        fixed: true,
+        portal: true,
+        replicator: true,
+        portalFamily: r.family,
+        portalInterval: r.interval,
+        // Give the player a beat before the first copy lands.
+        portalT: 2.2 + i * 0.9,
+        portalBridge: -1,
+        portalExit: false,
+        portalCloseT: 0,
+        portalMaxHp: r.hp,
+      });
+    }
+  }
+
   /** Port clock: emits its family, runs the close anim, then de-rezzes. */
   private updatePortals(dt: number): void {
     for (let i = 0; i < this.props.length; i++) {
@@ -1323,10 +1368,24 @@ export class World {
   /** One threat steps out of a port. A full family cap just skips the beat. */
   private emitPortThreat(b: Prop): void {
     const r = Math.max(b.w, b.h) * 0.5;
-    const angle = this.rng.range(0, Math.PI * 2);
-    const x = b.x + b.w * 0.5 + Math.cos(angle) * (r + 30);
-    const y = b.y + b.h * 0.5 + Math.sin(angle) * (r + 30);
-    if (!this.sentryClear(x, y, SENTRY.pulse.radius)) return;
+    const base = this.rng.range(0, Math.PI * 2);
+    let x = b.x + b.w * 0.5;
+    let y = b.y + b.h * 0.5;
+    let clear = false;
+    // Try the rim at three radii before giving up. A single jittered point failed
+    // whenever the player held the only clear lane, which read as a dead source.
+    for (let ring = 0; ring < 3 && !clear; ring++) {
+      const dist = r + 30 + ring * 58;
+      for (let k = 0; k < 6; k++) {
+        const a = base + (k / 6) * Math.PI * 2;
+        x = b.x + b.w * 0.5 + Math.cos(a) * dist;
+        y = b.y + b.h * 0.5 + Math.sin(a) * dist;
+        if (!this.sentryClear(x, y, SENTRY.pulse.radius)) continue;
+        clear = true;
+        break;
+      }
+    }
+    if (!clear) return;
     const fam = b.portalFamily ?? 0;
     if (fam === 1) {
       let live = 0;
@@ -1351,8 +1410,11 @@ export class World {
     b.portalCloseT = 0.9;
     b.hp = 0;
     b.hazard = false;
-    this.portsClosed++;
     this.emit(EV.PROP_BREAK, 0, x, y, Math.max(b.w, b.h));
+    // A replicator is not a network port: it releases no bridge and never counts toward
+    // the campaign tally, so closing one cannot open the exit by itself.
+    if (b.replicator) return;
+    this.portsClosed++;
     const bridge = b.portalBridge ?? -1;
     if (bridge >= 0) {
       // Only the last port sharing the bridge releases it, so a pair cannot open it early.

@@ -2387,6 +2387,24 @@ that was the first BUILD ROOT, and it read as one big rectangle with room outlin
 - Off a plate is a death, not a reset. That is the price of real islands: keep spawns and tutorial beats
   away from the rims instead of adding safety rails the level does not earn.
 
+### D60 — Replicators are the second ingress (decided 2026-11-02, built v0.1.127)
+
+A port only makes sense where the fiction allows an open network connection. Some devices do not: a
+satellite with an intermittent link, an offline box, a machine that only reaches a network when it is
+carried into range. Those get a **replicator** (`ArenaDef.replicator`) instead — a machine installed on the
+device that prints copies of one specific threat family onto the floor. It is the infection's answer to a
+device it cannot keep a socket open on: it stocks up locally and floods the network whenever the link
+returns.
+
+- A replicator shares the port clock, the damage path and the close beat (`portal` plus `replicator` on the
+  prop). Do not fork a second emitter: if damaging or closing changes for a port, it changes here too.
+- It prints **one** family, never a mixed pool. It releases no bridge and never counts toward
+  `portsClosed` or `portTotal`, so a level's port objective cannot be satisfied by shooting a copier.
+- It is authored per arena and local-only, exactly like a port: no `Snapshot`, no `SnapshotHazards`.
+- Use it for devices whose identity is intermittent or hardwired. Do not use it as a reskin of a port on an
+  ordinary networked device; a printer inside a laptop screen is not the story.
+- SATELLITE is the first fixture: a hull-side copier printing pulse units every 4 s at 24 health.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

@@ -5175,3 +5175,33 @@ blocks a second sustained hit inside the window. `npm run build` passes (920.88 
 by health alone; there is no partial-disable or re-open state.
 
 **Next:** confirm or wire the rail and orbit paths, then give the sub-agents their schedule.
+
+## 2026-11-02 — Replicators: the second ingress (v0.1.127)
+
+**Goal:** a port only makes sense where an open network connection does. A satellite has an intermittent
+link, so the infection needs a different way to fill that device.
+
+- `ArenaDef.replicator` authors a machine that prints copies of one threat family. It shares the port
+  clock, damage path and close beat (`portal` plus `replicator` on the prop), prints only its own family,
+  releases no bridge and never counts toward `portsClosed`/`portTotal`, so a copier cannot satisfy a
+  level's port objective. `AGENTS.md` records it as **D60**.
+- `spawnArenaReplicators` runs for local sandbox runs (a campaign node authors ports instead) and rebuilds
+  the fixtures on a restart. First fixture: SATELLITE's hull copier, 24 health printing pulse units every
+  4 s.
+- `render.ts` draws it as amber hardware — chassis, a print bar sweeping top to bottom, a slot, and copies
+  sliding onto the tray — so it does not read as the red open port.
+- Found and fixed a real emitter bug while testing: `emitPortThreat` used one jittered point and gave up
+  when `sentryClear` rejected it, so a source near the player silently stopped printing. It now scans three
+  rings of six points before giving up. The satellite copier also sat 156 units from the starting spawn,
+  inside the 240-unit clearance, which is how the bug surfaced.
+
+**Verification:** `.tmp/islands-ports-check.ts` passes with replicator cases (it spawns, does not count as a
+campaign port, prints its family, closes, stops printing) plus every earlier plate, bridge, port and
+kit-coverage case. `npm run build` passes. `npm run bench` is clean: gauntlet max 0.142 ms avg / 0.510 ms
+p99.
+
+**Limitations:** the replicator clones a plain family member; there is no armoured or faster variant yet,
+and it is authored only on SATELLITE.
+
+**Next:** author replicators on the remaining offline or hardwired campaign devices, then give the
+sub-agents their schedule.

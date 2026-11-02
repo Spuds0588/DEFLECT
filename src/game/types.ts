@@ -201,6 +201,11 @@ export interface Prop {
   portalBridge?: number;
   /** The white party port: the level exit. It is not a target and takes no damage. */
   portalExit?: boolean;
+  /**
+   * A replicator rather than an open port: it prints one family and shares the port
+   * clock and damage path, but it releases no bridge and is not a campaign objective.
+   */
+  replicator?: boolean;
   /** Closing animation countdown. Above zero the port is dying and emits nothing. */
   portalCloseT?: number;
   /** Health the port was authored with, for the damage ring. */
