@@ -3415,3 +3415,13 @@ arrive.
 ## MEMORY FRAGMENTS
 
 - [x] Shards persist until collected, wiped or saved; campaign save points store stacks and shards
+
+## STORM CLOUD (mini-boss)
+
+- [x] `MINIBOSS.STORM_CLOUD = 4`, `storm-cloud` registry body, wave-28 schedule entry
+- [x] Ceiling-band hover, slow tracking and slide-out so the cloud cannot be stood on
+- [x] Alternating rain rows as shootable hostile projectiles (type 18)
+- [x] Telegraphed bolt (type 19) with a 18-damage return on guard/lash
+- [x] Bot rain-lane avoidance in `avoidFurniture`; digital 3/9 deaths, rookie 6/9
+- [x] `?storm=1` QA hook, `.tmp/storm-check.ts` and `.tmp/storm-balance.ts`
+- [ ] Human playtest pass: confirm the lane is readable at couch distance and the bolt tell is long enough

@@ -2780,3 +2780,44 @@ The fourth mini-boss is **FILE BLOB** (`MINIBOSS.BLOB = 3`, body `blob`, gauntle
 - **Tuning** is `BLOB` in `tuning/threats.json`. `?blob=1` is the QA boot hook.
   `.tmp/blob-check.ts` covers icon health, shed, shrink, the toss glue, the three-press escape, the Ghost
   phase and kill credit.
+
+### D71 — Storm Cloud: the ceiling owns the fight (built 2026-11-02)
+
+The fifth mini-boss is **STORM CLOUD** (`MINIBOSS.STORM_CLOUD = 4`, body `storm-cloud`, gauntlet wave 28,
+repeat every 56). A boss-scale weather body that rains alternating rows under itself and throws a
+telegraphed bolt. Everything it throws lives in the projectile pool, so guard, lash and player fire already
+apply; nothing here is a second collision system.
+
+- **One body, ceiling band.** It is a single worm-pool entry, `hitR` = `STORM_CLOUD.radius` (104) and
+  `hp` 104, with `storm` state. It homes on `bounds.top + hoverTop` (±`hoverBob`), tracks the player only at
+  `trackSpeed` (92), and slides away from a body inside `repelRadius` instead of hovering over it. It never
+  dives to the floor: the top of the map is its ground, so a player cannot stand on or get above it. Contact
+  damage is a cooldown-gated shove, not a chase.
+- **Rain is type 18.** A burst lays `rain.rows` rows of `rain.count` drops under the cloud, flipping
+  direction each burst and offsetting every other row by half a gap. Drops fall at `rain.speed` and expire on
+  their own fuse; they are hostile projectiles, so the existing player-bolt interception shoots them out of
+  the sky, and guard/lash catches them. The barrage is deliberately longer than one guard: each catch burns
+  guard energy, so holding shield through a burst breaks the shield rather than the rain.
+- **Lightning is type 19.** One bolt on a `lightning.cooldown` clock, with a `windup` drawn as a flickering
+  jagged line. The strike point follows the body for the first half of the tell, then latches so a dash or a
+  step beats it. It deals `lightning.damage` (1) to a player and is the fight's real punish when returned:
+  `Projectile.lightning` survives the `type >= 3` conversion on a catch, and a player-owned lightning shot
+  deals `lightning.reflectDamage` (18) to any worm, which is about six clean returns for the kill. Do not
+  fold that into the generic `BOLT.damage + deflects` rule, and do not drop the flag when a shot is caught.
+- **Bots step out of the lane.** `BotBrain.avoidFurniture` pushes a body sideways when it is under a live
+  storm within `rain.width / 2`, the same layer that handles emitter lanes, so both the duel pilot and the
+  gauntlet `engageHostiles` pilot respect the rain. Without it every tier stood in the drizzle and died in
+  ~14 s at roughly the same rate. Keep that steer when adding another ceiling threat; it is not a paint
+  detail.
+- **Measured curve (v0.1.141, `.tmp/storm-balance.ts`, 3 programs × 3 styles, 75 s cap).** HARD/digital:
+  avg 34.1 s, 3/9 deaths, boss left at 31% average, one clean kill. Rookie: avg 38.5 s, 6/9 deaths, 58% left.
+  That is the intended shape: a big boss that a good pilot can finish and an easy pilot usually cannot. If
+  it needs another pass, move `rain.cycle`/`rain.count` first (density is the difficulty), then
+  `lightning.cooldown`; leave `hp` alone unless the fight length itself is wrong.
+- **Rendering.** The body is a 7×4 grid of grey squares with per-square scale from a fixed `puff` array
+  (lighter blending, corner cells clipped so it reads as a cloud, not a box), an underside rain fringe, a
+  jagged windup line, and a strike flash. Drops are vector teardrops; bolts are jagged two-pass lances. No
+  emoji, for the same palette reason as the Sweep broom.
+- **Tuning** is `STORM_CLOUD` in `tuning/threats.json`; `?storm=1` is the QA boot hook. `.tmp/storm-check.ts`
+  covers shape, the ceiling band, row emission, shooting a drop down, the reflect payoff and kill credit;
+  `.tmp/storm-balance.ts` is the bot tuning harness.

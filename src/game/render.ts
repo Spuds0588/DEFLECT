@@ -1,5 +1,5 @@
 import type { AssaultPortal, Fragment } from './types';
-import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, STARFISH, BLOB, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, STARFISH, BLOB, STORM_CLOUD, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { AimMark, CopyMark, InvaderShot } from './types';
 import {
   discArmAngle,
@@ -8500,6 +8500,10 @@ export class Renderer {
         this.drawBlob(w, alpha, t);
         continue;
       }
+      if (w.bossKind === MINIBOSS.STORM_CLOUD) {
+        this.drawStormCloud(w, alpha, t);
+        continue;
+      }
       if (w.mega) {
         this.drawMegaWorm(w, alpha, t);
         continue;
@@ -9011,6 +9015,116 @@ export class Renderer {
 
 
   /** The file cage around a glued body. Seven files that must be torn off. */
+
+  private drawJaggedBolt(x1: number, y1: number, x2: number, y2: number, amp: number, seed: number, segments: number): void {
+    const ctx = this.ctx;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    for (let i = 1; i < segments; i++) {
+      const u = i / segments;
+      const wobble = Math.sin(i * 12.9898 + seed) * amp;
+      ctx.lineTo(x1 + dx * u + nx * wobble, y1 + dy * u + ny * wobble);
+    }
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+
+  private drawStormCloud(w: Worm, alpha: number, t: number): void {
+    const st = w.storm;
+    if (!st) return;
+    const cfg = STORM_CLOUD;
+    const ctx = this.ctx;
+    const x = lerp(w.prevX, w.x, alpha);
+    const y = lerp(w.prevY, w.y, alpha);
+    const r = w.hitR;
+    const build = w.spawnT > 0 ? 1 - w.spawnT / Math.max(0.001, cfg.spawnTime) : 1;
+
+    // Ground shadow: the cloud is a body in the air, and the shadow sells the height.
+    ctx.save();
+    ctx.globalAlpha = 0.1 * alpha;
+    ctx.fillStyle = cfg.color;
+    ctx.beginPath();
+    ctx.ellipse(x, y + r * 0.9, r * 1.15 * build, r * 0.26 * build, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalCompositeOperation = 'lighter';
+    const cols = 7;
+    const rows = 4;
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const i = row * cols + col;
+        const k = st.puff[i % st.puff.length] * (0.7 + 0.3 * build);
+        const u = (col + 0.5) / cols - 0.5;
+        const v = (row + 0.5) / rows - 0.5;
+        // Clip the corners so the square grid reads as weather, not a rectangle.
+        if (Math.abs(u) * 1.35 + Math.abs(v) * 1.9 > 0.88) continue;
+        const px = u * r * 1.78;
+        const py = v * r * 1.0 + Math.sin(st.clock * 1.7 + i * 0.7) * 3;
+        const size = r * 0.3 * k;
+        ctx.globalAlpha = (row === rows - 1 ? 0.22 : 0.14) * alpha;
+        ctx.fillStyle = cfg.color;
+        ctx.fillRect(px - size * 0.5, py - size * 0.5, size, size);
+        ctx.globalAlpha = 0.42 * alpha;
+        ctx.strokeStyle = row >= rows - 2 ? cfg.bolt : '#61707f';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px - size * 0.5, py - size * 0.5, size, size);
+      }
+    }
+
+    // Underside fringe: short rain strokes, so the cloud looks like it is raining even
+    // between rows. It is decoration; the real drops are projectiles.
+    const fringe = 0.55 + st.rainCd * 0.3;
+    ctx.strokeStyle = cfg.rainColor;
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < 11; i++) {
+      const u = i / 10 - 0.5;
+      const fx = u * r * 1.5;
+      const phase = (st.clock * 2.2 + i * 0.37) % 1;
+      const fy = r * 0.6 + phase * r * 0.42;
+      ctx.globalAlpha = (0.16 + 0.18 * (1 - phase)) * alpha * fringe;
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(fx - 2, fy + 10);
+      ctx.stroke();
+    }
+
+    // Bolt tell: the aim line flickers wider as the windup closes.
+    if (st.state === 1) {
+      const u = 1 - st.boltT / Math.max(0.001, cfg.lightning.windup);
+      const flicker = 0.45 + 0.55 * Math.abs(Math.sin(t * 26 + st.clock));
+      ctx.strokeStyle = cfg.bolt;
+      ctx.globalAlpha = 0.5 * flicker * alpha;
+      ctx.lineWidth = 2.4 + u * 2.6;
+      this.drawJaggedBolt(x, y + r * 0.7, st.boltX, st.boltY, 13 + u * 8, st.clock * 5, 7);
+      ctx.globalAlpha = 0.85 * alpha;
+      ctx.lineWidth = 1;
+      this.drawJaggedBolt(x, y + r * 0.7, st.boltX, st.boltY, 13 + u * 8, st.clock * 5 + 2, 7);
+      ctx.strokeStyle = cfg.rainColor;
+      ctx.globalAlpha = 0.32 * alpha;
+      ctx.beginPath();
+      ctx.arc(st.boltX, st.boltY, 18 + Math.sin(t * 18) * 4, 0, TWO_PI);
+      ctx.stroke();
+    }
+
+    // Flash after the strike leaves the cloud.
+    if (st.flash > 0) {
+      ctx.globalAlpha = (st.flash / 0.24) * 0.5 * alpha;
+      ctx.fillStyle = cfg.bolt;
+      ctx.beginPath();
+      ctx.ellipse(0, r * 0.35, r * 0.85, r * 0.4, 0, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   private drawGlueCages(players: readonly Player[], alpha: number, t: number): void {
     const ctx = this.ctx;
     for (let k = 0; k < players.length; k++) {
@@ -11405,6 +11519,53 @@ export class Renderer {
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.arc(-1.2, -1.2, p.radius * 0.34, 0, TWO_PI);
+        ctx.fill();
+        ctx.restore();
+      } else if (p.type === 18) {
+        // Rain drop: a teardrop with a thin streak above it. It has to read as a
+        // shootable object, not as harmless weather, so the head is solid and bright.
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.fillStyle = STORM_CLOUD.rainColor;
+        ctx.globalAlpha = 0.28;
+        ctx.fillRect(-1.1, -p.radius * 3.4, 2.2, p.radius * 2.4);
+        ctx.globalAlpha = 0.92;
+        ctx.beginPath();
+        ctx.moveTo(0, -p.radius * 1.75);
+        ctx.quadraticCurveTo(p.radius * 1.05, -p.radius * 0.1, 0, p.radius);
+        ctx.quadraticCurveTo(-p.radius * 1.05, -p.radius * 0.1, 0, -p.radius * 1.75);
+        ctx.fill();
+        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = '#eaf7ff';
+        ctx.beginPath();
+        ctx.arc(-p.radius * 0.22, -p.radius * 0.18, p.radius * 0.3, 0, TWO_PI);
+        ctx.fill();
+        ctx.restore();
+      } else if (p.type === 19) {
+        // Storm bolt: a jagged lance along its flight line, with a white core.
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.strokeStyle = STORM_CLOUD.bolt;
+        ctx.lineJoin = 'miter';
+        for (const pass of [0, 1]) {
+          ctx.globalAlpha = pass === 0 ? 0.32 : 0.95;
+          ctx.lineWidth = pass === 0 ? p.radius * 1.5 : p.radius * 0.45;
+          ctx.beginPath();
+          ctx.moveTo(p.radius * 1.5, 0);
+          ctx.lineTo(p.radius * 0.2, -p.radius * 0.85);
+          ctx.lineTo(-p.radius * 0.2, -p.radius * 0.2);
+          ctx.lineTo(-p.radius * 1.8, -p.radius * 1.1);
+          ctx.lineTo(-p.radius * 0.75, p.radius * 0.1);
+          ctx.lineTo(-p.radius * 0.1, p.radius * 0.35);
+          ctx.lineTo(p.radius * 1.5, 0);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(p.radius * 1.1, 0, p.radius * 0.28, 0, TWO_PI);
         ctx.fill();
         ctx.restore();
       } else if (p.type >= 3) {

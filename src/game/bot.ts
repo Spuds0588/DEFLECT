@@ -1,4 +1,5 @@
-import { AIMBOT, ATOMIZE, BOLT, BUFFER, BUG, COMPRESS, COPYPASTA, EMITTER, FISHER, GHOST, KABOOM, PINBALL, PLAYER, SIM_DT, TOXIC, WEDGE, type Rect } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BUFFER, BUG, COMPRESS, COPYPASTA, EMITTER, FISHER, GHOST, KABOOM, PINBALL, PLAYER, SIM_DT, STORM_CLOUD, TOXIC, WEDGE, type Rect } from './config';
+import { MINIBOSS } from './minibosses';
 import { PROGRAM_ID } from './programs';
 import { POWERUP_KIND } from './powerups';
 import {
@@ -1551,6 +1552,22 @@ export class BotBrain {
         sx += (dx / d) * ((reach - d) / 22);
         sy += (dy / d) * ((reach - d) / 22);
       }
+    }
+
+    // Storm clouds rain straight down. The lane under the body is where every drop
+    // lands, so step out of it rather than standing in the drizzle; the cloud is
+    // reachable from the side and the lane is wider than a body.
+    for (let i = 0; i < world.worms.length; i++) {
+      const w = world.worms[i];
+      if (!w.active || w.bossKind !== MINIBOSS.STORM_CLOUD) continue;
+      const under = me.y - w.y;
+      if (under < 30) continue;
+      const off = me.x - w.x;
+      const half = STORM_CLOUD.rain.width * 0.5 + PLAYER.radius + 28;
+      if (Math.abs(off) > half) continue;
+      const side = off >= 0 ? 1 : -1;
+      const urgency = under < 240 ? 2.4 : 1.3;
+      sx += side * urgency;
     }
 
     // Emitter lanes are readable before they fire. Step out of the corridor instead of

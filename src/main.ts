@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.140';
+const BUILD = '0.1.141';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -319,6 +319,8 @@ let handsBoot = false;
 let starfishBoot = false;
 /** QA-only boot flag: `?blob=1` lands the File Blob immediately. */
 let blobBoot = false;
+/** QA-only boot flag: `?storm=1` lands the Storm Cloud immediately. */
+let stormBoot = false;
 let autoplayRestartAt = 0;
 /**
  * Title-screen attract demo. `attract` is true while the bot-run gauntlet owns the
@@ -526,6 +528,7 @@ function boot(): void {
   handsBoot = params.get('hands') === '1';
   starfishBoot = params.get('starfish') === '1';
   blobBoot = params.get('blob') === '1';
+  stormBoot = params.get('storm') === '1';
   const infectionParam = params.get('infection') === '1';
   const gauntletBot = Number(params.get('bot') ?? '0') >= 1;
   // QA-only inspection handle. Nothing in normal play reads it; it keeps split and
@@ -572,7 +575,7 @@ function boot(): void {
     window.setTimeout(() => startStress(stressParam), 250);
   } else if (infectionParam) {
     window.setTimeout(() => startInfection(gauntletBot), 250);
-  } else if (gauntletParam >= 1 || megaBoot || handsBoot || starfishBoot || blobBoot) {
+  } else if (gauntletParam >= 1 || megaBoot || handsBoot || starfishBoot || blobBoot || stormBoot) {
     window.setTimeout(() => startGauntlet(gauntletBot), 250);
   } else if (playtestMode) {
     window.setTimeout(startPlaytest, 250);
@@ -2905,12 +2908,13 @@ function startGauntlet(aiLocal = false): void {
   const arena = getArena(arenaIndex);
   world = new World('gauntlet', [getCallsign()], 0, arena, false, selectedProgram);
   world.friendlyFire = friendlyFire;
-  if (megaBoot || handsBoot || starfishBoot || blobBoot) {
+  if (megaBoot || handsBoot || starfishBoot || blobBoot || stormBoot) {
     const lead = world.players[0];
     if (megaBoot) world.spawnMiniboss(MINIBOSS.MEGA_WORM, lead.x + 380, lead.y - 90);
     if (handsBoot) world.spawnMiniboss(MINIBOSS.IDLE_HANDS, lead.x + 380, lead.y - 90);
     if (starfishBoot) world.spawnMiniboss(MINIBOSS.STARFISH, lead.x + 380, lead.y - 90);
     if (blobBoot) world.spawnMiniboss(MINIBOSS.BLOB, lead.x + 380, lead.y - 90);
+    if (stormBoot) world.spawnMiniboss(MINIBOSS.STORM_CLOUD, lead.x + 300, lead.y - 260);
   }
   trainingInputs = [localFrame];
   botInputs = new Array(MAX_PLAYERS);

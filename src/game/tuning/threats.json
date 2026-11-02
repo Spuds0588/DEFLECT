@@ -27,7 +27,7 @@
     "wormMinInterval": 12,
     "maxWorms": 2,
     "wormCapStep": 20,
-    "bossSchedule": [{ "kind": 0, "wave": 8, "repeatStep": 14 }, { "kind": 1, "wave": 14, "repeatStep": 28 }, { "kind": 2, "wave": 20, "repeatStep": 40 }, { "kind": 3, "wave": 24, "repeatStep": 48 }],
+    "bossSchedule": [{ "kind": 0, "wave": 8, "repeatStep": 14 }, { "kind": 1, "wave": 14, "repeatStep": 28 }, { "kind": 2, "wave": 20, "repeatStep": 40 }, { "kind": 3, "wave": 24, "repeatStep": 48 }, { "kind": 4, "wave": 28, "repeatStep": 56 }],
     "virusSpawnDelay": 10,
     "virusInterval": 28,
     "virusMinInterval": 11,
@@ -281,6 +281,44 @@
     "paper": "#dfe9ef",
     "ink": "#202a34",
     "tint": "#7fd4ff"
+  },
+  "STORM_CLOUD": {
+    "slots": 1,
+    "radius": 104,
+    "hp": 104,
+    "spawnTime": 1.1,
+    "hoverTop": 138,
+    "hoverBob": 24,
+    "trackSpeed": 92,
+    "repelSpeed": 168,
+    "repelRadius": 236,
+    "contactDamage": 1,
+    "contactKnockback": 900,
+    "contactCooldown": 0.85,
+    "rain": {
+      "rows": 2,
+      "count": 4,
+      "width": 250,
+      "speed": 390,
+      "radius": 6.5,
+      "damage": 1,
+      "ttl": 2.1,
+      "cycle": 1.9,
+      "rowGap": 0.32,
+      "drift": 0.05
+    },
+    "lightning": {
+      "cooldown": 5.6,
+      "windup": 0.95,
+      "speed": 860,
+      "radius": 12,
+      "damage": 1,
+      "ttl": 1.6,
+      "reflectDamage": 18
+    },
+    "color": "#9fb3c8",
+    "bolt": "#cfe8ff",
+    "rainColor": "#8fd0ff"
   },
   "VIRUS": {
     "spawnTime": 0.55,

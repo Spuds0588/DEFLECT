@@ -671,3 +671,20 @@ files off, and the blob visibly shrinks as the stack comes apart.
 - **Break out.** Shoot or swing three times to tear the cage off. A dash will not free you, and neither will
   waiting quietly: the cage times out after a few seconds. Ghost's cloak phases straight out of it.
 - **Contact.** The body itself hurts on touch, so do not stand inside it while shooting.
+
+## STORM CLOUD (mini-boss)
+
+A huge grey cloud that sits at the top of the arena and does not come down. It rains rows of drops under
+itself and throws lightning, and it slides sideways to stay above you.
+
+- **Do not stand under it.** The lane directly beneath the cloud is where the rain lands. Step out to the
+  side and shoot it from an angle; the cloud tracks slowly, so moving beats it.
+- **Shoot the drops.** A raindrop is a real target: your ranged attack pops it out of the air. The rain is
+  relentless enough that holding guard through a whole burst will burn the shield out, so pick drops off
+  between shots instead of tanking them.
+- **Reflect the bolt.** Lightning is telegraphed by a jagged line from the cloud to your feet. The line
+  follows you for a moment, then locks, so a dash or a sideways step dodges it. Catch one with guard or a
+  lash and send it back: a returned bolt tears a huge chunk out of the cloud, far more than a normal shot.
+- **It cannot be reached from above.** The cloud owns the ceiling. Fighting it is a ground fight: keep
+  moving out of the lane, shoot drops, and save your reflect for the bolt.
+- **Big target, long fight.** Its body is the health bar; keep the pressure on between rain bursts.

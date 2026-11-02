@@ -637,7 +637,7 @@ export interface Projectile {
    * practical flight limit, no bounce, and it dies on the first body or cover hit.
    */
   /** 16 is Copy Pasta's file; its `variant` is 0 for the parent and 1 for the child. */
-  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17;
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;
@@ -659,6 +659,8 @@ export interface Projectile {
   arcDur: number;
   /** Pathfinding powerup bolt: axis-aligned target seeking. */
   homing: boolean;
+  /** Storm Cloud bolt: a caught one tears a bigger hole out of the cloud. */
+  lightning: boolean;
   /** 0 horizontal, 1 vertical. */
   pathAxis: number;
   /**
@@ -812,6 +814,33 @@ export interface BlobState {
   contactCd: number;
 }
 
+/**
+ * The storm cloud's attack state. The body is a hovering square mass; the rain and
+ * the bolt live in the projectile pool so guard, lash and player fire already apply.
+ */
+export interface StormState {
+  /** 0 hovering and raining, 1 charging a bolt. */
+  state: number;
+  t: number;
+  clock: number;
+  /** Rain: rows still to lay in the current burst and the clock between rows. */
+  rowsLeft: number;
+  rowT: number;
+  /** 1 lays a row left to right, -1 right to left. Flips every burst. */
+  rowDir: number;
+  rainCd: number;
+  rowIndex: number;
+  /** Lightning: windup clock, cooldown, the latched strike point and the flash. */
+  boltT: number;
+  boltCd: number;
+  boltX: number;
+  boltY: number;
+  flash: number;
+  contactCd: number;
+  /** Render-only puff scale per square, so the mass never pulses in lockstep. */
+  puff: Float32Array;
+}
+
 export interface Worm {
   active: boolean;
   /** Campaign holding cell: present, frozen and invulnerable until the power-down. */
@@ -866,6 +895,8 @@ export interface Worm {
   armState: StarfishArmState | null;
   /** File blob state; null on every other body. */
   blob: BlobState | null;
+  /** Storm cloud state; null on every other body. */
+  storm: StormState | null;
   /** Mega Worm: a boss chain whose nodes carry their own health. */
   mega: boolean;
   /** Per-node health. Index 0 is the head, index k is segment k-1. */

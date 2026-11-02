@@ -50,6 +50,7 @@ import {
   IDLE_HANDS,
   STARFISH,
   BLOB,
+  STORM_CLOUD,
   type Rect,
 } from './config';
 import {
@@ -857,7 +858,7 @@ export class World {
     this.projectiles = createProjectilePool();
     this.drone = createDrone();
     this.worms = new Array(
-      GAUNTLET.maxWorms + MEGA_WORM.slots + IDLE_HANDS.hands + STARFISH.slots + BLOB.slots,
+      GAUNTLET.maxWorms + MEGA_WORM.slots + IDLE_HANDS.hands + STARFISH.slots + BLOB.slots + STORM_CLOUD.slots,
     );
     for (let i = 0; i < this.worms.length; i++) this.worms[i] = createWorm();
     // INFECTION floods the floor, so that run owns a larger pool. Every other local mode
@@ -8320,6 +8321,7 @@ export class World {
     }
 
     proj.active = true;
+    proj.lightning = false;
     proj.serial = ++this.serial;
     proj.type = type;
     proj.owner = p.slot;
@@ -15122,7 +15124,7 @@ export class World {
     speed: number,
     radius: number,
     damage: number,
-    type: 3 | 4,
+    type: 3 | 4 | 18 | 19,
     ttl: number,
     srcId = -1,
   ): void {
@@ -15166,6 +15168,7 @@ export class World {
     proj.orbA = 0;
     proj.orbR = 0;
     proj.orbDir = 1;
+    proj.lightning = type === 19;
     this.emit(EV.SENTRY_SHOOT, -1, x, y, angle);
   }
 
@@ -16367,6 +16370,198 @@ export class World {
     }
   }
 
+
+  // --- Storm Cloud ---------------------------------------------------------
+  //
+  // A weather body that owns the top of the arena. It rains alternating rows under
+  // itself and winds up a bolt; the rain can be shot out of the sky, and a caught
+  // bolt is the real punish. It stays high so a player cannot stand on the cloud,
+  // and slides out from under anyone who closes in.
+
+  private spawnStormCloud(x: number, y: number): Worm | null {
+    const cfg = STORM_CLOUD;
+    const w = this.spawnWorm(x, y);
+    if (!w) return null;
+    const puff = new Float32Array(28);
+    for (let i = 0; i < puff.length; i++) puff[i] = this.rng.range(0.82, 1.18);
+    w.bossKind = MINIBOSS.STORM_CLOUD;
+    w.mega = false;
+    w.segCount = 0;
+    w.hand = null;
+    w.starfish = null;
+    w.armState = null;
+    w.blob = null;
+    w.hitR = cfg.radius;
+    w.segR = cfg.radius * 0.7;
+    w.hp = w.maxHp = cfg.hp;
+    w.spawnT = cfg.spawnTime;
+    w.x = Math.max(this.arena.bounds.left + cfg.radius * 0.6, Math.min(this.arena.bounds.right - cfg.radius * 0.6, x));
+    // Land in the ceiling band, not off the top of the screen: the whole cloud reads
+    w.y = this.arena.bounds.top + cfg.hoverTop;
+    w.prevX = w.x;
+    w.prevY = w.y;
+    w.angle = Math.PI * 0.5;
+    w.storm = {
+      state: 0,
+      t: 0,
+      clock: 0,
+      rowsLeft: 0,
+      rowT: 0,
+      rowDir: 1,
+      rainCd: 0.65,
+      rowIndex: 0,
+      boltT: 0,
+      boltCd: cfg.lightning.cooldown * 0.65,
+      boltX: w.x,
+      boltY: w.y + cfg.radius,
+      flash: 0,
+      contactCd: 0,
+      puff,
+    };
+    this.emit(EV.PROP_BREAK, 0, w.x, w.y, 120);
+    return w;
+  }
+
+  private updateStormCloud(w: Worm, dt: number): void {
+    const cfg = STORM_CLOUD;
+    const st = w.storm;
+    if (!st) return;
+    w.prevX = w.x;
+    w.prevY = w.y;
+    st.clock += dt;
+    if (w.hitFlash > 0) w.hitFlash = Math.max(0, w.hitFlash - dt);
+    if (st.flash > 0) st.flash = Math.max(0, st.flash - dt);
+    if (w.spawnT > 0) {
+      w.spawnT = Math.max(0, w.spawnT - dt);
+      return;
+    }
+    if (w.pinT > 0) w.pinT = Math.max(0, w.pinT - dt);
+
+    const p = this.threatTarget(w.x, w.y);
+    const r = w.hitR;
+    const dx = p.x - w.x;
+    const dy = p.y - w.y;
+    const dist = Math.hypot(dx, dy) || 1;
+
+    // Home is a ceiling band. Track the body slowly while it is far, and slide out
+    // from underneath once it closes: the top of the map is the boss's ground.
+    const homeY = this.arena.bounds.top + cfg.hoverTop + Math.sin(st.clock * 0.8) * cfg.hoverBob;
+    const crowded = p.alive && Math.abs(dx) < cfg.repelRadius && p.y > w.y - r;
+    const drift = crowded
+      ? (dx === 0 ? 1 : -Math.sign(dx)) * cfg.repelSpeed
+      : p.alive
+        ? Math.max(-cfg.trackSpeed, Math.min(cfg.trackSpeed, dx * 0.9))
+        : Math.cos(st.clock * 0.6) * cfg.trackSpeed * 0.4;
+    w.x += drift * dt;
+    w.y += Math.max(-cfg.repelSpeed, Math.min(cfg.repelSpeed, (homeY - w.y) * 2.6)) * dt;
+    const xPad = r * 0.55;
+    w.x = Math.max(this.arena.bounds.left + xPad, Math.min(this.arena.bounds.right - xPad, w.x));
+    w.y = Math.max(this.arena.bounds.top + r * 0.3, Math.min(this.arena.bounds.top + cfg.hoverTop + cfg.hoverBob, w.y));
+    w.angle = Math.PI * 0.5;
+
+    if (st.contactCd > 0) st.contactCd = Math.max(0, st.contactCd - dt);
+    if (st.contactCd <= 0 && p.alive && dist < r * 0.86 + PLAYER.radius) {
+      st.contactCd = cfg.contactCooldown;
+      this.damagePlayer(p, cfg.contactDamage, -1, dx / dist, dy / dist, cfg.contactKnockback, SRC.WORM, this.worms.indexOf(w));
+    }
+
+    // Rain: a burst of rows, laid across the lane under the cloud. Each burst flips
+    // direction, and every other row is offset by half a gap so the drops do not
+    // stack into one predictable comb.
+    st.rainCd -= dt;
+    if (st.rowsLeft <= 0 && st.rainCd <= 0) {
+      st.rowsLeft = cfg.rain.rows;
+      st.rowDir = -st.rowDir;
+      st.rowT = 0;
+      st.rainCd = cfg.rain.cycle;
+    }
+    if (st.rowsLeft > 0) {
+      st.rowT -= dt;
+      if (st.rowT <= 0) {
+        st.rowT = cfg.rain.rowGap;
+        st.rowIndex++;
+        const n = cfg.rain.count;
+        const span = cfg.rain.width;
+        const offset = (st.rowIndex % 2) * (span / (n * 2));
+        for (let i = 0; i < n; i++) {
+          const u = n === 1 ? 0.5 : i / (n - 1);
+          const across = st.rowDir > 0 ? u : 1 - u;
+          const sx = w.x - span * 0.5 + across * span + offset;
+          this.spawnHostileProjectile(
+            sx + this.rng.range(-5, 5),
+            w.y + r + 8,
+            Math.PI * 0.5 + this.rng.range(-cfg.rain.drift, cfg.rain.drift),
+            cfg.rain.speed + this.rng.range(-16, 16),
+            cfg.rain.radius,
+            cfg.rain.damage,
+            18,
+            cfg.rain.ttl,
+            this.worms.indexOf(w),
+          );
+        }
+        st.rowsLeft--;
+      }
+    }
+
+    // Lightning: one telegraphed bolt on a long clock. The strike point follows the
+    // body for the first half of the tell, then latches so a dash can beat it.
+    if (st.state === 0) {
+      st.boltCd = Math.max(0, st.boltCd - dt);
+      if (st.boltCd <= 0 && p.alive && p.cloakT <= 0) {
+        st.state = 1;
+        st.t = 0;
+        st.boltT = cfg.lightning.windup;
+        st.boltX = p.x;
+        st.boltY = p.y;
+        this.emit(EV.SENTRY_SHOOT, -1, w.x, w.y, Math.PI * 0.5);
+      }
+    } else {
+      st.boltT = Math.max(0, st.boltT - dt);
+      if (st.boltT > cfg.lightning.windup * 0.45 && p.alive) {
+        st.boltX = p.x;
+        st.boltY = p.y;
+      }
+      if (st.boltT <= 0) {
+        st.state = 0;
+        st.boltCd = cfg.lightning.cooldown;
+        st.flash = 0.24;
+        const sx = w.x;
+        const sy = w.y + r + 10;
+        const angle = Math.atan2(st.boltY - sy, st.boltX - sx);
+        this.spawnHostileProjectile(
+          sx,
+          sy,
+          angle,
+          cfg.lightning.speed,
+          cfg.lightning.radius,
+          cfg.lightning.damage,
+          19,
+          cfg.lightning.ttl,
+          this.worms.indexOf(w),
+        );
+        this.emit(EV.EXPLODE, -1, sx, sy, 46);
+      }
+    }
+  }
+
+  private damageStormCloud(w: Worm, amount: number, sourceSlot: number, dirX: number, dirY: number): void {
+    const st = w.storm;
+    if (!st || !w.active) return;
+    w.hp -= amount;
+    w.hitFlash = 0.16;
+    st.flash = Math.max(st.flash, 0.12);
+    this.emit(EV.WORM_HIT, sourceSlot, w.x, w.y, amount, dirX, dirY);
+    if (w.hp > 0) return;
+    w.hp = 0;
+    w.active = false;
+    w.storm = null;
+    this.emit(EV.WORM_KILL, sourceSlot, w.x, w.y, 280, dirX, dirY);
+    if (sourceSlot === 0) {
+      this.gauntletKills++;
+      this.dropPickupFromKill(w.x, w.y, true);
+    }
+  }
+
   // --- Mega Worm -----------------------------------------------------------
   //
   // The boss is still a Worm: it lives in the same pool, so bots, projectiles,
@@ -16407,6 +16602,7 @@ export class World {
     if (def.body === 'idle-hands') return this.spawnIdleHands(x ?? this.centerX, y ?? this.centerY);
     if (def.body === 'starfish') return this.spawnStarfish(x ?? this.centerX, y ?? this.centerY);
     if (def.body === 'blob') return this.spawnBlob(x ?? this.centerX, y ?? this.centerY);
+    if (def.body === 'storm-cloud') return this.spawnStormCloud(x ?? this.centerX, (y ?? this.centerY) - 180);
     return null;
   }
 
@@ -17035,6 +17231,10 @@ export class World {
       this.updateBlob(w, dt);
       return;
     }
+    if (w.bossKind === MINIBOSS.STORM_CLOUD) {
+      this.updateStormCloud(w, dt);
+      return;
+    }
     if (w.mega) {
       this.updateMegaWorm(w, dt);
       return;
@@ -17308,6 +17508,10 @@ export class World {
     }
     if (w.bossKind === MINIBOSS.BLOB) {
       this.damageBlob(w, amount, sourceSlot, dirX, dirY);
+      return;
+    }
+    if (w.bossKind === MINIBOSS.STORM_CLOUD) {
+      this.damageStormCloud(w, amount, sourceSlot, dirX, dirY);
       return;
     }
     if (w.mega) {
@@ -18295,7 +18499,8 @@ export class World {
           this.explodeMine(proj, proj.owner);
         } else {
           const speed = Math.hypot(proj.vx, proj.vy) || 1;
-          this.damageWorm(w, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, 0, proj.x, proj.y);
+          const stormStrike = proj.lightning && proj.owner >= 0 ? STORM_CLOUD.lightning.reflectDamage : proj.damage;
+          this.damageWorm(w, stormStrike, proj.owner, proj.vx / speed, proj.vy / speed, 0, proj.x, proj.y);
           if (proj.type === 13) this.compressWormHit(w, proj.owner);
           if (proj.type === 16) this.splitCopyShot(proj);
           proj.active = false;
@@ -18311,7 +18516,8 @@ export class World {
           this.explodeMine(proj, proj.owner);
         } else if (hostile || w.mega) {
           const speed = Math.hypot(proj.vx, proj.vy) || 1;
-          this.damageWorm(w, proj.damage, hostile ? -1 : proj.owner, proj.vx / speed, proj.vy / speed, 0, proj.x, proj.y);
+          const stormStrike = proj.lightning && proj.owner >= 0 ? STORM_CLOUD.lightning.reflectDamage : proj.damage;
+          this.damageWorm(w, stormStrike, hostile ? -1 : proj.owner, proj.vx / speed, proj.vy / speed, 0, proj.x, proj.y);
           proj.active = false;
         } else {
           this.eatProjectile(proj, w);

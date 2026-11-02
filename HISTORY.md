@@ -5587,3 +5587,34 @@ them, so the tree carries only sources and the reusable probes.
 
 **Next:** a visual pass on a floor with several shards, since they now accumulate instead of clearing
 themselves.
+
+## 2026-11-02 — Storm Cloud, the ceiling boss (v0.1.141)
+
+**Goal:** add the fifth mini-boss, a big weather body that holds the top of the arena, rains under itself
+and throws a reflectable bolt.
+
+- New registry body `storm-cloud` (`MINIBOSS.STORM_CLOUD = 4`), scheduled at gauntlet wave 28 and every 56.
+  One worm-pool body, radius 104, 104 health, `StormState` on the worm.
+- **Movement.** Hovers in a ceiling band (`hoverTop` 138 ± `hoverBob` 24), tracks at 92 u/s and slides out
+  from under a body inside `repelRadius`. It never drops to the floor, which is what stops a player standing
+  on it; contact damage is a cooldown shove.
+- **Rain.** Alternating rows of hostile projectile type 18, 2 rows × 4 drops per 1.9 s burst, each row
+  offset by half a gap. Drops are shootable through the existing hostile-projectile interception and
+  catchable by guard/lash, but the burst outlasts one guard so shielding the whole thing is not a plan.
+- **Lightning.** Type 19 on a 5.6 s clock with a 0.95 s telegraphed jagged line that latches halfway
+  through. It deals 1 to a player; a caught one carries `Projectile.lightning` through the type conversion
+  and deals 18 back, about six returns for the kill.
+- **Bots.** `avoidFurniture` now pushes sideways out of a storm's rain lane. Before that every tier died in
+  ~14 s at the same rate, because each pilot walked under the cloud and stayed there.
+- **Tuning pass.** Three passes by harness: 13 drops/s killed a HARD bot 9/9 in 11 s; thinning rows and
+  softening the bolt only reached ~15 s; the missing piece was the bot lane steer. Final measured curve:
+  digital 34.1 s average, 3/9 deaths, boss left at 31%; rookie 38.5 s, 6/9 deaths, 58% left.
+- **Rendering.** 7×4 grey square grid with fixed per-square scale, rain fringe, flickering windup line and
+  strike flash; vector teardrops and two-pass jagged bolts.
+
+**Verification:** `.tmp/storm-check.ts` passes (shape, ceiling band, 43 drops delivered in four seconds of
+barrage, shoot-down, bolt flag and 18-damage return, kill credit). All existing probes still pass. Build
+clean; bench `Gauntlet max avg 0.127ms p99 0.448ms max 1.564ms threats 27.3 (2W/10V/2F/14E + sentries + thrall)`.
+
+**Next:** a human playtest on the lane readability and the bolt tell; the numbers are deliberately a first
+pass, and the density knobs are `rain.cycle` and `rain.count`.
