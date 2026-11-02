@@ -2329,6 +2329,36 @@ notes recorded, and both extend `ArenaLaptopDef` rather than adding a second scr
 - Both variants stay local-only through `isOnlineArena` (`!a.laptop` already covers them). Their clocks,
   cell health, cursor and bubble positions never enter `SnapshotHazards`.
 
+### D58 — Ports are the threat ingress in campaign and infection (decided 2026-11-02, not built)
+
+Campaign and INFECTION levels must not materialize threats at arbitrary floor points. Threats arrive through
+**ports**: red glowing squares that leak small square particles, emit the level's threat families, and close
+permanently when damaged. A level is cleared by destroying the threats already in play **and** closing every
+port; threats delivered before a port died stay alive, so closing a port never ends a fight by itself. The
+party also gets **white** ports at each level's entry and exit for arriving and leaving — traversal dressing
+that is never solid and never damageable.
+
+- The clear condition replaces the bare kill count. `CAMPAIGN.killsToClear` (`tuning/campaign.json`, 10) and
+the one-pip-per-delete objective strip in `render.ts` are today's gate; they become **ports remaining plus
+live threats**. Do not ship a kill counter and a port counter as two competing objectives.
+- Replace the existing spawn paths instead of layering on them: `spawnSentryPack` (a ring around the
+player), `spawnVirusCluster` (a far arena spawn point) and the `setupInfection` opening flood all become port
+emission. Keep the existing pools, live caps, `packStagger`, interval tapering and wave gates; do not add a
+second spawn clock.
+- Ports are **authored per arena** on `ArenaDef`, not rolled at runtime. A fair lane, a readable boss room
+and a route plate all need known positions; randomness belongs to emission timing and a small offset.
+- A port must read as damaged before it closes: give it health, a cracked or dim state and a close beat.
+"I shot it and nothing happened" is the failure mode.
+- Bots must target a port when no player is in range, or they idle once the floor is clear.
+- Ports stay **local-only** like the rest of campaign and INFECTION: not in `Snapshot`, `NetView` or
+`SnapshotHazards`. Hosted co-op infection still ships only the colony readout; do not send port geometry over
+the network without a protocol decision.
+- script_kitty is the mission-control voice for the hop: the network map, the open ports, the next island. It
+stays inside the narration rules (bottom box, live and non-blocking, skippable, cosmetic, local-only) and
+never becomes a menu, an HUD dump or a gameplay gate.
+- Keep a port's footprint readable at play size, like the SMART WATCH hand and the laptop cards; a source the
+nav grid cannot represent lets bots stand inside it and turns the objective into a hidden trap.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-02 (CAMPAIGN SPINE)
+Last updated: 2026-11-02 (PORTS)
 
 ---
 
@@ -28,6 +28,21 @@ Last updated: 2026-11-02 (CAMPAIGN SPINE)
 - [x] Hide the panel with `GAME UI`, loading and overlays; older peers degrade to `--`
 - [x] `npx tsc --noEmit` clean
 - [ ] Two-real-client pass: verify RTT, snapshot cadence, disconnect fallback and legacy-peer `--` state
+
+---
+
+## Ports (2026-11-02)
+
+- [x] Record the portal design: red damageable enemy ports, white player entry/exit ports, clear-the-system as the win state
+- [x] Note the spawn paths it replaces (`spawnSentryPack` ring, `spawnVirusCluster` far spawn, `setupInfection` opening flood)
+- [ ] Author `ports` on `ArenaDef` and draw the red square with its square-particle leak
+- [ ] Emit the existing threat families through ports, reusing pools, caps, stagger and wave gates
+- [ ] Port health, a damaged state and a close beat; decide which action jobs can close one
+- [ ] Replace the campaign kill pips with ports remaining plus live threats, and gate the exit on both
+- [ ] White player ports at level entry and exit, with the walk-in / walk-out transition
+- [ ] Bots target a port when no player is in range
+- [ ] Headless probe: emission comes only from ports, a closed port stops emitting, the clear needs both conditions, no `Snapshot` fields
+- [ ] script_kitty mission-control beats for the network map, open ports and the next island
 
 ---
 

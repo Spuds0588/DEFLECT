@@ -5071,3 +5071,34 @@ ROOT, and no run state carries an infection tally yet.
 
 **Next:** add the per-island infection tally to the campaign run state, then gate the sector exit on it so
 clearing an island is what opens the next crossing.
+
+## 2026-11-02 — Portals as threat ingress (documentation only)
+
+**Goal:** replace "enemies appear anywhere" with a source the player can attack, and record it before any
+code depends on the current spawn paths.
+
+- Researched the existing spawn paths first: no portal or spawn-gate code exists (`portal`/`SpawnGate`
+  match nothing). `World.spawnSentryPack` drops a pack in a ring around the player, `spawnVirusCluster`
+  seeds a cluster at a far arena spawn point, and `setupInfection` spreads the opening flood around the
+  player spawns. The campaign assault clears on `CAMPAIGN.killsToClear` (`tuning/campaign.json`, 10) with
+  one pip per delete drawn in `render.ts`.
+- `CAMPAIGN.md` gains **Ingress: portals, not random spawns**: red damageable ports with a square-particle
+  leak emit the threats, a clear is destroy-what-is-in-play **and** close-every-port, and the party uses
+  white ports at the entry and exit of each level. script_kitty becomes mission control for the hop.
+- Reconciled with the island spine: each island's ports are the infection's ingress, so closing them is
+  what "clear the infections" actually means, and the objective strip counts ports plus live threats
+  instead of a wave number.
+- `CAMPAIGN.md` topology grammar gains a **Port** element, and the map-sketch checklist now requires every
+  enemy port's footprint, emitted families and closing damage plus the white party ports.
+- `AGENTS.md` records **D58**: authored per arena, no second spawn clock, port health must read as damaged
+  before it closes, bots must target ports, and ports stay out of `Snapshot`/`SnapshotHazards`. `TODO.md`
+  gains the implementation checklist and a probe that proves emission only happens through ports.
+
+**Verification:** documentation only. No code, tuning, arena or protocol change, so no probe, build or bench
+run was needed; version stamps stay at v0.1.124.
+
+**Limitations:** nothing is implemented. Campaign and infection still spawn through the three existing
+paths, the campaign still clears on a kill count, and no white entry/exit ports exist.
+
+**Next:** author `ports` on `ArenaDef` and route `spawnSentryPack`, `spawnVirusCluster` and the infection
+flood through them, then make the clear gate require both the ports and the live threats.

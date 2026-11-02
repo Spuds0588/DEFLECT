@@ -32,6 +32,40 @@ Open questions this does not settle: whether the agent shows itself only on the 
 player from earlier hops, whether an island may be left with infections alive (and how that reads as a
 outcome), and how a cleared island is drawn on the route plate.
 
+## Ingress: portals, not random spawns (decided 2026-11-02)
+
+Campaign and infection levels do not materialize enemies anywhere on the floor. Threats arrive through
+**ports**: red glowing squares standing open in the arena, leaking small square particles that drift out
+and fade. The port is the fiction and the objective in one body — someone is sending the bad guys through
+it — and it is **damageable**. Hit it enough and it closes for good, and that port never emits again in
+that level.
+
+That changes what a clear means. Today the campaign assault counts deletes against `CAMPAIGN.killsToClear`
+(`tuning/campaign.json`, 10) and draws one pip per delete. With ports, a clear is **clear the system**:
+destroy the threats already in play *and* close every port. Enemies delivered before a port died stay
+alive, so a closed port never ends a fight by itself, and the objective strip counts ports remaining
+alongside live threats instead of a wave number nobody can see. Infection follows the same rule: close the
+colony's source rather than asking the player to outlast an unknown number of spawns.
+
+Player characters get the **white** version of the same mark: one at the level entry, one at the exit. The
+party arrives through the entry port and leaves through the exit, which gives each crossing a place
+instead of a fade. Player ports are traversal dressing — not solid, not damageable, not part of the clear.
+
+script_kitty runs the operation from the other side: it maps the network, calls out ports as they open,
+tracks which island is next and coordinates the hopping while the player tries to stop the infection and
+the big bad from taking the world. That is narration in the existing bottom box, so it stays cosmetic,
+skippable and local-only (see **Narration rules**).
+
+**Existing spawn paths this replaces** (nothing is built yet): `World.spawnSentryPack` drops a pack in a
+ring around the player, `World.spawnVirusCluster` seeds a cluster at a far arena spawn point, and
+`setupInfection` spreads the opening flood around the player spawns. A port pass should author ports in
+the arena data and emit through them, keeping the existing per-family pools, live caps, `packStagger`,
+interval tapering and wave gates rather than adding a second spawn system.
+
+Open questions: what closes a port (ranged only, or every action job), whether ports can reopen within an
+island, whether an island may be left with ports still open, and whether a port's health is authored per
+arena or derived from the threat families it emits.
+
 ## Narrative spine (decided 2026-11-01, not built)
 
 **Opening.** The campaign starts in the **quarantine section of a dev system**. Every player program — the
@@ -181,6 +215,7 @@ one destination, not collecting separate stages.
 | **Teleporter pad** | Paired point-to-point transfer | Stand on the pad, short transition, arrive on its pair |
 | **Lift** | Shared hub for several destinations | Choose a floor, move the whole local party |
 | **Gate** | A link that unlocks after a condition | Boss kill, switch break, or all side nodes cleared |
+| **Port** | Enemy ingress: a red square that emits threats | Stand clear of its lane; damage it until it closes |
 | **Boss node** | One large encounter with phases | Sector exit stays closed until the boss is dead |
 
 No geometry is carried in snapshots. A future sector runtime would send the sector id and node id and use
@@ -258,8 +293,9 @@ For every arena:
    so draw them as solid shapes, not floor texture.
 4. **Entry and exit points.** Mark where players arrive and leave, and which link type connects them
    (bridge, pad, lift). Pads need a pair, so name both ends.
-5. **Spawn ring.** Show where 1–4 players assemble. If enemies spawn from fixed doors or vents, mark those
-   separately.
+5. **Spawn ring and ports.** Show where 1–4 players assemble. Mark every enemy port (a red square) with
+   its footprint, which threats it emits and roughly how much damage closes it, plus the white entry and
+   exit ports for the party. Enemies must not arrive anywhere that is not a port.
 6. **Hazard or objective.** A switch, a firewall emitter, a disk platter, a nest, a vent, a transmitter.
    Mark its footprint and what changes when it is destroyed.
 7. **Boss footprint.** For boss arenas, mark the boss body, its movement lane, and the space players need
