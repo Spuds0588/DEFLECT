@@ -60,6 +60,18 @@ Formerly: 2026-11-02 (PORTS)
 
 ---
 
+## AIR TRAFFIC (2026-11-02)
+
+- [x] Arena 33: circular radar disc, six console desks as cover, slow sweep (11 s) that never damages
+- [x] `World.tickRadar`: straight-line aircraft passes on one clock, damage to players, drone and gauntlet threats
+- [x] One hit per aircraft per pass per body, so a slow pass cannot shred a body
+- [x] Probe: floor ends at the rim, every pass crosses the disc, spawns and cover on the scope, single hit per pass
+- [ ] Conflict alerts: a brief tag flip when two aircraft cross close together (presentation only)
+- [ ] A campaign node that uses the scope, with the sweep as a patrol clock
+- [ ] Decide whether aircraft should be deflectable (they are terrain-scale hazards today)
+
+---
+
 ## CAPCOM (2026-11-02)
 
 - [x] Arena 32: four department plates in a 2×2 ring (CAPCOM, FIDO, GUIDO, EECOM) with four open decks

@@ -211,6 +211,15 @@ function campaignCellBarRects(arena: ArenaDef): Rect[] {
  * No allocations inside step(); see AGENTS.md §3.
  */
 export class World {
+  /** Air traffic control scope. Local-only: it never enters a snapshot. */
+  radar: NonNullable<ArenaDef['radar']> | null = null;
+  radarT = 0;
+  private radarLap: number[] = [];
+  private radarHitPlayers: number[] = [];
+  private radarHitWorms: number[] = [];
+  private radarHitViruses: number[] = [];
+  private radarHitSentries: number[] = [];
+  private radarHitErrors: number[] = [];
   readonly mode: GameMode;
   /** Local simulation: identity always comes from the program, never the slot. */
   readonly online = false;
@@ -727,6 +736,8 @@ export class World {
     this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
+    this.radar = arena.radar ?? null;
+    this.resetRadar();
     this.rocket = arena.rocket ?? null;
     if (this.rocket) {
       for (let i = 0; i < this.rocket.segments; i++) {
@@ -3070,6 +3081,7 @@ export class World {
     if (this.rocket && canAct) this.tickRocket(dt);
     if (this.car && canAct) this.tickCar(dt);
     if (this.pong && canAct) this.tickPong(dt);
+    if (this.radar && canAct) this.tickRadar(dt);
     if (this.flip && canAct) this.tickFlip(dt);
     if (this.invaders && canAct) this.tickInvaders(dt);
     if (this.plug && canAct) this.tickPlug(dt);
@@ -9428,6 +9440,137 @@ export class World {
   }
 
   /** Reset the PONG scoreboard, paddles and serve clock. */
+  /** Reset the scope clock and every per-pass hit mask. */
+  private resetRadar(): void {
+    this.radarT = 0;
+    const count = this.radar?.planes.length ?? 0;
+    this.radarLap = new Array(count).fill(-1);
+    this.radarHitPlayers = new Array(count).fill(0);
+    this.radarHitWorms = new Array(count).fill(0);
+    this.radarHitViruses = new Array(count).fill(0);
+    this.radarHitSentries = new Array(count).fill(0);
+    this.radarHitErrors = new Array(count).fill(0);
+  }
+
+  /**
+   * Advance the air traffic scope. Planes are straight-line passes on a fixed clock, so
+   * the state is fully derivable: the renderer draws the same positions from radarT.
+   * One hit per plane per pass, per body.
+   */
+  private tickRadar(dt: number): void {
+    const radar = this.radar;
+    if (!radar) return;
+    this.radarT += dt;
+    for (let i = 0; i < radar.planes.length; i++) {
+      const def = radar.planes[i];
+      const lapDur = Math.max(def.period, def.run / def.speed + 1);
+      const pt = this.radarT - def.delay;
+      if (pt < 0) continue;
+      const lap = Math.floor(pt / lapDur);
+      if (this.radarLap[i] !== lap) {
+        this.radarLap[i] = lap;
+        this.radarHitPlayers[i] = 0;
+        this.radarHitWorms[i] = 0;
+        this.radarHitViruses[i] = 0;
+        this.radarHitSentries[i] = 0;
+        this.radarHitErrors[i] = 0;
+      }
+      const k = (pt - lap * lapDur) * def.speed;
+      if (k > def.run) continue;
+      const ex = radar.cx + Math.cos(def.bearing) * def.entry;
+      const ey = radar.cy + Math.sin(def.bearing) * def.entry;
+      const x = ex + Math.cos(def.heading) * k;
+      const y = ey + Math.sin(def.heading) * k;
+
+      for (let pi = 0; pi < this.players.length; pi++) {
+        const p = this.players[pi];
+        if (!p.active || !p.alive || p.dashT > 0 || phased(p) || p.iframes > 0) continue;
+        if (this.radarHitPlayers[i] & (1 << pi)) continue;
+        const dx = p.x - x;
+        const dy = p.y - y;
+        const reach = def.radius + PLAYER.radius * p.shrink;
+        if (dx * dx + dy * dy > reach * reach) continue;
+        this.radarHitPlayers[i] |= 1 << pi;
+        const d = Math.hypot(dx, dy) || 1;
+        this.damagePlayer(p, radar.damage, -1, dx / d, dy / d, radar.knockback, SRC.RADAR, -1);
+      }
+
+      if (this.mode === 'training' && this.drone.active) {
+        const dx = this.drone.x - x;
+        const dy = this.drone.y - y;
+        const reach = def.radius + this.drone.radius;
+        if (dx * dx + dy * dy <= reach * reach && !(this.radarHitSentries[i] & 1)) {
+          this.radarHitSentries[i] |= 1;
+          this.damageDrone(radar.damage, -1);
+        }
+      }
+      if (this.mode !== 'gauntlet') continue;
+
+      for (let wi = 0; wi < this.worms.length; wi++) {
+        const w = this.worms[wi];
+        if (!w.active || this.radarHitWorms[i] & (1 << wi)) continue;
+        let hit = false;
+        let hx = 0;
+        let hy = 0;
+        const dxh = w.x - x;
+        const dyh = w.y - y;
+        const reachH = def.radius + WORM.headRadius;
+        if (dxh * dxh + dyh * dyh <= reachH * reachH) {
+          hit = true;
+          hx = dxh;
+          hy = dyh;
+        }
+        for (let s = 0; s < w.segCount && !hit; s++) {
+          const dxs = w.segX[s] - x;
+          const dys = w.segY[s] - y;
+          const reachS = def.radius + WORM.segmentRadius;
+          if (dxs * dxs + dys * dys <= reachS * reachS) {
+            hit = true;
+            hx = dxs;
+            hy = dys;
+          }
+        }
+        if (!hit) continue;
+        this.radarHitWorms[i] |= 1 << wi;
+        const d = Math.hypot(hx, hy) || 1;
+        this.damageWorm(w, radar.damage, -1, hx / d, hy / d);
+      }
+      for (let vi = 0; vi < this.viruses.length; vi++) {
+        const v = this.viruses[vi];
+        if (!v.active || this.radarHitViruses[i] & (1 << vi)) continue;
+        const dx = v.x - x;
+        const dy = v.y - y;
+        const reach = def.radius + v.radius;
+        if (dx * dx + dy * dy > reach * reach) continue;
+        this.radarHitViruses[i] |= 1 << vi;
+        const d = Math.hypot(dx, dy) || 1;
+        this.damageVirus(v, radar.damage, -1, dx / d, dy / d, radar.knockback);
+      }
+      for (let si = 0; si < this.sentries.length; si++) {
+        const s = this.sentries[si];
+        if (!s.active || this.radarHitSentries[i] & (1 << si)) continue;
+        const dx = s.x - x;
+        const dy = s.y - y;
+        const reach = def.radius + s.radius;
+        if (dx * dx + dy * dy > reach * reach) continue;
+        this.radarHitSentries[i] |= 1 << si;
+        const d = Math.hypot(dx, dy) || 1;
+        this.damageSentry(s, radar.damage, -1, dx / d, dy / d, radar.knockback);
+      }
+      for (let ei = 0; ei < this.errors.length; ei++) {
+        const e = this.errors[ei];
+        if (!e.active || this.radarHitErrors[i] & (1 << ei)) continue;
+        const dx = e.x - x;
+        const dy = e.y - y;
+        const reach = def.radius + CASCADING_ERROR.blockSize * 0.5;
+        if (dx * dx + dy * dy > reach * reach) continue;
+        this.radarHitErrors[i] |= 1 << ei;
+        const d = Math.hypot(dx, dy) || 1;
+        this.damageError(e, radar.damage, -1, dx / d, dy / d);
+      }
+    }
+  }
+
   private resetPong(): void {
     const pong = this.pong;
     if (!pong) return;
@@ -10205,6 +10348,12 @@ export class World {
   }
 
   private inVoid(x: number, y: number): boolean {
+    const radar = this.arena.radar;
+    if (radar) {
+      const rdx = x - radar.cx;
+      const rdy = y - radar.cy;
+      return rdx * rdx + rdy * rdy > radar.radius * radar.radius;
+    }
     if (this.voidAt(x, y) !== null) return true;
     const islands = this.arena.islands;
     if (!islands) return false;

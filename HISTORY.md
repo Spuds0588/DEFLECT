@@ -5233,3 +5233,38 @@ cover on plates, no ingress on a fighting map). `.tmp/islands-ports-check.ts` an
 rather than an objective, and no campaign node uses the floor yet.
 
 **Next:** give each department its own console layout, then pick a node that uses the floor.
+
+## 2026-11-02 — AIR TRAFFIC: a radar scope where the traffic is the hazard (v0.1.129)
+
+**Goal:** an airport-themed arena built around a radar screen, where the aircraft are a real threat rather
+than decoration.
+
+- Arena 33 `AIR TRAFFIC`: one circular radar floor (`radar.cx/cy/radius`, 455 units), a slow 11-second
+  sweep with a stepped trail, range rings, a bearing graticule and a sector caption. Six console desks sit
+  on the scope as cover, eight controller stations ring it, and stepping off the disc is a drop.
+- Aircraft are simulated hazards. `World.tickRadar` advances one clock and derives each straight-line pass
+  from its authored bearing, heading, entry distance, speed and period; the renderer reads the same clock,
+  so a drawn aircraft is exactly where the damage is. Passes damage players and, in gauntlet, worms,
+  viruses, sentries, cascading errors and the training drone.
+- Each aircraft hits a body once per pass (`radarHit*` bitmasks cleared when a pass wraps), so a slow pass
+  cannot shred someone across several frames. Dashes, phasing, cloak and i-frames still void the hit.
+- The sweep never damages. It is a read: the aircraft are the threat, and a second sweeping hazard would
+  make the floor unreadable.
+- Each plane is drawn as a heading-aligned silhouette with a blip ring, a trailing track and a data tag
+  (`AAL 112`, `INBOUND`/`OUTBOUND`). `SRC.RADAR` tags the hits. `isOnlineArena` excludes `radar`, so the
+  arena is local-only and aircraft never enter `Snapshot`.
+- Two probe-found fixes along the way: the first console layout sat outside the 455-unit disc (the probe
+  rejects cover hanging over the void), and the first plane headings were authored as `bearing - PI`, which
+  sent several aircraft past the rim without crossing the scope.
+
+**Verification:** `.tmp/radar-check.ts` passes (the floor ends at the rim, every pass crosses the disc, all
+spawns and cover corners are on the scope, one pass takes exactly one segment, a second pass in the same
+crossing takes none, the sweep clock advances). `.tmp/capcom-check.ts`, `.tmp/islands-ports-check.ts` and
+`.tmp/laptop-variants-check.ts` still pass. `npm run build` passes. `npm run bench` is clean: gauntlet max
+0.170 ms avg / 0.560 ms p99.
+
+**Limitations:** the sweep does not reveal traffic (blips are always visible), aircraft are not deflectable,
+and no campaign node uses the floor yet.
+
+**Next:** a conflict alert when two aircraft cross close together, then a campaign node that treats the
+sweep as a patrol clock.

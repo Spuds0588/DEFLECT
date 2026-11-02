@@ -79,6 +79,8 @@ export const SRC = {
   EMITTER: 9,
   /** Arena feed pipe: a hostile file box or its intake. */
   PIPE: 10,
+  /** Air traffic control scope: an aircraft crossing the floor. */
+  RADAR: 21,
   /** Phone-pad key slam. No body, so the death camera falls through. */
   KEYPAD: 11,
   /** Document-scanner read line. No body, so the death camera falls through. */

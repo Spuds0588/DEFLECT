@@ -2425,6 +2425,28 @@ copies of one console bank.
 - It authors no `ingress` and no `replicator`: it is a fighting map. Ingress fixtures belong to campaign and
   infection nodes.
 
+### D62 — AIR TRAFFIC is a radar scope with aircraft as hazards (decided 2026-11-02, built v0.1.129)
+
+AIR TRAFFIC (id 33) is an air traffic control scope: a circular radar floor with a slow sweep and aircraft
+crossing it. The planes are the arena's hazard, so they are simulated, not decorated.
+
+- The floor is a disc (`radar.cx/cy/radius`); `inVoid` treats everything outside it as a drop, like the
+  other open-lip arenas. Cover is six console desks authored inside the disc.
+- `World.tickRadar` advances one clock (`radarT`) and derives every plane position from it. The renderer
+  reads the same clock, so a drawn plane is exactly where the damage is. Do not give planes their own
+  integration state; a straight-line pass on a fixed clock is the whole model.
+- A pass damages players and, in gauntlet, worms, viruses, sentries, the training drone and cascading
+  errors. Damage is one hit per plane per pass per body (`radarHit*` bitmasks, cleared when a pass wraps),
+  so a slow aircraft cannot shred a body by overlapping it for several frames. Dashing, phasing, cloak and
+  i-frames still void the hit.
+- The sweep is presentation only and deliberately slow (`sweepPeriod` 11 s). Do not make the sweep a damage
+  source; the aircraft are the threat, and a second sweeping hazard would make the floor unreadable.
+- Traffic is content: `ArenaRadarPlaneDef` carries the tag, bearing, heading, entry distance, run, speed,
+  radius, period and delay. Every pass must cross the disc — an aircraft whose perpendicular distance from
+  the centre exceeds `radius` is decoration and fails the probe.
+- It authors no `ingress` or `replicator`, and `isOnlineArena` excludes `radar`, so it is local-only like
+  the other fixture arenas. Aircraft never enter `Snapshot`.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

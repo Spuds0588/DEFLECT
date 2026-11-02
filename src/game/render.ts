@@ -70,6 +70,8 @@ import { beamReach } from './collision';
 const laptopCellDraw = { x: 0, y: 0, w: 0, h: 0 };
 
 export interface RenderState {
+  /** Radar arena sweep clock, seconds since the level began. */
+  radarT?: number;
   mode: GameMode;
   /** True only for a networked session; local modes always identify by program. */
   online: boolean;
@@ -5591,6 +5593,162 @@ export class Renderer {
   }
 
   /** PONG: a phosphor CRT court with automatic paddles and a live rally ball. */
+  /**
+   * An air traffic control scope. The floor is a radar disc, the sweep is slow and
+   * harmless, and the aircraft are real hazards: World resolves them from the same
+   * clock this reads, so what is drawn is where the damage is.
+   */
+  private drawRadarArena(state: RenderState | undefined, groundA: number, frameA: number, t: number): void {
+    const arena = state?.arena;
+    const radar = arena?.radar;
+    if (!arena || !radar) return;
+    const ctx = this.ctx;
+    const cx = radar.cx;
+    const cy = radar.cy;
+    const R = radar.radius;
+    const clock = state?.radarT ?? t;
+    const sweep = (clock / Math.max(0.001, radar.sweepPeriod)) * TWO_PI;
+
+    ctx.save();
+    ctx.fillStyle = '#01070a';
+    ctx.fillRect(cx - R - 74, cy - R - 74, R * 2 + 148, R * 2 + 148);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#020c08';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R + 26, 0, TWO_PI);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#03130c';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    ctx.fill();
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R + 4, 0, TWO_PI);
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = 'rgba(126, 247, 192, 0.16)';
+    ctx.lineWidth = 1.4;
+    for (let ring = 1; ring <= 3; ring++) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, (R * ring) / 3, 0, TWO_PI);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(cx - R, cy);
+    ctx.lineTo(cx + R, cy);
+    ctx.moveTo(cx, cy - R);
+    ctx.lineTo(cx, cy + R);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(126, 247, 192, 0.5)';
+    for (let deg = 0; deg < 360; deg += 15) {
+      const a = (deg * Math.PI) / 180;
+      const long = deg % 90 === 0;
+      const r0 = R - (long ? 26 : 14);
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+      ctx.lineTo(cx + Math.cos(a) * (R - 4), cy + Math.sin(a) * (R - 4));
+      ctx.stroke();
+    }
+
+    const steps = 7;
+    for (let i = steps; i >= 0; i--) {
+      ctx.globalAlpha = 0.1 * (1 - i / steps);
+      ctx.fillStyle = arena.accent;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, R - 6, sweep - (i + 1) * 0.075, sweep - i * 0.075);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 0.44;
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(sweep) * (R - 6), cy + Math.sin(sweep) * (R - 6));
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = arena.accent;
+    ctx.font = '600 17px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SECTOR 4 // APPROACH', cx, cy - R * 0.42);
+    ctx.globalAlpha = 0.26;
+    ctx.font = '500 13px ui-monospace, SFMono-Regular, Menlo, monospace';
+    for (let ring = 1; ring <= 3; ring++) {
+      ctx.fillText(String(ring * 20), cx + 26, cy - (R * ring) / 3);
+    }
+
+    for (let i = 0; i < radar.planes.length; i++) {
+      const def = radar.planes[i];
+      const lapDur = Math.max(def.period, def.run / def.speed + 1);
+      const pt = clock - def.delay;
+      if (pt < 0) continue;
+      const lap = Math.floor(pt / lapDur);
+      const k = (pt - lap * lapDur) * def.speed;
+      if (k > def.run) continue;
+      const ex = cx + Math.cos(def.bearing) * def.entry;
+      const ey = cy + Math.sin(def.bearing) * def.entry;
+      const hx = Math.cos(def.heading);
+      const hy = Math.sin(def.heading);
+
+      ctx.globalAlpha = 0.24;
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let s = 0; s <= 10; s++) {
+        const kk = k - s * 26;
+        if (kk < 0) break;
+        const px = ex + hx * kk;
+        const py = ey + hy * kk;
+        if (s === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      const x = ex + hx * k;
+      const y = ey + hy * k;
+      ctx.globalAlpha = 0.42;
+      ctx.strokeStyle = arena.accent;
+      ctx.beginPath();
+      ctx.arc(x, y, def.radius + 12, 0, TWO_PI);
+      ctx.stroke();
+
+      ctx.globalAlpha = 1;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(def.heading + Math.PI * 0.5);
+      const s = Math.max(10, def.radius * 0.55);
+      ctx.fillStyle = '#d9fff0';
+      ctx.beginPath();
+      ctx.moveTo(0, -s);
+      ctx.lineTo(s * 0.9, s * 0.7);
+      ctx.lineTo(0, s * 0.34);
+      ctx.lineTo(-s * 0.9, s * 0.7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = '#bffbe0';
+      ctx.font = '600 17px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(def.tag, x + def.radius + 16, y - 8);
+      ctx.globalAlpha = 0.45;
+      ctx.font = '500 13px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.fillText(def.kind === 0 ? 'INBOUND' : 'OUTBOUND', x + def.radius + 16, y + 10);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   private drawPongArena(
     state: RenderState | undefined,
     groundA: number,
@@ -6294,6 +6452,10 @@ export class Renderer {
     }
     if (arena.car) {
       this.drawCarArena(satelliteState, groundA, frameA, t);
+      return;
+    }
+    if (arena.radar) {
+      this.drawRadarArena(satelliteState, groundA, frameA, t);
       return;
     }
     if (arena.pong) {

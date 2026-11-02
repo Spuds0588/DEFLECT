@@ -498,6 +498,41 @@ export interface ArenaCarDef {
  * ball is a real local hazard; the cabinet, scanlines and scoreboard are presentation.
  * Local-only because the rally clock and ball are not in Snapshot.
  */
+/** One aircraft crossing the scope. It damages whatever body it flies through. */
+export interface ArenaRadarPlaneDef {
+  /** Data tag on the scope, e.g. 'AAL 112'. */
+  tag: string;
+  /** Entry bearing from the scope centre, radians. */
+  bearing: number;
+  /** Travel direction through the scope, radians in world space. */
+  heading: number;
+  /** Distance from the centre where the pass starts, so it enters off the plate. */
+  entry: number;
+  /** Distance travelled before the pass ends. */
+  run: number;
+  speed: number;
+  /** Collision radius against bodies, not the drawn silhouette. */
+  radius: number;
+  /** Seconds between passes of this aircraft. */
+  period: number;
+  /** Seconds after the level starts before the first pass. */
+  delay: number;
+  /** 0 inbound, 1 outbound. Presentation only. */
+  kind: number;
+}
+
+export interface ArenaRadarDef {
+  /** Scope centre. The floor is a disc of `radius` around it. */
+  cx: number;
+  cy: number;
+  radius: number;
+  /** Seconds per sweep revolution. The sweep is a read, not a hazard. */
+  sweepPeriod: number;
+  damage: number;
+  knockback: number;
+  planes: ArenaRadarPlaneDef[];
+}
+
 export interface ArenaPongDef {
   /** The playable screen rectangle. The ball bounces inside its top and bottom. */
   court: Rect;
@@ -1169,6 +1204,8 @@ export interface ArenaDef {
   car?: ArenaCarDef;
   /** PONG court and live rally ball. Local-only. */
   pong?: ArenaPongDef;
+  /** Air traffic control scope: circular floor, slow sweep, aircraft as hazards. */
+  radar?: ArenaRadarDef;
   /** AIRPORT split-flap board and its flipping time tiles. Local-only. */
   flip?: ArenaFlipDef;
   /** SPACE INVADERS simulated cannon and invader formation. Local-only. */
@@ -2925,6 +2962,61 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 858, y: 160, w: 240, h: 140, label: 'C' },
       { x: 858, y: 800, w: 240, h: 140, label: 'D' },
     ],
+  },
+  {
+    id: 33,
+    name: 'AIR TRAFFIC',
+    tagline: 'Scope is live. Watch the traffic.',
+    hudLabel: 'ARENA // AIR TRAFFIC',
+    accent: '#7ef7c0',
+    accentSoft: 'rgba(126, 247, 192, 0.32)',
+    accentFaint: 'rgba(126, 247, 192, 0.034)',
+    signature: 0,
+    // The scope face is a disc, so the bounds are only the cabinet surround.
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    // Console desks sit on the scope. Cover is furniture, not scenery.
+    pillars: [
+      { x: 720, y: 330, w: 140, h: 50 },
+      { x: 1130, y: 330, w: 140, h: 50 },
+      { x: 720, y: 720, w: 140, h: 50 },
+      { x: 1130, y: 720, w: 140, h: 50 },
+      { x: 830, y: 500, w: 130, h: 46 },
+      { x: 1030, y: 560, w: 130, h: 46 },
+    ],
+    // Eight controller stations around the ring, inside the scope and clear of the desks.
+    spawns: [
+      { x: 1325, y: 547 },
+      { x: 1228, y: 780 },
+      { x: 995, y: 877 },
+      { x: 762, y: 780 },
+      { x: 665, y: 547 },
+      { x: 762, y: 314 },
+      { x: 1228, y: 314 },
+      { x: 995, y: 217 },
+    ],
+    props: [
+      { x: 900, y: 300, w: 34, h: 26, kind: PROP.DOC },
+      { x: 1050, y: 760, w: 34, h: 26, kind: PROP.DOC },
+      { x: 800, y: 640, w: 34, h: 26, kind: PROP.ZIP },
+      { x: 1120, y: 430, w: 34, h: 26, kind: PROP.AUDIO },
+    ],
+    radar: {
+      cx: 995,
+      cy: 547,
+      radius: 455,
+      // Eleven seconds a revolution: slow enough to read, and it never damages.
+      sweepPeriod: 11,
+      damage: 1,
+      knockback: 470,
+      planes: [
+        // The first pass runs dead through the centre, so the scope always shows traffic.
+        { tag: 'AAL 112', bearing: 2.5, heading: 2.5 + Math.PI - 0.05, entry: 640, run: 1300, speed: 300, radius: 30, period: 9, delay: 2, kind: 0 },
+        { tag: 'UAL 907', bearing: 0.5, heading: 0.5 + Math.PI + 0.22, entry: 660, run: 1300, speed: 340, radius: 28, period: 12, delay: 5, kind: 1 },
+        { tag: 'DAL 41', bearing: 3.9, heading: 3.9 + Math.PI - 0.3, entry: 640, run: 1300, speed: 270, radius: 32, period: 14, delay: 8, kind: 0 },
+        { tag: 'SWA 2216', bearing: 1.7, heading: 1.7 + Math.PI + 0.16, entry: 660, run: 1300, speed: 360, radius: 26, period: 17, delay: 11.5, kind: 1 },
+        { tag: 'FDX 88', bearing: 5.2, heading: 5.2 + Math.PI - 0.26, entry: 650, run: 1300, speed: 320, radius: 30, period: 20, delay: 15, kind: 0 },
+      ],
+    },
   },
 ];
 

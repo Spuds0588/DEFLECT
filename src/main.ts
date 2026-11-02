@@ -58,7 +58,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.128';
+const BUILD = '0.1.129';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -1167,7 +1167,7 @@ function selectArena(index: number): void {
 function isOnlineArena(a: ArenaDef): boolean {
   // Room arenas are tutorial staging: their chasms, props and fixture clocks are local
   // presentation/content, not a versus map. Keep them out of hosted rooms and series.
-  return !a.pipes && !a.firewallSwitch && !a.rooms && !a.rocket && !a.weapon && !a.seek && !a.car && !a.pong && !a.flip && !a.invaders && !a.fax && !a.plug && !a.smoke && !a.watch && !a.laptop;
+  return !a.pipes && !a.firewallSwitch && !a.rooms && !a.rocket && !a.weapon && !a.seek && !a.car && !a.pong && !a.flip && !a.invaders && !a.fax && !a.plug && !a.smoke && !a.watch && !a.laptop && !a.radar;
 }
 
 function onlineArenaIndex(index: number): number {

@@ -7,7 +7,7 @@ const fail = (message: string): never => {
   throw new Error(message);
 };
 
-if (ARENAS.length !== 33) fail(`expected 33 arenas, got ${ARENAS.length}`);
+if (ARENAS.length !== 34) fail(`expected 34 arenas, got ${ARENAS.length}`);
 const sheetArena = ARENAS[30];
 const chatArena = ARENAS[31];
 if (sheetArena.id !== 30 || sheetArena.name !== 'SPREADSHEET') fail('SPREADSHEET is not arena 30');
