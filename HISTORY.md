@@ -5619,3 +5619,23 @@ clean; bench `Gauntlet max avg 0.127ms p99 0.448ms max 1.564ms threats 27.3 (2W/
 
 **Next:** a human playtest on the lane readability and the bolt tell; the numbers are deliberately a first
 pass, and the density knobs are `rain.cycle` and `rain.count`.
+
+## 2026-11-02 — Bosses may overhang the stage (v0.1.142)
+
+**Goal:** let a boss silhouette reach its intended size even when that means sitting through an arena
+wall, while keeping it hittable.
+
+- Added `World.bossEdgePad(w)` = `hitR * 0.5` and used it for every mini-boss clamp: blob rim, Starfish
+  center and detached arms, Idle Hands hover and charge wall stop, Mega Worm movement and spawn, and the
+  Storm Cloud lane. Spawn placement uses the same pad, so a boss lands partly against the wall instead of
+  fully inside.
+- Ordinary worms, players, pickups, hazards and projectiles keep full-radius clamping. The half-body that
+  remains inside still takes hits and still puts its attacks into the arena; the overhanging part is
+  decoration plus wall overlap, not a second hitbox.
+- Probes: `.tmp/blob-check.ts` and `.tmp/storm-check.ts` now push each body against the left wall and
+  assert it settles at about half its radius outside rather than fully inside.
+
+**Verification:** build clean; blob and storm probes pass including the new overhang cases; the rest of
+the probe suite passes; bench `Gauntlet max avg 0.144ms p99 0.477ms max 2.072ms threats 27.3 (2W/10V/2F/14E + sentries + thrall)`.
+
+**Next:** the campaign can size a boss against the room rather than the other way around.

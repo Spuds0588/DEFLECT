@@ -2533,6 +2533,12 @@ label, tuning block and body shape; `Worm.bossKind` carries that id; and `World.
 is the only entry point. Assault family 3 carries the id in its existing `kind` field, so a mini-boss is
 delivered by the same edge portal as a sentry, worm or virus and can be scheduled by any wave or level.
 
+- **Bosses may overhang the arena edge.** A mini-boss body clamps against `bossEdgePad` (half its
+  `hitR`), not its whole radius, so a silhouette that has to be big can sit through a wall instead of
+  being squeezed into the playfield. Half the body stays inside, which keeps it hittable and keeps its
+  attacks in the arena; spawn placement uses the same pad. Ordinary worms, players, pickups, hazards and
+  projectiles keep full-radius clamping. Do not spread this rule to non-boss bodies.
+
 - **Plates carry the health.** `segHp`/`segMaxHp` are per node (index 0 = head, k = segment k-1);
   `w.hp` stays a sane total for anything that reads it. `hitR`/`segR` replaced the hard-coded `WORM`
   radii in the worm collision sites, so a single loop serves both body sizes. Do not reintroduce a

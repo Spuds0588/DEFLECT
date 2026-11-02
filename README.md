@@ -396,3 +396,7 @@ a player into a file cage that has to be shot or swung off.
 `STORM CLOUD` is the fifth mini-boss: one boss-scale body that holds the ceiling band, rains alternating
 rows of shootable drops, and throws a telegraphed bolt whose reflection is the fight's biggest punish. Bots
 step out of its rain lane through the same hazard-steering layer that handles emitter corridors.
+
+Mini-bosses are allowed to overhang the arena edge by up to half their radius (`bossEdgePad`), so a boss
+silhouette is never squeezed to fit the playfield. Ordinary worms, players and projectiles keep
+full-radius clamping.

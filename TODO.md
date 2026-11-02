@@ -3425,3 +3425,7 @@ arrive.
 - [x] Bot rain-lane avoidance in `avoidFurniture`; digital 3/9 deaths, rookie 6/9
 - [x] `?storm=1` QA hook, `.tmp/storm-check.ts` and `.tmp/storm-balance.ts`
 - [ ] Human playtest pass: confirm the lane is readable at couch distance and the bolt tell is long enough
+
+## BOSS BOUNDS
+
+- [x] `bossEdgePad`: mini-boss bodies may overhang the arena edge by half their radius, applied to all five

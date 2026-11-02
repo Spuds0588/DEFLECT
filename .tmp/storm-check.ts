@@ -168,4 +168,16 @@ const bolts = (world: World) => world.projectiles.filter((q) => q.active && q.ow
   console.log(JSON.stringify({ death: true }));
 }
 
+// --- a boss may sit through the arena edge ----------------------------------
+{
+  const { priv, storm } = fresh();
+  storm.x = arena.bounds.left + 2;
+  storm.spawnT = 0;
+  for (let i = 0; i < 10; i++) priv.updateWorm(storm, SIM_DT);
+  const pad = storm.hitR * 0.5;
+  if (storm.x < arena.bounds.left + pad - 1) fail('the cloud was pushed fully inside the arena');
+  if (storm.x > arena.bounds.left + storm.hitR) fail('the cloud left the arena entirely');
+  console.log(JSON.stringify({ overhang: { x: Math.round(storm.x - arena.bounds.left), pad: Math.round(pad) } }));
+}
+
 console.log('storm-check: OK');

@@ -15535,8 +15535,8 @@ export class World {
       w.segR = cfg.radius * 0.6;
       w.segCount = 0;
       w.shrink = 1;
-      w.x = Math.max(this.arena.bounds.left + cfg.radius, Math.min(this.arena.bounds.right - cfg.radius, sx));
-      w.y = Math.max(this.arena.bounds.top + cfg.radius, Math.min(this.arena.bounds.bottom - cfg.radius, sy));
+      w.x = Math.max(this.arena.bounds.left + cfg.radius * 0.5, Math.min(this.arena.bounds.right - cfg.radius * 0.5, sx));
+      w.y = Math.max(this.arena.bounds.top + cfg.radius * 0.5, Math.min(this.arena.bounds.bottom - cfg.radius * 0.5, sy));
       w.prevX = w.x;
       w.prevY = w.y;
       w.vx = 0;
@@ -15741,7 +15741,7 @@ export class World {
 
     // Floating bodies ignore cover; the arena wall still stops them, and a charge
     // that meets it ends there rather than grinding along the edge.
-    const pad = w.hitR;
+    const pad = this.bossEdgePad(w);
     const bx = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.x));
     const by = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.y));
     if ((h.state === 5 || h.state === 6) && (bx !== w.x || by !== w.y)) {
@@ -15913,7 +15913,7 @@ export class World {
     }
     center.x += Math.cos(st.clock * 0.9) * 10 * dt;
     center.y += Math.sin(st.clock * 1.1) * 10 * dt;
-    const pad = center.hitR;
+    const pad = this.bossEdgePad(center);
     center.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, center.x));
     center.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, center.y));
 
@@ -16043,7 +16043,7 @@ export class World {
     arm.x += (dx / d) * cfg.crawlSpeed * dt;
     arm.y += (dy / d) * cfg.crawlSpeed * dt;
     arm.angle += Math.sin(as.phase * 3) * 0.9 * dt;
-    const pad = arm.hitR;
+    const pad = this.bossEdgePad(arm);
     arm.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, arm.x));
     arm.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, arm.y));
     as.hatchT -= dt;
@@ -16306,7 +16306,7 @@ export class World {
       if (body.glueT > 0) body.glueT = Math.max(0, body.glueT - dt);
     }
 
-    const pad = r;
+    const pad = this.bossEdgePad(w);
     w.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.x));
     w.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.y));
   }
@@ -16454,7 +16454,7 @@ export class World {
         : Math.cos(st.clock * 0.6) * cfg.trackSpeed * 0.4;
     w.x += drift * dt;
     w.y += Math.max(-cfg.repelSpeed, Math.min(cfg.repelSpeed, (homeY - w.y) * 2.6)) * dt;
-    const xPad = r * 0.55;
+    const xPad = this.bossEdgePad(w);
     w.x = Math.max(this.arena.bounds.left + xPad, Math.min(this.arena.bounds.right - xPad, w.x));
     w.y = Math.max(this.arena.bounds.top + r * 0.3, Math.min(this.arena.bounds.top + cfg.hoverTop + cfg.hoverBob, w.y));
     w.angle = Math.PI * 0.5;
@@ -16577,6 +16577,18 @@ export class World {
     return node === 0 ? w.y : w.segY[node - 1];
   }
 
+
+  /**
+   * Boss bodies clamp against half their radius, not the whole body: a silhouette that
+   * needs to be big may sit through an arena wall instead of being squeezed into the
+   * playfield. Half the body stays inside, so it is still hittable and its attacks still
+   * land in the arena. Ordinary worms, players, pickups and projectiles keep full-radius
+   * clamping; this is a mini-boss rule, not a global one.
+   */
+  private bossEdgePad(w: Worm): number {
+    return w.hitR * 0.5;
+  }
+
   /** Live bodies of one mini-boss kind; -1 counts every mini-boss on the floor. */
   private minibossLiveCount(kind = -1): number {
     let live = 0;
@@ -16631,8 +16643,9 @@ export class World {
     w.hitR = MEGA_WORM.headRadius;
     w.segR = MEGA_WORM.segmentRadius;
     w.shrink = 1;
-    w.x = Math.max(this.arena.bounds.left + w.hitR, Math.min(this.arena.bounds.right - w.hitR, spawn.x));
-    w.y = Math.max(this.arena.bounds.top + w.hitR, Math.min(this.arena.bounds.bottom - w.hitR, spawn.y));
+    const spawnPad = this.bossEdgePad(w);
+    w.x = Math.max(this.arena.bounds.left + spawnPad, Math.min(this.arena.bounds.right - spawnPad, spawn.x));
+    w.y = Math.max(this.arena.bounds.top + spawnPad, Math.min(this.arena.bounds.bottom - spawnPad, spawn.y));
     w.prevX = w.x;
     w.prevY = w.y;
     w.vx = 0;
@@ -17029,7 +17042,7 @@ export class World {
     w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
     w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
     if (!this.openWalls) {
-      const pad = w.hitR + WORM.wallPad;
+      const pad = this.bossEdgePad(w);
       w.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.x));
       w.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.y));
     }

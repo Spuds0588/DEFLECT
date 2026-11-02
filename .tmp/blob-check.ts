@@ -99,4 +99,16 @@ function fresh(): { world: World; priv: any; blob: Worm } {
   console.log(JSON.stringify({ phase: true }));
 }
 
+// --- bosses may overhang the arena edge -------------------------------------
+{
+  const { priv, blob } = fresh();
+  blob.x = arena.bounds.left + 2;
+  blob.y = (arena.bounds.top + arena.bounds.bottom) * 0.5;
+  for (let i = 0; i < 4; i++) priv.updateWorm(blob, SIM_DT);
+  const pad = blob.hitR * 0.5;
+  if (blob.x < arena.bounds.left + pad - 1) fail('the blob was pushed fully inside the arena');
+  if (blob.x > arena.bounds.left + blob.hitR) fail('the blob left the arena entirely');
+  console.log(JSON.stringify({ overhang: { x: Math.round(blob.x - arena.bounds.left), pad: Math.round(pad) } }));
+}
+
 console.log('blob-check: OK');
