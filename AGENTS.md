@@ -2467,6 +2467,25 @@ apron, and only the time tile could hurt a body. That is the wrong shape for a l
   once.
 - Still local-only: `isOnlineArena` excludes `flip`, and its clock stays out of `SnapshotHazards`.
 
+### D64 — The WEAPON SYSTEMS jet is traced geometry, shared with the picker (2026-11-02, built v0.1.131)
+
+The fighter on the WEAPON SYSTEMS console was a nine-point polygon that read as an arrowhead, not an
+aircraft: no canopy bump, no tail fin, no intake, and a nose the reticle was not even pointing at.
+
+- `FIGHTER_SIDE` in `arenas.ts` is now the single source. It is a side profile traced from real fighter
+  geometry — pointed nose, bubble canopy, swept wing, tail plane, swept vertical fin, belly intake, wing
+  missile and exhaust nozzle. Coordinates are normalized: x 0 is the nose, 1 the tail; y is a fraction of
+  the jet box height from the centreline, negative upward.
+- Both consumers draw it: `drawWeaponArena` fills and strokes it with console colours and adds panel detail
+  (spine line, two frame lines, roundel, exhaust streaks, a `SIDE PROFILE` caption), and the arena picker
+  traces the same shapes scaled down. Never re-inline a polygon in either place; the probe fails if the
+  old blob returns or if either draw stops referencing `FIGHTER_SIDE`.
+- It stays a side profile because the console is a status screen: the top-down mark used by the AIR TRAFFIC
+  aircraft is the wrong projection here, and the `✈` glyph is a three-quarter mark that reads as a sticker
+  next to the instrument readouts rather than as this aircraft.
+- The reticle sits on the nose (about 0.1 of the box length), not mid-fuselage, and the engine streaks run
+  off the tail. Keep new features on the profile's own axes so the drawing stays one aircraft.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

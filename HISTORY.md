@@ -5300,3 +5300,32 @@ a second). `.tmp/radar-check.ts`, `.tmp/capcom-check.ts`, `.tmp/islands-ports-ch
 rather than having independent rhythms.
 
 **Next:** a gate-change callout every few cycles, then per-bank rhythms so the floor always has a safe half.
+
+## 2026-11-02 — WEAPON SYSTEMS: a fighter that reads as a fighter (v0.1.131)
+
+**Goal:** the jet on the weapon console did not look like an aircraft. It was a nine-point blob with no
+canopy, fin or intake, and the reticle was aimed at the middle of it rather than the nose.
+
+- `FIGHTER_SIDE` is a new shared side profile in `arenas.ts`, traced from real fighter geometry: pointed
+  nose, bubble canopy, swept wing, tail plane, swept vertical fin, belly intake, wing missile and exhaust
+  nozzle. Normalized x 0 (nose) to 1 (tail), y as a fraction of the box height from the centreline.
+- `drawWeaponArena` fills and strokes those shapes with the console palette, then adds panel detail — a
+  spine line, two frame lines, a roundel, exhaust streaks and a `SIDE PROFILE` caption.
+- The arena picker traces the same shapes at thumbnail scale, so the selector and the console can no longer
+  disagree about what the aircraft looks like.
+- The reticle moved to the nose (0.1 of the box length) and the exhaust streaks run off the tail.
+- I checked the alternatives before drawing: the AIR TRAFFIC aircraft mark is a top-down blip shape and the
+  `✈` glyph is a three-quarter mark that reads as a sticker among instrument readouts, so a purpose-built
+  side profile was the right projection for a status console.
+
+**Verification:** `.tmp/jet-check.ts` passes (eight distinct parts, every part closed and inside the box,
+nose at the front and tail at the back, canopy high and forward, fin tall and aft, wing swept back and
+clear of the fuselage, nozzle at the tail, and both draw paths referencing `FIGHTER_SIDE` with the old blob
+gone). `.tmp/flipboard-check.ts`, `.tmp/radar-check.ts` and `.tmp/laptop-variants-check.ts` still pass.
+`npm run build` passes. `npm run bench` is clean: gauntlet max 0.155 ms avg / 0.488 ms p99.
+
+**Limitations:** the outline is static — no animated control surfaces — and the tail marking is a generic
+F-19 caption rather than per-program livery.
+
+**Next:** animate the stabilisers and fin during the console's heavy readout, then give the aircraft
+per-program tail markings.

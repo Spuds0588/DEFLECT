@@ -434,6 +434,122 @@ export interface ArenaWeaponButtonDef extends Rect {
   kind: 0 | 1 | 2;
 }
 
+
+/**
+ * WEAPON SYSTEMS jet silhouette: a side profile traced from real fighter geometry —
+ * pointed nose, bubble canopy, swept wing, tail plane, swept vertical fin, intake and
+ * exhaust nozzle. Coordinates are normalized: x runs 0 (nose) to 1 (tail), y is a
+ * fraction of the jet box height from the centreline, negative upward.
+ *
+ * The arena and the arena picker both draw from this, so the drawing in the status
+ * console and the thumbnail can never drift apart. Do not re-inline a polygon.
+ */
+export const FIGHTER_SIDE: readonly {
+  name: 'wing' | 'stabilizer' | 'intake' | 'missile' | 'fin' | 'fuselage' | 'nozzle' | 'canopy';
+  points: readonly (readonly [number, number])[];
+  closed: boolean;
+}[] = [
+  // Far surfaces first, then the fuselage, then the glass and the hot end on top.
+  {
+    name: 'wing',
+    closed: true,
+    points: [
+      [0.38, 0.026],
+      [0.70, 0.126],
+      [0.78, 0.132],
+      [0.58, 0.036],
+    ],
+  },
+  {
+    name: 'stabilizer',
+    closed: true,
+    points: [
+      [0.76, 0.004],
+      [0.90, 0.058],
+      [0.95, 0.056],
+      [0.88, 0.016],
+    ],
+  },
+  {
+    name: 'intake',
+    closed: true,
+    points: [
+      [0.38, 0.044],
+      [0.42, 0.082],
+      [0.52, 0.076],
+      [0.54, 0.044],
+    ],
+  },
+  {
+    name: 'missile',
+    closed: true,
+    points: [
+      [0.44, 0.06],
+      [0.62, 0.108],
+      [0.65, 0.1],
+      [0.47, 0.054],
+    ],
+  },
+  {
+    name: 'fin',
+    closed: true,
+    points: [
+      [0.64, -0.02],
+      [0.70, -0.15],
+      [0.78, -0.156],
+      [0.82, -0.02],
+    ],
+  },
+  {
+    name: 'fuselage',
+    closed: true,
+    points: [
+      [0.03, 0.012],
+      [0.1, -0.002],
+      [0.18, -0.014],
+      [0.26, -0.022],
+      [0.36, -0.024],
+      [0.5, -0.02],
+      [0.66, -0.018],
+      [0.78, -0.014],
+      [0.86, -0.024],
+      [0.94, -0.03],
+      [0.94, 0.02],
+      [0.86, 0.026],
+      [0.72, 0.03],
+      [0.6, 0.034],
+      [0.5, 0.038],
+      [0.44, 0.052],
+      [0.36, 0.05],
+      [0.28, 0.032],
+      [0.18, 0.024],
+      [0.09, 0.018],
+    ],
+  },
+  {
+    name: 'nozzle',
+    closed: true,
+    points: [
+      [0.88, -0.022],
+      [0.96, -0.016],
+      [0.96, 0.016],
+      [0.88, 0.022],
+    ],
+  },
+  {
+    name: 'canopy',
+    closed: true,
+    points: [
+      [0.25, -0.024],
+      [0.29, -0.062],
+      [0.34, -0.068],
+      [0.4, -0.04],
+      [0.36, -0.03],
+      [0.28, -0.028],
+    ],
+  },
+];
+
 /**
  * WEAPON SYSTEMS: a fighter-jet status screen used as a local arena. This is a
  * cockpit display, not a second player kit; the buttons are cover and presentation.
@@ -3912,17 +4028,25 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     ctx.lineWidth = 1;
     ctx.strokeRect(mapX(bounds.left) + 0.5, mapY(bounds.top) + 0.5, previewW - 1, previewH - 1);
     const jet = weapon.jet;
-    ctx.fillStyle = 'rgba(255, 160, 135, 0.24)';
-    ctx.beginPath();
-    ctx.moveTo(mapX(jet.x + jet.w * 0.12), mapY(jet.y + jet.h * 0.56));
-    ctx.lineTo(mapX(jet.x + jet.w * 0.56), mapY(jet.y + jet.h * 0.3));
-    ctx.lineTo(mapX(jet.x + jet.w * 0.9), mapY(jet.y + jet.h * 0.42));
-    ctx.lineTo(mapX(jet.x + jet.w * 0.62), mapY(jet.y + jet.h * 0.68));
-    ctx.lineTo(mapX(jet.x + jet.w * 0.3), mapY(jet.y + jet.h * 0.78));
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = arena.accent;
-    ctx.stroke();
+    const jetCy = jet.y + jet.h * 0.48;
+    for (let i = 0; i < FIGHTER_SIDE.length; i++) {
+      const shape = FIGHTER_SIDE[i];
+      ctx.beginPath();
+      for (let p = 0; p < shape.points.length; p++) {
+        const px = mapX(jet.x + shape.points[p][0] * jet.w);
+        const py = mapY(jetCy + shape.points[p][1] * jet.h);
+        if (p === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      if (shape.closed) ctx.closePath();
+      ctx.fillStyle = shape.name === 'canopy' ? 'rgba(120, 230, 250, 0.4)' : 'rgba(255, 160, 135, 0.24)';
+      ctx.fill();
+      if (shape.name === 'fuselage' || shape.name === 'fin' || shape.name === 'canopy') {
+        ctx.strokeStyle = arena.accent;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
     const colors = ['#ff5c4e', '#ffc857', '#63dcff'];
     for (let i = 0; i < weapon.buttons.length; i++) {
       const button = weapon.buttons[i];

@@ -60,6 +60,18 @@ Formerly: 2026-11-02 (PORTS)
 
 ---
 
+## Weapon systems jet (2026-11-02)
+
+- [x] Replace the polygon with `FIGHTER_SIDE`: nose, canopy, swept wing, tail plane, fin, intake, nozzle
+- [x] One silhouette shared by the arena console and the arena picker; probe rejects a re-inlined blob
+- [x] Panel detail: spine, frame lines, roundel, exhaust streaks, side-profile caption
+- [x] Reticle moved onto the nose
+- [ ] Animate the control surfaces during the heavy-attack readout
+- [ ] A top-down companion silhouette for a future map that needs one
+- [ ] Per-program tail markings instead of the generic F-19 number
+
+---
+
 ## AIRPORT flipboard (2026-11-02)
 
 - [x] The board fills the arena: no terminal apron, no furniture cover, spawns moved onto the board

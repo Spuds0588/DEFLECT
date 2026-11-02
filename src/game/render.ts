@@ -33,6 +33,7 @@ import {
   flipRowStateAt,
   flipRowTimeAt,
   flipFieldAt,
+  FIGHTER_SIDE,
   flipRowRectAt,
   FLIP_STATE,
   rocketArcAt,
@@ -5134,51 +5135,75 @@ export class Renderer {
     ctx.fillStyle = 'rgba(255, 107, 92, 0.05)';
     ctx.fillRect(b.left, b.top, 420, b.bottom - b.top);
 
-    // Fighter side profile, with the canopy and engine kept as simple vector shapes.
+    // Fighter side profile, traced from FIGHTER_SIDE so the console and the picker agree.
     const jet = weapon.jet;
     const cy = jet.y + jet.h * 0.48;
-    ctx.strokeStyle = 'rgba(255, 193, 153, 0.85)';
-    ctx.fillStyle = 'rgba(24, 20, 22, 0.82)';
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < FIGHTER_SIDE.length; i++) {
+      const shape = FIGHTER_SIDE[i];
+      ctx.beginPath();
+      for (let p = 0; p < shape.points.length; p++) {
+        const px = jet.x + shape.points[p][0] * jet.w;
+        const py = cy + shape.points[p][1] * jet.h;
+        if (p === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      if (shape.closed) ctx.closePath();
+      if (shape.name === 'canopy') {
+        ctx.fillStyle = 'rgba(104, 220, 244, 0.5)';
+        ctx.strokeStyle = 'rgba(190, 246, 255, 0.9)';
+        ctx.lineWidth = 2;
+      } else if (shape.name === 'nozzle') {
+        ctx.fillStyle = 'rgba(255, 168, 84, 0.62)';
+        ctx.strokeStyle = 'rgba(255, 214, 150, 0.8)';
+        ctx.lineWidth = 2;
+      } else if (shape.name === 'fuselage') {
+        ctx.fillStyle = 'rgba(32, 23, 25, 0.96)';
+        ctx.strokeStyle = 'rgba(255, 193, 153, 0.88)';
+        ctx.lineWidth = 3;
+      } else if (shape.name === 'wing' || shape.name === 'stabilizer') {
+        ctx.fillStyle = 'rgba(58, 32, 30, 0.94)';
+        ctx.strokeStyle = 'rgba(255, 170, 140, 0.6)';
+        ctx.lineWidth = 2;
+      } else {
+        ctx.fillStyle = 'rgba(44, 27, 27, 0.92)';
+        ctx.strokeStyle = 'rgba(255, 170, 140, 0.5)';
+        ctx.lineWidth = 2;
+      }
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Panel detail: spine, two frame lines, a roundel and the exhaust streaks.
+    ctx.strokeStyle = 'rgba(255, 170, 140, 0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(jet.x + jet.w * 0.34, cy - jet.h * 0.012);
+    ctx.lineTo(jet.x + jet.w * 0.8, cy - jet.h * 0.008);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(jet.x + jet.w * 0.52, cy + jet.h * 0.03);
+    ctx.lineTo(jet.x + jet.w * 0.52, cy - jet.h * 0.016);
+    ctx.moveTo(jet.x + jet.w * 0.6, cy + jet.h * 0.032);
+    ctx.lineTo(jet.x + jet.w * 0.6, cy - jet.h * 0.016);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 214, 170, 0.5)';
+    ctx.beginPath();
+    ctx.arc(jet.x + jet.w * 0.6, cy + jet.h * 0.004, 10, 0, TWO_PI);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 150, 80, 0.55)';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(jet.x + jet.w * 0.12, cy + 18);
-    ctx.lineTo(jet.x + jet.w * 0.34, cy - 42);
-    ctx.lineTo(jet.x + jet.w * 0.56, cy - 36);
-    ctx.lineTo(jet.x + jet.w * 0.68, cy - 10);
-    ctx.lineTo(jet.x + jet.w * 0.9, cy - 24);
-    ctx.lineTo(jet.x + jet.w * 0.82, cy + 10);
-    ctx.lineTo(jet.x + jet.w * 0.62, cy + 28);
-    ctx.lineTo(jet.x + jet.w * 0.4, cy + 42);
-    ctx.lineTo(jet.x + jet.w * 0.24, cy + 28);
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(jet.x + jet.w * 0.96, cy - jet.h * 0.012);
+    ctx.lineTo(jet.x + jet.w * 1.01, cy - jet.h * 0.02);
+    ctx.moveTo(jet.x + jet.w * 0.96, cy + jet.h * 0.012);
+    ctx.lineTo(jet.x + jet.w * 1.01, cy + jet.h * 0.004);
     ctx.stroke();
-    // Wing and tail planes.
-    ctx.fillStyle = 'rgba(70, 35, 31, 0.9)';
-    ctx.beginPath();
-    ctx.moveTo(jet.x + jet.w * 0.42, cy - 4);
-    ctx.lineTo(jet.x + jet.w * 0.23, cy + 90);
-    ctx.lineTo(jet.x + jet.w * 0.58, cy + 32);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(jet.x + jet.w * 0.5, cy + 20);
-    ctx.lineTo(jet.x + jet.w * 0.38, cy + 86);
-    ctx.lineTo(jet.x + jet.w * 0.7, cy + 52);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(110, 235, 255, 0.6)';
-    ctx.beginPath();
-    ctx.moveTo(jet.x + jet.w * 0.54, cy - 31);
-    ctx.lineTo(jet.x + jet.w * 0.63, cy - 27);
-    ctx.lineTo(jet.x + jet.w * 0.59, cy - 10);
-    ctx.lineTo(jet.x + jet.w * 0.5, cy - 14);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255, 190, 92, 0.5)';
-    ctx.fillRect(jet.x + jet.w * 0.87, cy - 16, 12, 32);
+    ctx.fillStyle = 'rgba(255, 214, 170, 0.6)';
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'center';
+    ctx.fillText('F-19 SPECTRE // SIDE PROFILE', jet.x + jet.w * 0.5, jet.y + jet.h - 8);
+    ctx.textAlign = 'left';
 
     // Status readout.
     ctx.font = FONT_MID;
@@ -5200,8 +5225,8 @@ export class Renderer {
     ctx.fillText('ARM   GUN / MISSILE', b.left + 58, b.top + 196);
 
     // Target reticle over the jet's nose.
-    const rx = jet.x + jet.w * 0.69;
-    const ry = cy - 26;
+    const rx = jet.x + jet.w * 0.1;
+    const ry = cy - 6;
     ctx.strokeStyle = 'rgba(255, 220, 160, 0.8)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
