@@ -168,6 +168,93 @@ closed.portalT = 0;
 (world as any).updatePortals(0.5);
 if (liveSentries() > held) fail('a closed port still emitted');
 
+// --- Every damaging action closes a port ---------------------------------------
+const mkPort = (x: number, y: number): any => {
+  const b = {
+    active: true,
+    kind: 0,
+    x: x - 30,
+    y: y - 30,
+    w: 60,
+    h: 60,
+    hp: 40,
+    hitFlash: 0,
+    dropT: 0,
+    vx: 0,
+    vy: 0,
+    tx: 0,
+    ty: 0,
+    fixed: true,
+    portal: true,
+    portalFamily: 0,
+    portalInterval: 99,
+    portalT: 99,
+    portalBridge: -1,
+    portalExit: false,
+    portalCloseT: 0,
+    portalMaxHp: 40,
+    portalHitCd: 0,
+  };
+  world.props.push(b);
+  return b;
+};
+const p0 = world.players[0];
+p0.x = 500;
+p0.y = 300;
+p0.active = true;
+p0.alive = true;
+p0.facing = 0;
+
+// Beam: Probe's super and the overcharge beam both resolve through this line pass.
+const beamPort = mkPort(700, 300);
+(world as any).damageBeamLine(0, p0.x, p0.y, 1, 0, 600, -1, -1);
+if (beamPort.hp >= 40) fail('the heavy beam did not damage a port');
+
+// Toxic cloud: the spray and the jet share this sink.
+const cloudPort = mkPort(560, 300);
+(world as any).damageGauntletInCloud(p0, 300, 3, false);
+if (cloudPort.hp >= 40) fail('the toxic cloud did not damage a port');
+
+// Wedge bracket.
+const bashPort = mkPort(620, 300);
+p0.bashFacing = 0;
+p0.bashHitPlayers = 0;
+p0.bashHitSentries = 0;
+p0.bashHitViruses = 0;
+p0.bashHitWorms = 0;
+p0.bashHitErrors = 0;
+(world as any).resolveBracket(p0);
+if (bashPort.hp >= 40) fail('the bracket did not damage a port');
+
+// Charged dash.
+const dashPort = mkPort(560, 300);
+p0.dashDirX = 1;
+p0.dashDirY = 0;
+p0.dashHitPlayers = 0;
+p0.dashHitSentries = 0;
+p0.dashHitViruses = 0;
+p0.dashHitWorms = 0;
+(world as any).resolveChargeDash(p0);
+if (dashPort.hp >= 40) fail('the charged dash did not damage a port');
+
+// Sweep's broom stroke.
+const broomPort = mkPort(560, 300);
+p0.broDur = 1;
+p0.broT = 0.5;
+p0.broDirX = 1;
+p0.broDirY = 0;
+p0.broX = 560;
+p0.broY = 300;
+p0.broS = 0;
+p0.broRevealT = 0;
+(world as any).resolveBroomSweep(p0);
+if (broomPort.hp >= 40) fail('the broom stroke did not damage a port');
+
+// A port does not take a second sustained hit inside the contact cooldown.
+const broomHeld = broomPort.hp;
+(world as any).resolveBroomSweep(p0);
+if (broomPort.hp !== broomHeld) fail('the contact cooldown did not gate the broom');
+
 // Standing in the open party port clears the node.
 world.players[0].x = exits[0].x + exits[0].w * 0.5;
 world.players[0].y = exits[0].y + exits[0].h * 0.5;

@@ -1944,11 +1944,13 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 1084, y: 48, w: 858, h: 396 },
     ],
     // Two open ports on the mainboard and one on the router. The mainboard pair extends
-    // bridge C; closing all three opens the white exit port on the router uplink.
+    // bridge C; closing all three opens the white exit port on the router uplink. Every
+    // damaging action closes one, so the health is set to survive a couple of engages
+    // while the cadence keeps the plate busy: a port that is ignored refills the floor.
     ingress: [
-      { x: 1240, y: 780, size: 78, hp: 12, family: 0, interval: 5.5, bridge: 2 },
-      { x: 1780, y: 940, size: 78, hp: 12, family: 1, interval: 6.5, bridge: 2 },
-      { x: 1250, y: 160, size: 78, hp: 12, family: 0, interval: 5 },
+      { x: 1240, y: 780, size: 78, hp: 20, family: 0, interval: 2.6, bridge: 2 },
+      { x: 1780, y: 940, size: 78, hp: 20, family: 1, interval: 3, bridge: 2 },
+      { x: 1250, y: 160, size: 78, hp: 26, family: 0, interval: 2.8 },
     ],
     port: {
       x: 1886,

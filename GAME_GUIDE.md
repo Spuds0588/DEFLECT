@@ -177,8 +177,10 @@ retract unexpectedly and release **wave 2**, two viruses and a worm, while the W
 spawning replacements. Clear wave 2 and finish the heavy lesson, then spar against the bot squad (a `NO BOTS`
 run still drills against one instructor), survive a `SYSTEM BREACH` warning, then the floor is already
 full when the assault starts: a squad is posted on every plate beyond intake, and two red **open ports**
-leak more onto the mainboard while a third feeds the router. Damage a port until it shuts and it stops
-feeding that plate for good. Closing both mainboard ports extends the bridge to the router; closing all
+leak more onto the mainboard while a third feeds the router. Any attack that does damage closes a port —
+ranged shots, the lash, a damaging skill or a damaging super — so bring the whole kit. A port takes
+20–26 hits and leaks a threat every few seconds until it shuts, and a shut port stops feeding that plate
+for good. Closing both mainboard ports extends the bridge to the router; closing all
 three opens a **white party port** on the router uplink while script_kitty explains the infection was
 routed in from another network and the hop continues. Walk into the white port to clear the node. Enemies
 still alive do not block that exit, because closing the sources is the win.

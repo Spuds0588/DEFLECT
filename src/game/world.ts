@@ -1310,6 +1310,9 @@ export class World {
       }
       if (!b.active) continue;
       if (b.hitFlash > 0) b.hitFlash = Math.max(0, b.hitFlash - dt);
+      if (b.portalHitCd !== undefined && b.portalHitCd > 0) {
+        b.portalHitCd = Math.max(0, b.portalHitCd - dt);
+      }
       b.portalT = (b.portalT ?? 0) - dt;
       if (b.portalT > 0) continue;
       b.portalT = b.portalInterval ?? 6;
@@ -4379,6 +4382,18 @@ export class World {
       if (!e.active || !this.beamLineHits(ox, oy, dx, dy, reach, e.x, e.y, CASCADING_ERROR.blockSize * 0.5)) continue;
       this.damageError(e, damage, ownerSlot, dx, dy);
     }
+    // Anything that damages a body closes a port. The beam ticks, so the shared contact
+    // cooldown keeps a single pass from deleting a source outright.
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.active || !b.portal || b.portalExit) continue;
+      if ((b.portalHitCd ?? 0) > 0) continue;
+      const bx = b.x + b.w * 0.5;
+      const by = b.y + b.h * 0.5;
+      if (!this.beamLineHits(ox, oy, dx, dy, reach, bx, by, Math.max(b.w, b.h) * 0.5)) continue;
+      b.portalHitCd = 0.3;
+      this.damageProp(b, damage, bx, by);
+    }
   }
 
   /** Every hostile in the line takes a tick. The beam deliberately does not stop at the first. */
@@ -5448,6 +5463,23 @@ export class World {
         p.bashHitErrors |= bit;
         this.damageError(e, damage, p.slot, cos, sin);
       }
+      // Wedge's bracket is a damaging super, so it closes a port inside the wall shape.
+      for (let i = 0; i < this.props.length; i++) {
+        const b = this.props[i];
+        if (!b.active || !b.portal || b.portalExit) continue;
+        if ((b.portalHitCd ?? 0) > 0) continue;
+        const bx = b.x + b.w * 0.5;
+        const by = b.y + b.h * 0.5;
+        const radius = Math.max(b.w, b.h) * 0.5;
+        const dx = bx - p.x;
+        const dy = by - p.y;
+        const forward = dx * cos + dy * sin;
+        const lateral = Math.abs(dx * sin - dy * cos);
+        if (forward < 0 || forward > reach + radius || lateral > halfWidth + radius) continue;
+        if (this.lineBlocked(p.x, p.y, bx, by)) continue;
+        b.portalHitCd = 0.3;
+        this.damageProp(b, damage, bx, by);
+      }
     }
 
     for (let i = 0; i < this.projectiles.length; i++) {
@@ -5608,6 +5640,21 @@ export class World {
         p.wedgeHitErrors |= bit;
         this.damageError(e, WEDGE.chargeDamage, p.slot, -fy, fx);
       }
+    }
+
+    // The plow is a damaging super: a port caught in the hull is a target too.
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.active || !b.portal || b.portalExit) continue;
+      if ((b.portalHitCd ?? 0) > 0) continue;
+      const bx = b.x + b.w * 0.5;
+      const by = b.y + b.h * 0.5;
+      const rr = radius + Math.max(b.w, b.h) * 0.5;
+      const dx = bx - p.x;
+      const dy = by - p.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      b.portalHitCd = 0.3;
+      this.damageProp(b, WEDGE.chargeDamage, bx, by);
     }
 
     for (let i = 0; i < this.projectiles.length; i++) {
@@ -5799,6 +5846,19 @@ export class World {
     const pct = p.broDur > 0 ? 1 - p.broT / p.broDur : 1;
     const sy = pct < 0.5 ? -1 : 1;
 
+    // Sweep's super is a damaging stroke, so a port under the head takes it too. The
+    // stroke resolves every tick, so the shared contact cooldown gates the ticks.
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.active || !b.portal || b.portalExit) continue;
+      if ((b.portalHitCd ?? 0) > 0) continue;
+      const bx = b.x + b.w * 0.5;
+      const by = b.y + b.h * 0.5;
+      if (!this.broomReaches(p, bx, by, Math.max(b.w, b.h) * 0.5, fx, fy, half, width)) continue;
+      b.portalHitCd = 0.3;
+      this.damageProp(b, SWEEP.powerDamage, bx, by);
+    }
+
     for (let i = 0; i < this.players.length; i++) {
       const target = this.players[i];
       if (target === p || !target.active || !target.alive || target.travelT > 0) continue;
@@ -5952,6 +6012,18 @@ export class World {
       const by = p.fanY + ty * spread * side;
       const shoveX = tx * side;
       const shoveY = ty * side;
+
+      // The split brooms are a damaging skill; each lane closes a port it crosses.
+      for (let i = 0; i < this.props.length; i++) {
+        const b = this.props[i];
+        if (!b.active || !b.portal || b.portalExit) continue;
+        if ((b.portalHitCd ?? 0) > 0) continue;
+        const px = b.x + b.w * 0.5;
+        const py = b.y + b.h * 0.5;
+        if (!this.fanReaches(bx, by, px, py, Math.max(b.w, b.h) * 0.5, reach)) continue;
+        b.portalHitCd = 0.3;
+        this.damageProp(b, SWEEP.fanDamage, px, py);
+      }
 
       for (let i = 0; i < this.players.length; i++) {
         const target = this.players[i];
@@ -6187,6 +6259,17 @@ export class World {
     for (let i = 0; i < this.errors.length; i++) {
       const e = this.errors[i];
       if (e.active && reaches(e.x, e.y, CASCADING_ERROR.blockSize * 0.5)) this.damageError(e, amount, p.slot, 0, 0);
+    }
+    // The spray and the jet are damaging skills, so they close a port they cover.
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.active || !b.portal || b.portalExit) continue;
+      if ((b.portalHitCd ?? 0) > 0) continue;
+      const bx = b.x + b.w * 0.5;
+      const by = b.y + b.h * 0.5;
+      if (!reaches(bx, by, Math.max(b.w, b.h) * 0.5)) continue;
+      b.portalHitCd = 0.3;
+      this.damageProp(b, amount, bx, by);
     }
   }
 
@@ -16302,7 +16385,8 @@ export class World {
       if (d > reach + Math.max(b.w, b.h) * 0.5 || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < arcCos) continue;
       // A lash launches the box first; the damage is a chip, so one hit never deletes it.
-      this.launchProp(b, shoveX, shoveY, FILE_PROP.launchSpeed);
+      // A mounted port is not debris, so the lash only chips it.
+      if (!b.fixed) this.launchProp(b, shoveX, shoveY, FILE_PROP.launchSpeed);
       this.damageProp(b, damage, b.x + b.w * 0.5, b.y + b.h * 0.5);
       this.markSwingHit(p);
       return;
@@ -16400,6 +16484,21 @@ export class World {
       if (dx * dx + dy * dy > (hitR + PLAYER.radius) * (hitR + PLAYER.radius)) continue;
       p.dashHitPlayers |= bit;
       this.damagePlayer(target, PLAYER.chargeDashDamage, p.slot, fx, fy, PLAYER.chargeDashKnockback);
+    }
+
+    // The charged dash damages what it crosses, including a port.
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.active || !b.portal || b.portalExit) continue;
+      if ((b.portalHitCd ?? 0) > 0) continue;
+      const bx = b.x + b.w * 0.5;
+      const by = b.y + b.h * 0.5;
+      const rr = hitR + Math.max(b.w, b.h) * 0.5;
+      const dx = bx - p.x;
+      const dy = by - p.y;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      b.portalHitCd = 0.3;
+      this.damageProp(b, PLAYER.chargeDashDamage, bx, by);
     }
 
     if (this.mode === 'training' && this.drone.active && !p.dashHitDrone) {

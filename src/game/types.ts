@@ -205,6 +205,11 @@ export interface Prop {
   portalCloseT?: number;
   /** Health the port was authored with, for the damage ring. */
   portalMaxHp?: number;
+  /**
+   * Contact cooldown for sustained attacks (beam, broom, bracket, cloud). A per-frame
+   * resolve would otherwise delete a port in a couple of ticks.
+   */
+  portalHitCd?: number;
 }
 
 /** One expanding alarm ring. Masks keep a body to one hit per ring. */

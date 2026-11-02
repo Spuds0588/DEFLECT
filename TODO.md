@@ -38,7 +38,9 @@ Formerly: 2026-11-02 (PORTS)
 - [x] Note the spawn paths it replaces (`spawnSentryPack` ring, `spawnVirusCluster` far spawn, `setupInfection` opening flood)
 - [x] Author `ingress` on `ArenaDef` and draw the red square with its square-particle leak
 - [x] Emit the existing threat families through ports, reusing pools, caps and wave gates
-- [x] Port health, a damaged state and a close beat; every action job that damages a file box closes one
+- [x] Port health, a damaged state and a close beat; every damaging action closes one (ranged, lash, damaging skills and supers, with a 0.3 s contact cooldown)
+- [x] Tune ports to bite: 20–26 hits and a 2.6–3 s emission cadence on BUILD ROOT
+- [ ] Confirm Aim Bot's rail round and Atomize's orbit projectiles close a port; both resolve through their own hit paths rather than `propHit`
 - [x] Replace the campaign kill pips with port pips, and gate the exit on closing every port then walking out
 - [x] White exit port on the uplink, with the walk-in clear
 - [x] Headless probe: emission comes only from open ports, a closed port stops emitting, the exit needs every port, no `Snapshot` fields

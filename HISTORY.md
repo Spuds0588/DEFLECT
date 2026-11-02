@@ -5146,3 +5146,32 @@ mini-bosses are not built, and falling off a plate is a death rather than a rese
 
 **Next:** route the infection flood through authored ports, teach `BotBrain` to shoot a port when the
 floor is clear, then add the sub-agent schedule.
+
+## 2026-11-02 — Every damaging action closes a port; ports tuned to bite (v0.1.126)
+
+**Goal:** ports answered only to shots, the lash and blasts, because they ride the prop damage path, and
+they were soft enough to ignore. Any action that deals damage should close one, and a port left alone
+should be a real problem rather than a decoration.
+
+- **Kit coverage.** Port damage now resolves from the heavy beam line (Probe's beam and the overcharge
+  beam), the toxic cloud sink (spray and jet share it), Wedge's bracket and plow, Sweep's broom stroke and
+  split brooms, and the charged dash, on top of the existing shot, lash and blast paths. A per-port 0.3 s
+  contact cooldown (`Prop.portalHitCd`) gates the sustained attacks so a per-frame resolve cannot delete a
+  port in two ticks, while discrete hits stay naturally rate-limited.
+- **Fixed a lash bug found on the way:** the melee path launched every prop it hit, which would have shoved
+  a mounted port around the plate; a fixed prop is now only chipped.
+- **Tuning.** BUILD ROOT's ports went from 12 hits on a 5.5–6.5 s cadence to 20–26 hits on a 2.6–3 s
+  cadence, tuned together so closing one is a real engage while leaving it open keeps refilling the plate.
+  Health and cadence are authored per port, not global constants.
+- `TODO.md` records the one gap left: Aim Bot's rail round and Atomize's orbit projectiles resolve through
+  their own hit paths rather than `propHit`, so they still need confirming against a port.
+
+**Verification:** `.tmp/islands-ports-check.ts` passes with new cases proving the beam, the toxic cloud, the
+bracket, the charged dash and the broom stroke each take health off a port, and that the contact cooldown
+blocks a second sustained hit inside the window. `npm run build` passes (920.88 kB / 254.09 kB gzip).
+`npm run bench` is clean: 8P max-projectile 0.076 ms avg / 0.216 ms p99, gauntlet max 0.210 ms avg.
+
+**Limitations:** Aim Bot's rail and Atomize's orbit are unconfirmed against a port. A port is still closed
+by health alone; there is no partial-disable or re-open state.
+
+**Next:** confirm or wire the rail and orbit paths, then give the sub-agents their schedule.

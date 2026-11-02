@@ -2340,7 +2340,7 @@ that is never solid and never damageable.
 
 **Built (v0.1.125) for BUILD ROOT.** `ArenaDef.ingress` authors each port; `World.spawnCampaignPorts` adds
 them to the prop pool as `fixed` records, so the existing `damageProp` shot, lash and blast paths close
-them — do not add a second damage system or a second entity type. `updatePortals` runs the emission clock
+them — do not add a second damage system or a second entity type. **Every damaging action closes a port**: ranged shots stop on it, the lash and guard chips it, each damaging skill (Toxic's spray and jet, Sweep's split brooms) and each damaging super (Probe's beam, Wedge's bracket and plow, Sweep's stroke, the charged dash) resolves against it too, gated by a per-port 0.3 s contact cooldown so a per-frame attack cannot delete one in two ticks. Health and cadence are tuned together and authored per port (BUILD ROOT: 20–26 hits, one emission every 2.6–3 s); a tough port that trickles threats is boring, a fragile one that floods is noise. `updatePortals` runs the emission clock
 and the 0.9 s collapse, the families reuse `spawnSentry`/`spawnVirus`/`spawnWorm` and respect the live
 caps, and a port's `bridge` index releases that deck only once every port sharing it is closed. Closing
 all of them pushes the white exit port onto the uplink and hands the story box to
