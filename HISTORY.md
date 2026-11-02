@@ -5612,8 +5612,9 @@ and throws a reflectable bolt.
 - **Rendering.** 7×4 grey square grid with fixed per-square scale, rain fringe, flickering windup line and
   strike flash; vector teardrops and two-pass jagged bolts.
 
-**Verification:** `.tmp/storm-check.ts` passes (shape, ceiling band, 43 drops delivered in four seconds of
-barrage, shoot-down, bolt flag and 18-damage return, kill credit). All existing probes still pass. Build
+**Verification:** `.tmp/storm-check.ts` passes (shape, ceiling band, the barrage keeps laying drops through
+a held guard — 15 landings in four seconds of the final tuning — shoot-down, bolt flag and 18-damage return,
+kill credit). All existing probes still pass. Build
 clean; bench `Gauntlet max avg 0.127ms p99 0.448ms max 1.564ms threats 27.3 (2W/10V/2F/14E + sentries + thrall)`.
 
 **Next:** a human playtest on the lane readability and the bolt tell; the numbers are deliberately a first
