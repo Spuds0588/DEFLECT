@@ -32,6 +32,14 @@ function fresh(mode: 'training' | 'match'): { world: World; priv: any } {
   b.memoryDropped = false;
   return { world, priv };
 }
+
+function fresh2(): { world: World; priv: any } {
+  const world = new World('training', ['A', 'B'], 0, arena, false, 0, 1);
+  const priv = world as any;
+  for (const w of world.worms) w.active = false;
+  for (const s of world.sentries) s.active = false;
+  return { world, priv };
+}
 const live = (world: World) => world.fragments.filter((f) => f.active);
 
 // --- drop, collect, stack ---------------------------------------------------
@@ -117,6 +125,47 @@ const live = (world: World) => world.fragments.filter((f) => f.active);
   b.iframes = 0;
   priv.damagePlayer(b, 99, 0, 1, 0, 0);
   if (live(world).length !== 0) fail('a versus match dropped a memory fragment');
+}
+
+
+// --- shards never age out ---------------------------------------------------
+{
+  const { world, priv } = fresh('training');
+  const [a, b] = world.players;
+  priv.damagePlayer(b, 99, 0, 1, 0, 0);
+  a.x = b.x + 900;
+  a.y = b.y;
+  for (let i = 0; i < 10; i++) priv.updateFragments(30);
+  if (live(world).length !== 1) fail('a shard expired instead of waiting to be picked up');
+}
+
+// --- a total wipe clears the floor -----------------------------------------
+{
+  const world = new World('gauntlet', ['A'], 0, arena);
+  const priv = world as any;
+  for (const w of world.worms) w.active = false;
+  const p = world.players[0];
+  p.alive = true;
+  p.hp = p.maxHp = 3;
+  priv.dropMemoryFragment(p);
+  if (live(world).length !== 1) fail('the wipe test never placed a shard');
+  p.alive = false;
+  world.gauntletOver = true;
+  priv.updateFragments(0.016);
+  if (live(world).length !== 0) fail('a total wipe left shards on the floor');
+}
+
+// --- save-point round trip --------------------------------------------------
+{
+  const { world, priv } = fresh('training');
+  priv.restoreFragments([{ x: 0.25, y: 0.5 }, { x: 0.75, y: 0.2 }]);
+  if (live(world).length !== 2) fail('restoreFragments did not place both saved shards');
+  const saved = world.saveShards();
+  if (saved.length !== 2) fail(`saveShards reported ${saved.length} shards`);
+  if (Math.abs(saved[0].x - 0.25) > 0.02) fail('a saved shard lost its normalized position');
+  const next = fresh2();
+  next.priv.restoreFragments(saved);
+  if (live(next.world).length !== 2) fail('a saved shard did not restore into the next arena');
 }
 
 console.log('memory-check: OK');

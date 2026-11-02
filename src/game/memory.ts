@@ -4,7 +4,9 @@
  *
  * This is a PvE progression rule, not a powerup: stacks never expire, they survive
  * a respawn inside the same world, and they are carried between campaign levels by
- * `main.ts`. Straight versus matches never drop a shard.
+ * `main.ts`. Shards themselves never time out: one waits until it is picked up, until
+ * a total wipe clears the floor, or until a level clear saves it into the slot.
+ * Straight versus matches never drop a shard.
  */
 export const MEMORY = {
   /** Three fallen players can feed one survivor; a fourth is wasted. */
@@ -13,8 +15,6 @@ export const MEMORY = {
   hpPerStack: 1,
   speedPerStack: 0.2,
   damagePerStack: 0.25,
-  /** A shard waits this long before it fades, blinking out over the last two seconds. */
-  lifetime: 40,
   magnetRadius: 150,
   magnetSpeed: 280,
   pickupRadius: 34,

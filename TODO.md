@@ -3411,3 +3411,7 @@ arrive.
   Probe. A compressed player's cover and arena-bound collision still use `PLAYER.radius` even though the
   drawn hull and projectile/bomb hitboxes shrink. A shrunk worm's contact and bite reach stay at the
   `WORM` constants. The burst's player cap uses rounding, so 3 segments become 2, not 1.5.
+
+## MEMORY FRAGMENTS
+
+- [x] Shards persist until collected, wiped or saved; campaign save points store stacks and shards

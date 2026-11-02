@@ -5560,3 +5560,26 @@ assault, jet, flipboard, radar, islands-ports, laptop-variants and capcom probes
 
 **Next:** a visual check of the 288-glyph blob at full health on a low-end frame, and a decision on whether
 the shed burst should scale with the weapon's damage (it caps at 10 icons today).
+
+## 2026-11-02 — Shards wait forever, and save points remember them (v0.1.140)
+
+**Goal:** correct the fragment lifetime. Shards should never fade; they persist until collected, until a
+total wipe, or until a level clear saves them.
+
+- Removed `MEMORY.lifetime`. A fragment now carries an `age` that only drives its idle pulse; nothing
+  deactivates it on a timer.
+- `updateFragments` clears every shard when the run is over and no body is standing, so a TPK empties the
+  floor. A retry or reload restores only what the last save point held.
+- `StorySave` gained optional `memory` (per-slot stack counts) and `shards` (positions normalized to the
+  arena bounds). A campaign clear banks both; the next node restores them with `restoreFragments`, scaling
+  the fractions into the new arena. Older saves without the fields load with zero stacks and no shards.
+- Resume now reads those fields into `campaignMemory`/`campaignShards` instead of starting empty.
+
+**Verification:** `.tmp/memory-check.ts` passes including four new cases: a shard left for five simulated
+minutes still waits, a total wipe clears the floor, `saveShards` reports normalized positions, and a
+restored shard lands in the next arena. Build clean; blob, starfish, idlehands, megaworm, assault, jet,
+flipboard, radar, islands-ports, laptop-variants and capcom probes still pass. `npm run bench`: gauntlet
+max 0.123 ms avg / 0.455 ms p99.
+
+**Next:** a visual pass on a floor with several shards, since they now accumulate instead of clearing
+themselves.

@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.139';
+const BUILD = '0.1.140';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -384,6 +384,8 @@ let campaignPlaySeconds = 0;
 let lastCampaignPhase = '';
 /** Memory stacks earned in the live campaign run, carried between nodes. */
 let campaignMemory: number[] = new Array(MAX_PLAYERS).fill(0);
+/** Uncollected shards held at the last save point, restored on the next node. */
+let campaignShards: { x: number; y: number }[] = [];
 
 const touchControlsEl = el('touch-controls');
 const touchStickEl = el('touch-stick');
@@ -1554,6 +1556,7 @@ function startNewCampaign(): void {
   campaignSaved = false;
   campaignPlaySeconds = 0;
   campaignMemory = new Array(MAX_PLAYERS).fill(0);
+  campaignShards = [];
   startCampaignLevel();
 }
 
@@ -1566,6 +1569,8 @@ function resumeCampaign(index: number, save: StorySave): void {
   campaignSaved = false;
   campaignPlaySeconds = 0;
   campaignMemory = new Array(MAX_PLAYERS).fill(0);
+  for (let i = 0; i < MAX_PLAYERS; i++) campaignMemory[i] = save.memory?.[i] ?? 0;
+  campaignShards = save.shards ? save.shards.slice(0, MAX_PLAYERS) : [];
   // `level` is the number of completed levels, so it is also the next index.
   if (save.level >= PLAYABLE_CAMPAIGN_LEVELS.length) {
     campaignLevelIndex = 0;
@@ -1614,6 +1619,7 @@ function startCampaignLevel(): void {
   );
   world.friendlyFire = friendlyFire;
   for (let i = 0; i < MAX_PLAYERS; i++) world.setMemoryStacks(i, campaignMemory[i] ?? 0);
+  world.restoreFragments(campaignShards);
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
   botBrains = new Array(MAX_PLAYERS).fill(null);
@@ -4347,6 +4353,8 @@ function showCampaignClearOverlay(w: World): void {
       playSeconds: Math.floor(campaignPlaySeconds),
       bestScore,
       cleanSweeps,
+      memory: campaignMemory,
+      shards: campaignShards,
     });
     campaignSaved = true;
     bestLine = ` // BEST ${bestScore}`;

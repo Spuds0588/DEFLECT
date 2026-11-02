@@ -2680,8 +2680,16 @@ bot makes the survivor stronger for the rest of the run.
   drop one; they are not players.
 - **One drop per body per run.** `Player.memoryDropped` latches on the first death, so a respawning
   training bot cannot be farmed for free stacks. In campaign the flag lives on the body, and `main.ts`
-  carries the stack count to the next node (`campaignMemory` + `World.setMemoryStacks`). Loading a saved
-  slot starts that session at zero stacks; the save record does not carry them yet.
+  carries the stack count to the next node (`campaignMemory` + `World.setMemoryStacks`).
+- **A shard never times out.** It waits on the floor until a body picks it up, the run wipes, or the level
+  ends. Do not put a lifetime back on it. A total wipe (`gauntletOver` with no standing body) clears every
+  shard, so a retry from the last save point restores only the shards that save carried, never the ones
+  dropped during the failed attempt.
+- **A level clear is the save point.** On a campaign clear, `main.ts` banks every player's stack count and
+  every uncollected shard into the slot (`StorySave.memory`, `StorySave.shards`, positions normalized to
+  the arena bounds). The next node restores them with `setMemoryStacks`/`restoreFragments`, scaling the
+  saved fractions into the new arena. Shards picked up before the clear are already stacks and are saved
+  that way. Older saves without those fields load with zero stacks and no shards.
 - **Death source is irrelevant.** Environment, enemy fire or another player all drop the shard, because
   the drop happens in the shared death block of `damagePlayer`, not in a weapon branch.
 - **Stacking.** `memory` on the player is the single source. Health adds a real segment (`maxHp`), so the
@@ -2690,9 +2698,9 @@ bot makes the survivor stronger for the rest of the run.
   `memoryDamage(sourceSlot, amount)`, so enemies (slot -1) and clones never scale. At the cap the shard is
   left on the floor instead of being wasted.
 - **Presentation.** A shard is a spinning diamond over a soft well, magnetised within
-  `MEMORY.magnetRadius` and blinking out over its last two seconds. Rules live in `src/game/memory.ts`
-  (`MEMORY`), which is the only place the numbers belong. There is no stack counter in the HUD: the extra
-  hull segment is the read, plus the pickup flash.
+  `MEMORY.magnetRadius`. It pulses but never fades out: it is still there minutes later. Rules live in
+  `src/game/memory.ts` (`MEMORY`), which is the only place the numbers belong. There is no stack counter in
+  the HUD: the extra hull segment is the read, plus the pickup flash.
 - **Do not** turn this into a powerup, a snapshot field, or a match rule. It is local run progression,
   like gauntlet records. `.tmp/memory-check.ts` covers the drop, collection, cap, once-per-run latch,
   damage scale (1.75 at three stacks, enemies still 1), respawn carry, campaign carry and match exclusion.

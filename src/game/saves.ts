@@ -28,6 +28,10 @@ export interface StorySave {
   bestScore: number;
   /** Clean sweeps earned, one per level cleared without losing a data crate. */
   cleanSweeps: number;
+  /** Memory stacks per slot at the save point. Absent on older saves. */
+  memory?: number[];
+  /** Uncollected memory shards, as fractions of the arena bounds. */
+  shards?: { x: number; y: number }[];
   updatedAt: number;
 }
 
@@ -56,6 +60,19 @@ export function loadStorySlots(): (StorySave | null)[] {
         playSeconds: typeof entry.playSeconds === 'number' ? Math.max(0, entry.playSeconds) : 0,
         bestScore: typeof entry.bestScore === 'number' ? Math.max(0, Math.floor(entry.bestScore)) : 0,
         cleanSweeps: typeof entry.cleanSweeps === 'number' ? Math.max(0, Math.floor(entry.cleanSweeps)) : 0,
+        memory: Array.isArray(entry.memory)
+          ? entry.memory
+              .slice(0, 4)
+              .map((n) => (typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.min(3, Math.floor(n))) : 0))
+          : undefined,
+        shards: Array.isArray(entry.shards)
+          ? entry.shards
+              .filter((shard): shard is { x: number; y: number } =>
+                !!shard && typeof shard === 'object' && Number.isFinite(shard.x) && Number.isFinite(shard.y),
+              )
+              .slice(0, 8)
+              .map((shard) => ({ x: Math.max(0, Math.min(1, shard.x)), y: Math.max(0, Math.min(1, shard.y)) }))
+          : undefined,
         updatedAt: typeof entry.updatedAt === 'number' ? entry.updatedAt : 0,
       };
     }

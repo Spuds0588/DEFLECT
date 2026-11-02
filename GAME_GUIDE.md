@@ -632,11 +632,13 @@ enemy, the environment or another player put them there. Walk over it to collect
   the rest of the run. It stacks up to **three** times.
 - Health is real: the extra segment shows up in your program's hull outline and stays through respawns.
 - A body only leaves one fragment per run, so a respawning training bot cannot be farmed.
-- Fragments are magnetic within a short radius and fade after about forty seconds.
+- Fragments are magnetic within a short radius and never fade. One sits where it fell until you
+  take it, the run wipes, or the level ends.
 - **Not in versus.** Straight PvP matches never drop one; this is a PvE rule that makes betrayal and
   squad wipes meaningful in campaign, gauntlet, infection co-op and training.
-- In campaign, your stacks carry into the next node. Starting from a saved slot begins that session with
-  none.
+- In campaign, finishing a level is a save point: your stacks carry to the next node, and any shard you
+  left on the floor is saved with them and restored on the next node. If the whole squad goes down, that
+  run is not saved, so retrying from the last save point brings back only the shards that save had.
 
 ## STARFISH (mini-boss)
 

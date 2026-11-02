@@ -1056,8 +1056,8 @@ export interface Fragment {
   y: number;
   prevX: number;
   prevY: number;
-  /** Seconds left before it fades; the last two blink. */
-  t: number;
+  /** Seconds on the floor. Shards never expire; this only drives the idle pulse. */
+  age: number;
   /** Bounds the drift bob so two shards never move in lockstep. */
   spin: number;
   fromSlot: number;

@@ -12984,7 +12984,7 @@ export class Renderer {
       if (!f.active) continue;
       const x = lerp(f.prevX, f.x, alpha);
       const y = lerp(f.prevY, f.y, alpha) + Math.sin(t * 2.4 + f.spin) * 4;
-      const fade = f.t < 2 ? Math.max(0, f.t / 2) : 1;
+      const fade = 0.82 + 0.18 * Math.sin(t * 2.6 + f.spin);
       ctx.save();
       ctx.translate(x, y);
       ctx.globalAlpha = 0.14 * fade;

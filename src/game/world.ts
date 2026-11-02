@@ -311,7 +311,7 @@ export class World {
     y: 0,
     prevX: 0,
     prevY: 0,
-    t: 0,
+    age: 0,
     spin: 0,
     fromSlot: -1,
   }));
@@ -11045,23 +11045,32 @@ export class World {
     f.y = p.y;
     f.prevX = p.x;
     f.prevY = p.y;
-    f.t = MEMORY.lifetime;
+    f.age = 0;
     f.spin = this.rng.range(0, Math.PI * 2);
     f.fromSlot = p.slot;
     this.emit(EV.POWERUP, p.slot, p.x, p.y, -1);
   }
 
   private updateFragments(dt: number): void {
+    // A total wipe clears the floor. Retrying from the last save point restores
+    // whatever shards that save carried; nothing dropped during the failed run does.
+    if (this.gauntletOver) {
+      let standing = 0;
+      for (let k = 0; k < this.players.length; k++) {
+        const body = this.players[k];
+        if (body.active && body.alive && !body.thrall) standing++;
+      }
+      if (standing === 0) {
+        for (let k = 0; k < this.fragments.length; k++) this.fragments[k].active = false;
+        return;
+      }
+    }
     for (let i = 0; i < this.fragments.length; i++) {
       const f = this.fragments[i];
       if (!f.active) continue;
       f.prevX = f.x;
       f.prevY = f.y;
-      f.t -= dt;
-      if (f.t <= 0) {
-        f.active = false;
-        continue;
-      }
+      f.age += dt;
       // Drift toward the nearest living body that still has room for a stack.
       let best: Player | null = null;
       let bestD = MEMORY.magnetRadius * MEMORY.magnetRadius;
@@ -11089,6 +11098,41 @@ export class World {
         f.x += dx * step;
         f.y += dy * step;
       }
+    }
+  }
+
+  /** Normalized shard positions for a save point. */
+  saveShards(): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    const left = this.arena.bounds.left;
+    const top = this.arena.bounds.top;
+    const wide = Math.max(1, this.arena.bounds.right - left);
+    const high = Math.max(1, this.arena.bounds.bottom - top);
+    for (let i = 0; i < this.fragments.length; i++) {
+      const f = this.fragments[i];
+      if (!f.active) continue;
+      out.push({ x: (f.x - left) / wide, y: (f.y - top) / high });
+    }
+    return out;
+  }
+
+  /** Re-place saved shards in this arena, scaled from their saved fractions. */
+  restoreFragments(shards: readonly { x: number; y: number }[]): void {
+    const left = this.arena.bounds.left;
+    const top = this.arena.bounds.top;
+    const wide = this.arena.bounds.right - left;
+    const high = this.arena.bounds.bottom - top;
+    let slot = 0;
+    for (let i = 0; i < shards.length && slot < this.fragments.length; i++) {
+      const s = shards[i];
+      if (!s || !Number.isFinite(s.x) || !Number.isFinite(s.y)) continue;
+      const f = this.fragments[slot++];
+      f.active = true;
+      f.age = 0;
+      f.spin = 0.7 + slot * 1.3;
+      f.fromSlot = -1;
+      f.x = f.prevX = left + Math.max(0, Math.min(1, s.x)) * wide;
+      f.y = f.prevY = top + Math.max(0, Math.min(1, s.y)) * high;
     }
   }
 
