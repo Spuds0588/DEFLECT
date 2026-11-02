@@ -27,6 +27,7 @@ function fresh(): { world: World; priv: any; storm: Worm } {
   const storm = priv.spawnMiniboss(MINIBOSS.STORM_CLOUD, p.x, p.y - 300) as Worm;
   if (!storm || !storm.storm) fail('the storm cloud never spawned');
   storm.spawnT = 0;
+  priv.bossIntro = null;
   return { world, priv, storm };
 }
 

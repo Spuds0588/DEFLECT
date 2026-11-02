@@ -345,6 +345,7 @@
     "radius": 312,
     "hp": 104,
     "spawnTime": 1.1,
+    "introTime": 2.6,
     "hoverTop": -70,
     "hoverBob": 24,
     "trackSpeed": 92,

@@ -9450,14 +9450,14 @@ export class Renderer {
     const x = lerp(w.prevX, w.x, alpha);
     const y = lerp(w.prevY, w.y, alpha);
     const r = w.hitR;
-    const build = w.spawnT > 0 ? 1 - w.spawnT / Math.max(0.001, cfg.spawnTime) : 1;
+    const intro = w.spawnT > 0 ? 1 - w.spawnT / Math.max(0.001, cfg.introTime) : 1;
 
     // Ground shadow: the cloud is a body in the air, and the shadow sells the height.
     ctx.save();
     ctx.globalAlpha = 0.1 * alpha;
     ctx.fillStyle = cfg.color;
     ctx.beginPath();
-    ctx.ellipse(x, y + r * 0.9, r * 1.15 * build, r * 0.26 * build, 0, 0, TWO_PI);
+    ctx.ellipse(x, y + r * 0.9, r * 1.15 * intro, r * 0.26 * intro, 0, 0, TWO_PI);
     ctx.fill();
     ctx.restore();
 
@@ -9471,7 +9471,8 @@ export class Renderer {
     const cols = 7;
     const rows = 4;
     const layers = 3;
-    ctx.scale(0.72 + 0.28 * build, 0.72 + 0.28 * build);
+    // No whole-cloud scale: the entrance is per square, so the first block lands alone
+    // and the mass builds by overlap instead of inflating from a dot.
     for (let layer = 0; layer < layers; layer++) {
       ctx.fillStyle = layer === 0 ? '#8497ab' : layer === 1 ? cfg.color : '#b3c6d8';
       for (let row = 0; row < rows; row++) {
@@ -9489,24 +9490,37 @@ export class Renderer {
           // rim instead of the outline reading as a clean oval.
           const ell = (u / 0.56) ** 2 + (v / 0.4) ** 2;
           if (ell > 0.72 + h1 * 0.34) continue;
-          const k = st.puff[i % st.puff.length] * (0.8 + 0.2 * build);
+          const k = st.puff[i % st.puff.length];
           const px = u * r * 1.84 + (h2 - 0.5) * r * 0.07;
           const py = v * r * 1.06 + (h3 - 0.5) * r * 0.08 + Math.sin(st.clock * 1.7 + i * 0.7) * 2.4;
-          const size = r * (0.23 + h4 * 0.17) * k;
+          const box = i === 0 ? r * 0.34 : r * (0.23 + h4 * 0.17) * k;
           // A loose per-square rotation: whole turns would read as a pattern, so the
           // range stays under a radian and drifts by layer.
           const rot = (h2 - 0.5) * 0.95 + (layer - 1) * 0.16;
+          // Boss entrance: square 0 snaps in on its own, then the rest fly in from
+          // scattered points and overlap until the 84-square lattice is whole. After
+          // `intro` completes every square sits on its final slot, so the settled cloud
+          // draws exactly as before.
+          const born = i === 0 ? 0 : 0.18 + (0.62 * i) / (cols * rows * layers - 1) + h3 * 0.06;
+          const gather = intro >= 1 ? 1 : Math.min(1, Math.max(0, (intro - born) / 0.28));
+          if (gather <= 0) continue;
+          const eased = 1 - Math.pow(1 - gather, 3);
+          const fromX = i === 0 ? px : (h1 - 0.5) * r * 2.6;
+          const fromY = i === 0 ? py : (h2 - 0.5) * r * 2.0;
+          const drawX = fromX + (px - fromX) * eased;
+          const drawY = fromY + (py - fromY) * eased;
+          const side = box * (0.32 + 0.68 * eased);
           ctx.save();
-          ctx.translate(px, py);
-          ctx.rotate(rot);
-          ctx.globalAlpha = 1;
-          ctx.fillRect(-size * 0.5, -size * 0.5, size, size);
+          ctx.translate(drawX, drawY);
+          ctx.rotate(rot * (0.35 + 0.65 * eased));
+          ctx.globalAlpha = intro >= 1 ? 1 : Math.min(1, gather * 3);
+          ctx.fillRect(-side * 0.5, -side * 0.5, side, side);
           // A darker seam, not a glow: it keeps the individual squares legible while
           // the fill stays fully opaque.
-          ctx.globalAlpha = 0.3;
+          ctx.globalAlpha *= 0.3;
           ctx.strokeStyle = row >= rows - 1 && layer === layers - 1 ? cfg.bolt : '#41536a';
           ctx.lineWidth = 1;
-          ctx.strokeRect(-size * 0.5, -size * 0.5, size, size);
+          ctx.strokeRect(-side * 0.5, -side * 0.5, side, side);
           ctx.restore();
         }
       }
@@ -9523,7 +9537,7 @@ export class Renderer {
       const fx = u * r * 1.5;
       const phase = (st.clock * 2.2 + i * 0.37) % 1;
       const fy = r * 0.6 + phase * r * 0.42;
-      ctx.globalAlpha = (0.16 + 0.18 * (1 - phase)) * alpha * fringe;
+      ctx.globalAlpha = (0.16 + 0.18 * (1 - phase)) * alpha * fringe * intro;
       ctx.beginPath();
       ctx.moveTo(fx, fy);
       ctx.lineTo(fx - 2, fy + 10);

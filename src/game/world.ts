@@ -16710,7 +16710,9 @@ export class World {
     w.hitR = cfg.radius;
     w.segR = cfg.radius * 0.7;
     w.hp = w.maxHp = cfg.hp;
-    w.spawnT = cfg.spawnTime;
+    // Every spawn assembles, not only the scripted entrance: the renderer reads `spawnT`
+    // as gather progress and the intro keeps it alive for its own duration.
+    w.spawnT = cfg.introTime;
     w.x = Math.max(this.arena.bounds.left + cfg.radius * 0.6, Math.min(this.arena.bounds.right - cfg.radius * 0.6, x));
     // Land in the ceiling band, not off the top of the screen: the whole cloud reads
     w.y = this.arena.bounds.top + cfg.hoverTop;
@@ -16979,9 +16981,9 @@ export class World {
     } else if (def.body === 'storm-cloud') {
       boss = this.spawnStormCloud(x ?? this.centerX, (y ?? this.centerY) - 180);
     }
-    // Storm Cloud still uses the combat camera cue; the four staged bosses own the
-    // room for their entrance beat below.
-    if (boss && kind !== MINIBOSS.STORM_CLOUD && this.mode === 'gauntlet' && !this.attractMode) {
+    // Every staged boss owns the room for its entrance beat, including the storm,
+    // which assembles from a single square while the camera holds on it.
+    if (boss && this.mode === 'gauntlet' && !this.attractMode) {
       this.beginBossIntro(kind, boss);
     }
     return boss;
@@ -16999,7 +17001,12 @@ export class World {
           ? BLOB.introTime
           : kind === MINIBOSS.IDLE_HANDS
             ? IDLE_HANDS.introTime
-            : STARFISH.introTime;
+            : kind === MINIBOSS.STORM_CLOUD
+              ? STORM_CLOUD.introTime
+              : STARFISH.introTime;
+    // The storm's entrance is drawn from `spawnT`: hold the body on its assembly clock
+    // for the whole beat, so the last square lands as the title card clears.
+    if (kind === MINIBOSS.STORM_CLOUD) boss.spawnT = duration;
     this.bossIntro = { kind, label: def.label, t: 0, duration, x: boss.x, y: boss.y };
   }
 

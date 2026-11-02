@@ -6294,3 +6294,21 @@ clean; build output removed and no dev server left.
 **Verification:** `idlehands-check` passes with `trio:2` and unchanged slam, AOE, redirect, void cull,
 separation 340, hover, ingress and the 1.35 s palm hold; `bossrush-check` passes with the pair in the ladder;
 `npm run build` clean, `npm run bench` clean, `git diff --check` clean.
+
+## 2026-11-02 — Storm Cloud assembles square by square
+
+**Goal:** the Storm Cloud was the one boss with no entrance; it should show one square, then gather into the
+full body.
+
+- `STORM_CLOUD.introTime` is 2.6 s and `spawnMiniboss` no longer skips the storm for `beginBossIntro`, so the
+  room freezes, the camera holds and the title card plays like the other four bosses. `beginBossIntro` sets
+  the storm's `spawnT` to the intro duration, which is the clock the renderer reads.
+- `drawStormCloud` no longer scales the whole pile up. Square 0 snaps in at its slot, then the rest fly from
+  scattered points and overlap into the lattice, each with its own delay, start point and grow. Once the
+  intro ends every square sits on its final slot, so the settled cloud is unchanged; the shadow and the
+  underside fringe fade in with the assembly.
+- Direct spawns (`?storm=1`, boss rush, attract) use the same `spawnT`, so they assemble too.
+
+**Verification:** `bossintro-check` now includes STORM CLOUD (`seconds 2.6, ticks 156`) and passes for all
+five bosses; `storm-check` and `bossrush-check` pass, `npm run build` clean, `npm run bench` clean,
+`git diff --check` clean.

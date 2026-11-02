@@ -3470,6 +3470,9 @@ arrive.
       ring, separation, redirect and kill credit followed without code changes (v0.1.146).
 - [ ] Play a solo pair fight and decide whether two palms still make the hand-on-hand redirect worth setting
       up, or whether the pair needs a shorter slam/charge cadence.
+- [x] Storm Cloud entrance: one square appears, then the body gathers into the full cloud (v0.1.147).
+- [ ] Watch the storm entrance at full size and confirm the gathering squares do not read as a loading or
+      glitch effect, then tune `introTime` or the per-square spread if they do.
 - [ ] Watch the scaled Starfish on a cover-heavy arena: arms should sweep over pillars, and the staging pad
       should not pin it to the middle of small arenas.
 

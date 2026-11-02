@@ -2968,6 +2968,12 @@ apply; nothing here is a second collision system.
   Rain and lightning are ordinary hostile shots, so a pillar between the cloud and the floor eats both:
   standing under a block is shelter from the rain and the bolt, and that same block stops your return fire
   at the cloud. Keep the rain in the projectile pool; do not add a cover-free rain damage path.
+- **Entrance (2026-11-02).** The storm opens like the staged bosses now: `STORM_CLOUD.introTime` (2.6 s) is
+  routed through `beginBossIntro`, which also sets the body's `spawnT` to that duration. `drawStormCloud`
+  reads `spawnT` as assembly progress, so square 0 snaps in alone and the other squares fly from scattered
+  points, overlapping into the 84-square lattice with per-square delay, start point and grow. Do not put
+  the whole-cloud scale back; the mass is meant to gather, not inflate. A direct spawn uses the same clock,
+  so `?storm=1`, boss rush and the attract rotation all assemble too.
 - **Rain is type 18.** A burst lays `rain.rows` rows of `rain.count` drops under the cloud, flipping
   direction each burst and offsetting every other row by half a gap. Drops fall at `rain.speed` and expire on
   their own fuse; they are hostile projectiles, so the existing player-bolt interception shoots them out of

@@ -739,7 +739,8 @@ files off, and the blob visibly shrinks as the stack comes apart.
 
 A huge grey cloud that sits at the top of the arena and does not come down. It rains rows of drops under
 itself and throws lightning, and it slides sideways to stay above you. It can drift past the arena edge and
-back, but it never descends.
+back, but it never descends. When it arrives, a single square appears first and the rest of the body gathers
+into it, piling up until the full cloud is there.
 
 - **Do not stand under it.** The lane directly beneath the cloud is where the rain lands. Step out to the
   side and shoot it from an angle; the cloud tracks slowly, so moving beats it.
