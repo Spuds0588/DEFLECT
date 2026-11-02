@@ -17057,13 +17057,6 @@ export class World {
     }
   }
 
-  private megaTotalHp(w: Worm): number {
-    let total = 0;
-    const nodes = w.segCount + 1;
-    for (let i = 0; i < nodes; i++) total += Math.max(0, w.segHp[i]);
-    return total;
-  }
-
   /** Land a boss. Its plates are strung out behind the head along its facing. */
   private spawnMegaWorm(x?: number, y?: number, kind: number = MINIBOSS.MEGA_WORM): Worm | null {
     let w: Worm | null = null;
@@ -17121,14 +17114,6 @@ export class World {
     w.pinT = 0;
     w.legs = false;
     w.eyeT = 1.4;
-    w.acidT = MEGA_WORM.legs.acidInterval;
-    w.biteT = 0;
-    w.biteCd = MEGA_WORM.bite.cooldown * 0.6;
-    w.biteHit = false;
-    w.biteDirX = Math.cos(w.angle);
-    w.biteDirY = Math.sin(w.angle);
-    w.segHp[0] = MEGA_WORM.headHp;
-    w.segMaxHp[0] = MEGA_WORM.headHp;
     // One rigid straight body: every plate sits behind the head on its heading. The
     // boss is offscreen for its entrance and for every staged pass, so the full length
     // never has to fold into the room.
@@ -17141,9 +17126,8 @@ export class World {
       w.segPrevX[i] = sx;
       w.segPrevY[i] = sy;
       w.segAngle[i] = w.angle;
-      w.segHp[i + 1] = i < w.segCount ? MEGA_WORM.hpPerSegment : 0;
-      w.segMaxHp[i + 1] = MEGA_WORM.hpPerSegment;
     }
+    // One pool for the whole silhouette. The plate count is presentation now.
     w.maxHp = MEGA_WORM.headHp + w.segCount * MEGA_WORM.hpPerSegment;
     w.hp = w.maxHp;
     this.emit(EV.PROP_BREAK, 0, w.x, w.y, 64);
@@ -17151,9 +17135,9 @@ export class World {
   }
 
   /**
-   * A hit lands on the plate nearest the contact point. Shells pass their own position,
-   * melee shells fall back to the attacker's side, so a pair can chew the boss from
-   * both ends of the same plate.
+   * One pool, one boss. A hit anywhere on the body removes health from the same total;
+   * plates never break, promote or detach. The straight-line body is a sponge, not a
+   * segmented creature, so where a shot lands only changes the spark position.
    */
   private damageMegaWorm(
     w: Worm,
@@ -17162,95 +17146,19 @@ export class World {
     dirX: number,
     dirY: number,
     force: number,
-    hitX: number,
-    hitY: number,
+    _hitX: number,
+    _hitY: number,
   ): void {
-    const nodes = w.segCount + 1;
-    let hx = hitX;
-    let hy = hitY;
-    if (!Number.isFinite(hx) || !Number.isFinite(hy)) {
-      const p = this.threatTarget(w.x, w.y);
-      hx = p.x;
-      hy = p.y;
-    }
-    let node = 0;
-    let best = Infinity;
-    for (let k = 0; k < nodes; k++) {
-      const nx = this.megaNodeX(w, k);
-      const ny = this.megaNodeY(w, k);
-      const d = (nx - hx) * (nx - hx) + (ny - hy) * (ny - hy);
-      if (d < best) {
-        best = d;
-        node = k;
-      }
-    }
-    const bx = this.megaNodeX(w, node);
-    const by = this.megaNodeY(w, node);
-    w.segHp[node] -= amount;
+    if (!w.active) return;
+    w.hp -= amount;
     w.hitFlash = 0.22;
     if (sourceSlot >= 0) w.aggroT = MEGA_WORM.aggroTime;
-    if (force > 0 && node === 0) {
-      w.kx += dirX * force;
-      w.ky += dirY * force;
+    if (force > 0) {
+      w.kx += dirX * force * 0.35;
+      w.ky += dirY * force * 0.35;
     }
-    this.emit(EV.WORM_HIT, sourceSlot, bx, by, amount, dirX, dirY);
-    if (w.segHp[node] <= 0) this.breakMegaNode(w, node, sourceSlot);
-    if (w.active) w.hp = this.megaTotalHp(w);
-  }
-
-  /**
-   * One plate gone. A head loss promotes the plate behind it, a tail loss just shortens
-   * the chain, and a cut through the middle detaches the back half as its own worm whose
-   * far tip opens eyes. A detached piece shorter than two plates is shredded instead.
-   */
-  private breakMegaNode(w: Worm, node: number, sourceSlot: number): void {
-    const bx = this.megaNodeX(w, node);
-    const by = this.megaNodeY(w, node);
-    this.emit(EV.PROP_BREAK, -1, bx, by, 46);
-
-    if (node === 0) {
-      if (w.segCount === 0) {
-        this.killMegaWorm(w, sourceSlot);
-        return;
-      }
-      // The closest plate opens its eyes and takes the chain over.
-      w.x = w.segX[0];
-      w.y = w.segY[0];
-      const nodes = w.segCount + 1;
-      for (let i = 0; i < w.segCount - 1; i++) {
-        w.segX[i] = w.segX[i + 1];
-        w.segY[i] = w.segY[i + 1];
-        w.segPrevX[i] = w.segX[i];
-        w.segPrevY[i] = w.segY[i];
-        w.segAngle[i] = w.segAngle[i + 1];
-      }
-      for (let i = 1; i < nodes; i++) w.segHp[i - 1] = w.segHp[i];
-      w.segCount--;
-      w.eyeT = 1.2;
-      w.hitFlash = 0.3;
-      w.legs = w.segCount === 0;
-      w.hp = this.megaTotalHp(w);
-      this.emit(EV.WORM_HIT, -1, w.x, w.y, 3, 0, 0);
-      return;
-    }
-
-    const s = node - 1;
-    if (node === w.segCount) {
-      // The tail plate snaps off cleanly; no head to promote.
-      w.segCount--;
-      w.legs = w.segCount === 0;
-      w.hp = this.megaTotalHp(w);
-      return;
-    }
-
-    // A cut through the middle shortens the body; the back half is shredded. There is
-    // only ever one Mega Worm: detached pieces used to leave a second boss on the floor,
-    // stall a boss-rush stage and break the straight-line read.
-    for (let k = node; k <= w.segCount; k++) w.segHp[k] = 0;
-    w.segCount = s;
-    w.legs = w.segCount === 0;
-    w.hp = this.megaTotalHp(w);
-    this.followMegaChain(w, 0);
+    this.emit(EV.WORM_HIT, sourceSlot, w.x, w.y, amount, dirX, dirY);
+    if (w.hp <= 0) this.killMegaWorm(w, sourceSlot);
   }
 
   private killMegaWorm(w: Worm, sourceSlot: number): void {
@@ -17272,8 +17180,6 @@ export class World {
     w.phase += dt;
     if (w.hitFlash > 0) w.hitFlash = Math.max(0, w.hitFlash - dt);
     if (w.touchCd > 0) w.touchCd = Math.max(0, w.touchCd - dt);
-    if (w.biteCd > 0) w.biteCd = Math.max(0, w.biteCd - dt);
-    if (w.acidT > 0) w.acidT = Math.max(0, w.acidT - dt);
     if (w.eyeT > 0) w.eyeT = Math.max(0, w.eyeT - dt);
     if (w.flyCd > 0) w.flyCd = Math.max(0, w.flyCd - dt);
     if (w.spawnT > 0) {
@@ -17291,15 +17197,12 @@ export class World {
       return;
     }
 
-    w.legs = w.segCount === 0;
     if (w.entryT > 0) {
       this.updateMegaEntrance(w, dt);
       return;
     }
     const p = this.threatTarget(w.x, w.y);
-    const pdx = p.x - w.x;
-    const pdy = p.y - w.y;
-    const dist = Math.hypot(pdx, pdy);
+    const dist = Math.hypot(p.x - w.x, p.y - w.y);
     if (p.alive && p.cloakT <= 0 && dist < MEGA_WORM.aggroRadius) {
       w.aggroT = MEGA_WORM.aggroTime;
     } else {
@@ -17320,7 +17223,7 @@ export class World {
     }
     if (w.flyPhase === 1) {
       w.flyT += dt;
-      const speed = fly.speed * (w.legs ? fly.legsSpeedMult : 1);
+      const speed = fly.speed;
       w.vx = w.flyDX * speed;
       w.vy = w.flyDY * speed;
       w.x += (w.vx + w.kx) * dt;
@@ -17328,25 +17231,8 @@ export class World {
       w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
       w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
       this.followMegaChain(w, dt);
+      // Contact is the whole attack: the body is a sponge that flies over the floor.
       this.megaTouch(w, p);
-      if (w.legs) this.spitAcid(w, p);
-      if (!w.biteHit && p.alive && p.cloakT <= 0 && dist < fly.snapRange) {
-        // One maw snap per committed run. The body still hurts on contact; this is the
-        // aimed bite that makes a pass worth dodging rather than merely enduring.
-        const d = dist || 1;
-        w.biteHit = true;
-        w.aggroT = MEGA_WORM.aggroTime;
-        this.damagePlayer(
-          p,
-          fly.snapDamage,
-          -1,
-          pdx / d,
-          pdy / d,
-          fly.snapKnockback,
-          SRC.WORM,
-          this.worms.indexOf(w),
-        );
-      }
       const passed = (w.x - w.anchorX) * w.flyDX + (w.y - w.anchorY) * w.flyDY > fly.exitRange;
       if (passed) {
         w.flyPhase = 2;
@@ -17464,7 +17350,6 @@ export class World {
     w.angle = Math.atan2(w.flyDY, w.flyDX);
     w.flyPhase = 1;
     w.flyT = 0;
-    w.biteHit = false;
     w.touchCd = Math.min(w.touchCd, 0.15);
     w.aggroT = MEGA_WORM.aggroTime;
     this.followMegaChain(w, 0);
@@ -17533,34 +17418,6 @@ export class World {
       SRC.WORM,
       this.worms.indexOf(w),
     );
-  }
-
-  /** Last plate: legs, a sprint and thrown acid. */
-  private spitAcid(w: Worm, p: Player): void {
-    if (w.acidT > 0) return;
-    const cfg = MEGA_WORM.legs;
-    if (!p.alive || p.cloakT > 0) return;
-    const dx = p.x - w.x;
-    const dy = p.y - w.y;
-    if (dx * dx + dy * dy > cfg.acidRange * cfg.acidRange) return;
-    w.acidT = cfg.acidInterval;
-    const base = Math.atan2(dy, dx);
-    const sx = w.x + Math.cos(base) * (w.hitR + 6);
-    const sy = w.y + Math.sin(base) * (w.hitR + 6);
-    for (let side = -1; side <= 1; side += 2) {
-      this.spawnHostileProjectile(
-        sx,
-        sy,
-        base + side * cfg.acidSpread,
-        cfg.acidSpeed,
-        cfg.acidRadius,
-        cfg.acidDamage,
-        3,
-        cfg.acidTtl,
-        this.worms.indexOf(w),
-      );
-    }
-    this.emit(EV.SENTRY_SHOOT, -1, sx, sy, base);
   }
 
   private updateWorm(w: Worm, dt: number): void {

@@ -6353,3 +6353,26 @@ pass cycle, snap, legs/acid, entrance handoff); `bossrush-check` passes; `npx ts
 `npm run build` and `npm run bench` clean. Headed pass at `?mega=1` and `?bossrush=1` after deploy.
 
 **Next:** a human boss-rush clear time per boss; revisit pass speed/range if the lane is too easy to dodge.
+
+## 2026-11-02 — Mega Worm is one damage sponge
+
+**Goal:** drop the remaining segmented behaviour: no head spider-bite, no plate breaks or promotion, no
+legs/acid phase and no split pieces. One body, one pool, damage on contact.
+
+- `damageMegaWorm` subtracts from `w.hp` wherever the hit lands. Removed nearest-plate routing,
+  `breakMegaNode`, `megaTotalHp` and the per-plate `segHp` writes; `headHp + segments * hpPerSegment`
+  still computes the same 206 total, so health is unchanged.
+- The pass no longer lands a maw snap. `megaTouch` on any plate is the only attack; the `biteHit`,
+  `snapRange`, `snapDamage`, `snapKnockback` and legs/acid fields are gone from the tuning.
+- Removed the last-plate legs speed, acid spit and `spitAcid`; the body always runs the straight pass at
+  `flyby.speed`.
+- `drawMegaWorm` reads one `w.hp / w.maxHp` fraction for every plate and the head, and no longer draws a
+  promotion flare or legs. Cracks and debris still read total damage.
+- `megaworm-check` now asserts a single pool: a body hit and a head hit drain the same health, plates and
+  head never move, contact on the lane hurts, and the boss dies at zero.
+
+**Verification:** `megaworm-check` and `bossrush-check` pass, `npx tsc --noEmit` clean, `npm run build`
+and `npm run bench` clean. Headed check at `?mega=1` / `?bossrush=1`.
+
+**Next:** record a human boss-rush clear time; the boss is now a straightforward grind and only the pass
+lane and its warning need balance attention.

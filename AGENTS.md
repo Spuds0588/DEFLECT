@@ -2553,7 +2553,7 @@ one second, then get surrounded" run the demos kept showing.
 - Portals are local-only (`AssaultPortal`, never in `SnapshotHazards`) and drawn by `drawAssaultPortals`,
   which shares the red-square language of campaign ingress. Do not reintroduce a direct gauntlet spawn.
 
-### D66 — Mega Worm is the first boss: a chain you break, not a bar you drain (decided 2026-11-02, built v0.1.133)
+### D66 — Mega Worm is the first boss: one straight sponge you out-position (decided 2026-11-02, built v0.1.133, revised v0.1.150)
 
 The Mega Worm is a boss built on the existing `Worm` entity, not a parallel creature. That is deliberate:
 every weapon, blast, hazard, bot scan and minimap read already walks `world.worms`, so the boss inherits
@@ -2581,28 +2581,21 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
   does. It is still hittable anywhere, and its attacks still target the arena. Ordinary worms, players,
   pickups, hazards and projectiles keep normal clamping. Do not add `bossEdgePad` back to the Mega Worm.
 
-- **Plates carry the health.** `segHp`/`segMaxHp` are per node (index 0 = head, k = segment k-1);
-  `w.hp` stays a sane total for anything that reads it. `hitR`/`segR` replaced the hard-coded `WORM`
-  radii in the worm collision sites, so a single loop serves both body sizes. Do not reintroduce a
-  `WORM.headRadius` test on a body that can be the boss.
-- **Damage follows the contact point.** `damageWorm(..., hitX, hitY)` routes to the nearest plate.
-  Shells pass their own position; melee and blasts fall back to the attacker's side. That is what makes
-  chewing one plate from both sides possible, and it is why the boss is not simply a large single pool.
-- **Chain rules.** `breakMegaNode` is the whole design: a head loss promotes the plate behind it (and
-  flares new eyes), a tail loss shortens the chain, and an interior loss truncates the body. The back
-  half behind a middle cut is shredded, never detached as a second boss: split pieces used to stall a
-  boss-rush stage and broke the straight-line read. Never kill the worm outright when only the head
-  breaks.
+- **One health pool (v0.1.150).** `w.hp`/`w.maxHp` are the only health. `damageMegaWorm` subtracts the
+  hit anywhere on the body: there is no nearest-plate routing, no plate break, no head promotion and no
+  detach. `headHp` + `segments * hpPerSegment` only computes the total (206); the plate count is
+  presentation. Do not reintroduce per-plate health or splitting: detached pieces once left a boss-rush
+  stage live forever.
+- **Damage is contact, and nothing else.** `megaTouch` on any plate is the whole attack. There is no maw
+  snap, no bite, no acid and no legs phase; the head is not a separate creature. Normal worms keep their
+  own `WORM` bite in `updateWorm`, which is a different branch.
 - **Straight passes, never a chase.** After the entrance, `updateMegaWorm` runs a three-state loop:
   **staged** (teleported `flyby.offscreen` beyond the lip, `flyby.warning` 1.6 s while the lane is drawn),
-  **pass** (heading locked at staging, `flyby.speed` 1020, contact damage plus one maw snap inside
-  `snapRange`), then **run-out** (`flyby.recoverTime`) before `stageMegaPass` teleports the body out for
+  **pass** (heading locked at staging, `flyby.speed` 1020, contact damage only), then **run-out**
+  (`flyby.recoverTime`) before `stageMegaPass` teleports the body out for
   the next lane. The lane aims at the last position the boss detected, latched in `stageMegaPass`. Do not
   re-latch it when the warning expires: the player must be able to step off a committed line. There is no
   orbit, no steering mid-pass and no ground chase.
-- **Legs.** The last plate grows legs: `flyby.legsSpeedMult` (1.15x) on the straight run and pairs of
-  acid on the existing hostile projectile type 3, so deflect, friendly fire and cover already apply. Do
-  not add a new projectile type for acid.
 - **Arrival cry (2026-11-02).** The entrance is a full lap (`sweep` 6.28) starting beyond the arena lip,
   and it ends on `EV.MEGA_CRY`: a MIDI-note bird phrase (`audio.megaCry`), a 16-unit screen shake, a flash
   and a pressure ring. The first straight pass follows the cry. The cry is an event, not a renderer
@@ -2613,12 +2606,12 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
   a scripted level is a registry row plus a schedule entry, never a new arrival path. A boss must never
   materialise beside the player: the Mega Worm uses its offscreen entrance; Idle Hands, Starfish and File
   Blob use near-player staging. `?mega=1` is the QA-only boot hook and never enters menus or `Snapshot`.
-- **Hex plates (2026-11-02).** Every plate, the head socket, debris flakes and leg tips trace
-  `traceMegaHex`; cracks radiate across the hex. Do not reintroduce square `fillRect`/`strokeRect`
-  plates.
-- **Read.** There is no health bar: cracks climb out of a plate's seams as it loses health, a nearly
-  dead plate shudders, and loose code debris drifts off the body in proportion to total damage. Tune
-  crack counts in `drawMegaPlate`; keep the plate frames and the eye mark so the head is always legible.
+- **Hex plates (2026-11-02).** Every plate, the head socket and debris flakes trace `traceMegaHex`;
+  cracks radiate across the hex. Do not reintroduce square `fillRect`/`strokeRect` plates.
+- **Read.** There is no health bar: every plate shows the same crack level from the single pool, loose
+  code debris drifts off the body in proportion to total damage, and the head keeps static eyes with no
+  promotion flare. Tune crack counts in `drawMegaPlate`; keep the plate frames and the eye mark so the
+  head is always legible.
 
 ### D72 — Staged mini-boss entrances freeze the room (built 2026-11-02)
 

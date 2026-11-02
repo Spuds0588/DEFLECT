@@ -9824,11 +9824,8 @@ export class Renderer {
     ctx.globalCompositeOperation = 'lighter';
 
     // Loose code: the closer the body is to fragmenting, the more debris drifts off it.
-    let stress = 0;
-    for (let k = 0; k < nodes; k++) {
-      const max = Math.max(1, w.segMaxHp[k]);
-      stress += 1 - Math.min(1, Math.max(0, w.segHp[k]) / max);
-    }
+    const totalFrac = Math.min(1, Math.max(0, w.hp) / Math.max(1, w.maxHp));
+    const stress = nodes * (1 - totalFrac);
     const debris = Math.min(22, Math.round(stress * 4));
     for (let k = 0; k < debris; k++) {
       const node = k % nodes;
@@ -9882,17 +9879,16 @@ export class Renderer {
       const seg = k - 1;
       const x = lerp(w.segPrevX[seg], w.segX[seg], alpha);
       const y = lerp(w.segPrevY[seg], w.segY[seg], alpha);
-      const frac = Math.min(1, Math.max(0, w.segHp[k]) / Math.max(1, w.segMaxHp[k]));
+      const frac = totalFrac;
       const size = w.segR * (1 - Math.min(0.26, k * 0.004));
       this.drawMegaPlate(x, y, w.segAngle[seg], size, frac, base, t, k);
     }
 
     const hx = lerp(w.prevX, w.x, alpha);
     const hy = lerp(w.prevY, w.y, alpha);
-    const headFrac = Math.min(1, Math.max(0, w.segHp[0]) / Math.max(1, w.segMaxHp[0]));
-    this.drawMegaPlate(hx, hy, w.angle, w.hitR, headFrac, base, t, -1);
+    this.drawMegaPlate(hx, hy, w.angle, w.hitR, totalFrac, base, t, -1);
 
-    // Eyes are the head read. A promoted or freshly detached head flares white.
+    // Eyes are the head read.
     ctx.save();
     ctx.translate(hx, hy);
     ctx.rotate(w.angle + Math.PI * 0.25);
@@ -9901,22 +9897,13 @@ export class Renderer {
     ctx.fillStyle = '#14030a';
     this.traceMegaHex(er * 0.62);
     ctx.fill();
-    const flare = w.eyeT > 0 ? 0.5 + 0.5 * Math.sin(t * 26) : 0;
-    ctx.fillStyle = w.eyeT > 0 ? '#ffffff' : '#ffe9e4';
+    ctx.fillStyle = '#ffe9e4';
     for (const ex of [-0.36, 0.36]) {
       ctx.save();
       ctx.translate(ex * er, -er * 0.14);
       this.traceMegaHex(er * 0.18);
       ctx.fill();
       ctx.restore();
-    }
-    if (flare > 0) {
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = flare * 0.6;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 3;
-      this.traceMegaHex(er * 1.1);
-      ctx.stroke();
     }
     ctx.restore();
 
@@ -9948,34 +9935,6 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(0, 0, ring, -0.78, 0.78);
         ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    // Last plate: eight legs, twitching faster than the body can turn.
-    if (w.legs) {
-      ctx.save();
-      ctx.translate(hx, hy);
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = '#ffd9cf';
-      ctx.lineWidth = 3;
-      for (let k = 0; k < 8; k++) {
-        const a = (k / 8) * Math.PI * 2 + Math.sin(t * 7 + k * 1.3) * 0.18;
-        const knee = w.hitR * 0.95;
-        const reach = w.hitR * (1.55 + 0.16 * Math.sin(t * 9 + k * 1.1));
-        ctx.globalAlpha = 0.62;
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(a) * w.hitR * 0.5, Math.sin(a) * w.hitR * 0.5);
-        ctx.lineTo(Math.cos(a + 0.4) * knee, Math.sin(a + 0.4) * knee);
-        ctx.lineTo(Math.cos(a) * reach, Math.sin(a) * reach);
-        ctx.stroke();
-        ctx.globalAlpha = 0.9;
-        ctx.fillStyle = base;
-        ctx.save();
-        ctx.translate(Math.cos(a) * reach, Math.sin(a) * reach);
-        this.traceMegaHex(4);
-        ctx.fill();
-        ctx.restore();
       }
       ctx.restore();
     }

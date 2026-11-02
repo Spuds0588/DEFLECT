@@ -1,4 +1,4 @@
-/** Mega Worm probe: straight body, off-map lane staging, plate damage, head promotion and the legs phase. */
+/** Mega Worm probe: one straight body, one health pool, off-map lane staging and contact-only damage. */
 import { GAUNTLET, MEGA_WORM, SIM_DT } from '../src/game/config';
 import { MINIBOSS, MINIBOSSES } from '../src/game/minibosses';
 import { ARENAS } from '../src/game/arenas';
@@ -10,11 +10,11 @@ const fail = (m: string): never => {
 };
 
 const arena = ARENAS.find((a) => a.id === 22) ?? ARENAS[0];
+const fullHp = MEGA_WORM.headHp + MEGA_WORM.segments * MEGA_WORM.hpPerSegment;
 
 function freshWorld(): { world: World; priv: any } {
   const world = new World('gauntlet', ['MEGA'], 0, arena);
   const priv = world as any;
-  // Clear the seeded floor so the boss math is the only thing under test.
   for (const w of world.worms) w.active = false;
   for (const v of world.viruses) v.active = false;
   for (const s of world.sentries) s.active = false;
@@ -31,13 +31,10 @@ function freshWorld(): { world: World; priv: any } {
   return { world, priv };
 }
 
-const nodeX = (w: Worm, k: number) => (k === 0 ? w.x : w.segX[k - 1]);
-const nodeY = (w: Worm, k: number) => (k === 0 ? w.y : w.segY[k - 1]);
-
 const outsideArena = (x: number, y: number) =>
   x < arena.bounds.left || x > arena.bounds.right || y < arena.bounds.top || y > arena.bounds.bottom;
 
-// --- spawn, straight body and hit routing -----------------------------------
+// --- spawn, one straight body, one health pool ------------------------------
 {
   const { world, priv } = freshWorld();
   const p = world.players[0];
@@ -45,14 +42,12 @@ const outsideArena = (x: number, y: number) =>
   if (!boss.mega) fail('the spawned body is not flagged mega');
   if (!outsideArena(boss.x, boss.y)) fail('the boss spawned inside the arena instead of offscreen');
   if (!(boss.entryT > 0)) fail('the boss skipped its entrance swim');
-  const nodes = boss.segCount + 1;
-  if (nodes !== MEGA_WORM.segments + 1) fail(`boss started with ${nodes} plates, expected ${MEGA_WORM.segments + 1}`);
-  if (!(boss.hp > 60)) fail(`boss health is only ${boss.hp}`);
+  if (boss.segCount !== MEGA_WORM.segments) fail(`boss started with ${boss.segCount} plates, expected ${MEGA_WORM.segments}`);
+  if (boss.hp !== fullHp) fail(`boss health is ${boss.hp}, expected one pool of ${fullHp}`);
+  if (boss.maxHp !== fullHp) fail('the boss max health is not the single pool');
   if (boss.hitR < MEGA_WORM.headRadius - 1) fail(`the boss head is ${boss.hitR}, expected ${MEGA_WORM.headRadius}`);
-  if (Math.abs(boss.segR - MEGA_WORM.segmentRadius) > 1) fail('the boss plates are not the tuned size');
 
-  // Rigid straight body: each plate sits one spacing behind the last, on the heading,
-  // and none of them bends toward an old trail.
+  // Rigid straight body: plates sit one spacing behind the last on the heading.
   const dx = Math.cos(boss.angle);
   const dy = Math.sin(boss.angle);
   for (let i = 0; i < boss.segCount; i++) {
@@ -61,37 +56,24 @@ const outsideArena = (x: number, y: number) =>
     if (Math.abs(got - want) > 2) fail(`plate ${i} sits ${got.toFixed(1)} from the head, expected ${want}`);
     const cross = (boss.segX[i] - boss.x) * dy - (boss.segY[i] - boss.y) * dx;
     if (Math.abs(cross) > 2) fail(`plate ${i} is off the straight heading by ${cross.toFixed(1)}`);
-    if (Math.abs(boss.segAngle[i] - boss.angle) > 0.001) fail(`plate ${i} does not share the head heading`);
   }
 
-  const mid = 6;
-  const before = boss.segHp[mid];
-  priv.damageWorm(boss, 1, 0, 0, 0, 0, nodeX(boss, mid), nodeY(boss, mid));
-  if (boss.segHp[mid] !== before - 1) fail('a shell did not land on the plate at the contact point');
-  if (boss.segHp[0] !== MEGA_WORM.headHp) fail('a hit on the body damaged the head instead');
-  if (boss.segCount + 1 !== nodes) fail('one point of damage broke a plate');
+  // A hit anywhere drains the same pool; the body never loses a plate or promotes a head.
+  const headX = boss.x;
+  const headY = boss.y;
+  priv.damageWorm(boss, 5, 0, 0, 0, 0, boss.segX[5], boss.segY[5]);
+  if (boss.hp !== fullHp - 5) fail(`a body hit left ${boss.hp} health, expected ${fullHp - 5}`);
+  if (boss.segCount !== MEGA_WORM.segments) fail('a hit changed the plate count');
+  if (Math.abs(boss.x - headX) > 0.001 || Math.abs(boss.y - headY) > 0.001) fail('a body hit moved the head');
+  priv.damageWorm(boss, 5, 0, 0, 0, 0, boss.x, boss.y);
+  if (boss.hp !== fullHp - 10) fail('a head hit did not drain the same pool');
+  if (boss.segCount !== MEGA_WORM.segments) fail('a head hit promoted a plate');
 
-  // --- a mid-chain cut shortens the body, it never splits ------------------
-  const cutHp = boss.segHp[mid];
-  priv.damageWorm(boss, cutHp, 0, 0, 0, 0, nodeX(boss, mid), nodeY(boss, mid));
-  const pieces = world.worms.filter((w) => w.active && w.mega) as Worm[];
-  if (pieces.length !== 1) fail(`a mid-chain break produced ${pieces.length} bosses instead of 1`);
-  if (boss.segCount + 1 !== mid) fail(`the cut left ${boss.segCount + 1} plates, expected ${mid}`);
-  if (boss.segHp[mid] !== 0) fail('the shredded back half kept its health');
-  if (boss.hp !== priv.megaTotalHp(boss)) fail('the total health did not follow the shortened body');
-
-  // --- head loss promotes the next plate ----------------------------------
-  const headBefore = boss.segCount;
-  const oldX = boss.x;
-  const oldY = boss.y;
-  priv.damageWorm(boss, boss.segHp[0], 0, 0, 0, 0, boss.x, boss.y);
-  if (!boss.active) fail('destroying the head killed the whole boss');
-  if (boss.segCount !== headBefore - 1) fail('the head was not replaced by the next plate');
-  if (Math.hypot(boss.x - oldX, boss.y - oldY) < 1) fail('the promoted head did not move onto the next plate');
-  if (!(boss.eyeT > 0)) fail('the promoted head did not flash its new eyes');
-  const stillMega = world.worms.filter((w) => w.active && w.mega).length;
-  if (stillMega !== 1) fail(`head promotion changed the boss count to ${stillMega}`);
-  console.log(JSON.stringify({ body: { plates: mid, bossHp: Math.round(boss.hp) } }));
+  const killsBefore = world.gauntletKills;
+  priv.damageWorm(boss, boss.hp, 0, 0, 0, 0, boss.x, boss.y);
+  if (boss.active) fail('the boss survived its pool reaching zero');
+  if (world.gauntletKills <= killsBefore) fail('the boss kill was not credited to the player');
+  console.log(JSON.stringify({ sponge: { hp: fullHp, plates: MEGA_WORM.segments, pool: true } }));
 }
 
 // --- the lane is latched when the pass is staged ----------------------------
@@ -111,7 +93,6 @@ const outsideArena = (x: number, y: number) =>
   }
   const anchoredX = boss.anchorX;
   const anchoredY = boss.anchorY;
-  // The player walks away after the warning: this lane must stay on the latched point.
   p.x += 620;
   p.y += 240;
   let sawPass = false;
@@ -136,14 +117,14 @@ const outsideArena = (x: number, y: number) =>
   console.log(JSON.stringify({ lane: { latched: true, straight, sawPass } }));
 }
 
-// --- pass cycle and the aimed maw snap --------------------------------------
+// --- pass cycle and contact-only damage ------------------------------------
 {
   const { world, priv } = freshWorld();
   const p = world.players[0];
   const boss: Worm = priv.spawnMegaWorm(p.x + 320, p.y - 60) ?? fail('the boss never spawned');
   boss.spawnT = 0;
   boss.entryT = 0;
-  boss.touchCd = 999; // contact off: only the pass's aimed snap may hurt the player
+  boss.touchCd = 0;
   p.hp = 40;
   p.iframes = 0;
 
@@ -168,60 +149,8 @@ const outsideArena = (x: number, y: number) =>
   if (!sawStagedAgain) fail('the boss never staged a second lane after a pass');
   if (!sawOutside) fail('the pass never left the arena bounds');
   if (maxDist < 300) fail('the boss barely moved during its pass cycle');
-  if (!(p.hp < 40)) fail('the pass snap never hit a player on the latched line');
-  console.log(JSON.stringify({ flight: { sawPass, sawRecover, straight: true, hp: p.hp } }));
-}
-
-// --- last plate: legs, speed and acid --------------------------------------
-{
-  const { world, priv } = freshWorld();
-  const p = world.players[0];
-  const boss: Worm = priv.spawnMegaWorm(p.x + 300, p.y) ?? fail('the boss never spawned');
-  boss.spawnT = 0;
-  boss.entryT = 0;
-  let guard = 0;
-  while (boss.segCount > 0 && guard++ < 40) {
-    const tail = boss.segCount;
-    priv.damageWorm(boss, boss.segHp[tail], 0, 0, 0, 0, nodeX(boss, tail), nodeY(boss, tail));
-  }
-  if (boss.segCount !== 0) fail(`the body never chewed down to one plate (${boss.segCount} left)`);
-
-  // The last plate fights as a straight runner too; give it a long lane so the pass
-  // cannot end inside the measurement.
-  boss.flyPhase = 1;
-  boss.flyT = 0;
-  boss.flyDX = 1;
-  boss.flyDY = 0;
-  boss.angle = 0;
-  boss.anchorX = boss.x + 6000;
-  boss.anchorY = boss.y;
-  priv.updateWorm(boss, SIM_DT);
-  if (!boss.legs) fail('the last plate never grew legs');
-  if (boss.hitR < 40) fail('the last plate shrank');
-  const px = boss.x;
-  const py = boss.y;
-  for (let i = 0; i < 4; i++) priv.updateWorm(boss, SIM_DT);
-  const moved = Math.hypot(boss.x - px, boss.y - py);
-  const legStep = MEGA_WORM.flyby.speed * MEGA_WORM.flyby.legsSpeedMult * SIM_DT * 3;
-  if (moved < legStep) fail(`the legs phase moved only ${moved.toFixed(1)} units in four frames`);
-  // Acid: park the player in range, clear the spit clock, then tick.
-  p.x = boss.x + 240;
-  p.y = boss.y;
-  p.hp = 40;
-  boss.acidT = 0;
-  for (const proj of world.projectiles) proj.active = false;
-  priv.updateWorm(boss, SIM_DT);
-  priv.updateWorm(boss, SIM_DT);
-  const acid = world.projectiles.filter((proj) => proj.active && proj.type === 3 && proj.owner === -1);
-  if (acid.length < 2) fail(`the legs phase threw ${acid.length} acid balls instead of a pair`);
-  if (acid[0].radius < MEGA_WORM.legs.acidRadius - 1) fail('acid balls are not boss-sized');
-  console.log(JSON.stringify({ legs: { speedMult: MEGA_WORM.flyby.legsSpeedMult, acid: acid.length, moved: Math.round(moved) } }));
-
-  // --- last plate dies ----------------------------------------------------
-  const killsBefore = world.gauntletKills;
-  priv.damageWorm(boss, boss.segHp[0], 0, 0, 0, 0, boss.x, boss.y);
-  if (boss.active) fail('the last plate did not die');
-  if (world.gauntletKills <= killsBefore) fail('the boss kill was not credited to the player');
+  if (!(p.hp < 40)) fail('the pass never touched a player standing on its lane');
+  console.log(JSON.stringify({ flight: { sawPass, sawRecover, contactHp: p.hp } }));
 }
 
 // --- mini-boss registry, ingress family and wave gate ----------------------
@@ -232,7 +161,6 @@ const outsideArena = (x: number, y: number) =>
     fail('no gauntlet wave gate schedules the Mega Worm');
   }
 
-  // A boss travels through the same ingress family as any other arrival.
   const { world, priv } = freshWorld();
   const p = world.players[0];
   if (world.worms.some((w) => w.active && w.bossKind >= 0)) fail('a mini-boss was already on the floor');
@@ -249,7 +177,6 @@ const outsideArena = (x: number, y: number) =>
     fail('the mini-boss arrived on top of the player');
   }
 
-  // The wave gate reads the schedule rather than a constant per boss.
   const gated = freshWorld();
   gated.world.gauntletT = (GAUNTLET.bossSchedule[0].wave - 1) * GAUNTLET.waveDuration + 1;
   for (let i = 0; i < 12; i++) gated.priv.updateGauntlet(SIM_DT);

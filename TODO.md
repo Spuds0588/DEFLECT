@@ -58,6 +58,7 @@ Formerly: 2026-11-02 (PORTS)
 - [ ] Give a sub-agent its own silhouette, a health pool and one readable attack; reuse the sentry family rather than adding a second AI controller
 - [ ] Keep sub-agent state local-only per D9: nothing in `Snapshot`, `SnapshotHazards` or the objective strip
 - [x] Rebuild the Mega Worm as one rigid straight body, staged off-map and committed to a latched straight pass (v0.1.149)
+- [x] Collapse the Mega Worm to one health pool with contact-only damage: no head snap, plate breaks, legs or split pieces (v0.1.150)
 - [ ] Headed boss-rush pass: one human clear of the full ladder, with time per boss recorded
 
 ---

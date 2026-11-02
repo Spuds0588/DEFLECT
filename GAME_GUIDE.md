@@ -604,26 +604,23 @@ the reveal finishes.
 ### Mega Worm
 
 The first boss. It starts beyond the arena edge and swims a full lap, then fights as one long straight
-body: a head with a chain of heavy plates laid out behind it. Every plate has its own health, so where you
-hit matters.
+body: a head with a chain of heavy plates laid out behind it. It is one damage sponge, not a segmented
+creature: every hit anywhere on the body drains the same bar, and nothing breaks off.
 
-- **It never splits.** A cut through the middle shortens the body and shreds the back half. You are always
-  fighting one worm, not two.
-- **Break the head** and the plate right behind it opens its eyes and takes over. You cannot decapitate
-  it; you can only shorten the head end the same way you shorten the tail.
+- **One health pool.** Where you hit does not matter. There is no weak plate, no head to break and no
+  second worm to split off; keep shooting the body and it dies.
 - **Straight passes.** It leaves the map entirely, then a dotted line appears through the last place it
-  saw you. The whole body runs that lane in a straight line, with one snap as the head goes past. The line
-  is fixed when it appears: step off it and the pass misses, because it cannot steer.
+  saw you. The whole body runs that lane in a straight line, and touching any plate hurts. The line is
+  fixed when it appears: step off it and the pass misses, because it cannot steer.
 - **Arrival cry.** The lap ends with a bird-like call that shakes the screen. That is the handoff, not the
   end of the fight: the first pass follows right after it, so keep moving through the cry.
-- **One plate left** and it grows legs: it runs faster, lunges with a fast bite, and spits acid in pairs.
-- Damage reads as cracks spreading across a plate and loose code drifting off the body. A nearly dead
-  plate shudders. There is no health bar.
+- Damage reads as cracks spreading across the plates and loose code drifting off the body. All plates
+  show the same damage. There is no health bar.
 - It flies above the floor: cover does not stop it, and it leaves the arena bounds on every pass. The
-  pressure is the lane and the plates, not a chase.
-- **Scale.** It is roughly three times its old size, with twice the plate and head health.
+  pressure is the lane and the collision, not a chase.
+- **Scale.** It is roughly three times its old size, with twice its old health.
 - **Hex plates.** The plates are hexagons, not square tiles. Cracks spread across the hex faces, and
-  loose code flakes off the body as the chain takes damage.
+  loose code flakes off the body as it takes damage.
 
 ## BOSS RUSH (single player and local co-op)
 

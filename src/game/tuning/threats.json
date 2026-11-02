@@ -138,50 +138,15 @@
       "handoff": 1.1,
       "roar": 1.5
     },
-    "bite": {
-      "range": 588,
-      "windup": 0.55,
-      "active": 0.2,
-      "recovery": 0.62,
-      "turnRate": 5,
-      "lungeSpeed": 520,
-      "damage": 2,
-      "knockback": 1400,
-      "cooldown": 6,
-      "reach": 132
-    },
-    "legs": {
-      "speedMult": 3.1,
-      "turnRate": 4.2,
-      "range": 990,
-      "windup": 0.4,
-      "active": 0.22,
-      "recovery": 0.34,
-      "turnRateBite": 9,
-      "lungeSpeed": 1100,
-      "damage": 2,
-      "knockback": 1500,
-      "cooldown": 2.6,
-      "reach": 102,
-      "acidInterval": 2.2,
-      "acidRange": 1600,
-      "acidSpeed": 380,
-      "acidRadius": 20,
-      "acidDamage": 1,
-      "acidTtl": 2.2,
-      "acidSpread": 0.24
-    },
+
+
     "flyby": {
       "warning": 1.6,
       "speed": 1020,
-      "legsSpeedMult": 1.15,
       "offscreen": 900,
       "angleJitter": 0.3,
       "exitRange": 1100,
-      "recoverTime": 1.1,
-      "snapRange": 340,
-      "snapDamage": 2,
-      "snapKnockback": 1400
+      "recoverTime": 1.1
     }
   },
   "BOSS_RUSH": {
