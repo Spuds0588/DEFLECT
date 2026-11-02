@@ -614,6 +614,14 @@ link is a `bridge`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   with `KITTY_TUTORIAL`: tap skill, then hold the power attack. Narration lines auto-advance; action
   steps wait for the input; `SKIP TUTORIAL` ends the lesson and the level continues on the same beat.
   The story box is DOM, live over play, and local-only; it never pauses `World` and never enters `Snapshot`.
+- **Campaign spine (decided 2026-11-02)**: the run is **island hopping**, one network at a time. Land, clear
+every infection you can find on that island, and the uplink opens the crossing to the next network. The
+infection is the enemy's footprint; the campaign's objective is to find and delete the **rogue AI agent**
+behind the spread, which sits at `ROOT` inside `THE SUCCESSOR`. Sector order, arena ids and crossing names
+are unchanged — they are the islands — and an island's clear condition is its infection count rather than a
+bare kill count, shared by the objective strip and the sector exit. This does not answer how the agent
+presents on screen. Detail and open questions live in `CAMPAIGN.md`; do not build a sector-select screen
+around it.
 
 ### D14 — Sweep.exe: broom push kit, clean core mark (built 2026-10-29)
 `SWEEP.EXE` is the fourth program and the roster's **shove** specialist. Identity: lime accent, an

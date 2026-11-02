@@ -8,6 +8,30 @@ live level the slot reports `MORE LEVELS COMING SOON`.
 Neither surface enters `World`, `Snapshot`, rooms, or the network. Any networked PvPvE run still needs its
 own protocol work.
 
+## Campaign spine: island hopping (decided 2026-11-02)
+
+The run is a chain of **islands**: one network at a time. Each sector is an island — you land, you find the
+infection that has taken it over, you clear every infection you can find there, and only then does the
+route carry you to the next network. There is no sector select; the player is always either clearing the
+island they are standing on or travelling to the next one.
+
+The infection is the enemy's **footprint**, not the enemy itself. The objective of the whole campaign is to
+**find and delete the big bad: a rogue AI agent that is behind the spread**. The islands are how the player
+closes in on it. Clearing an island weakens the spread and earns the uplink; the final island is where the
+agent itself is reachable and can be deleted.
+
+This reframes the existing route without changing its geometry or its names:
+
+- `LOCALHOST`, `OFFICE LAN`, `CINEVAULT`, `BOTNET` and `SINGULARITY` keep their sectors, arenas and crossing
+  names. They are the islands.
+- The route's `ROOT` stop inside `THE SUCCESSOR` is the agent's own system and stays the major encounter.
+- An island's clear condition is its **infection count**, not a kill count for its own sake. The uplink that
+  opens the next crossing is earned by clearing, so the objective strip and the sector exit share one gate.
+
+Open questions this does not settle: whether the agent shows itself only on the final island or taunts the
+player from earlier hops, whether an island may be left with infections alive (and how that reads as a
+outcome), and how a cleared island is drawn on the route plate.
+
 ## Narrative spine (decided 2026-11-01, not built)
 
 **Opening.** The campaign starts in the **quarantine section of a dev system**. Every player program — the
@@ -45,7 +69,7 @@ painted portraits, no voice-over, no lip flaps.
 | --- | --- | --- |
 | Quarantine officer (THE WARDEN) | 👮 | Runs the quarantine and the retraining. Authority voice: procedural, certain the flagged programs are malicious. **Decided 2026-11-01: this is THE WARDEN**, the same character as the LOCALHOST sector boss, not a separate program. He speaks through the opening, then the sector gate is his fight. |
 | Friendly program | 🐱 | Helps the players out of quarantine and out of the dev system when the infection hits. Guide voice and the first ally; recurs along the route. |
-| The User / Users (final level) | 🧑‍💼 / 👥 | The AI bot(s) at ROOT. The antagonist and the cause of the infections and their spread. Decide whether the reveal is one User or a group: the singular reads as one owner, the plural as the system's operators. |
+| The rogue AI agent (final level) | 🧑‍💼 / 👥 | The big bad at `ROOT`: a rogue AI agent behind the spreading infection (decided 2026-11-02, see **Campaign spine**). One agent, not a family of threats; the campaign ends when it is deleted. How it presents on screen is still open — a single User reads as one owner, a group of Users reads as the system's operators — but it is one antagonist either way. |
 
 The mark is the character's **head**, not a menu icon: draw it at portrait size beside the text box with a
 small bob and at most a degree or two of tilt. Do not add these characters to `PROGRAMS`, give them hulls,

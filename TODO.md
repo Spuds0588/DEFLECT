@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-02 (SPREADSHEET + CHAT)
+Last updated: 2026-11-02 (CAMPAIGN SPINE)
 
 ---
 
@@ -28,6 +28,17 @@ Last updated: 2026-11-02 (SPREADSHEET + CHAT)
 - [x] Hide the panel with `GAME UI`, loading and overlays; older peers degrade to `--`
 - [x] `npx tsc --noEmit` clean
 - [ ] Two-real-client pass: verify RTT, snapshot cadence, disconnect fallback and legacy-peer `--` state
+
+---
+
+## Campaign spine (2026-11-02)
+
+- [x] Record the island-hopping spine: clear each network's infections to earn its uplink, and end the run by finding and deleting the rogue AI agent behind the spread
+- [x] Reframe the antagonist row in `CAMPAIGN.md`: one rogue AI agent at `ROOT`, presentation still open
+- [ ] Per-island infection tally in the campaign run state (`src/game/saves.ts`), saved with the level
+- [ ] Gate the sector exit on that tally instead of the current kill count, and share the gate with the objective strip
+- [ ] Author the agent's presence across the hops and its `ROOT` encounter, keeping narration cosmetic per D13
+- [ ] Decide whether an island can be left with live infections, and how a cleared island reads on the route plate
 
 ---
 

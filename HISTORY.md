@@ -5044,3 +5044,30 @@ cleared lane, and neither variant is attached to a campaign node. Chat bubbles c
 
 **Next:** play both screens at full size; decide whether the sheet earns a formula-error or firewall-style
 sweep, and whether chat gains a pinned-message hazard.
+
+## 2026-11-02 — Campaign spine: island hopping (documentation only)
+
+**Goal:** record the designer's campaign direction so the route docs hold it instead of a future session's
+memory.
+
+- `CAMPAIGN.md` gains **Campaign spine: island hopping**: one network at a time — land, clear every
+  infection found on that island, earn the uplink, cross. The infection is the enemy's footprint, and the
+  campaign's objective is to find and delete the rogue AI agent behind the spread on the last island.
+- Reconciled with the existing five-sector route (`LOCALHOST` → `OFFICE LAN` → `CINEVAULT` → `BOTNET` →
+  `SINGULARITY`, ending at `ROOT` inside `THE SUCCESSOR`): the sectors become the islands and each island's
+  clear condition becomes its infection count instead of a bare kill count.
+- Reframed the antagonist row: one rogue AI agent, not a family of threats; how it presents on screen (one
+  User or a group of Users) stays open.
+- Recorded the questions the note leaves: whether an island can be left with infections alive, when the
+  agent shows itself across the hops, and how a cleared island reads on the route plate.
+- `AGENTS.md` D13 carries the spine as a decision and points at `CAMPAIGN.md`; `TODO.md` gains the forward
+  items for the tally, the exit gate and the final encounter.
+
+**Verification:** documentation only. No runtime, tuning, arena or protocol change, so no probe, build or
+bench run was needed and the version stamps stay at v0.1.124.
+
+**Limitations:** nothing is implemented. The campaign still reports `MORE LEVELS COMING SOON` after BUILD
+ROOT, and no run state carries an infection tally yet.
+
+**Next:** add the per-island infection tally to the campaign run state, then gate the sector exit on it so
+clearing an island is what opens the next crossing.
