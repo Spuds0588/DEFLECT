@@ -14505,12 +14505,6 @@ export class World {
     }
   }
 
-  private pushQueue(kind: number, count: number, at: number): number {
-    let n = at;
-    for (let i = 0; i < count && n < this.sentryQueue.length; i++) this.sentryQueue[n++] = kind;
-    return n;
-  }
-
   private spawnSentry(kind: 0 | 1 | 2 | 3, anchorX: number, anchorY: number, burst = false): boolean {
     let s: Sentry | null = null;
     for (let i = 0; i < this.sentries.length; i++) {

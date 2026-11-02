@@ -1039,4 +1039,3 @@ export interface AssaultPortal {
   emitT: number;
   emitInterval: number;
 }
-
