@@ -17121,14 +17121,6 @@ export class World {
     w.pinT = 0;
     w.legs = false;
     w.eyeT = 1.4;
-    w.whipT = 0;
-    w.whipCd = 1.8;
-    w.whipDir = 1;
-    w.whipHit = 0;
-    w.whipA = 0;
-    w.whipR = 0;
-    w.whipPivotX = w.x;
-    w.whipPivotY = w.y;
     w.acidT = MEGA_WORM.legs.acidInterval;
     w.biteT = 0;
     w.biteCd = MEGA_WORM.bite.cooldown * 0.6;
@@ -17137,26 +17129,19 @@ export class World {
     w.biteDirY = Math.sin(w.angle);
     w.segHp[0] = MEGA_WORM.headHp;
     w.segMaxHp[0] = MEGA_WORM.headHp;
-    // Arrive curled. The chain coils around the head instead of trailing straight out,
-    // so a boss scaled to 3x still lands in a footprint a room can hold. This is the
-    // arrival pose only: the follow rule unrolls it as the head moves.
-    const curl = MEGA_WORM.curl;
+    // One rigid straight body: every plate sits behind the head on its heading. The
+    // boss is offscreen for its entrance and for every staged pass, so the full length
+    // never has to fold into the room.
     const nodes = MEGA_WORM.maxSegments + 1;
-    let curlA = w.angle + Math.PI;
-    let curlR = MEGA_WORM.spacing * curl.start;
     for (let i = 0; i < nodes - 1; i++) {
-      // Arc-length step keeps neighbouring plates about one spacing apart on the spiral.
-      curlA += MEGA_WORM.spacing / Math.max(1, curlR);
-      curlR += MEGA_WORM.spacing * curl.grow;
-      const sx = w.x + Math.cos(curlA) * curlR;
-      const sy = w.y + Math.sin(curlA) * curlR;
+      const sx = w.x - Math.cos(w.angle) * MEGA_WORM.spacing * (i + 1);
+      const sy = w.y - Math.sin(w.angle) * MEGA_WORM.spacing * (i + 1);
       w.segX[i] = sx;
       w.segY[i] = sy;
       w.segPrevX[i] = sx;
       w.segPrevY[i] = sy;
-      w.segAngle[i] = Math.atan2(w.y - sy, w.x - sx);
-      const hp = i < w.segCount ? MEGA_WORM.hpPerSegment : 0;
-      w.segHp[i + 1] = hp;
+      w.segAngle[i] = w.angle;
+      w.segHp[i + 1] = i < w.segCount ? MEGA_WORM.hpPerSegment : 0;
       w.segMaxHp[i + 1] = MEGA_WORM.hpPerSegment;
     }
     w.maxHp = MEGA_WORM.headHp + w.segCount * MEGA_WORM.hpPerSegment;
@@ -17258,100 +17243,14 @@ export class World {
       return;
     }
 
-    const backFirst = s + 1;
-    const backLast = w.segCount - 1;
-    const backNodes = backLast - backFirst + 1;
+    // A cut through the middle shortens the body; the back half is shredded. There is
+    // only ever one Mega Worm: detached pieces used to leave a second boss on the floor,
+    // stall a boss-rush stage and break the straight-line read.
+    for (let k = node; k <= w.segCount; k++) w.segHp[k] = 0;
     w.segCount = s;
     w.legs = w.segCount === 0;
     w.hp = this.megaTotalHp(w);
-    if (backNodes >= 2) this.splitMegaPiece(w, backFirst, backLast);
-  }
-
-  /** The detached half becomes a boss in its own right, head at the old tail tip. */
-  private splitMegaPiece(parent: Worm, from: number, to: number): void {
-    let piece: Worm | null = null;
-    for (let i = 0; i < this.worms.length; i++) {
-      if (!this.worms[i].active) {
-        piece = this.worms[i];
-        break;
-      }
-    }
-    // No free body: the cut part is shredded rather than left standing.
-    if (!piece) return;
-    const nodes = to - from + 1;
-    piece.active = true;
-    piece.mega = true;
-    piece.bossKind = parent.bossKind;
-    piece.held = false;
-    piece.hitR = MEGA_WORM.headRadius;
-    piece.segR = MEGA_WORM.segmentRadius;
-    piece.shrink = 1;
-    piece.segCount = nodes - 1;
-    piece.x = parent.segX[to];
-    piece.y = parent.segY[to];
-    piece.prevX = piece.x;
-    piece.prevY = piece.y;
-    piece.vx = 0;
-    piece.vy = 0;
-    piece.kx = 0;
-    piece.ky = 0;
-    const inX = to > 0 ? parent.segX[to - 1] : parent.x;
-    const inY = to > 0 ? parent.segY[to - 1] : parent.y;
-    piece.angle = Math.atan2(inY - piece.y, inX - piece.x);
-    piece.phase = parent.phase + 1.7;
-    piece.flyPhase = 0;
-    piece.flyT = 0;
-    piece.flyCd = MEGA_WORM.flyby.openDelay * 0.6;
-    piece.flyDX = Math.cos(piece.angle);
-    piece.flyDY = Math.sin(piece.angle);
-    piece.roarT = 0;
-    piece.entryT = 0;
-    piece.entryA = 0;
-    piece.entryR = 0;
-    piece.spawnT = MEGA_WORM.spawnTime * 0.55;
-    piece.touchCd = 0.7;
-    piece.hitFlash = 0.22;
-    piece.infected = false;
-    piece.pinT = 0;
-    piece.aggroT = MEGA_WORM.aggroTime;
-    piece.anchorX = piece.x;
-    piece.anchorY = piece.y;
-    piece.patrolX = piece.x;
-    piece.patrolY = piece.y;
-    piece.eyeT = 1.2;
-    piece.whipT = 0;
-    piece.whipCd = 1.4;
-    piece.whipDir = 1;
-    piece.whipHit = 0;
-    piece.whipA = 0;
-    piece.whipR = 0;
-    piece.whipPivotX = piece.x;
-    piece.whipPivotY = piece.y;
-    piece.acidT = MEGA_WORM.legs.acidInterval;
-    piece.biteT = 0;
-    piece.biteCd = MEGA_WORM.bite.cooldown * 0.5;
-    piece.biteHit = false;
-    piece.biteDirX = Math.cos(piece.angle);
-    piece.biteDirY = Math.sin(piece.angle);
-    piece.segHp[0] = Math.max(1, parent.segHp[to + 1]);
-    let total = piece.segHp[0];
-    for (let j = 0; j < piece.segCount; j++) {
-      const oldSeg = to - 1 - j;
-      const sx = parent.segX[oldSeg];
-      const sy = parent.segY[oldSeg];
-      piece.segX[j] = sx;
-      piece.segY[j] = sy;
-      piece.segPrevX[j] = sx;
-      piece.segPrevY[j] = sy;
-      piece.segAngle[j] = parent.segAngle[oldSeg];
-      piece.segHp[j + 1] = Math.max(1, parent.segHp[oldSeg + 1]);
-      total += piece.segHp[j + 1];
-    }
-    for (let j = piece.segCount + 1; j < piece.segHp.length; j++) piece.segHp[j] = 0;
-    piece.maxHp = total;
-    piece.hp = total;
-    piece.legs = piece.segCount === 0;
-    this.emit(EV.WORM_HIT, -1, piece.x, piece.y, 3, 0, 0);
+    this.followMegaChain(w, 0);
   }
 
   private killMegaWorm(w: Worm, sourceSlot: number): void {
@@ -17374,7 +17273,6 @@ export class World {
     if (w.hitFlash > 0) w.hitFlash = Math.max(0, w.hitFlash - dt);
     if (w.touchCd > 0) w.touchCd = Math.max(0, w.touchCd - dt);
     if (w.biteCd > 0) w.biteCd = Math.max(0, w.biteCd - dt);
-    if (w.whipCd > 0) w.whipCd = Math.max(0, w.whipCd - dt);
     if (w.acidT > 0) w.acidT = Math.max(0, w.acidT - dt);
     if (w.eyeT > 0) w.eyeT = Math.max(0, w.eyeT - dt);
     if (w.flyCd > 0) w.flyCd = Math.max(0, w.flyCd - dt);
@@ -17402,32 +17300,6 @@ export class World {
     const pdx = p.x - w.x;
     const pdy = p.y - w.y;
     const dist = Math.hypot(pdx, pdy);
-    // The tail sweep is the one committed ground move in a flyover kit: it waits for a
-    // long cooldown, refuses to start while a pass is due, and needs a body near the
-    // back half. The head freezes and the chain is dragged around the pivot.
-    if (w.whipT > 0) {
-      this.stepMegaWhip(w, dt);
-      this.followMegaChain(w, dt);
-      this.megaTouch(w, p);
-      return;
-    }
-    if (
-      w.flyPhase === 0 &&
-      w.whipCd <= 0 &&
-      w.segCount >= 3 &&
-      w.flyCd > MEGA_WORM.whip.minLead &&
-      p.alive &&
-      p.cloakT <= 0
-    ) {
-      const tx = this.megaNodeX(w, w.segCount);
-      const ty = this.megaNodeY(w, w.segCount);
-      if (Math.hypot(p.x - tx, p.y - ty) < MEGA_WORM.whip.triggerRange) {
-        this.beginMegaWhip(w, pdx, pdy);
-        this.stepMegaWhip(w, dt);
-        this.followMegaChain(w, dt);
-        return;
-      }
-    }
     if (p.alive && p.cloakT <= 0 && dist < MEGA_WORM.aggroRadius) {
       w.aggroT = MEGA_WORM.aggroTime;
     } else {
@@ -17435,23 +17307,31 @@ export class World {
     }
 
     const fly = MEGA_WORM.flyby;
+    // The whole movement model: hold outside the floor on a latched lane, then run it
+    // straight through the arena. The lane is aimed where the boss last detected a
+    // player, so moving after the warning is a real dodge.
     if (w.flyPhase === 0) {
-      // A wide circuit outside the fight, then a committed pass through the target.
-      // The orbit point keeps moving, so a long kiosk loop does not repeat one angle.
-      const orbit = fly.orbitRadius;
-      const a = w.phase * fly.orbitRate;
-      const tx = p.x + Math.cos(a) * orbit;
-      const ty = p.y + Math.sin(a) * orbit;
-      this.steerMega(w, tx, ty, fly.cruiseSpeed, fly.turnRate, dt);
-      if (w.flyCd <= 0 && p.alive && p.cloakT <= 0) this.beginMegaFlyby(w, p);
-    } else if (w.flyPhase === 1) {
+      w.flyT += dt;
+      w.vx = 0;
+      w.vy = 0;
+      this.followMegaChain(w, dt);
+      if (w.flyT >= fly.warning) this.beginMegaPass(w);
+      return;
+    }
+    if (w.flyPhase === 1) {
       w.flyT += dt;
       const speed = fly.speed * (w.legs ? fly.legsSpeedMult : 1);
       w.vx = w.flyDX * speed;
       w.vy = w.flyDY * speed;
-      this.faceMega(w, Math.atan2(w.flyDY, w.flyDX), fly.faceRate, dt);
+      w.x += (w.vx + w.kx) * dt;
+      w.y += (w.vy + w.ky) * dt;
+      w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
+      w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
+      this.followMegaChain(w, dt);
+      this.megaTouch(w, p);
+      if (w.legs) this.spitAcid(w, p);
       if (!w.biteHit && p.alive && p.cloakT <= 0 && dist < fly.snapRange) {
-        // One maw pass per committed run. The body still hurts on contact; this is the
+        // One maw snap per committed run. The body still hurts on contact; this is the
         // aimed bite that makes a pass worth dodging rather than merely enduring.
         const d = dist || 1;
         w.biteHit = true;
@@ -17467,32 +17347,23 @@ export class World {
           this.worms.indexOf(w),
         );
       }
-      const passed = (w.x - p.x) * w.flyDX + (w.y - p.y) * w.flyDY > fly.exitRange;
-      if (passed || w.flyT >= fly.passTime) {
+      const passed = (w.x - w.anchorX) * w.flyDX + (w.y - w.anchorY) * w.flyDY > fly.exitRange;
+      if (passed) {
         w.flyPhase = 2;
         w.flyT = 0;
       }
-    } else {
-      w.flyT += dt;
-      const speed = fly.speed * fly.exitSpeedMult;
-      w.vx = w.flyDX * speed;
-      w.vy = w.flyDY * speed;
-      this.faceMega(w, Math.atan2(w.flyDY, w.flyDX), fly.faceRate, dt);
-      if (w.flyT >= fly.recoverTime) {
-        w.flyPhase = 0;
-        w.flyT = 0;
-        w.flyCd = fly.cooldown * (w.legs ? 0.55 : 1);
-      }
+      return;
     }
-
-    // Flight has no arena clamp: the head can leave the floor on a pass and come back.
+    // Off the far lip: keep running straight out, then teleport and stage the next lane.
+    w.flyT += dt;
+    w.vx = w.flyDX * fly.speed;
+    w.vy = w.flyDY * fly.speed;
     w.x += (w.vx + w.kx) * dt;
     w.y += (w.vy + w.ky) * dt;
     w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
     w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
     this.followMegaChain(w, dt);
-    this.megaTouch(w, p);
-    if (w.legs) this.spitAcid(w, p);
+    if (w.flyT >= fly.recoverTime) this.stageMegaPass(w, p);
   }
 
   /**
@@ -17525,13 +17396,14 @@ export class World {
     if (allowTouch) this.megaTouch(w, this.threatTarget(w.x, w.y));
     if (w.entryT <= 0) {
       w.entryT = 0;
-      w.flyPhase = 0;
-      w.flyT = 0;
-      w.flyCd = cfg.handoff;
       // The lap ends in a bird cry: the event owns the audio and the screen shake, the
       // roar timer owns the maw/ring beat that was already here.
       this.emit(EV.MEGA_CRY, -1, w.x, w.y, w.hitR);
       w.roarT = cfg.roar;
+      // The first straight run leaves from the entrance; later passes teleport off-map.
+      const target = this.threatTarget(w.x, w.y);
+      this.latchMegaTarget(w, target);
+      this.beginMegaPass(w);
     }
   }
 
@@ -17551,124 +17423,84 @@ export class World {
     w.angle += Math.max(-turn, Math.min(turn, diff));
   }
 
-  /** Commit to a pass: lock a direction through the target and keep it until the exit. */
-  private beginMegaFlyby(w: Worm, p: Player): void {
-    const fly = MEGA_WORM.flyby;
-    const side = Math.sin(w.phase * 1.7) >= 0 ? 1 : -1;
-    const a = Math.atan2(p.y - w.y, p.x - w.x) + side * fly.angleOffset;
-    w.flyDX = Math.cos(a);
-    w.flyDY = Math.sin(a);
+  /**
+   * Every plate hangs straight behind the head on the locked heading. There is no follow
+   * lag and no coil: the silhouette is one rigid line, and a pass reads as a single body
+   * crossing the room instead of a snake turning. Plates still ignore cover and the
+   * arena lip, which is why the body can be staged off the map.
+   */
+  private followMegaChain(w: Worm, _dt: number): void {
+    const dx = Math.cos(w.angle);
+    const dy = Math.sin(w.angle);
+    for (let i = 0; i < w.segCount; i++) {
+      const sx = w.x - dx * MEGA_WORM.spacing * (i + 1);
+      const sy = w.y - dy * MEGA_WORM.spacing * (i + 1);
+      w.segPrevX[i] = w.segX[i];
+      w.segPrevY[i] = w.segY[i];
+      w.segX[i] = sx;
+      w.segY[i] = sy;
+      w.segAngle[i] = w.angle;
+    }
+  }
+
+  /** Remember the position the boss last detected; passes aim at this, not at the player now. */
+  private latchMegaTarget(w: Worm, p: Player): void {
+    if (p && p.alive && p.cloakT <= 0) {
+      w.anchorX = p.x;
+      w.anchorY = p.y;
+    }
+  }
+
+  /**
+   * Commit a straight run through the point latched at staging. The lane is fixed when
+   * the warning appears, so walking away during the telegraph is a real dodge.
+   */
+  private beginMegaPass(w: Worm): void {
+    const dx = w.anchorX - w.x;
+    const dy = w.anchorY - w.y;
+    const d = Math.hypot(dx, dy) || 1;
+    w.flyDX = dx / d;
+    w.flyDY = dy / d;
+    w.angle = Math.atan2(w.flyDY, w.flyDX);
     w.flyPhase = 1;
     w.flyT = 0;
     w.biteHit = false;
+    w.touchCd = Math.min(w.touchCd, 0.15);
     w.aggroT = MEGA_WORM.aggroTime;
-    w.biteCd = fly.cooldown;
+    this.followMegaChain(w, 0);
   }
 
-  private followMegaChain(w: Worm, dt: number): void {
+  /** Teleport fully off the map and line the next straight run up on the last detected point. */
+  private stageMegaPass(w: Worm, p: Player): void {
+    const fly = MEGA_WORM.flyby;
+    const b = this.arena.bounds;
+    const half = Math.max(b.right - b.left, b.bottom - b.top) * 0.5;
+    this.latchMegaTarget(w, p);
+    const toTarget = Math.atan2(w.anchorY - this.centerY, w.anchorX - this.centerX);
+    const side = Math.sin(w.phase * 1.7) >= 0 ? 1 : -1;
+    const from = toTarget + Math.PI + side * fly.angleJitter;
+    const reach = half + MEGA_WORM.headRadius + fly.offscreen;
+    w.x = this.centerX + Math.cos(from) * reach;
+    w.y = this.centerY + Math.sin(from) * reach;
+    w.prevX = w.x;
+    w.prevY = w.y;
+    w.vx = 0;
+    w.vy = 0;
+    w.kx = 0;
+    w.ky = 0;
+    w.angle = Math.atan2(w.anchorY - w.y, w.anchorX - w.x);
+    w.flyPhase = 0;
+    w.flyT = 0;
+    w.touchCd = 0;
+    w.eyeT = Math.max(w.eyeT, 0.45);
+    this.followMegaChain(w, 0);
+    // No interpolation across a teleport.
     for (let i = 0; i < w.segCount; i++) {
       w.segPrevX[i] = w.segX[i];
       w.segPrevY[i] = w.segY[i];
-      const ax = i === 0 ? w.x : w.segX[i - 1];
-      const ay = i === 0 ? w.y : w.segY[i - 1];
-      const dx = ax - w.segX[i];
-      const dy = ay - w.segY[i];
-      const d = Math.hypot(dx, dy);
-      if (d > 0.001) {
-        const targetX = ax - (dx / d) * MEGA_WORM.spacing;
-        const targetY = ay - (dy / d) * MEGA_WORM.spacing;
-        const k = Math.min(1, MEGA_WORM.followRate * dt);
-        w.segX[i] += (targetX - w.segX[i]) * k;
-        w.segY[i] += (targetY - w.segY[i]) * k;
-        w.segAngle[i] = Math.atan2(ay - w.segY[i], ax - w.segX[i]);
-      }
-      // Plates hang above the floor too: no bounds clamp and no cover resolve, so the
-      // chain can trail over a pillar or past the arena lip instead of bunching up.
     }
   }
 
-  /** Start a committed swing: the head curls back, then drags the chain through an arc. */
-  private beginMegaWhip(w: Worm, dx: number, dy: number): void {
-    const cfg = MEGA_WORM.whip;
-    const pivot = Math.min(4, w.segCount);
-    w.whipT = cfg.windup + cfg.active + cfg.recovery;
-    w.whipCd = cfg.cooldown;
-    w.whipHit = 0;
-    w.whipPivotX = this.megaNodeX(w, pivot);
-    w.whipPivotY = this.megaNodeY(w, pivot);
-    w.whipA = Math.atan2(w.y - w.whipPivotY, w.x - w.whipPivotX);
-    w.whipR = Math.max(240, Math.hypot(w.x - w.whipPivotX, w.y - w.whipPivotY));
-    const cross = Math.cos(w.angle) * dy - Math.sin(w.angle) * dx;
-    w.whipDir = cross >= 0 ? -1 : 1;
-  }
-
-  private stepMegaWhip(w: Worm, dt: number): void {
-    const cfg = MEGA_WORM.whip;
-    const total = cfg.windup + cfg.active + cfg.recovery;
-    const elapsed = total - w.whipT;
-    w.whipT = Math.max(0, w.whipT - dt);
-    let a = w.whipA;
-    let live = false;
-    if (elapsed < cfg.windup) {
-      a = w.whipA - w.whipDir * cfg.curl * (elapsed / cfg.windup);
-      w.vx = 0;
-      w.vy = 0;
-    } else if (elapsed < cfg.windup + cfg.active) {
-      const raw = (elapsed - cfg.windup) / cfg.active;
-      const e = raw * raw * (3 - 2 * raw);
-      a = w.whipA - w.whipDir * cfg.curl + w.whipDir * cfg.sweepArc * e;
-      live = true;
-      w.vx = 0;
-      w.vy = 0;
-    } else {
-      a = w.whipA - w.whipDir * cfg.curl + w.whipDir * cfg.sweepArc;
-      w.vx = 0;
-      w.vy = 0;
-    }
-    w.x = w.whipPivotX + Math.cos(a) * w.whipR;
-    w.y = w.whipPivotY + Math.sin(a) * w.whipR;
-    if (!live) return;
-
-    const nodes = w.segCount + 1;
-    for (let i = 0; i < this.players.length; i++) {
-      const p = this.players[i];
-      if (!p.active || !p.alive || p.cloakT > 0 || p.iframes > 0) continue;
-      if ((w.whipHit & (1 << i)) !== 0) continue;
-      let hit = false;
-      for (let k = 0; k < nodes; k++) {
-        const nx = this.megaNodeX(w, k);
-        const ny = this.megaNodeY(w, k);
-        const r = (k === 0 ? w.hitR : w.segR) + PLAYER.radius + 6;
-        const ddx = p.x - nx;
-        const ddy = p.y - ny;
-        if (ddx * ddx + ddy * ddy <= r * r) {
-          hit = true;
-          break;
-        }
-      }
-      if (!hit) continue;
-      // Thrown along the sweep, not straight out: the arc is what carries a body.
-      const rx = p.x - w.whipPivotX;
-      const ry = p.y - w.whipPivotY;
-      const d = Math.hypot(rx, ry) || 1;
-      const kx = (-ry / d) * w.whipDir;
-      const ky = (rx / d) * w.whipDir;
-      w.whipHit |= 1 << i;
-      w.aggroT = MEGA_WORM.aggroTime;
-      this.damagePlayer(
-        p,
-        cfg.damage,
-        -1,
-        kx,
-        ky,
-        cfg.knockback,
-        SRC.WORM,
-        this.worms.indexOf(w),
-      );
-    }
-  }
-
-  /** Body contact still hurts: the boss is a wall of plates, not a bag of health. */
   private megaTouch(w: Worm, p: Player): void {
     if (!p.alive || p.cloakT > 0 || w.touchCd > 0) return;
     const nodes = w.segCount + 1;

@@ -6326,3 +6326,30 @@ five bosses; `storm-check` and `bossrush-check` pass, `npm run build` clean, `np
 
 **Verification:** `npm run build` clean, `idlehands-check` passes, `git diff --check` clean; the local dev
 build was checked at `?hands=1` for a steady palm across frames, and the change was shipped to Pages.
+
+## 2026-11-02 — Mega Worm: straight body, off-map passes
+
+**Goal:** the follow/split chain made the boss hard to read, left split pieces that could stall a
+boss-rush stage, and dragged a tail whip the body no longer needed. Rebuild movement around a straight
+body that teleports outside the map and runs a locked lane through the last detected player position.
+
+- `followMegaChain` is now rigid: every plate is placed one `MEGA_WORM.spacing` behind the head on its
+  heading, with no follow lag or coil. The spawn spiral is gone; the body is laid straight behind the head.
+- `updateMegaWorm` is a three-state loop: staged (offscreen, `flyby.warning` 1.6 s, dotted lane drawn),
+  pass (`flyby.speed` 1020, heading locked, contact and one maw snap), run-out (`flyby.recoverTime` 1.1 s),
+  then `stageMegaPass` teleports the whole body outside and latches the next lane. The lane is latched at
+  staging, not at launch, so walking off the line during the warning is a real dodge.
+- `breakMegaNode` no longer splits. A middle cut truncates the body and shreds the back half; head loss
+  still promotes the next plate and a tail cut still shortens the chain. Exactly one Mega Worm exists.
+- Removed the tail sweep (`whip`) and its tuning, the orbit/climb flyby fields and `splitMegaPiece`.
+  `flyby` now holds `warning`, `speed`, `legsSpeedMult`, `offscreen`, `angleJitter`, `exitRange`,
+  `recoverTime` and the snap values.
+- The entrance arc and roar are unchanged; it now hands off directly into the first straight pass.
+- `drawMegaWorm` draws the staged lane as a dotted line through the latched point, with a target ring that
+  brightens as the pass arms.
+
+**Verification:** `.tmp/megaworm-check.ts` passes (straight plates, latched lane, no split, head promotion,
+pass cycle, snap, legs/acid, entrance handoff); `bossrush-check` passes; `npx tsc --noEmit` clean;
+`npm run build` and `npm run bench` clean. Headed pass at `?mega=1` and `?bossrush=1` after deploy.
+
+**Next:** a human boss-rush clear time per boss; revisit pass speed/range if the lane is too easy to dodge.

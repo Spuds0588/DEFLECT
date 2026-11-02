@@ -9849,6 +9849,34 @@ export class Renderer {
       ctx.restore();
     }
 
+    // Staged lane: a dotted line through the last detected position, brightening as the
+    // pass arms. The body itself is offscreen behind it.
+    const warn = MEGA_WORM.flyby.warning;
+    if (w.flyPhase === 0 && w.flyT < warn && w.roarT <= 0) {
+      const u = Math.min(1, w.flyT / Math.max(0.001, warn));
+      const dx = Math.cos(w.angle);
+      const dy = Math.sin(w.angle);
+      const laneX = w.anchorX + dx * 700;
+      const laneY = w.anchorY + dy * 700;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = base;
+      ctx.globalAlpha = 0.12 + 0.26 * u;
+      ctx.lineWidth = 3 + 3 * u;
+      ctx.setLineDash([18, 16]);
+      ctx.beginPath();
+      ctx.moveTo(w.x, w.y);
+      ctx.lineTo(laneX, laneY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.2 + 0.4 * u;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(w.anchorX, w.anchorY, 24 + 12 * u, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     for (let k = nodes - 1; k >= 1; k--) {
       if (k >= builtNodes) continue;
       const seg = k - 1;
@@ -9949,28 +9977,6 @@ export class Renderer {
         ctx.fill();
         ctx.restore();
       }
-      ctx.restore();
-    }
-
-    // The swing itself: a hot arc around the pivot while the whip is live.
-    if (w.whipT > 0) {
-      const a1 = Math.atan2(hy - w.whipPivotY, hx - w.whipPivotX);
-      const lo = Math.min(w.whipA, a1);
-      const hi = Math.max(w.whipA, a1);
-      ctx.save();
-      ctx.translate(w.whipPivotX, w.whipPivotY);
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = base;
-      ctx.globalAlpha = 0.26;
-      ctx.lineWidth = 7;
-      ctx.beginPath();
-      ctx.arc(0, 0, w.whipR, lo, hi);
-      ctx.stroke();
-      ctx.globalAlpha = 0.5;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(0, 0, w.whipR, lo, hi);
-      ctx.stroke();
       ctx.restore();
     }
 

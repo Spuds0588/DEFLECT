@@ -128,7 +128,6 @@
     "touchCooldown": 1.2,
     "knockback": 1300,
     "knockDrag": 6,
-    "curl": { "start": 0.85, "grow": 0.12 },
     "entrance": {
       "offscreen": 680,
       "time": 6.8,
@@ -138,19 +137,6 @@
       "turnRate": 1.6,
       "handoff": 1.1,
       "roar": 1.5
-    },
-    "whip": {
-      "range": 1044,
-      "windup": 0.95,
-      "active": 0.95,
-      "recovery": 0.8,
-      "cooldown": 7.5,
-      "damage": 1,
-      "knockback": 1150,
-      "sweepArc": 2.2,
-      "curl": 0.5,
-      "triggerRange": 460,
-      "minLead": 0.9
     },
     "bite": {
       "range": 588,
@@ -186,23 +172,16 @@
       "acidSpread": 0.24
     },
     "flyby": {
-      "speed": 760,
-      "cruiseSpeed": 300,
-      "turnRate": 1.5,
-      "faceRate": 3.2,
-      "orbitRadius": 1300,
-      "orbitRate": 0.45,
-      "openDelay": 0.9,
-      "angleOffset": 0.18,
+      "warning": 1.6,
+      "speed": 1020,
+      "legsSpeedMult": 1.15,
+      "offscreen": 900,
+      "angleJitter": 0.3,
+      "exitRange": 1100,
+      "recoverTime": 1.1,
       "snapRange": 340,
       "snapDamage": 2,
-      "snapKnockback": 1400,
-      "exitRange": 900,
-      "passTime": 3.4,
-      "recoverTime": 1.2,
-      "exitSpeedMult": 0.85,
-      "cooldown": 1.3,
-      "legsSpeedMult": 1.15
+      "snapKnockback": 1400
     }
   },
   "BOSS_RUSH": {

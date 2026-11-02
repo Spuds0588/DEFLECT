@@ -2566,16 +2566,16 @@ is the only entry point. Assault family 3 carries the id in its existing `kind` 
 delivered by the same edge portal as a sentry, worm or virus and can be scheduled by any wave or level.
 
 - **Scale pass (v0.1.143).** The Mega Worm is a 3x silhouette: `headRadius` 138, `segmentRadius` 99,
-  `spacing` 168, with whip/bite/leg reach scaled to match, health doubled so it still reads as a boss, and
-  a slower turn. It **arrives curled** (`MEGA_WORM.curl`): `spawnMegaWorm` lays the opening chain on an
-  arc-length spiral around the head, so a body this long lands in a compact footprint. The coil is the
-  arrival pose only; `followMegaChain` unrolls it as the head moves. Do not restore the straight-line
-  spawn without measuring the footprint, or the body strings across the whole arena.
+  `spacing` 168, with health doubled so it still reads as a boss. Health and radii are settled; do not
+  change them without explicit approval.
+- **One rigid straight body (2026-11-02).** `followMegaChain` places every plate one `spacing` behind the
+  previous one on the head's heading. There is no follow lag, no coil and no bend: a pass reads as one
+  body crossing the room. Because the body is only ever laid out off the floor, the length never has to
+  fold into an arena. Do not restore the spiral arrival or the follow rule.
 - **Offscreen entrance (2026-11-02).** `spawnMegaWorm` places the head `entrance.offscreen` beyond the
   arena's longest half-axis, then runs a 6.2 s arc around the arena center and inward to
-  `entrance.endRadiusMult` before handing off to the normal flight loop. It does no bite, whip or acid
-  during the entrance. Split halves start already in combat and skip the entrance. Do not clamp the head
-  back inside at spawn or restore the old assembly wait.
+  `entrance.endRadiusMult` before handing off into the first straight pass. It does no bite or acid
+  during the entrance. Do not clamp the head back inside at spawn or restore the old assembly wait.
 - **The Mega Worm flies.** It has no arena clamp and no cover resolve: the head and every plate can
   leave the floor on a pass, and the camera gets `CAMERA.bossVoidMargin` to look past the lip while it
   does. It is still hittable anywhere, and its attacks still target the arena. Ordinary worms, players,
@@ -2589,30 +2589,25 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
   Shells pass their own position; melee and blasts fall back to the attacker's side. That is what makes
   chewing one plate from both sides possible, and it is why the boss is not simply a large single pool.
 - **Chain rules.** `breakMegaNode` is the whole design: a head loss promotes the plate behind it (and
-  flares new eyes), a tail loss shortens the chain, and an interior loss splits the chain. The detached
-  back half becomes its own boss with its head at the old tail tip, provided it holds at least two
-  plates; a single detached plate is shredded rather than left as a headless body. Splits take free pool
-  slots, so a cut with no room is shredded too. Never kill the worm outright when only the head breaks.
-- **Flyby, not a chase.** After the entrance, `updateMegaWorm` runs a three-phase flight: a wide orbit,
-  a committed pass through the target's position, then a climb-out. The pass locks `flyDX`/`flyDY` at commit, moves at
-  `flyby.speed`, and lands one aimed maw snap inside `snapRange`; body contact is still a separate touch
-  clock. The orbit point keeps moving, so the boss re-enters from a new angle. Do not restore the old
-  ground whip/bite chase: a 3x body cannot navigate cover. The one committed ground move is the slow tail
-  sweep below.
-- **Legs.** The last plate grows legs: 3.1x speed, a fast latched lunge bite and pairs of acid on the
-  existing hostile projectile type 3, so deflect, friendly fire and cover already apply. Do not add a
-  new projectile type for acid.
+  flares new eyes), a tail loss shortens the chain, and an interior loss truncates the body. The back
+  half behind a middle cut is shredded, never detached as a second boss: split pieces used to stall a
+  boss-rush stage and broke the straight-line read. Never kill the worm outright when only the head
+  breaks.
+- **Straight passes, never a chase.** After the entrance, `updateMegaWorm` runs a three-state loop:
+  **staged** (teleported `flyby.offscreen` beyond the lip, `flyby.warning` 1.6 s while the lane is drawn),
+  **pass** (heading locked at staging, `flyby.speed` 1020, contact damage plus one maw snap inside
+  `snapRange`), then **run-out** (`flyby.recoverTime`) before `stageMegaPass` teleports the body out for
+  the next lane. The lane aims at the last position the boss detected, latched in `stageMegaPass`. Do not
+  re-latch it when the warning expires: the player must be able to step off a committed line. There is no
+  orbit, no steering mid-pass and no ground chase.
+- **Legs.** The last plate grows legs: `flyby.legsSpeedMult` (1.15x) on the straight run and pairs of
+  acid on the existing hostile projectile type 3, so deflect, friendly fire and cover already apply. Do
+  not add a new projectile type for acid.
 - **Arrival cry (2026-11-02).** The entrance is a full lap (`sweep` 6.28) starting beyond the arena lip,
   and it ends on `EV.MEGA_CRY`: a MIDI-note bird phrase (`audio.megaCry`), a 16-unit screen shake, a flash
-  and a pressure ring. `entrance.handoff` then holds the first pass for 1.1 s. The cry is an event, not a
-  renderer timer, so a guest and the host hear the same beat; keep it out of `Snapshot` like every other
-  local cue.
-- **Tail sweep.** The dormant whip fields are now the one slow, committed ground attack. It only starts
-  while the boss is orbiting (`flyPhase 0`), the pass clock has at least `whip.minLead` left, three or more
-  plates remain, and a body is within `whip.triggerRange` of the tail tip. The head freezes and the chain
-  is dragged through `whip.sweepArc` over `windup` + `active` (0.95 s each), dealing one and throwing along
-  the arc, never toward the caster; `whip.cooldown` (7.5 s) gates the next one. Do not turn it into a
-  chase: it is the reward for standing near the back half while the head is busy.
+  and a pressure ring. The first straight pass follows the cry. The cry is an event, not a renderer
+  timer, so a guest and the host hear the same beat; keep it out of `Snapshot` like every other local
+  cue.
 - **Arrival is data.** `GAUNTLET.bossSchedule` entries are `{ kind, wave, repeatStep }`; each gate fires
   once per matching wave and is skipped while that kind is already live. Adding a boss, a harder repeat or
   a scripted level is a registry row plus a schedule entry, never a new arrival path. A boss must never
@@ -2629,7 +2624,7 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
 
 The four staged bosses — File Blob, Mega Worm, Idle Hands and Starfish — own a deliberately longer entrance
 cut-in before their normal fight. `World.spawnMiniboss` starts `World.bossIntro` only for the initial arrival;
-splits and Starfish hatches use the ordinary spawn path and never replay it. `World.step` returns after
+Starfish hatches use the ordinary spawn path and never replay it. `World.step` returns after
 advancing the intro, so players, threats, hazards and the round clock are frozen while the reveal runs.
 `bossIntro` is local presentation state and never enters a snapshot. The freeze is part of the read: do not
 trim these timings back to combat pace without checking the entrance on screen.
