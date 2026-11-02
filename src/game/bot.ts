@@ -1646,6 +1646,29 @@ export class BotBrain {
       }
     }
 
+    // BUSINESS LAPTOP cards and preview blocks move with the mail clock. Treat each
+    // live rectangle as a repulsor because the static grid cannot represent it.
+    if (world.laptop) {
+      for (let i = 0; i < world.laptopSolids.length; i++) {
+        const r = world.laptopSolids[i];
+        if (r.w <= 0 || r.h <= 0) continue;
+        const nx = Math.max(r.x, Math.min(me.x, r.x + r.w));
+        const ny = Math.max(r.y, Math.min(me.y, r.y + r.h));
+        let dx = me.x - nx;
+        let dy = me.y - ny;
+        if (dx * dx + dy * dy < 0.01) {
+          dx = me.x - (r.x + r.w * 0.5);
+          dy = me.y - (r.y + r.h * 0.5);
+        }
+        const d = Math.hypot(dx, dy) || 1;
+        const reach = PLAYER.radius + 30;
+        if (d >= reach) continue;
+        const push = (reach - d) / 16;
+        sx += (dx / d) * push;
+        sy += (dy / d) * push;
+      }
+    }
+
     // The route already avoids cover, so the near-field probe only runs on a straight
     // walk. Running both at once made the probe shove the bot off its own path and pin
     // it against cover.

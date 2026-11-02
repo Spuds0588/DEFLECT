@@ -669,11 +669,18 @@ export interface SnapshotHazards {
  */
 export function buildSnapshotHazards(world: World): unknown[] | null {
   const arena = world.arena;
-  if (!arena.pushers && !arena.keypad && !arena.scanner && !arena.browser && !arena.usb && !arena.swipe && !arena.satellite && world.props.length === 0) return null;
+  let hasSnapshotProp = false;
+  for (let i = 0; i < world.props.length; i++) {
+    const b = world.props[i];
+    if (!b.active || b.fixed) continue;
+    hasSnapshotProp = true;
+    break;
+  }
+  if (!arena.pushers && !arena.keypad && !arena.scanner && !arena.browser && !arena.usb && !arena.swipe && !arena.satellite && !hasSnapshotProp) return null;
   const props: number[][] = [];
   for (let i = 0; i < world.props.length; i++) {
     const b = world.props[i];
-    if (!b.active) continue;
+    if (!b.active || b.fixed) continue;
     props.push([
       i,
       b.kind,

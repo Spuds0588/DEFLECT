@@ -2193,6 +2193,98 @@ labels are presentation; the four corner toner drums and paper stacks in `pillar
 - Known limitation: the precomputed bot nav grid cannot represent the moving print bar, so bots can stand
   in its path. Keep the parked blinking bar and the hot pass readable rather than making it a hidden trap.
 
+### D54 — SMART PLUG is a local circuit-ring arena (built 2026-11-02)
+
+SMART PLUG is id **26**, after FAX MACHINE. `ArenaPlugDef` owns the four socket-to-socket arcs, the safe,
+warning, live and cooldown phases, arc band width, damage and shove. The four dual-socket modules in
+`pillars` are static cover. The board traces, LEDs, voltage watermark and status labels are presentation.
+
+- The four arcs form a ring between the module faces: top, right, bottom and left. They share one clock.
+  Green is safe, a short red blink warns, the red pulse is live, then the board cools. `plugCycle()` and
+  `plugPhaseAt()` are the single source of truth for the renderer and the world.
+- The arcs are **floor hazards**, not solid cover. Bodies and shots pass over the board; only the live band
+  damages. Dashing and phased bodies avoid it. The death source is `SRC.PLUG`.
+- One hit per body per red pulse is enforced with per-family masks cleared on live entry. A second arc
+  cannot double-hit the same body in the same pulse. The centre and the outside are safe pockets; crossing
+  the ring is a timing choice.
+- `resetPlug()` clears the clock and hit masks; `beginRound()` calls it. Keep SMART PLUG **local-only**
+  through `isOnlineArena`; none of its state is in `SnapshotHazards`. Do not add it to hosted rooms or
+  series without a protocol decision and guest tests.
+- All timing and damage values live on the arena record. Do not add a second plug clock, a global circuit
+  constant or a separate electric projectile system.
+- Known limitation: the precomputed bot nav grid cannot represent the live ring, so bots can cross into it.
+  The green guide, red warning and live arc need to stay readable rather than becoming a hidden trap.
+
+### D55 — SMOKE DETECTOR is a local alarm-ring arena (built 2026-11-02)
+
+SMOKE DETECTOR is id **27**, after SMART PLUG. `ArenaSmokeDef` owns the four sensor pads, fixed battery,
+alarm duration, cooldown, wave cadence, speed, width, range and damage. The detector ridges, vents, LEDs
+and siren horn are presentation. The round plate is a `disc` with zero spin, no holes and a zero-length
+arm; the disc gives the floor a real circular drop without introducing a second round-floor system.
+
+- A live body standing on any of the four floor sensors starts one timed siren burst. The alarm emits an
+  expanding ring every `waveEvery` seconds; a ring damages each body once, with `SRC.SMOKE` as the death
+  source. Dashing and phased bodies avoid it. After the burst, `sensorCooldown` keeps the sensors quiet
+  before they can arm again.
+- The mounted battery is a fixed `Prop` with six health. `fixed` props are never launched, moved, separated
+  or drawn as file boxes. Shots stop on the battery and damage it; when it goes inactive, `tickSmoke` stops
+  the siren, clears live rings and prevents further sensor triggers for the round. `beginRound()` calls
+  `resetSmoke()` to clear the clock and restore the battery.
+- `buildSnapshotHazards` skips fixed props, so the battery is not serialized. Keep the arena **local-only**
+  through `isOnlineArena`; the alarm clock, rings and battery are not in `SnapshotHazards`. Do not add it to
+  hosted rooms or series without a protocol decision and guest tests.
+- The sensor pads and alarm rings are floor hazards, not solid cover. Do not turn the siren into a second
+  projectile system or make the round plate a second collision layer. All timing and damage values live on
+  the arena record.
+- Known limitation: the bot nav grid cannot represent the live ring or sensor pads, so bots can step on a
+  sensor or into a wave. The warning rings and battery state need to stay readable rather than becoming a
+  hidden trap.
+
+### D56 — SMART WATCH is a local second-hand arena (built 2026-11-02)
+
+SMART WATCH is id **28**, after SMOKE DETECTOR. `ArenaWatchDef` owns the face rectangle, hand length and
+width, angular speed, damage and shove. The four raised app complications in `pillars` are static cover;
+the bezel, digital crown, minute ticks, time readout and app glyphs are presentation.
+
+- The orange second hand starts at twelve and sweeps clockwise at `watch.speed`. Bodies within half the
+  hand width plus their radius of the forward segment take `damage` and `knockback`; dashing and phased
+  bodies avoid it. The death source is `SRC.WATCH`.
+- The hand is a floor projection, not a body that stops on cover. It passes over the four app cards and
+  can hit a body behind them. Cover still stops bodies, dashes and shots by the normal arena rules.
+- One hit per body per revolution is enforced with per-family masks cleared when the hand wraps through
+  twelve. Do not reset the masks on every tick or the hand becomes a continuous grinder.
+- `resetWatch()` rewinds the clock and clears the masks; `beginRound()` calls it. `buildSnapshotHazards`
+  does not serialize the hand. Keep SMART WATCH **local-only** through `isOnlineArena`; do not add it to
+  hosted rooms or series without a protocol decision and guest tests.
+- All hand timing and damage values live on the arena record. Do not add a second watch clock, a global
+  sweep constant or a separate beam projectile system.
+- Known limitation: the bot nav grid cannot represent the hand, so bots can walk through it or stand in
+  its path. The hand and its pivot need to stay readable at play size rather than becoming a hidden trap.
+
+### D57 — BUSINESS LAPTOP is a local moving-mail arena (built 2026-11-02)
+
+BUSINESS LAPTOP is id **29**, after SMART WATCH. `ArenaLaptopDef` owns the screen, inbox and preview panes,
+card count and dimensions, scroll speed, message interval and the authored preview layouts. The email
+variant is the first playable screen; a spreadsheet or chat riff must extend this same record and its
+data, not add a second laptop simulation.
+
+- The left inbox is a looping vertical conveyor. `laptopCardY()` is the single source of truth for card
+  positions; the renderer and the host's collision rectangles both read it. Cards wrap from the top back
+  to the bottom. Cards outside the inbox are collisionless for that frame.
+- Inbox cards and the active message's `layout` blocks are **dynamic solid cover**. They are not in
+  `arena.pillars`: `laptopSolids` is the live list used by player, threat, projectile, bomb and laser
+  collision. The preview layout swaps with the message every `messageEvery` seconds and raises a
+  new-message flash. There is no damage source attached to the swap.
+- `tickLaptop()` advances the scroll and message clocks before bodies move; `resetLaptop()` rewinds the
+  cards, message index and flash in `beginRound()`. Keep BUSINESS LAPTOP **local-only** through
+  `isOnlineArena`; the clock, card positions and layout are not in `SnapshotHazards`. Do not add it to
+  hosted rooms or series without a protocol decision and guest tests.
+- A campaign node can point at this arena id as a screen location; no campaign node is attached yet.
+  Do not make the campaign's narrative depend on the inbox layout or message index.
+- Known limitation: the bot nav grid cannot represent moving cards or changing preview cover. Bots can
+  be pushed by a card and can stand where a new layout appears; the flash and card movement need to stay
+  readable rather than becoming a hidden trap.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

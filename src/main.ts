@@ -58,7 +58,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.119';
+const BUILD = '0.1.123';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -1159,13 +1159,15 @@ function selectArena(index: number): void {
  * snapshot, and the host resolves every hazard hit. Feed pipes and the firewall switch
  * are different: they spawn local threats and a sweep the snapshot does not carry.
  * ROCKET NAVIGATION's barrier clock, WEAPON SYSTEMS' console display, PONG's rally ball,
- * AIRPORT's flip board, SPACE INVADERS' cannon and FAX MACHINE's shuttle are local
- * presentation too, so none may enter a hosted room until its state is in Snapshot.
+ * AIRPORT's flip board, SPACE INVADERS' cannon, FAX MACHINE's shuttle, SMART PLUG's
+ * circuit ring, SMOKE DETECTOR's alarm, SMART WATCH's second hand and BUSINESS LAPTOP's
+ * scrolling inbox are local presentation too, so none may enter a hosted room until its
+ * state is in Snapshot.
  */
 function isOnlineArena(a: ArenaDef): boolean {
   // Room arenas are tutorial staging: their chasms, props and fixture clocks are local
   // presentation/content, not a versus map. Keep them out of hosted rooms and series.
-  return !a.pipes && !a.firewallSwitch && !a.rooms && !a.rocket && !a.weapon && !a.seek && !a.car && !a.pong && !a.flip && !a.invaders && !a.fax;
+  return !a.pipes && !a.firewallSwitch && !a.rooms && !a.rocket && !a.weapon && !a.seek && !a.car && !a.pong && !a.flip && !a.invaders && !a.fax && !a.plug && !a.smoke && !a.watch && !a.laptop;
 }
 
 function onlineArenaIndex(index: number): number {

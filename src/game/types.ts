@@ -93,6 +93,12 @@ export const SRC = {
   ARCADE: 16,
   /** FAX MACHINE shuttle print bar. No body, so the death camera falls through. */
   FAX: 17,
+  /** SMART PLUG live circuit arc. No body, so the death camera falls through. */
+  PLUG: 18,
+  /** SMOKE DETECTOR alarm wave. No body, so the death camera falls through. */
+  SMOKE: 19,
+  /** SMART WATCH second hand. No body, so the death camera falls through. */
+  WATCH: 20,
 } as const;
 
 export const EV = {
@@ -152,6 +158,7 @@ export const PROP = {
   DOC: 1,
   ZIP: 2,
   AUDIO: 3,
+  BATTERY: 4,
 } as const;
 
 export interface Prop {
@@ -177,6 +184,20 @@ export interface Prop {
   hurtCd?: number;
   /** SATELLITE capacitor: durable, never launched, and arms the thrusters when all break. */
   capacitor?: boolean;
+  /** Mounted hardware: not loose debris, so it never moves or gets launched. */
+  fixed?: boolean;
+}
+
+/** One expanding alarm ring. Masks keep a body to one hit per ring. */
+export interface SmokeWave {
+  active: boolean;
+  radius: number;
+  hitPlayers: number;
+  hitWorms: number;
+  hitViruses: number;
+  hitSentries: number;
+  hitErrors: number;
+  hitDrone: boolean;
 }
 
 /** One micro-meteor in a SATELLITE shower. Presentation and host damage share it. */

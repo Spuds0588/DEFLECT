@@ -550,6 +550,8 @@ export interface ArenaPropDef {
   hp?: number;
   /** A satellite capacitor: solid to its own damage path, never launched as debris. */
   capacitor?: boolean;
+  /** Mounted hardware such as the SMOKE DETECTOR battery: never launched or moved. */
+  fixed?: boolean;
 }
 
 /**
@@ -633,6 +635,120 @@ export interface ArenaFaxDef extends Rect {
   damage: number;
   enemyDamage: number;
   knockback: number;
+}
+
+/** One live socket-to-socket circuit on the smart-plug board. */
+export interface ArenaPlugArcDef {
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+}
+
+/**
+ * SMART PLUG: a power-board floor with four socket modules and a circuit ring
+ * between them. The modules are static cover; the arcs are floor hazards that
+ * follow a green-safe / red-live cycle. Local-only because the clock is not in
+ * SnapshotHazards.
+ */
+export interface ArenaPlugDef {
+  /** Socket-to-socket arcs. They are live together during the red phase. */
+  arcs: ArenaPlugArcDef[];
+  /** Green phase, red warning lead-in, live arc phase, and reset. */
+  safe: number;
+  warn: number;
+  live: number;
+  cool: number;
+  /** Width of the damaging electric band around each arc's centre line. */
+  arcWidth: number;
+  damage: number;
+  enemyDamage: number;
+  knockback: number;
+}
+
+/** One smoke sensor pad set into the detector face. */
+export interface ArenaSmokeSensorDef {
+  x: number;
+  y: number;
+  radius: number;
+}
+
+/**
+ * SMOKE DETECTOR: a round detector face with floor smoke sensors and a central
+ * alarm siren. Stepping on a sensor arms a timed burst of expanding sound rings;
+ * the fixed battery can be shot out to stop the alarm for the rest of the round.
+ * Local-only because the alarm clock, waves and battery are not in Snapshot.
+ */
+export interface ArenaSmokeDef {
+  sensors: ArenaSmokeSensorDef[];
+  /** Fixed battery target. Bodies can step over it; shots stop on it. */
+  battery: Rect;
+  batteryHp: number;
+  /** Seconds one sensor trigger keeps the siren running. */
+  alarmTime: number;
+  /** Quiet time after the siren stops before a sensor can arm it again. */
+  sensorCooldown: number;
+  /** Seconds between expanding sound rings while the siren is live. */
+  waveEvery: number;
+  waveSpeed: number;
+  waveWidth: number;
+  /** Rings retire after reaching this radius. */
+  maxRadius: number;
+  damage: number;
+  enemyDamage: number;
+  knockback: number;
+}
+
+/**
+ * SMART WATCH: a large watch face with a live second-hand hazard. The hand sweeps
+ * clockwise from twelve, hits each body once per revolution, and the four raised
+ * complication cards are static cover. Local-only because the hand clock is not in
+ * SnapshotHazards.
+ */
+export interface ArenaWatchDef {
+  /** Screen and hand pivot area. Bounds remain the body/camera footprint. */
+  face: Rect;
+  handLength: number;
+  handWidth: number;
+  /** Angular speed in radians per second. */
+  speed: number;
+  damage: number;
+  enemyDamage: number;
+  knockback: number;
+}
+
+/**
+ * One email preview. The layout is world-space cover inside the preview pane, so a
+ * message change visibly rewrites the right side of the arena.
+ */
+export interface ArenaLaptopMessageDef {
+  sender: string;
+  subject: string;
+  preview: string;
+  layout: Rect[];
+}
+
+/**
+ * BUSINESS LAPTOP: an email screen with an endless inbox on the left and changing
+ * message layouts on the right. The inbox cards and the active preview layout are
+ * dynamic solid cover; there is no separate hazard clock. Local-only until the moving
+ * cover is carried in SnapshotHazards.
+ */
+export interface ArenaLaptopDef {
+  /** Visual screen bezel. Bounds remain the body/camera footprint. */
+  screen: Rect;
+  /** Left inbox pane. Cards only; the pane itself is not solid. */
+  inbox: Rect;
+  /** Right preview pane. Its message layouts are the dynamic cover. */
+  preview: Rect;
+  cards: number;
+  cardH: number;
+  cardGap: number;
+  /** Upward card speed in world units per second. */
+  speed: number;
+  /** Seconds each message stays open before the next one replaces it. */
+  messageEvery: number;
+  messages: ArenaLaptopMessageDef[];
 }
 
 /** One tab in the browser chrome. Width is data so the strip stays editable. */
@@ -835,6 +951,41 @@ export function faxHeadX(fax: ArenaFaxDef, t: number): number {
   return right - (right - left) * ((phase - pause * 2 - travel) / travel);
 }
 
+export const PLUG_STATE = {
+  safe: 0,
+  warn: 1,
+  live: 2,
+  cool: 3,
+} as const;
+
+/** Seconds for one full green, warning, live and reset cycle. */
+export function plugCycle(plug: ArenaPlugDef): number {
+  return Math.max(0.001, plug.safe + plug.warn + plug.live + plug.cool);
+}
+
+/** Current green/red circuit phase at `t` seconds into the plug cycle. */
+export function plugPhaseAt(plug: ArenaPlugDef, t: number): number {
+  const cycle = plugCycle(plug);
+  const phase = ((t % cycle) + cycle) % cycle;
+  if (phase < Math.max(0, plug.safe)) return PLUG_STATE.safe;
+  if (phase < plug.safe + Math.max(0, plug.warn)) return PLUG_STATE.warn;
+  if (phase < plug.safe + plug.warn + Math.max(0, plug.live)) return PLUG_STATE.live;
+  return PLUG_STATE.cool;
+}
+
+/** World angle of the SMART WATCH second hand at `t` seconds. Starts at twelve. */
+export function watchHandAngle(watch: ArenaWatchDef, t: number): number {
+  return -Math.PI * 0.5 + t * watch.speed;
+}
+
+/** Top edge of inbox card `i` at `t` seconds. Cards scroll upward and wrap. */
+export function laptopCardY(laptop: ArenaLaptopDef, i: number, t: number): number {
+  const step = Math.max(1, laptop.cardH + laptop.cardGap);
+  const span = step * Math.max(1, laptop.cards);
+  const scroll = ((t * laptop.speed) % span + span) % span;
+  return laptop.inbox.y + laptop.inbox.h - laptop.cardH - i * step - scroll;
+}
+
 export const KEYPAD_STATE = {
   up: 0,
   warn: 1,
@@ -897,6 +1048,14 @@ export interface ArenaDef {
   scanner?: ArenaScannerDef;
   /** Fax machine page and moving thermal print head. Local-only. */
   fax?: ArenaFaxDef;
+  /** SMART PLUG socket modules and their green/red circuit ring. Local-only. */
+  plug?: ArenaPlugDef;
+  /** SMOKE DETECTOR sensors, siren waves and destructible battery. Local-only. */
+  smoke?: ArenaSmokeDef;
+  /** SMART WATCH face and sweeping second hand. Local-only. */
+  watch?: ArenaWatchDef;
+  /** BUSINESS LAPTOP email inbox and changing preview cover. Local-only. */
+  laptop?: ArenaLaptopDef;
   /** Browser-window presentation. Its solid pieces are listed in `pillars`. */
   browser?: ArenaBrowserDef;
   /** Four retracting USB-drive floor plates. The shared phase travels in SnapshotHazards. */
@@ -2223,6 +2382,220 @@ export const ARENAS: readonly ArenaDef[] = [
       { x: 280, y: 190 },
     ],
   },
+  {
+    id: 26,
+    name: 'SMART PLUG',
+    tagline: 'Green is safe. Red is live.',
+    hudLabel: 'ARENA // SMART PLUG',
+    accent: '#6dffa8',
+    accentSoft: 'rgba(109, 255, 168, 0.32)',
+    accentFaint: 'rgba(109, 255, 168, 0.034)',
+    signature: 3,
+    bounds: { left: 80, top: 60, right: 1780, bottom: 1000 },
+    // Four dual-socket smart modules frame the circuit ring. Ordinary static cover.
+    pillars: [
+      { x: 190, y: 170, w: 160, h: 120 },
+      { x: 1430, y: 170, w: 160, h: 120 },
+      { x: 190, y: 710, w: 160, h: 120 },
+      { x: 1430, y: 710, w: 160, h: 120 },
+    ],
+    // The ring is socket-to-socket: top, right, bottom, left. All four arcs arm
+    // together on red, so the centre and the outside are the two safe pockets.
+    plug: {
+      arcs: [
+        { ax: 350, ay: 230, bx: 1430, by: 230 },
+        { ax: 1510, ay: 290, bx: 1510, by: 710 },
+        { ax: 1430, ay: 770, bx: 350, by: 770 },
+        { ax: 270, ay: 710, bx: 270, by: 290 },
+      ],
+      safe: 2.4,
+      warn: 0.75,
+      live: 1.65,
+      cool: 1,
+      arcWidth: 22,
+      damage: 1,
+      enemyDamage: 2,
+      knockback: 680,
+    },
+    // Starts clear of the four modules and all four arcs. The opening seconds are
+    // green, so an outside or centre spawn is never a free hit.
+    spawns: [
+      { x: 720, y: 130 },
+      { x: 1180, y: 130 },
+      { x: 1670, y: 500 },
+      { x: 1180, y: 930 },
+      { x: 720, y: 930 },
+      { x: 135, y: 500 },
+      { x: 900, y: 500 },
+      { x: 1100, y: 500 },
+    ],
+  },
+  {
+    id: 27,
+    name: 'SMOKE DETECTOR',
+    tagline: 'Step light. Alarm loud.',
+    hudLabel: 'ARENA // SMOKE DETECTOR',
+    accent: '#ff6a5e',
+    accentSoft: 'rgba(255, 106, 94, 0.32)',
+    accentFaint: 'rgba(255, 106, 94, 0.034)',
+    signature: 2,
+    // A square camera plate with the round detector face inscribed inside it. The
+    // disc has no holes and no arm; it is here so the rim is a real drop.
+    bounds: { left: 495, top: 47, right: 1495, bottom: 1047 },
+    walls: 'open',
+    pillars: [],
+    disc: {
+      radius: 500,
+      spin: 0,
+      holes: [],
+      arm: { pivot: 0, period: 1, sweep: 0, thickness: 1, push: 0, reach: 0 },
+    },
+    // Four floor sensors in a ring, clear of the eight spawn points. The battery sits
+    // beside the central siren, so a player has to enter the alarm zone to shoot it.
+    smoke: {
+      sensors: [
+        { x: 995, y: 300, radius: 42 },
+        { x: 1260, y: 547, radius: 42 },
+        { x: 995, y: 794, radius: 42 },
+        { x: 730, y: 547, radius: 42 },
+      ],
+      battery: { x: 1090, y: 600, w: 72, h: 96 },
+      batteryHp: 6,
+      alarmTime: 5.2,
+      sensorCooldown: 2.5,
+      waveEvery: 0.78,
+      waveSpeed: 390,
+      waveWidth: 30,
+      maxRadius: 580,
+      damage: 1,
+      enemyDamage: 2,
+      knockback: 620,
+    },
+    spawns: [
+      { x: 995, y: 107 },
+      { x: 1306, y: 236 },
+      { x: 1435, y: 547 },
+      { x: 1306, y: 858 },
+      { x: 995, y: 987 },
+      { x: 684, y: 858 },
+      { x: 555, y: 547 },
+      { x: 684, y: 236 },
+    ],
+  },
+  {
+    id: 28,
+    name: 'SMART WATCH',
+    tagline: 'Every second counts.',
+    hudLabel: 'ARENA // SMART WATCH',
+    accent: '#ff8d5c',
+    accentSoft: 'rgba(255, 141, 92, 0.32)',
+    accentFaint: 'rgba(255, 141, 92, 0.034)',
+    signature: 2,
+    bounds: { left: 330, top: 60, right: 1670, bottom: 1000 },
+    // Four raised complication cards. They are cover; the hand is a floor projection
+    // and sweeps over them rather than stopping on geometry.
+    pillars: [
+      { x: 470, y: 180, w: 150, h: 104 },
+      { x: 1380, y: 180, w: 150, h: 104 },
+      { x: 470, y: 736, w: 150, h: 104 },
+      { x: 1380, y: 736, w: 150, h: 104 },
+    ],
+    spawns: [
+      { x: 620, y: 130 },
+      { x: 900, y: 120 },
+      { x: 1100, y: 120 },
+      { x: 1380, y: 130 },
+      { x: 1600, y: 530 },
+      { x: 1380, y: 900 },
+      { x: 620, y: 900 },
+      { x: 400, y: 530 },
+    ],
+    watch: {
+      face: { x: 380, y: 100, w: 1240, h: 860 },
+      handLength: 418,
+      handWidth: 18,
+      speed: 1.05,
+      damage: 1,
+      enemyDamage: 2,
+      knockback: 600,
+    },
+  },
+  {
+    id: 29,
+    name: 'BUSINESS LAPTOP',
+    tagline: 'The inbox never stops.',
+    hudLabel: 'ARENA // BUSINESS LAPTOP',
+    accent: '#8ac7ff',
+    accentSoft: 'rgba(138, 199, 255, 0.32)',
+    accentFaint: 'rgba(138, 199, 255, 0.034)',
+    signature: 1,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    // The inbox and preview are dynamic cover. The screen frame is presentation.
+    pillars: [],
+    spawns: [
+      { x: 260, y: 100 },
+      { x: 720, y: 100 },
+      { x: 1140, y: 100 },
+      { x: 1560, y: 100 },
+      { x: 1840, y: 570 },
+      { x: 1540, y: 990 },
+      { x: 960, y: 990 },
+      { x: 350, y: 990 },
+    ],
+    laptop: {
+      screen: { x: 80, y: 64, w: 1830, h: 966 },
+      inbox: { x: 130, y: 140, w: 430, h: 800 },
+      preview: { x: 610, y: 140, w: 1270, h: 800 },
+      cards: 4,
+      cardH: 104,
+      cardGap: 16,
+      speed: 34,
+      messageEvery: 8,
+      messages: [
+        {
+          sender: 'M. CHEN',
+          subject: 'Q4 forecast — final',
+          preview: 'Numbers attached. Please review before the call.',
+          layout: [
+            { x: 650, y: 210, w: 360, h: 200 },
+            { x: 1040, y: 210, w: 360, h: 200 },
+            { x: 650, y: 450, w: 750, h: 120 },
+          ],
+        },
+        {
+          sender: 'R. PATEL',
+          subject: 'Re: launch checklist',
+          preview: 'Three columns left. The middle one is still open.',
+          layout: [
+            { x: 650, y: 210, w: 220, h: 520 },
+            { x: 920, y: 210, w: 220, h: 520 },
+            { x: 1190, y: 210, w: 220, h: 520 },
+          ],
+        },
+        {
+          sender: 'OPS',
+          subject: 'Weekly standup notes',
+          preview: 'Four panels moved. Watch the bottom lane.',
+          layout: [
+            { x: 650, y: 220, w: 420, h: 180 },
+            { x: 1110, y: 220, w: 420, h: 180 },
+            { x: 860, y: 470, w: 420, h: 170 },
+            { x: 650, y: 720, w: 740, h: 100 },
+          ],
+        },
+        {
+          sender: 'FINANCE',
+          subject: 'Invoice attached',
+          preview: 'The attachment is the cover. Mind the gap on the right.',
+          layout: [
+            { x: 650, y: 210, w: 520, h: 270 },
+            { x: 1220, y: 210, w: 260, h: 440 },
+            { x: 650, y: 540, w: 500, h: 240 },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
 /** 0..1 trajectory progress at `t` seconds after launch. */
@@ -2753,6 +3126,142 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
   const previewW = (bounds.right - bounds.left) * sx;
   const previewH = (bounds.bottom - bounds.top) * sy;
 
+  // BUSINESS LAPTOP is a mail window with a scrolling inbox and changing preview cover.
+  if (arena.laptop) {
+    const lap = arena.laptop;
+    const screen = lap.screen;
+    ctx.fillStyle = '#060b0e';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.fillStyle = '#0a1218';
+    ctx.fillRect(mapX(screen.x), mapY(screen.y), screen.w * sx, screen.h * sy);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(mapX(screen.x) + 0.5, mapY(screen.y) + 0.5, screen.w * sx - 1, screen.h * sy - 1);
+    ctx.fillStyle = '#101d24';
+    ctx.fillRect(mapX(lap.inbox.x), mapY(lap.inbox.y), lap.inbox.w * sx, lap.inbox.h * sy);
+    ctx.fillRect(mapX(lap.preview.x), mapY(lap.preview.y), lap.preview.w * sx, lap.preview.h * sy);
+    ctx.strokeStyle = 'rgba(138, 199, 255, 0.3)';
+    ctx.strokeRect(mapX(lap.inbox.x) + 0.5, mapY(lap.inbox.y) + 0.5, lap.inbox.w * sx - 1, lap.inbox.h * sy - 1);
+    ctx.strokeRect(mapX(lap.preview.x) + 0.5, mapY(lap.preview.y) + 0.5, lap.preview.w * sx - 1, lap.preview.h * sy - 1);
+    for (let i = 0; i < lap.cards; i++) {
+      const y = laptopCardY(lap, i, 0);
+      if (y + lap.cardH < lap.inbox.y || y > lap.inbox.y + lap.inbox.h) continue;
+      ctx.fillStyle = 'rgba(138, 199, 255, 0.32)';
+      ctx.fillRect(mapX(lap.inbox.x + 10), mapY(y), (lap.inbox.w - 20) * sx, lap.cardH * sy);
+    }
+    const layout = lap.messages[0]?.layout ?? [];
+    ctx.fillStyle = 'rgba(255, 196, 120, 0.28)';
+    for (let i = 0; i < layout.length; i++) {
+      const r = layout[i];
+      ctx.fillRect(mapX(r.x), mapY(r.y), Math.max(1, r.w * sx), Math.max(1, r.h * sy));
+    }
+    ctx.fillStyle = 'rgba(220, 240, 250, 0.82)';
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('BUSINESS LAPTOP', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+    return;
+  }
+
+  // SMART WATCH is a rounded screen with four app cards and a live second hand.
+  if (arena.watch) {
+    const watch = arena.watch;
+    const face = watch.face;
+    const fx = mapX(face.x);
+    const fy = mapY(face.y);
+    const fw = face.w * sx;
+    const fh = face.h * sy;
+    const cx = mapX(face.x + face.w * 0.5);
+    const cy = mapY(face.y + face.h * 0.5);
+    ctx.fillStyle = '#080b0d';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.fillStyle = '#111920';
+    ctx.fillRect(fx, fy, fw, fh);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1);
+    ctx.strokeStyle = 'rgba(255, 141, 92, 0.2)';
+    for (let i = 1; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, (Math.min(fw, fh) * i) / 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      ctx.fillStyle = '#1a2529';
+      ctx.fillRect(mapX(r.x), mapY(r.y), r.w * sx, r.h * sy);
+      ctx.strokeStyle = 'rgba(255, 190, 140, 0.35)';
+      ctx.strokeRect(mapX(r.x) + 0.5, mapY(r.y) + 0.5, r.w * sx - 1, r.h * sy - 1);
+    }
+    const angle = -Math.PI * 0.5;
+    ctx.strokeStyle = '#ff8d5c';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angle) * watch.handLength * Math.min(sx, sy), cy + Math.sin(angle) * watch.handLength * Math.min(sx, sy));
+    ctx.stroke();
+    ctx.fillStyle = '#ffb18a';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 220, 190, 0.8)';
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('10:09', cx, fy + 22);
+    ctx.fillText('SMART WATCH', cx, fy + fh - 10);
+    return;
+  }
+
+  // SMOKE DETECTOR is a round face with a siren and four sensor pads; the ring
+  // preview is enough to read it before the menu card is opened.
+  if (arena.smoke) {
+    const smoke = arena.smoke;
+    const disc = arena.disc;
+    const cx = mapX((bounds.left + bounds.right) * 0.5);
+    const cy = mapY((bounds.top + bounds.bottom) * 0.5);
+    const rr = (disc?.radius ?? 500) * Math.min(sx, sy);
+    ctx.fillStyle = '#080c0e';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.fillStyle = '#171d1f';
+    ctx.beginPath();
+    ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    for (let i = 1; i <= 3; i++) {
+      ctx.strokeStyle = `rgba(255, 106, 94, ${0.12 * i})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rr * (0.28 + i * 0.17), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (let i = 0; i < smoke.sensors.length; i++) {
+      const s = smoke.sensors[i];
+      ctx.fillStyle = '#0c1612';
+      ctx.beginPath();
+      ctx.arc(mapX(s.x), mapY(s.y), Math.max(2, s.radius * Math.min(sx, sy)), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ff6a5e';
+      ctx.stroke();
+      ctx.fillStyle = '#ffb0a0';
+      ctx.beginPath();
+      ctx.arc(mapX(s.x), mapY(s.y), 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#ff6a5e';
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(3, 38 * Math.min(sx, sy)), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#162023';
+    ctx.fillRect(mapX(smoke.battery.x), mapY(smoke.battery.y), smoke.battery.w * sx, smoke.battery.h * sy);
+    ctx.strokeStyle = '#ffd08a';
+    ctx.strokeRect(mapX(smoke.battery.x) + 0.5, mapY(smoke.battery.y) + 0.5, smoke.battery.w * sx - 1, smoke.battery.h * sy - 1);
+    ctx.fillStyle = 'rgba(255, 220, 190, 0.8)';
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('SMOKE // ALARM', cx, cy + rr + 8);
+    return;
+  }
+
   // A disc arena has no rectangular lip to draw. The plate, its holes and the read
   // arm are the whole floor signature, even at thumbnail size.
   if (arena.disc) {
@@ -2956,6 +3465,48 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
       ctx.arc(mapX(p.x), mapY(p.y), 2, 0, Math.PI * 2);
       ctx.fill();
     }
+    return;
+  }
+
+  if (arena.plug) {
+    const plug = arena.plug;
+    ctx.fillStyle = '#04100a';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.strokeStyle = 'rgba(109, 255, 168, 0.08)';
+    ctx.lineWidth = 1;
+    for (let x = bounds.left + 70; x < bounds.right; x += 90) {
+      ctx.beginPath();
+      ctx.moveTo(mapX(x), mapY(bounds.top));
+      ctx.lineTo(mapX(x), mapY(bounds.bottom));
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255, 74, 74, 0.72)';
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < plug.arcs.length; i++) {
+      const arc = plug.arcs[i];
+      ctx.beginPath();
+      ctx.moveTo(mapX(arc.ax), mapY(arc.ay));
+      ctx.lineTo(mapX(arc.bx), mapY(arc.by));
+      ctx.stroke();
+      ctx.fillStyle = '#ff8b7a';
+      ctx.fillRect(mapX(arc.ax) - 2, mapY(arc.ay) - 2, 4, 4);
+      ctx.fillRect(mapX(arc.bx) - 2, mapY(arc.by) - 2, 4, 4);
+    }
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      ctx.fillStyle = '#101c16';
+      ctx.fillRect(mapX(r.x), mapY(r.y), r.w * sx, r.h * sy);
+      ctx.strokeStyle = 'rgba(178, 255, 207, 0.34)';
+      ctx.strokeRect(mapX(r.x) + 0.5, mapY(r.y) + 0.5, r.w * sx - 1, r.h * sy - 1);
+      ctx.fillStyle = '#ff5b52';
+      ctx.beginPath();
+      ctx.arc(mapX(r.x + r.w - 22), mapY(r.y + 22), 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(207, 255, 224, 0.66)';
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('GREEN = SAFE // RED = LIVE', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom - 18));
     return;
   }
 

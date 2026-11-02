@@ -4886,3 +4886,128 @@ its vertical bar is a floor hazard, not solid cover.
 
 **Next:** play the carriage and reversal telegraph at full size, then add a bot sidestep if the bar feels
 unavoidable in the centre.
+
+## 2026-11-02 — SMART PLUG circuit-ring arena (v0.1.120)
+
+**Goal:** add a plug-themed arena with a green/red light mechanic where electricity flows between plugs
+and catches bodies that stay in the live circuit.
+
+- Added `ArenaPlugDef` and `ArenaPlugArcDef`; SMART PLUG is id 26 after FAX MACHINE, with four dual-socket
+  smart-plug modules as static cover.
+- Four socket-to-socket arcs form a ring around the centre. Green is safe, a short red blink warns, the red
+  pulse is live, and a cooldown follows. The live band damages players, the training drone and every gauntlet
+  threat family once per pulse; dashing and phased bodies avoid it. Added `SRC.PLUG`.
+- Added a custom renderer with board traces, four LEDs, safe guide lines, a dashed warning preview, jagged
+  live arcs, socket plates and a voltage watermark, plus a picker preview. `resetPlug()` clears the clock
+  and per-pulse hit masks on round start.
+- SMART PLUG is local-only through `isOnlineArena`; its clock and arcs never enter `SnapshotHazards`.
+  Updated README, GAME_GUIDE, AGENTS D54 and TODO.
+
+**Verification:** `.tmp/plug-arena-check.ts` passes 27-arena order, id 26, four modules and four arcs, all
+four phases, a 5.80 s cycle, clean spawn clearance, a safe pre-live window, a live hit at 3.17 s using
+`SRC.PLUG`, one segment of damage, no double hit in the same pulse, round reset and `SnapshotHazards === null`.
+`npm run build` passes (includes `tsc --noEmit`): 863.80 kB JS / 239.78 kB gzip, 51.04 kB CSS / 11.39 kB
+with the existing chunk-size warning. `npm run bench` clean: 8P max projectiles 0.069 ms avg / 0.223 ms p99;
+gauntlet max 0.153 ms avg / 0.515 ms p99, 28.4 threats. `git diff --check` clean.
+
+**Limitations:** no headed playtest was run. Bots do not wait out the circuit ring, and the arcs are floor
+hazards rather than solid cover.
+
+**Next:** play the green/red LEDs and live ring at full size, then add a bot sidestep or wait state if the
+ring feels too punishing.
+
+## 2026-11-02 — SMOKE DETECTOR alarm-ring arena (v0.1.121)
+
+**Goal:** add a round smoke-detector arena with smoke sensors, an alarm sound generator that emits damaging
+waves, and a destructible battery that breaks the alarm.
+
+- Added `ArenaSmokeDef`; SMOKE DETECTOR is id 27 after SMART PLUG. Its round floor reuses the existing `disc`
+  rim with zero spin, no holes and a zero-length arm, so the circular drop uses the established movement and
+  camera path rather than a second round-floor system.
+- Four floor sensors arm a timed central siren. The alarm emits expanding rings, each damaging a body once;
+  dashing and phased bodies avoid them. Added `SRC.SMOKE`.
+- Added a fixed six-hit battery prop beside the siren. Shots stop on it and chip it; destroying it stops the
+  siren, clears live rings and disables the sensors for the round. `beginRound()` restores it through
+  `resetSmoke()`.
+- Fixed props are now never launched, moved, separated or drawn as file boxes, and `buildSnapshotHazards`
+  skips them. Added the custom detector renderer with ridges, vents, sensor pads, siren, live rings and a
+  battery health bar, plus a picker preview.
+- SMOKE DETECTOR is local-only through `isOnlineArena`; its alarm clock, waves and battery are not in
+  `SnapshotHazards`. Updated README, GAME_GUIDE, AGENTS D55 and TODO.
+
+**Verification:** `.tmp/smoke-arena-check.ts` passes 28-arena order, id 27, round floor and spawn clearance,
+four sensors, sensor-triggered alarm, a live wave hit using `SRC.SMOKE`, one segment of damage, a six-hit
+battery, battery shutdown, round reset and `SnapshotHazards === null`. `npm run build` passes (includes
+`tsc --noEmit`): 875.75 kB JS / 242.72 kB gzip, 51.04 kB CSS / 11.39 kB gzip, with the existing chunk-size
+warning. `npm run bench` clean: 8P max projectiles 0.065 ms avg / 0.127 ms p99; gauntlet max 0.154 ms avg /
+0.449 ms p99, 28.4 threats. `git diff --check` clean.
+
+**Limitations:** no headed playtest was run. The six-hit battery shutdown is verified by the world probe,
+not by a full input-driven shooting pass. Bots do not avoid sensors or alarm rings, and the rings are floor
+hazards rather than solid cover.
+
+**Next:** play the round face, sensor warning and live rings at full size, then add bot sensor avoidance or
+a visible pre-alarm dwell if the first step feels too sudden.
+
+## 2026-11-02 — SMART WATCH second-hand arena (v0.1.122)
+
+**Goal:** add a smart-watch arena with a large watch face, readable app complications and a live clock-hand
+hazard.
+
+- Added `ArenaWatchDef`; SMART WATCH is id 28 after SMOKE DETECTOR. The face is a rounded screen inside the
+  device body, with four raised app complications as static cover.
+- A second hand starts at twelve and sweeps clockwise at 1.05 rad/s. Bodies crossing the forward segment
+  take one segment of damage and a shove; dashing and phased bodies avoid it. Added `SRC.WATCH`.
+- The hand is a floor projection, so the app cards do not stop it; cover still stops bodies, dashes and shots
+  normally. Per-family masks enforce one hit per revolution and clear only when the hand wraps through
+  twelve. `resetWatch()` rewinds the clock and masks in `beginRound()`.
+- Added the custom renderer with a rounded case, screen, sixty minute ticks, time readout, four app cards,
+  orange hand, pivot, digital crown and side button, plus a picker preview. The hand clock and state are
+  local-only through `isOnlineArena` and never enter `SnapshotHazards`.
+- Updated README, GAME_GUIDE, AGENTS D56, TODO and the version stamps to v0.1.122.
+
+**Verification:** `.tmp/watch-arena-check.ts` passes 29-arena order, id 28, four cover cards, a hand that
+starts at twelve and reaches three o'clock on schedule, clear opening spawns, a first hit at 1.4 s using
+`SRC.WATCH`, one segment of damage, no double hit in the same revolution, round reset and
+`SnapshotHazards === null`. `npm run build` passes (includes `tsc --noEmit`): 884.52 kB JS / 244.70 kB gzip,
+51.04 kB CSS / 11.39 kB gzip, with the existing chunk-size warning. `npm run bench` clean: 8P max projectiles
+0.072 ms avg / 0.132 ms p99; gauntlet max 0.176 ms avg / 0.633 ms p99, 28.4 threats. `git diff --check` clean.
+
+**Limitations:** no headed playtest was run. The hand passes over cover by design, and bots do not avoid it.
+The probe checks the world hit path and reset, not the full rendered arena at play size.
+
+**Next:** play the face and hand at full size, then add bot avoidance or a short pre-sweep warning if the
+first crossing feels too sudden.
+
+## 2026-11-02 — BUSINESS LAPTOP moving-mail arena (v0.1.123)
+
+**Goal:** add a business-laptop screen arena for the campaign, with an endless inbox and a preview pane that
+rewrites the layout as messages change.
+
+- Added `ArenaLaptopDef`; BUSINESS LAPTOP is id 29 after SMART WATCH and brings the roster to thirty arenas.
+  The mail-screen variant is data-driven for campaign reuse; the spreadsheet and chat ideas remain future
+  riffs rather than additional simulations in this pass.
+- Four inbox cards scroll upward on `laptopCardY()`, wrap at the pane edge and become collisionless while
+  off-pane. Cards and the active message's preview layout are dynamic solid cover for bodies, threats,
+  shots, bombs and the heavy laser.
+- Four authored messages each carry a different right-side layout. The preview swaps every 8 seconds with a
+  new-message flash, and the renderer draws the mail chrome, scrolling cards, attachment blocks, progress
+  bar and picker preview.
+- `tickLaptop()` refreshes cover before player movement; `resetLaptop()` rewinds the mail in `beginRound()`.
+  BUSINESS LAPTOP is local-only through `isOnlineArena`; no clock, card or layout enters `SnapshotHazards`.
+  Bots get a repulsor around live laptop cover.
+- Updated README, GAME_GUIDE, AGENTS D57, TODO and version stamps to v0.1.123.
+
+**Verification:** `.tmp/laptop-arena-check.ts` passes 30-arena order, id 29, four messages and four cards,
+all spawns clear of every authored layout, upward card travel, initial cover, the message-1 swap after the
+8-second boundary, a seven-piece cover set after the swap, round reset and `SnapshotHazards === null`.
+`npm run build` passes (includes `tsc --noEmit`): 896.82 kB JS / 247.80 kB gzip, 51.04 kB CSS / 11.39 kB
+gzip, with the existing chunk-size warning. `npm run bench` clean: 8P max projectiles 0.068 ms avg / 0.150 ms
+p99; gauntlet max 0.147 ms avg / 0.453 ms p99, 28.4 threats. `git diff --check` clean.
+
+**Limitations:** no headed playtest was run. There is no damage source on the mail swap; dynamic cover only
+blocks and pushes. Bots do not path around moving cards or new preview blocks, and no campaign node is
+attached yet. The spreadsheet and chat variants are not implemented.
+
+**Next:** play the moving inbox and preview swap at full size, then decide whether the laptop becomes a
+campaign screen before adding the spreadsheet-corridor or rising-chat variants.

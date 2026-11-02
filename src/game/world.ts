@@ -70,6 +70,14 @@ import {
   faxHeadX,
   faxPhaseAt,
   FAX_STATE,
+  plugCycle,
+  plugPhaseAt,
+  PLUG_STATE,
+  watchHandAngle,
+  laptopCardY,
+  type ArenaLaptopDef,
+  type ArenaSmokeDef,
+  type ArenaWatchDef,
   usbDriveRect,
   usbExtensionAt,
   usbFloorAt,
@@ -93,6 +101,8 @@ import {
   type ArenaDef,
   type ArenaFaxDef,
   type ArenaKeypadDef,
+  type ArenaPlugArcDef,
+  type ArenaPlugDef,
   type ArenaPropDef,
   type ArenaSatelliteDef,
   type ArenaCarDef,
@@ -130,6 +140,7 @@ import { Rng } from './rng';
 import {
   ACTION,
   EV,
+  PROP,
   SRC,
   type AimMark,
   type Barrier,
@@ -153,6 +164,7 @@ import {
   type Projectile,
   type Prop,
   type Sentry,
+  type SmokeWave,
   type Virus,
   type Worm,
 } from './types';
@@ -444,6 +456,45 @@ export class World {
   faxT = 0;
   faxPage = 0;
   faxPhase: number = FAX_STATE.readyLeft;
+  /** SMART PLUG circuit ring. Local-only; the green/red clock is not in SnapshotHazards. */
+  readonly plug: ArenaPlugDef | null;
+  plugT = 0;
+  plugPhase: number = PLUG_STATE.safe;
+  /** SMOKE DETECTOR face, sensors, siren and destructible battery. Local-only. */
+  readonly smoke: ArenaSmokeDef | null;
+  readonly smokeBattery: Prop | null = null;
+  smokeT = 0;
+  smokeAlarm = false;
+  smokeAlarmT = 0;
+  smokeCooldownT = 0;
+  readonly  smokeWaves: SmokeWave[] = [];
+  private smokeWaveT = 0;
+  private smokeHitNx = 0;
+  private smokeHitNy = 0;
+  /** SMART WATCH face and sweeping second hand. Local-only. */
+  readonly watch: ArenaWatchDef | null;
+  watchT = 0;
+  watchAngle = -Math.PI * 0.5;
+  private watchTurn = 0;
+  private watchHitPlayers = 0;
+  private watchHitWorms = 0;
+  private watchHitViruses = 0;
+  private watchHitSentries = 0;
+  private watchHitErrors = 0;
+  private watchHitDrone = false;
+  private watchHitNx = 0;
+  private watchHitNy = 0;
+  /** BUSINESS LAPTOP inbox and message preview. Local-only. */
+  readonly laptop: ArenaLaptopDef | null;
+  laptopT = 0;
+  laptopMessage = 0;
+  laptopFlashT = 0;
+  /** Live inbox cards. Their y positions are refreshed from the shared clock. */
+  readonly laptopCards: Rect[] = [];
+  /** Inbox cards plus the active message layout, used for body and shot collision. */
+  laptopSolids: Rect[] = [];
+  private laptopMessageT = 0;
+  private readonly laptopBodyScratch = { x: 0, y: 0 };
   /** Forum browser. Snapshot carries the page and cycle clock; damage stays host-side. */
   readonly browser: ArenaBrowserDef | null;
   /** Active forum page and the clock driving its cursor and click. */
@@ -473,6 +524,15 @@ export class World {
   private faxHitSentries = 0;
   private faxHitErrors = 0;
   private faxHitDrone = false;
+  /** One bit per body family already hit by the current red circuit pulse. */
+  private plugHitPlayers = 0;
+  private plugHitWorms = 0;
+  private plugHitViruses = 0;
+  private plugHitSentries = 0;
+  private plugHitErrors = 0;
+  private plugHitDrone = false;
+  private plugHitNx = 0;
+  private plugHitNy = 0;
   /** World y of the arm's leading edge. Public for the renderer. */
   pusherY = 0;
   /** True while the arm is descending. Public for the renderer. */
@@ -681,6 +741,18 @@ export class World {
     this.scannerPhase = this.scanner ? scannerPhaseAt(0) : SCANNER_STATE.load;
     this.fax = arena.fax ?? null;
     this.faxPhase = this.fax ? faxPhaseAt(this.fax, 0) : FAX_STATE.readyLeft;
+    this.plug = arena.plug ?? null;
+    this.plugPhase = this.plug ? plugPhaseAt(this.plug, 0) : PLUG_STATE.safe;
+    this.smoke = arena.smoke ?? null;
+    this.watch = arena.watch ?? null;
+    this.watchAngle = this.watch ? watchHandAngle(this.watch, 0) : -Math.PI * 0.5;
+    this.laptop = arena.laptop ?? null;
+    if (this.laptop) {
+      for (let i = 0; i < this.laptop.cards; i++) {
+        this.laptopCards.push({ x: this.laptop.inbox.x + 10, y: 0, w: this.laptop.inbox.w - 20, h: this.laptop.cardH });
+      }
+      this.resetLaptop();
+    }
     this.browser = arena.browser ?? null;
     this.resetBrowser();
     this.bumperFlash = new Float32Array(arena.bumpers?.length ?? 0);
@@ -748,6 +820,40 @@ export class World {
           tx: 0,
           ty: 0,
           capacitor: d.capacitor === true,
+          fixed: d.fixed === true,
+        });
+      }
+    }
+    if (this.smoke) {
+      const smoke = this.smoke;
+      const battery: Prop = {
+        active: true,
+        kind: PROP.BATTERY,
+        x: smoke.battery.x,
+        y: smoke.battery.y,
+        w: smoke.battery.w,
+        h: smoke.battery.h,
+        hp: smoke.batteryHp,
+        hitFlash: 0,
+        dropT: 0,
+        vx: 0,
+        vy: 0,
+        tx: 0,
+        ty: 0,
+        fixed: true,
+      };
+      this.smokeBattery = battery;
+      this.props.push(battery);
+      for (let i = 0; i < 8; i++) {
+        this.smokeWaves.push({
+          active: false,
+          radius: 0,
+          hitPlayers: 0,
+          hitWorms: 0,
+          hitViruses: 0,
+          hitSentries: 0,
+          hitErrors: 0,
+          hitDrone: false,
         });
       }
     }
@@ -2508,6 +2614,10 @@ export class World {
     if (this.keypad) this.resetKeypad();
     if (this.scanner) this.resetScanner();
     if (this.fax) this.resetFax();
+    if (this.plug) this.resetPlug();
+    if (this.smoke) this.resetSmoke();
+    if (this.watch) this.resetWatch();
+    if (this.laptop) this.resetLaptop();
     if (this.browser) this.resetBrowser();
     if (this.usb) this.resetUsb();
     if (this.swipe) this.resetSwipe();
@@ -2607,6 +2717,9 @@ export class World {
     // The browser page and its cursor are local state. Advance them before bodies move,
     // so a page swap is already reflected in this frame's cover.
     if (this.browser && canAct) this.tickBrowser(dt);
+    // The inbox cards move and the preview layout swaps on the same beat; both are
+    // collision cover, so refresh them before player movement.
+    if (this.laptop && canAct) this.tickLaptop(dt);
     // A hosted match keeps the plate still: the snapshot has no disc phase, so a guest
     // could not agree with the host about which hole is underfoot. Local modes spin.
     if (this.arena.disc && canAct && this.mode !== 'match') this.tickDisc(dt);
@@ -2618,6 +2731,9 @@ export class World {
     if (this.pong && canAct) this.tickPong(dt);
     if (this.flip && canAct) this.tickFlip(dt);
     if (this.invaders && canAct) this.tickInvaders(dt);
+    if (this.plug && canAct) this.tickPlug(dt);
+    if (this.smoke && canAct) this.tickSmoke(dt);
+    if (this.watch && canAct) this.tickWatch(dt);
     for (let i = 0; i < this.bumperFlash.length; i++) {
       if (this.bumperFlash[i] > 0) this.bumperFlash[i] = Math.max(0, this.bumperFlash[i] - dt);
     }
@@ -3282,6 +3398,7 @@ export class World {
       );
       if (this.keypad) this.resolveKeypadPlayer(p);
       if (this.browser) this.resolveBrowserPlayer(p);
+      if (this.laptop) this.resolveLaptopPlayer(p);
       if (this.openWalls || this.arena.voids || this.arena.disc || this.satellite) {
         this.checkFall(p);
         if (!p.alive) continue;
@@ -3332,6 +3449,7 @@ export class World {
     if (this.scanner && canAct && !calibrationHold) this.tickScanner(dt);
     if (this.fax && canAct && !calibrationHold) this.tickFax(dt);
     if (this.browser) this.pushThreatsOffBrowser();
+    if (this.laptop) this.pushThreatsOffLaptop();
     if (this.keypad) this.pushThreatsOffKeypad();
     this.bumpThreats();
     // Keep the roaming families on the plate without saving them from the arm: this
@@ -3829,10 +3947,14 @@ export class World {
     const browserReach = this.browser
       ? this.browserRayReach(p.x, p.y, Math.cos(p.laserFacing), Math.sin(p.laserFacing), PLAYER.laserRange)
       : PLAYER.laserRange;
+    const laptopReach = this.laptop
+      ? this.laptopRayReach(p.x, p.y, Math.cos(p.laserFacing), Math.sin(p.laserFacing), PLAYER.laserRange)
+      : PLAYER.laserRange;
     return Math.min(
       solidReach,
       this.keypadRayReach(p.x, p.y, Math.cos(p.laserFacing), Math.sin(p.laserFacing), PLAYER.laserRange),
       browserReach,
+      laptopReach,
     );
   }
 
@@ -7988,6 +8110,10 @@ export class World {
             this.detonateBomb(proj);
             break;
           }
+          if (this.laptopCoverAt(proj.x, proj.y, proj.radius)) {
+            this.detonateBomb(proj);
+            break;
+          }
           this.netBlocksProjectile(proj);
           if (this.wallBlocksProjectile(proj)) break;
           if (this.bombTouchesBody(proj)) break;
@@ -8052,6 +8178,7 @@ export class World {
         if (!proj.active) break;
         if (this.keypadStopsProjectile(proj)) break;
         if (this.browserStopsProjectile(proj)) break;
+        if (this.laptopStopsProjectile(proj)) break;
         if (this.netBlocksProjectile(proj)) break;
         if (this.wallBlocksProjectile(proj)) break;
         if (this.projectileHits(proj)) break;
@@ -10769,6 +10896,672 @@ export class World {
     }
   }
 
+  private resetPlug(): void {
+    this.plugT = 0;
+    this.plugPhase = this.plug ? plugPhaseAt(this.plug, 0) : PLUG_STATE.safe;
+    this.clearPlugHits();
+  }
+
+  private clearPlugHits(): void {
+    this.plugHitPlayers = 0;
+    this.plugHitWorms = 0;
+    this.plugHitViruses = 0;
+    this.plugHitSentries = 0;
+    this.plugHitErrors = 0;
+    this.plugHitDrone = false;
+  }
+
+  /** Advance the green/red clock and resolve the ring while it is live. */
+  private tickPlug(dt: number): void {
+    const plug = this.plug;
+    if (!plug) return;
+    const cycle = plugCycle(plug);
+    this.plugT += dt;
+    while (this.plugT >= cycle) this.plugT -= cycle;
+    const phase = plugPhaseAt(plug, this.plugT);
+    if (phase !== this.plugPhase) {
+      this.plugPhase = phase;
+      if (phase === PLUG_STATE.live) this.clearPlugHits();
+    }
+    if (phase === PLUG_STATE.live) this.burnPlug();
+  }
+
+  /** Closest-point test for one socket-to-socket arc. Stores the push normal. */
+  private plugArcHit(
+    arc: ArenaPlugArcDef,
+    x: number,
+    y: number,
+    radius: number,
+    width: number,
+  ): boolean {
+    const dx = arc.bx - arc.ax;
+    const dy = arc.by - arc.ay;
+    const length2 = dx * dx + dy * dy;
+    const t = length2 > 0.0001
+      ? Math.max(0, Math.min(1, ((x - arc.ax) * dx + (y - arc.ay) * dy) / length2))
+      : 0;
+    const px = arc.ax + dx * t;
+    const py = arc.ay + dy * t;
+    const ox = x - px;
+    const oy = y - py;
+    const reach = width * 0.5 + radius;
+    if (ox * ox + oy * oy > reach * reach) return false;
+    const d = Math.hypot(ox, oy);
+    if (d > 0.001) {
+      this.plugHitNx = ox / d;
+      this.plugHitNy = oy / d;
+    } else {
+      const length = Math.sqrt(length2) || 1;
+      this.plugHitNx = -dy / length;
+      this.plugHitNy = dx / length;
+    }
+    return true;
+  }
+
+  /** One hit per body per red pulse, across all four arcs. */
+  private burnPlug(): void {
+    const plug = this.plug;
+    if (!plug) return;
+
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.dashT > 0 || phased(p)) continue;
+      const bit = 1 << p.slot;
+      if (this.plugHitPlayers & bit) continue;
+      let hit = false;
+      for (let a = 0; a < plug.arcs.length && !hit; a++) {
+        hit = this.plugArcHit(plug.arcs[a], p.x, p.y, PLAYER.radius * p.shrink, plug.arcWidth);
+      }
+      if (!hit) continue;
+      this.plugHitPlayers |= bit;
+      this.damagePlayer(p, plug.damage, -1, this.plugHitNx, this.plugHitNy, plug.knockback, SRC.PLUG, -1);
+    }
+
+    if (this.mode === 'training' && this.drone.active && !this.plugHitDrone) {
+      for (let a = 0; a < plug.arcs.length; a++) {
+        if (!this.plugArcHit(plug.arcs[a], this.drone.x, this.drone.y, this.drone.radius, plug.arcWidth)) continue;
+        this.plugHitDrone = true;
+        this.damageDrone(plug.enemyDamage, -1);
+        break;
+      }
+    }
+    if (this.mode !== 'gauntlet') return;
+
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const bit = 1 << i;
+      if (this.plugHitWorms & bit) continue;
+      let hit = false;
+      for (let a = 0; a < plug.arcs.length && !hit; a++) {
+        const arc = plug.arcs[a];
+        hit = this.plugArcHit(arc, w.x, w.y, WORM.headRadius, plug.arcWidth);
+        for (let s = 0; s < w.segCount && !hit; s++) {
+          hit = this.plugArcHit(arc, w.segX[s], w.segY[s], WORM.segmentRadius, plug.arcWidth);
+        }
+      }
+      if (!hit) continue;
+      this.plugHitWorms |= bit;
+      this.damageWorm(w, plug.enemyDamage, -1, this.plugHitNx, this.plugHitNy, plug.knockback);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const bit = 1 << i;
+      if (this.plugHitViruses & bit) continue;
+      let hit = false;
+      for (let a = 0; a < plug.arcs.length && !hit; a++) {
+        hit = this.plugArcHit(plug.arcs[a], v.x, v.y, v.radius, plug.arcWidth);
+      }
+      if (!hit) continue;
+      this.plugHitViruses |= bit;
+      this.damageVirus(v, plug.enemyDamage, -1, this.plugHitNx, this.plugHitNy, plug.knockback);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const bit = 1 << i;
+      if (this.plugHitSentries & bit) continue;
+      let hit = false;
+      for (let a = 0; a < plug.arcs.length && !hit; a++) {
+        hit = this.plugArcHit(plug.arcs[a], s.x, s.y, s.radius, plug.arcWidth);
+      }
+      if (!hit) continue;
+      this.plugHitSentries |= bit;
+      this.damageSentry(s, plug.enemyDamage, -1, this.plugHitNx, this.plugHitNy, plug.knockback);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const bit = 1 << i;
+      if (this.plugHitErrors & bit) continue;
+      let hit = false;
+      for (let a = 0; a < plug.arcs.length && !hit; a++) {
+        hit = this.plugArcHit(plug.arcs[a], e.x, e.y, CASCADING_ERROR.blockSize * 0.5, plug.arcWidth);
+      }
+      if (!hit) continue;
+      this.plugHitErrors |= bit;
+      this.damageError(e, plug.enemyDamage, -1, this.plugHitNx, this.plugHitNy);
+    }
+  }
+
+  private resetSmoke(): void {
+    const smoke = this.smoke;
+    if (!smoke) return;
+    this.smokeT = 0;
+    this.smokeAlarm = false;
+    this.smokeAlarmT = 0;
+    this.smokeCooldownT = 0;
+    this.smokeWaveT = 0;
+    this.clearSmokeWaves();
+    const battery = this.smokeBattery;
+    if (battery) {
+      battery.active = true;
+      battery.hp = smoke.batteryHp;
+      battery.hitFlash = 0;
+      battery.fixed = true;
+    }
+  }
+
+  private clearSmokeWaves(): void {
+    for (let i = 0; i < this.smokeWaves.length; i++) this.smokeWaves[i].active = false;
+  }
+
+  /** Advance the siren, rings and fixed battery, then look for a fresh sensor press. */
+  private tickSmoke(dt: number): void {
+    const smoke = this.smoke;
+    if (!smoke) return;
+    this.smokeT += dt;
+    if (this.smokeCooldownT > 0) this.smokeCooldownT = Math.max(0, this.smokeCooldownT - dt);
+
+    const battery = this.smokeBattery;
+    if (battery && !battery.active) {
+      if (this.smokeAlarm) {
+        this.smokeAlarm = false;
+        this.clearSmokeWaves();
+      }
+    } else if (this.smokeAlarm) {
+      this.smokeAlarmT = Math.max(0, this.smokeAlarmT - dt);
+      this.smokeWaveT -= dt;
+      if (this.smokeWaveT <= 0) {
+        if (this.spawnSmokeWave()) this.smokeWaveT = smoke.waveEvery;
+        else this.smokeWaveT = 0.1;
+      }
+      if (this.smokeAlarmT <= 0) {
+        this.smokeAlarm = false;
+        this.smokeCooldownT = smoke.sensorCooldown;
+      }
+    }
+
+    for (let i = 0; i < this.smokeWaves.length; i++) {
+      const wave = this.smokeWaves[i];
+      if (!wave.active) continue;
+      wave.radius += smoke.waveSpeed * dt;
+      if (wave.radius - smoke.waveWidth * 0.5 > smoke.maxRadius) {
+        wave.active = false;
+        continue;
+      }
+      this.burnSmokeWave(wave);
+    }
+
+    if (!this.smokeAlarm && this.smokeCooldownT <= 0 && (!battery || battery.active)) {
+      this.checkSmokeSensors();
+    }
+  }
+
+  private resetWatch(): void {
+    this.watchT = 0;
+    this.watchAngle = this.watch ? watchHandAngle(this.watch, 0) : -Math.PI * 0.5;
+    this.watchTurn = 0;
+    this.watchHitPlayers = 0;
+    this.watchHitWorms = 0;
+    this.watchHitViruses = 0;
+    this.watchHitSentries = 0;
+    this.watchHitErrors = 0;
+    this.watchHitDrone = false;
+  }
+
+  /** Advance the second hand and clear the per-revolution hit masks on wrap. */
+  private tickWatch(dt: number): void {
+    const watch = this.watch;
+    if (!watch) return;
+    this.watchT += dt;
+    this.watchAngle = watchHandAngle(watch, this.watchT);
+    const turn = Math.floor((watch.speed * this.watchT) / (Math.PI * 2));
+    if (turn !== this.watchTurn) {
+      this.watchTurn = turn;
+      this.watchHitPlayers = 0;
+      this.watchHitWorms = 0;
+      this.watchHitViruses = 0;
+      this.watchHitSentries = 0;
+      this.watchHitErrors = 0;
+      this.watchHitDrone = false;
+    }
+    this.burnWatch();
+  }
+
+  /** Nearest point on the forward hand segment. Stores the perpendicular shove. */
+  private watchHits(x: number, y: number, radius: number): boolean {
+    const watch = this.watch;
+    if (!watch) return false;
+    const cx = this.centerX;
+    const cy = this.centerY;
+    const dx = Math.cos(this.watchAngle) * watch.handLength;
+    const dy = Math.sin(this.watchAngle) * watch.handLength;
+    const length2 = dx * dx + dy * dy;
+    const t = length2 > 0.0001
+      ? Math.max(0, Math.min(1, ((x - cx) * dx + (y - cy) * dy) / length2))
+      : 0;
+    const px = cx + dx * t;
+    const py = cy + dy * t;
+    const ox = x - px;
+    const oy = y - py;
+    const reach = watch.handWidth * 0.5 + radius;
+    if (ox * ox + oy * oy > reach * reach) return false;
+    const d = Math.hypot(ox, oy);
+    if (d > 0.001) {
+      this.watchHitNx = ox / d;
+      this.watchHitNy = oy / d;
+    } else {
+      this.watchHitNx = -Math.sin(this.watchAngle);
+      this.watchHitNy = Math.cos(this.watchAngle);
+    }
+    return true;
+  }
+
+  /** The hand damages each body once per revolution. */
+  private burnWatch(): void {
+    const watch = this.watch;
+    if (!watch) return;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.dashT > 0 || phased(p)) continue;
+      const bit = 1 << p.slot;
+      if (this.watchHitPlayers & bit) continue;
+      if (!this.watchHits(p.x, p.y, PLAYER.radius * p.shrink)) continue;
+      this.watchHitPlayers |= bit;
+      this.damagePlayer(p, watch.damage, -1, this.watchHitNx, this.watchHitNy, watch.knockback, SRC.WATCH, -1);
+    }
+    if (this.mode === 'training' && this.drone.active && !this.watchHitDrone) {
+      if (this.watchHits(this.drone.x, this.drone.y, this.drone.radius)) {
+        this.watchHitDrone = true;
+        this.damageDrone(watch.enemyDamage, -1);
+      }
+    }
+    if (this.mode !== 'gauntlet') return;
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const bit = 1 << i;
+      if (this.watchHitWorms & bit) continue;
+      let hit = this.watchHits(w.x, w.y, WORM.headRadius);
+      for (let s = 0; s < w.segCount && !hit; s++) hit = this.watchHits(w.segX[s], w.segY[s], WORM.segmentRadius);
+      if (!hit) continue;
+      this.watchHitWorms |= bit;
+      this.damageWorm(w, watch.enemyDamage, -1, this.watchHitNx, this.watchHitNy, watch.knockback);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const bit = 1 << i;
+      if (this.watchHitViruses & bit) continue;
+      if (!this.watchHits(v.x, v.y, v.radius)) continue;
+      this.watchHitViruses |= bit;
+      this.damageVirus(v, watch.enemyDamage, -1, this.watchHitNx, this.watchHitNy, watch.knockback);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const bit = 1 << i;
+      if (this.watchHitSentries & bit) continue;
+      if (!this.watchHits(s.x, s.y, s.radius)) continue;
+      this.watchHitSentries |= bit;
+      this.damageSentry(s, watch.enemyDamage, -1, this.watchHitNx, this.watchHitNy, watch.knockback);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const bit = 1 << i;
+      if (this.watchHitErrors & bit) continue;
+      if (!this.watchHits(e.x, e.y, CASCADING_ERROR.blockSize * 0.5)) continue;
+      this.watchHitErrors |= bit;
+      this.damageError(e, watch.enemyDamage, -1, this.watchHitNx, this.watchHitNy);
+    }
+  }
+
+  private resetLaptop(): void {
+    const lap = this.laptop;
+    if (!lap) return;
+    this.laptopT = 0;
+    this.laptopMessage = 0;
+    this.laptopMessageT = 0;
+    this.laptopFlashT = 0;
+    this.refreshLaptopCards();
+    const layout = lap.messages[0]?.layout ?? [];
+    this.laptopSolids = this.laptopCards.concat(layout);
+  }
+
+  /** Move the inbox cards from the shared clock. Off-pane cards are collisionless. */
+  private refreshLaptopCards(): void {
+    const lap = this.laptop;
+    if (!lap) return;
+    for (let i = 0; i < this.laptopCards.length; i++) {
+      const card = this.laptopCards[i];
+      const y = laptopCardY(lap, i, this.laptopT);
+      card.x = lap.inbox.x + 10;
+      card.y = y;
+      card.w = lap.inbox.w - 20;
+      card.h = y + lap.cardH <= lap.inbox.y || y >= lap.inbox.y + lap.inbox.h ? 0 : lap.cardH;
+    }
+  }
+
+  /** Swap the active preview cover. Only called on a message boundary. */
+  private setLaptopMessage(index: number): void {
+    const lap = this.laptop;
+    if (!lap || lap.messages.length === 0) return;
+    this.laptopMessage = ((index % lap.messages.length) + lap.messages.length) % lap.messages.length;
+    this.laptopFlashT = 1.2;
+    this.laptopSolids = this.laptopCards.concat(lap.messages[this.laptopMessage].layout);
+  }
+
+  private tickLaptop(dt: number): void {
+    const lap = this.laptop;
+    if (!lap) return;
+    this.laptopT += dt;
+    this.laptopMessageT += dt;
+    const every = Math.max(0.5, lap.messageEvery);
+    if (this.laptopMessageT >= every) {
+      const advances = Math.floor(this.laptopMessageT / every);
+      this.laptopMessageT -= advances * every;
+      this.setLaptopMessage(this.laptopMessage + advances);
+    }
+    if (this.laptopFlashT > 0) this.laptopFlashT = Math.max(0, this.laptopFlashT - dt);
+    this.refreshLaptopCards();
+  }
+
+  private laptopCoverAt(x: number, y: number, radius: number): boolean {
+    for (let i = 0; i < this.laptopSolids.length; i++) {
+      const r = this.laptopSolids[i];
+      if (r.w <= 0 || r.h <= 0) continue;
+      if (circleRect(x, y, radius, r, hitScratch)) return true;
+    }
+    return false;
+  }
+
+  private resolveLaptopPlayer(p: Player): void {
+    if (!this.laptop) return;
+    const radius = PLAYER.radius * p.shrink;
+    for (let i = 0; i < this.laptopSolids.length; i++) {
+      const r = this.laptopSolids[i];
+      if (r.w <= 0 || r.h <= 0) continue;
+      if (!circleRect(p.x, p.y, radius, r, hitScratch)) continue;
+      p.x = hitScratch.px;
+      p.y = hitScratch.py;
+      const vn = p.vx * hitScratch.nx + p.vy * hitScratch.ny;
+      if (vn < 0) {
+        p.vx -= vn * hitScratch.nx;
+        p.vy -= vn * hitScratch.ny;
+      }
+    }
+  }
+
+  private pushBodyOutOfLaptop(body: { x: number; y: number }, radius: number): void {
+    if (!this.laptop) return;
+    for (let i = 0; i < this.laptopSolids.length; i++) {
+      const r = this.laptopSolids[i];
+      if (r.w <= 0 || r.h <= 0) continue;
+      if (!circleRect(body.x, body.y, radius, r, hitScratch)) continue;
+      body.x = hitScratch.px;
+      body.y = hitScratch.py;
+    }
+  }
+
+  private pushThreatsOffLaptop(): void {
+    if (!this.laptop) return;
+    if (this.mode === 'training' && this.drone.active) this.pushBodyOutOfLaptop(this.drone, this.drone.radius);
+    for (let i = 0; i < this.sentries.length; i++) {
+      if (this.sentries[i].active) this.pushBodyOutOfLaptop(this.sentries[i], this.sentries[i].radius);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      if (this.viruses[i].active) this.pushBodyOutOfLaptop(this.viruses[i], this.viruses[i].radius);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      if (this.errors[i].active) this.pushBodyOutOfLaptop(this.errors[i], CASCADING_ERROR.blockSize * 0.5);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      this.pushBodyOutOfLaptop(w, WORM.headRadius);
+      for (let s = 0; s < w.segCount; s++) {
+        const body = this.laptopBodyScratch;
+        body.x = w.segX[s];
+        body.y = w.segY[s];
+        this.pushBodyOutOfLaptop(body, WORM.segmentRadius);
+        w.segX[s] = body.x;
+        w.segY[s] = body.y;
+      }
+    }
+  }
+
+  private laptopStopsProjectile(proj: Projectile): boolean {
+    if (!this.laptopCoverAt(proj.x, proj.y, proj.radius)) return false;
+    proj.active = false;
+    this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
+    return true;
+  }
+
+  private laptopRayReach(ox: number, oy: number, dx: number, dy: number, max: number): number {
+    if (!this.laptop) return max;
+    let best = max;
+    for (let i = 0; i < this.laptopSolids.length; i++) {
+      const r = this.laptopSolids[i];
+      if (r.w <= 0 || r.h <= 0) continue;
+      let tmin = 0;
+      let tmax = best;
+      if (Math.abs(dx) < 1e-6) {
+        if (ox < r.x || ox > r.x + r.w) continue;
+      } else {
+        let t1 = (r.x - ox) / dx;
+        let t2 = (r.x + r.w - ox) / dx;
+        if (t1 > t2) {
+          const tmp = t1;
+          t1 = t2;
+          t2 = tmp;
+        }
+        if (t1 > tmin) tmin = t1;
+        if (t2 < tmax) tmax = t2;
+        if (tmin > tmax) continue;
+      }
+      if (Math.abs(dy) < 1e-6) {
+        if (oy < r.y || oy > r.y + r.h) continue;
+      } else {
+        let t1 = (r.y - oy) / dy;
+        let t2 = (r.y + r.h - oy) / dy;
+        if (t1 > t2) {
+          const tmp = t1;
+          t1 = t2;
+          t2 = tmp;
+        }
+        if (t1 > tmin) tmin = t1;
+        if (t2 < tmax) tmax = t2;
+        if (tmin > tmax) continue;
+      }
+      if (tmin >= 0 && tmin < best) best = tmin;
+    }
+    return best;
+  }
+
+  private smokeSensorTouches(x: number, y: number): boolean {
+    const smoke = this.smoke;
+    if (!smoke) return false;
+    for (let i = 0; i < smoke.sensors.length; i++) {
+      const s = smoke.sensors[i];
+      const dx = x - s.x;
+      const dy = y - s.y;
+      if (dx * dx + dy * dy <= s.radius * s.radius) return true;
+    }
+    return false;
+  }
+
+  /** A live body standing on any sensor pad starts one timed siren burst. */
+  private checkSmokeSensors(): void {
+    let pressed = false;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive) continue;
+      if (this.smokeSensorTouches(p.x, p.y)) {
+        pressed = true;
+        break;
+      }
+    }
+    if (!pressed && this.mode === 'training' && this.drone.active) {
+      pressed = this.smokeSensorTouches(this.drone.x, this.drone.y);
+    }
+    if (!pressed && this.mode === 'gauntlet') {
+      for (let i = 0; i < this.worms.length && !pressed; i++) {
+        if (this.worms[i].active) pressed = this.smokeSensorTouches(this.worms[i].x, this.worms[i].y);
+      }
+      for (let i = 0; i < this.viruses.length && !pressed; i++) {
+        if (this.viruses[i].active) pressed = this.smokeSensorTouches(this.viruses[i].x, this.viruses[i].y);
+      }
+      for (let i = 0; i < this.sentries.length && !pressed; i++) {
+        if (this.sentries[i].active) pressed = this.smokeSensorTouches(this.sentries[i].x, this.sentries[i].y);
+      }
+      for (let i = 0; i < this.errors.length && !pressed; i++) {
+        if (this.errors[i].active) pressed = this.smokeSensorTouches(this.errors[i].x, this.errors[i].y);
+      }
+    }
+    if (pressed) {
+      const smoke = this.smoke;
+      if (!smoke) return;
+      this.smokeAlarm = true;
+      this.smokeAlarmT = smoke.alarmTime;
+      this.smokeWaveT = 0;
+      this.clearSmokeWaves();
+    }
+  }
+
+  private spawnSmokeWave(): boolean {
+    for (let i = 0; i < this.smokeWaves.length; i++) {
+      const wave = this.smokeWaves[i];
+      if (wave.active) continue;
+      wave.active = true;
+      wave.radius = 0;
+      wave.hitPlayers = 0;
+      wave.hitWorms = 0;
+      wave.hitViruses = 0;
+      wave.hitSentries = 0;
+      wave.hitErrors = 0;
+      wave.hitDrone = false;
+      return true;
+    }
+    return false;
+  }
+
+  private smokeRingHits(waveRadius: number, width: number, radius: number, distance: number): boolean {
+    const inner = waveRadius - width * 0.5;
+    const outer = waveRadius + width * 0.5;
+    return distance + radius >= inner && distance - radius <= outer;
+  }
+
+  /** One expanding siren ring damages each body at most once. */
+  private burnSmokeWave(wave: SmokeWave): void {
+    const smoke = this.smoke;
+    if (!smoke) return;
+    const cx = this.centerX;
+    const cy = this.centerY;
+
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.dashT > 0 || phased(p)) continue;
+      const bit = 1 << p.slot;
+      if (wave.hitPlayers & bit) continue;
+      const dx = p.x - cx;
+      const dy = p.y - cy;
+      const distance = Math.hypot(dx, dy);
+      if (!this.smokeRingHits(wave.radius, smoke.waveWidth, PLAYER.radius * p.shrink, distance)) continue;
+      wave.hitPlayers |= bit;
+      this.smokeHitNx = distance > 0.001 ? dx / distance : 1;
+      this.smokeHitNy = distance > 0.001 ? dy / distance : 0;
+      this.damagePlayer(p, smoke.damage, -1, this.smokeHitNx, this.smokeHitNy, smoke.knockback, SRC.SMOKE, -1);
+    }
+
+    if (this.mode === 'training' && this.drone.active && !wave.hitDrone) {
+      const dx = this.drone.x - cx;
+      const dy = this.drone.y - cy;
+      const distance = Math.hypot(dx, dy);
+      if (this.smokeRingHits(wave.radius, smoke.waveWidth, this.drone.radius, distance)) {
+        wave.hitDrone = true;
+        this.damageDrone(smoke.enemyDamage, -1);
+      }
+    }
+    if (this.mode !== 'gauntlet') return;
+
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active) continue;
+      const bit = 1 << i;
+      if (wave.hitWorms & bit) continue;
+      let hit = false;
+      let hx = w.x;
+      let hy = w.y;
+      for (let s = -1; s < w.segCount && !hit; s++) {
+        const tx = s < 0 ? w.x : w.segX[s];
+        const ty = s < 0 ? w.y : w.segY[s];
+        const radius = s < 0 ? WORM.headRadius : WORM.segmentRadius;
+        const dx = tx - cx;
+        const dy = ty - cy;
+        const distance = Math.hypot(dx, dy);
+        if (!this.smokeRingHits(wave.radius, smoke.waveWidth, radius, distance)) continue;
+        hit = true;
+        hx = tx;
+        hy = ty;
+      }
+      if (!hit) continue;
+      wave.hitWorms |= bit;
+      const dx = hx - cx;
+      const dy = hy - cy;
+      const distance = Math.hypot(dx, dy) || 1;
+      this.damageWorm(w, smoke.enemyDamage, -1, dx / distance, dy / distance, smoke.knockback);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active) continue;
+      const bit = 1 << i;
+      if (wave.hitViruses & bit) continue;
+      const dx = v.x - cx;
+      const dy = v.y - cy;
+      const distance = Math.hypot(dx, dy);
+      if (!this.smokeRingHits(wave.radius, smoke.waveWidth, v.radius, distance)) continue;
+      wave.hitViruses |= bit;
+      this.damageVirus(v, smoke.enemyDamage, -1, distance > 0.001 ? dx / distance : 1, distance > 0.001 ? dy / distance : 0, smoke.knockback);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      const bit = 1 << i;
+      if (wave.hitSentries & bit) continue;
+      const dx = s.x - cx;
+      const dy = s.y - cy;
+      const distance = Math.hypot(dx, dy);
+      if (!this.smokeRingHits(wave.radius, smoke.waveWidth, s.radius, distance)) continue;
+      wave.hitSentries |= bit;
+      this.damageSentry(s, smoke.enemyDamage, -1, distance > 0.001 ? dx / distance : 1, distance > 0.001 ? dy / distance : 0, smoke.knockback);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      const bit = 1 << i;
+      if (wave.hitErrors & bit) continue;
+      const dx = e.x - cx;
+      const dy = e.y - cy;
+      const distance = Math.hypot(dx, dy);
+      if (!this.smokeRingHits(wave.radius, smoke.waveWidth, CASCADING_ERROR.blockSize * 0.5, distance)) continue;
+      wave.hitErrors |= bit;
+      this.damageError(e, smoke.enemyDamage, -1, distance > 0.001 ? dx / distance : 1, distance > 0.001 ? dy / distance : 0);
+    }
+  }
+
   private keypadStateSolid(state: number): boolean {
     return state === KEYPAD_STATE.slam || state === KEYPAD_STATE.down || state === KEYPAD_STATE.rise;
   }
@@ -12640,7 +13433,7 @@ export class World {
         b.dropT = Math.max(0, b.dropT - dt);
         continue;
       }
-      if (!b.active) continue;
+      if (!b.active || b.fixed) continue;
       this.stepProp(b, dt);
     }
     this.separateProps();
@@ -12760,10 +13553,10 @@ export class World {
   private separateProps(): void {
     for (let i = 0; i < this.props.length; i++) {
       const a = this.props[i];
-      if (!a.active || a.dropT > 0) continue;
+      if (!a.active || a.dropT > 0 || a.fixed) continue;
       for (let j = i + 1; j < this.props.length; j++) {
         const c = this.props[j];
-        if (!c.active || c.dropT > 0) continue;
+        if (!c.active || c.dropT > 0 || c.fixed) continue;
         const ox = Math.min(a.x + a.w, c.x + c.w) - Math.max(a.x, c.x);
         if (ox <= 0) continue;
         const oy = Math.min(a.y + a.h, c.y + c.h) - Math.max(a.y, c.y);
@@ -12783,8 +13576,8 @@ export class World {
 
   /** Send a box flying. Hits launch, they do not delete: the damage is a separate path. */
   private launchProp(b: Prop, nx: number, ny: number, speed: number): void {
-    // Capacitors are mounted hardware, not loose debris: a lash damages them in place.
-    if (b.capacitor) return;
+    // Capacitors and mounted hardware are not loose debris: a lash damages them in place.
+    if (b.capacitor || b.fixed) return;
     const mag = Math.hypot(nx, ny);
     if (mag < 0.001) return;
     const s = Math.min(speed, FILE_PROP.maxSpeed) / mag;

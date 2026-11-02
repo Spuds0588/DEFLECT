@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-02 (FAX MACHINE)
+Last updated: 2026-11-02 (BUSINESS LAPTOP)
 
 ---
 
@@ -28,6 +28,66 @@ Last updated: 2026-11-02 (FAX MACHINE)
 - [x] Hide the panel with `GAME UI`, loading and overlays; older peers degrade to `--`
 - [x] `npx tsc --noEmit` clean
 - [ ] Two-real-client pass: verify RTT, snapshot cadence, disconnect fallback and legacy-peer `--` state
+
+---
+
+## BUSINESS LAPTOP (2026-11-02)
+
+- [x] Add `laptop` data to `ArenaDef`; id 29 after SMART WATCH
+- [x] Email screen with left inbox, right preview and a laptop bezel
+- [x] Four endless inbox cards scrolling upward with shared clock geometry
+- [x] Four message layouts that replace the right-side dynamic cover every 8 seconds
+- [x] Dynamic body, threat, shot, bomb and laser collision against cards and preview cover
+- [x] New-message flash, preview progress bar, picker preview and custom renderer
+- [x] Headless probe (`.tmp/laptop-arena-check.ts`): id/order, message changes, moving cards, cover swap, spawn clearance, reset and snapshot isolation
+- [ ] Headed pass: read the moving inbox, preview flash and cover corridors at play size
+- [ ] Optional: add bot pathing around moving cards and preview cover
+- [ ] Future variants: spreadsheet corridors and breakable cells, then a rising chat conveyor
+
+---
+
+## SMART WATCH (2026-11-02)
+
+- [x] Add `watch` data to `ArenaDef`; id 28 after SMOKE DETECTOR
+- [x] Large rounded watch face with a digital crown, minute ticks, time readout and four raised app complications as static cover
+- [x] Live clockwise second hand that damages players, the drone and all gauntlet threat families once per revolution; add `SRC.WATCH`
+- [x] Dashing and phased bodies avoid the hand; cover does not stop the floor projection
+- [x] Reset the hand clock and hit masks in `beginRound()`
+- [x] Picker preview and custom renderer
+- [x] Headless probe (`.tmp/watch-arena-check.ts`): id/order, hand geometry, spawn clearance, first hit, one-hit-per-revolution, reset and snapshot isolation
+- [ ] Headed pass: read the hand, pivot and app cards at play size
+- [ ] Optional: teach bot navigation to avoid the hand line or wait for it to pass
+
+---
+
+## SMOKE DETECTOR (2026-11-02)
+
+- [x] Add `smoke` data to `ArenaDef`; id 27 after SMART PLUG
+- [x] Round detector face using the existing `disc` rim with zero spin, no holes and no read arm
+- [x] Four floor smoke sensors that arm a timed central siren when a body steps on one
+- [x] Expanding alarm rings that damage players, the drone and all gauntlet threat families once per ring; add `SRC.SMOKE`
+- [x] Fixed six-hit battery prop that can be shot out; breaking it stops the siren and disables sensors for the round
+- [x] Skip fixed props in movement, separation, rendering and snapshot hazards; restore the battery in `beginRound()`
+- [x] Custom renderer with detector ridges, sensor pads, siren horn, live rings and battery health
+- [x] Picker preview
+- [x] Headless probe (`.tmp/smoke-arena-check.ts`): id/order, round floor and spawn clearance, sensor trigger, wave hit, battery shutdown, reset and snapshot isolation
+- [ ] Headed pass: read the round face, sensor warning and live rings at play size
+- [ ] Optional: teach bot navigation to avoid sensor pads and alarm rings
+
+---
+
+## SMART PLUG (2026-11-02)
+
+- [x] Add `plug` data to `ArenaDef`; id 26 after FAX MACHINE
+- [x] Four dual-socket smart-plug modules as static cover around a circuit ring
+- [x] Four socket-to-socket arcs with green safe, red warning, live and cooldown phases
+- [x] Live arcs damage players, the training drone and all gauntlet threat families once per pulse; add `SRC.PLUG`
+- [x] Reset the clock and per-pulse hit masks in `beginRound()`; keep all of it out of `SnapshotHazards` and `isOnlineArena`
+- [x] Custom renderer with LEDs, board traces, safe guide, warning preview and jagged live arcs
+- [x] Picker preview
+- [x] Headless probe (`.tmp/plug-arena-check.ts`): id/order, four modules/arcs, all phases, spawn clearance, one live hit, reset and snapshot isolation
+- [ ] Headed pass: read the green/red LEDs, warning blink and live arc against the floor at play size
+- [ ] Optional: teach bot navigation to wait out a live ring
 
 ---
 
@@ -3188,7 +3248,7 @@ arrive.
   or local match exists yet; the only local multi-body paths today are bots and the gauntlet thrall.
 - Story mode lists three local save slots, but nothing writes or reads a run: the first playable sector
   and the new-game/resume wiring do not exist. The slot format is already versioned in `saves.ts`.
-- ROCKET NAVIGATION's growing barrier, CAR NAVIGATION's growing route, AIRPORT's time-tile hazard, SPACE INVADERS' cannon shots and FAX MACHINE's shuttle print bar are not in the bot nav grid or any snapshot. Bots can path through them, stand on a warning tile, eat a cannon shot or stand in the print bar; those maps are deliberately excluded from hosted rooms. PONG's rally ball is local-only and not part of bot pathing; its court has no static cover. WEAPON SYSTEMS' console banks and SPEAK & FIND's picture cards are static cover/presentation only; no jet weapon, eject action, thruster system or pickable card target exists.
+- ROCKET NAVIGATION's growing barrier, CAR NAVIGATION's growing route, AIRPORT's time-tile hazard, SPACE INVADERS' cannon shots, FAX MACHINE's shuttle print bar, SMART PLUG's circuit ring, SMOKE DETECTOR's alarm rings, SMART WATCH's second hand and BUSINESS LAPTOP's moving cards/preview cover are not in the bot nav grid or any snapshot. Bots can path through them, stand on a warning tile, eat a cannon shot, stand in the print bar, cross a live arc, step on a smoke sensor, walk through the hand or be pushed by a mail card; those maps are deliberately excluded from hosted rooms. PONG's rally ball is local-only and not part of bot pathing; its court has no static cover. WEAPON SYSTEMS' console banks and SPEAK & FIND's picture cards are static cover/presentation only; no jet weapon, eject action, thruster system or pickable card target exists.
 - Compress is local-only like every program kit: a guest does not see a shrunk body and online still runs
   Probe. A compressed player's cover and arena-bound collision still use `PLAYER.radius` even though the
   drawn hull and projectile/bomb hitboxes shrink. A shrunk worm's contact and bite reach stay at the

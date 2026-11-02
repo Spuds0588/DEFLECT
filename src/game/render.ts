@@ -18,6 +18,10 @@ import {
   faxHeadX,
   faxPhaseAt,
   FAX_STATE,
+  plugPhaseAt,
+  PLUG_STATE,
+  watchHandAngle,
+  laptopCardY,
   satelliteSolarPhaseAt,
   satelliteSolarStateAt,
   satelliteTelescopeExtensionAt,
@@ -57,7 +61,7 @@ import { P_COLOR_DANGER, P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
 import { drawDroppedFiles, drawRegularProgram, regularFace, regularProgram, type RegularMood, type RegularProgramDef } from './regulars';
-import { SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type SatelliteMeteor, type Sentry, type Virus, type Worm } from './types';
+import { PROP, SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type SatelliteMeteor, type Sentry, type SmokeWave, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
 import { beamReach } from './collision';
 
@@ -175,6 +179,22 @@ export interface RenderState {
   faxT?: number;
   faxPage?: number;
   faxPhase?: number;
+  /** SMART PLUG circuit clock and current green/red phase. Local-only. */
+  plugT?: number;
+  plugPhase?: number;
+  /** SMOKE DETECTOR siren clock, sensor state and live alarm rings. Local-only. */
+  smokeT?: number;
+  smokeAlarm?: boolean;
+  smokeAlarmT?: number;
+  smokeCooldownT?: number;
+  smokeWaves?: readonly SmokeWave[];
+  /** SMART WATCH second-hand clock and current angle. Local-only. */
+  watchT?: number;
+  watchAngle?: number;
+  /** BUSINESS LAPTOP inbox clock, active message and new-message flash. Local-only. */
+  laptopT?: number;
+  laptopMessage?: number;
+  laptopFlashT?: number;
   /** Forum browser page, cursor and click flash. Guests derive these from Snapshot. */
   browserPage?: number;
   browserPhase?: number;
@@ -1572,7 +1592,7 @@ export class Renderer {
     const ctx = this.ctx;
     for (let i = 0; i < props.length; i++) {
       const b = props[i];
-      if (!b.active || b.capacitor) continue;
+      if (!b.active || b.capacitor || b.fixed) continue;
       const fall = b.dropT > 0 ? (b.dropT / FILE_PROP.dropT) * (b.dropT / FILE_PROP.dropT) * FILE_PROP.dropRise : 0;
       const shake = b.hitFlash > 0 ? (b.hitFlash / FILE_PROP.hitFlash) * 2 : 0;
       const x = b.x + (shake > 0 ? Math.sin(b.hitFlash * 140) * shake : 0);
@@ -3561,6 +3581,634 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** BUSINESS LAPTOP: a mail window with a scrolling inbox and changing preview cover. */
+  private drawLaptopArena(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const lap = arena?.laptop;
+    if (!arena || !lap) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const screen = lap.screen;
+    const inbox = lap.inbox;
+    const preview = lap.preview;
+    const clock = state?.laptopT ?? t;
+    const count = Math.max(1, lap.messages.length);
+    const messageIndex = ((state?.laptopMessage ?? 0) % count + count) % count;
+    const message = lap.messages[messageIndex];
+    const flash = state?.laptopFlashT ?? 0;
+    const labels = ['ATTACHMENT', 'THREAD', 'QUOTE', 'ACTION'];
+    const step = Math.max(1, lap.cardH + lap.cardGap);
+    const span = step * Math.max(1, lap.cards);
+    const scroll = ((clock * lap.speed) % span + span) % span;
+
+    ctx.save();
+    ctx.fillStyle = '#020608';
+    ctx.fillRect(b.left - 50, b.top - 50, b.right - b.left + 100, b.bottom - b.top + 100);
+    ctx.globalAlpha = groundA;
+
+    // Lid, screen and a thin workspace bezel.
+    ctx.fillStyle = '#0b1115';
+    roundRect(ctx, b.left, b.top, b.right - b.left, b.bottom - b.top, 34);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(214, 232, 238, 0.24)';
+    ctx.lineWidth = 5;
+    roundRect(ctx, b.left + 3, b.top + 3, b.right - b.left - 6, b.bottom - b.top - 6, 32);
+    ctx.stroke();
+    ctx.fillStyle = '#071017';
+    roundRect(ctx, screen.x, screen.y, screen.w, screen.h, 12);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(138, 199, 255, 0.5)';
+    ctx.lineWidth = 2;
+    roundRect(ctx, screen.x + 1, screen.y + 1, screen.w - 2, screen.h - 2, 11);
+    ctx.stroke();
+
+    // Top menu bar: three window dots, the mail title and a live clock.
+    ctx.fillStyle = '#0d1a22';
+    ctx.fillRect(screen.x + 18, screen.y + 18, screen.w - 36, 44);
+    ctx.strokeStyle = 'rgba(138, 199, 255, 0.18)';
+    ctx.strokeRect(screen.x + 18.5, screen.y + 18.5, screen.w - 37, 43);
+    const dots = ['#ff6d5e', '#ffc457', '#74d38a'];
+    for (let i = 0; i < dots.length; i++) {
+      ctx.fillStyle = dots[i];
+      ctx.beginPath();
+      ctx.arc(screen.x + 40 + i * 18, screen.y + 40, 5, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(220, 240, 250, 0.88)';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('MAIL', screen.x + 104, screen.y + 40);
+    ctx.fillStyle = 'rgba(138, 199, 255, 0.62)';
+    ctx.fillText('INBOX', screen.x + 152, screen.y + 40);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(200, 230, 242, 0.58)';
+    ctx.fillText('MON 02 NOV // 10:09', screen.x + screen.w - 32, screen.y + 40);
+
+    // Inbox pane and its scrolling message cards.
+    ctx.fillStyle = '#0a141a';
+    ctx.fillRect(inbox.x, inbox.y, inbox.w, inbox.h);
+    ctx.strokeStyle = 'rgba(138, 199, 255, 0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(inbox.x + 0.5, inbox.y + 0.5, inbox.w - 1, inbox.h - 1);
+    ctx.fillStyle = 'rgba(138, 199, 255, 0.16)';
+    ctx.fillRect(inbox.x + 1, inbox.y + 1, inbox.w - 2, 54);
+    ctx.fillStyle = '#dceefa';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.fillText('INBOX', inbox.x + 18, inbox.y + 25);
+    ctx.fillStyle = 'rgba(255, 196, 120, 0.9)';
+    ctx.fillText('12 UNREAD', inbox.x + 18, inbox.y + 41);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(180, 215, 230, 0.48)';
+    ctx.fillText('TODAY', inbox.x + inbox.w - 18, inbox.y + 32);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(inbox.x + 1, inbox.y + 56, inbox.w - 2, inbox.h - 57);
+    ctx.clip();
+    for (let i = 0; i < lap.cards; i++) {
+      const y = laptopCardY(lap, i, clock);
+      if (y + lap.cardH < inbox.y + 56 || y > inbox.y + inbox.h) continue;
+      const card = lap.messages[(i + messageIndex) % count];
+      const x = inbox.x + 10;
+      const w = inbox.w - 20;
+      ctx.fillStyle = i === 0 ? '#1c3441' : '#142530';
+      roundRect(ctx, x, y, w, lap.cardH, 8);
+      ctx.fill();
+      ctx.strokeStyle = i === 0 ? 'rgba(138, 199, 255, 0.8)' : 'rgba(160, 205, 220, 0.22)';
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, x + 0.5, y + 0.5, w - 1, lap.cardH - 1, 8);
+      ctx.stroke();
+      ctx.fillStyle = i === 0 ? 'rgba(255, 196, 120, 0.9)' : 'rgba(138, 199, 255, 0.56)';
+      ctx.beginPath();
+      ctx.arc(x + 18, y + 20, 4, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#e4f4ff';
+      ctx.font = FONT_SMALL;
+      ctx.textAlign = 'left';
+      ctx.fillText(card?.sender ?? 'SYSTEM', x + 30, y + 24);
+      ctx.fillStyle = 'rgba(196, 224, 236, 0.54)';
+      ctx.textAlign = 'right';
+      ctx.fillText(i === 0 ? 'NOW' : `${10 - i}:0${8 - i}`, x + w - 14, y + 24);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#d8ecf7';
+      ctx.fillText(card?.subject ?? 'Untitled message', x + 14, y + 50);
+      ctx.fillStyle = 'rgba(178, 211, 224, 0.54)';
+      ctx.fillText((card?.preview ?? '').slice(0, 42), x + 14, y + 72);
+      ctx.fillStyle = 'rgba(138, 199, 255, 0.3)';
+      ctx.fillRect(x + 14, y + 86, w - 28, 1);
+      ctx.fillStyle = 'rgba(138, 199, 255, 0.6)';
+      ctx.font = FONT_TINY;
+      ctx.fillText(i === 0 ? 'UNREAD // OPEN' : 'MESSAGE', x + 14, y + 97);
+    }
+    ctx.restore();
+
+    // Scrollbar thumb moves with the same clock as the cards.
+    const trackX = inbox.x + inbox.w - 9;
+    const trackY = inbox.y + 64;
+    const trackH = inbox.h - 76;
+    ctx.fillStyle = 'rgba(138, 199, 255, 0.08)';
+    ctx.fillRect(trackX, trackY, 4, trackH);
+    ctx.fillStyle = 'rgba(138, 199, 255, 0.5)';
+    ctx.fillRect(trackX, trackY + ((scroll / span) * (trackH - 70)), 4, 70);
+
+    // Preview pane. Its message content is the dynamic cover.
+    ctx.fillStyle = '#0b151c';
+    ctx.fillRect(preview.x, preview.y, preview.w, preview.h);
+    ctx.strokeStyle = 'rgba(255, 196, 120, 0.3)';
+    ctx.strokeRect(preview.x + 0.5, preview.y + 0.5, preview.w - 1, preview.h - 1);
+    ctx.fillStyle = '#dceefa';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.fillText('MESSAGE PREVIEW', preview.x + 20, preview.y + 26);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255, 196, 120, 0.75)';
+    ctx.fillText(`${messageIndex + 1} / ${count} // AUTO-OPEN`, preview.x + preview.w - 20, preview.y + 26);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(188, 220, 232, 0.46)';
+    ctx.fillText(`FROM ${message?.sender ?? 'SYSTEM'}`, preview.x + 20, preview.y + 52);
+    ctx.fillStyle = '#eef8ff';
+    ctx.font = FONT_MID;
+    ctx.fillText(message?.subject ?? 'No message', preview.x + 20, preview.y + 76);
+    ctx.fillStyle = 'rgba(188, 220, 232, 0.4)';
+    ctx.font = FONT_TINY;
+    ctx.fillText(message?.preview ?? '', preview.x + 20, preview.y + 98);
+
+    const layout = message?.layout ?? [];
+    for (let i = 0; i < layout.length; i++) {
+      const r = layout[i];
+      ctx.fillStyle = 'rgba(2, 7, 10, 0.56)';
+      roundRect(ctx, r.x + 5, r.y + 5, r.w, r.h, 7);
+      ctx.fill();
+      ctx.fillStyle = i % 2 === 0 ? '#182a32' : '#15242c';
+      roundRect(ctx, r.x, r.y, r.w, r.h, 7);
+      ctx.fill();
+      ctx.strokeStyle = i === 0 ? 'rgba(255, 196, 120, 0.64)' : 'rgba(138, 199, 255, 0.34)';
+      ctx.lineWidth = 2;
+      roundRect(ctx, r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1, 7);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255, 196, 120, 0.78)';
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'left';
+      ctx.fillText(labels[i % labels.length], r.x + 14, r.y + 20);
+      ctx.fillStyle = 'rgba(205, 232, 242, 0.5)';
+      for (let line = 0; line < Math.min(5, Math.floor((r.h - 34) / 18)); line++) {
+        ctx.fillRect(r.x + 14, r.y + 36 + line * 18, Math.max(20, r.w - 28 - (line % 3) * 34), 2);
+      }
+      ctx.fillStyle = 'rgba(138, 199, 255, 0.42)';
+      ctx.fillRect(r.x + 14, r.y + r.h - 18, Math.min(110, r.w - 28), 6);
+    }
+
+    if (flash > 0) {
+      ctx.globalAlpha = Math.min(1, flash / 0.45) * groundA;
+      ctx.fillStyle = 'rgba(255, 196, 120, 0.14)';
+      ctx.fillRect(preview.x + 1, preview.y + 1, preview.w - 2, 48);
+      ctx.fillStyle = '#ffd08a';
+      ctx.font = FONT_SMALL;
+      ctx.textAlign = 'left';
+      ctx.fillText(`NEW MESSAGE // ${message?.sender ?? 'INBOX'}`, preview.x + 20, preview.y + 16);
+      ctx.globalAlpha = groundA;
+    }
+
+    // Cycle progress, page count and bottom deck label.
+    const progress = Math.max(0, Math.min(1, (clock % Math.max(0.5, lap.messageEvery)) / Math.max(0.5, lap.messageEvery)));
+    ctx.fillStyle = 'rgba(138, 199, 255, 0.14)';
+    ctx.fillRect(preview.x + 20, preview.y + preview.h - 18, preview.w - 40, 4);
+    ctx.fillStyle = 'rgba(255, 196, 120, 0.8)';
+    ctx.fillRect(preview.x + 20, preview.y + preview.h - 18, (preview.w - 40) * progress, 4);
+    ctx.fillStyle = 'rgba(196, 224, 236, 0.46)';
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'left';
+    ctx.fillText('BUSINESS LAPTOP // MAIL', b.left + 22, b.bottom - 16);
+    ctx.textAlign = 'right';
+    ctx.fillText('INBOX SCROLLS // PREVIEW REWRITES', b.right - 22, b.bottom - 16);
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(138, 199, 255, 0.72)';
+    ctx.lineWidth = 2.5;
+    roundRect(ctx, b.left, b.top, b.right - b.left, b.bottom - b.top, 34);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** SMART WATCH: a large watch face with a sweeping second-hand hazard. */
+  private drawWatchArena(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const watch = arena?.watch;
+    if (!arena || !watch) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const face = watch.face;
+    const cx = face.x + face.w * 0.5;
+    const cy = face.y + face.h * 0.5;
+    const angle = state?.watchAngle ?? watchHandAngle(watch, state?.watchT ?? 0);
+    const handX = cx + Math.cos(angle) * watch.handLength;
+    const handY = cy + Math.sin(angle) * watch.handLength;
+    const tailX = cx - Math.cos(angle) * 66;
+    const tailY = cy - Math.sin(angle) * 66;
+    const dialR = Math.min(face.w, face.h) * 0.34;
+    const seconds = Math.floor((state?.watchT ?? t) % 60);
+    const labels = ['HEART', 'WEATHER', 'MUSIC', 'TIMER'];
+    const glyphs = ['♥', '☀', '♫', '⏱'];
+
+    ctx.save();
+    ctx.fillStyle = '#030506';
+    ctx.fillRect(b.left - 40, b.top - 40, b.right - b.left + 80, b.bottom - b.top + 80);
+    ctx.globalAlpha = groundA;
+
+    // Watch case, rounded screen and raised bezel.
+    ctx.fillStyle = '#11161b';
+    roundRect(ctx, b.left, b.top, b.right - b.left, b.bottom - b.top, 58);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(220, 235, 232, 0.26)';
+    ctx.lineWidth = 8;
+    roundRect(ctx, b.left + 4, b.top + 4, b.right - b.left - 8, b.bottom - b.top - 8, 54);
+    ctx.stroke();
+    ctx.fillStyle = '#080d11';
+    roundRect(ctx, face.x, face.y, face.w, face.h, 46);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 141, 92, 0.62)';
+    ctx.lineWidth = 2.5;
+    roundRect(ctx, face.x + 1, face.y + 1, face.w - 2, face.h - 2, 45);
+    ctx.stroke();
+
+    // Inner dial, minute ticks and a minute ring.
+    ctx.save();
+    roundRect(ctx, face.x + 8, face.y + 8, face.w - 16, face.h - 16, 40);
+    ctx.clip();
+    ctx.fillStyle = '#10171c';
+    ctx.fillRect(face.x, face.y, face.w, face.h);
+    ctx.strokeStyle = 'rgba(255, 178, 128, 0.16)';
+    ctx.lineWidth = 1.5;
+    for (let i = 1; i <= 4; i++) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, (dialR * i) / 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 60; i++) {
+      const a = (i / 60) * Math.PI * 2 - Math.PI * 0.5;
+      const outer = dialR + 20;
+      const inner = outer - (i % 5 === 0 ? 14 : 5);
+      ctx.strokeStyle = i % 5 === 0 ? 'rgba(255, 190, 142, 0.8)' : 'rgba(205, 224, 220, 0.34)';
+      ctx.lineWidth = i % 5 === 0 ? 3 : 1;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+      ctx.lineTo(cx + Math.cos(a) * outer, cy + Math.sin(a) * outer);
+      ctx.stroke();
+    }
+
+    // Status bar and time readout, clear of the hand pivot.
+    ctx.fillStyle = 'rgba(255, 190, 142, 0.8)';
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('MON 02 NOV', face.x + 34, face.y + 34);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(205, 224, 220, 0.68)';
+    ctx.fillText('78%  ♥ 84', face.x + face.w - 34, face.y + 34);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff1df';
+    ctx.font = '700 68px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    ctx.fillText(`10:09:${String(seconds).padStart(2, '0')}`, cx, face.y + 112);
+    ctx.fillStyle = 'rgba(255, 190, 142, 0.58)';
+    ctx.font = FONT_TINY;
+    ctx.fillText('SWEEP FACE // LIVE', cx, face.y + 142);
+
+    // Four complication cards are the static cover and the watch-app language.
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      ctx.fillStyle = '#1b272d';
+      roundRect(ctx, r.x, r.y, r.w, r.h, 18);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 178, 128, 0.38)';
+      ctx.lineWidth = 2;
+      roundRect(ctx, r.x + 1, r.y + 1, r.w - 2, r.h - 2, 17);
+      ctx.stroke();
+      ctx.fillStyle = '#ffb18a';
+      ctx.font = '700 34px ui-sans-serif, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(glyphs[i] ?? '●', r.x + r.w * 0.5, r.y + 42);
+      ctx.fillStyle = 'rgba(231, 242, 238, 0.68)';
+      ctx.font = FONT_TINY;
+      ctx.fillText(labels[i] ?? 'APP', r.x + r.w * 0.5, r.y + r.h - 22);
+    }
+
+    // The second hand is a floor projection: cover does not stop it.
+    ctx.strokeStyle = 'rgba(255, 94, 58, 0.14)';
+    ctx.lineWidth = 38;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 141, 92, 0.34)';
+    ctx.lineWidth = 17;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffd0ad';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 141, 92, 0.6)';
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(tailX, tailY);
+    ctx.stroke();
+    ctx.fillStyle = '#ff8d5c';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffe3c8';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ff8d5c';
+    ctx.beginPath();
+    ctx.arc(handX, handY, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    // Digital crown and side button on the right edge; presentation only.
+    ctx.fillStyle = '#252d31';
+    roundRect(ctx, b.right - 8, cy - 94, 28, 188, 12);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(230, 242, 236, 0.46)';
+    ctx.lineWidth = 2;
+    roundRect(ctx, b.right - 7, cy - 93, 26, 186, 11);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(8, 13, 17, 0.8)';
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 8; i++) {
+      ctx.beginPath();
+      ctx.moveTo(b.right + 1, cy - 77 + i * 20);
+      ctx.lineTo(b.right + 17, cy - 77 + i * 20);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255, 141, 92, 0.75)';
+    ctx.fillRect(b.right - 8, cy - 118, 28, 10);
+
+    ctx.globalAlpha = groundA;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(255, 190, 142, 0.58)';
+    ctx.fillText('SMART WATCH // SECOND HAND', b.left + 34, b.top + 32);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(205, 224, 220, 0.4)';
+    ctx.fillText('ONE HIT PER REVOLUTION', b.right - 34, b.bottom - 30);
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(255, 141, 92, 0.7)';
+    ctx.lineWidth = 3;
+    roundRect(ctx, b.left, b.top, b.right - b.left, b.bottom - b.top, 58);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** SMOKE DETECTOR: a round detector face, four floor sensors, a siren and a battery. */
+  private drawSmokeArena(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const smoke = arena?.smoke;
+    const disc = arena?.disc;
+    if (!arena || !smoke || !disc) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const cx = (b.left + b.right) * 0.5;
+    const cy = (b.top + b.bottom) * 0.5;
+    const radius = disc.radius;
+    const alarm = state?.smokeAlarm ?? false;
+    const alarmT = state?.smokeAlarmT ?? 0;
+    const clock = state?.smokeT ?? t;
+    const pulse = 0.5 + 0.5 * Math.abs(Math.sin(clock * 9));
+
+    let batteryActive = true;
+    let batteryHp = smoke.batteryHp;
+    if (state?.props) {
+      for (let i = 0; i < state.props.length; i++) {
+        const p = state.props[i];
+        if (!p.fixed || p.kind !== PROP.BATTERY) continue;
+        batteryActive = p.active;
+        batteryHp = p.hp;
+        break;
+      }
+    }
+    const live = alarm && batteryActive;
+
+    ctx.save();
+    ctx.fillStyle = '#030607';
+    ctx.fillRect(b.left - 40, b.top - 40, b.right - b.left + 80, b.bottom - b.top + 80);
+    ctx.globalAlpha = groundA;
+
+    // The detector face is the whole floor. Everything outside the circular rim is a drop.
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#111719';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(220, 232, 228, 0.28)';
+    ctx.lineWidth = 8;
+    ctx.stroke();
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius - 5, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = '#151d1f';
+    ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+
+    // Concentric detector ridges and the radial vents around the siren.
+    ctx.strokeStyle = 'rgba(202, 230, 220, 0.08)';
+    ctx.lineWidth = 1.5;
+    for (let i = 1; i <= 8; i++) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, (radius * i) / 9, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(202, 230, 220, 0.16)';
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * radius * 0.79, cy + Math.sin(a) * radius * 0.79);
+      ctx.lineTo(cx + Math.cos(a) * radius * 0.91, cy + Math.sin(a) * radius * 0.91);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(202, 230, 220, 0.25)';
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + 0.2;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(a) * radius * 0.84, cy + Math.sin(a) * radius * 0.84, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Four floor sensors. A body stepping on one arms the siren.
+    for (let i = 0; i < smoke.sensors.length; i++) {
+      const s = smoke.sensors[i];
+      const col = !batteryActive ? '#65716d' : live ? '#ff6a5e' : '#8dffb0';
+      ctx.fillStyle = '#0a1214';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(210, 236, 228, 0.32)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.strokeStyle = col;
+      ctx.globalAlpha = groundA * (live ? 0.45 + pulse * 0.45 : 0.65);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.radius - 7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = groundA;
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 5 + (live ? pulse * 2 : 0), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(222, 240, 232, 0.72)';
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`SMOKE 0${i + 1}`, s.x, s.y + s.radius + 14);
+    }
+
+    // Expanding sound rings. The wave is the hazard; the siren is presentation.
+    const waves = state?.smokeWaves ?? [];
+    for (let i = 0; i < waves.length; i++) {
+      const wave = waves[i];
+      if (!wave.active) continue;
+      const alpha = Math.max(0.06, 1 - wave.radius / smoke.maxRadius);
+      ctx.strokeStyle = `rgba(255, 78, 62, ${alpha * 0.8})`;
+      ctx.lineWidth = smoke.waveWidth;
+      ctx.beginPath();
+      ctx.arc(cx, cy, wave.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 224, 199, ${alpha * 0.9})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, wave.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // The siren horn sits at the spindle and is the visual source of every ring.
+    const hubR = 74;
+    ctx.fillStyle = '#090f11';
+    ctx.beginPath();
+    ctx.arc(cx, cy, hubR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = live ? '#ff6a5e' : '#8dffb0';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, hubR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(210, 236, 228, 0.24)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 24 + i * 12, -0.7, 0.7);
+      ctx.stroke();
+    }
+    ctx.fillStyle = live ? '#ff6a5e' : batteryActive ? '#8dffb0' : '#8a7468';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 11 + (live ? pulse * 3 : 0), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(226, 244, 236, 0.82)';
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(live ? 'ALARM' : 'SIREN', cx, cy + 32);
+
+    ctx.restore();
+
+    // The fixed battery target. It is mounted beside the siren and can be shot out.
+    const bat = smoke.battery;
+    ctx.globalAlpha = groundA;
+    ctx.save();
+    ctx.translate(bat.x, bat.y);
+    if (batteryActive) {
+      ctx.fillStyle = '#1b1711';
+      ctx.fillRect(-5, -5, bat.w + 10, bat.h + 10);
+      ctx.fillStyle = '#d7a546';
+      ctx.fillRect(0, 0, bat.w, bat.h);
+      ctx.fillStyle = '#f0c56a';
+      ctx.fillRect(8, 8, bat.w - 16, bat.h - 16);
+      ctx.fillStyle = '#2b2318';
+      ctx.fillRect(14, -5, 12, 7);
+      ctx.fillRect(bat.w - 26, -5, 12, 7);
+      ctx.fillStyle = '#1b1711';
+      ctx.fillRect(14, 18, bat.w - 28, 12);
+      ctx.fillStyle = '#fff0bd';
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('BATTERY', bat.w * 0.5, bat.h * 0.59);
+      ctx.fillStyle = '#20170d';
+      ctx.fillRect(10, bat.h - 13, bat.w - 20, 5);
+      ctx.fillStyle = '#ffe29a';
+      ctx.fillRect(10, bat.h - 13, (bat.w - 20) * Math.max(0, batteryHp / smoke.batteryHp), 5);
+      ctx.strokeStyle = 'rgba(255, 230, 171, 0.75)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0.5, 0.5, bat.w - 1, bat.h - 1);
+    } else {
+      ctx.strokeStyle = 'rgba(255, 106, 94, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([7, 6]);
+      ctx.strokeRect(0.5, 0.5, bat.w - 1, bat.h - 1);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255, 190, 170, 0.58)';
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('NO POWER', bat.w * 0.5, bat.h * 0.5);
+    }
+    ctx.restore();
+
+    ctx.globalAlpha = groundA;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = FONT_SMALL;
+    ctx.fillStyle = !batteryActive ? '#ffb08e' : live ? '#ff6a5e' : '#8dffb0';
+    ctx.fillText(
+      !batteryActive ? 'BATTERY DEAD // ALARM DISABLED' : live ? `ALARM // LIVE ${Math.ceil(alarmT)}s` : 'STANDBY // SENSORS ARMED',
+      cx,
+      b.top + 26,
+    );
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(214, 238, 230, 0.5)';
+    ctx.fillText(
+      !batteryActive ? 'ROUND SAFE // BATTERY DESTROYED' : live ? 'LEAVE THE RING // SHOOT THE BATTERY' : 'STEP ON A SENSOR TO ARM',
+      cx,
+      b.top + 43,
+    );
+    ctx.fillStyle = 'rgba(255, 106, 94, 0.42)';
+    ctx.fillText('SMOKE DETECTOR // ROUND FLOOR', cx, b.bottom - 18);
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(255, 106, 94, 0.72)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   /**
    * A round platter instead of a rectangular plate. The floor, its concentric tracks and
    * every hole turn with the disc; the read arm pivots outside the rim and sweeps across
@@ -5053,6 +5701,210 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** SMART PLUG: four socket modules around a green-safe / red-live circuit ring. */
+  private drawPlugArena(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const plug = arena?.plug;
+    if (!arena || !plug) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const clock = state?.plugT ?? 0;
+    const phase = state?.plugPhase ?? plugPhaseAt(plug, clock);
+    const live = phase === PLUG_STATE.live;
+    const warn = phase === PLUG_STATE.warn;
+    const red = live || warn;
+    const pulse = 0.5 + 0.5 * Math.abs(Math.sin(t * 11));
+    const centerX = b.left + (b.right - b.left) * 0.5;
+    const centerY = b.top + (b.bottom - b.top) * 0.5;
+
+    ctx.save();
+    ctx.fillStyle = '#020604';
+    ctx.fillRect(b.left - 40, b.top - 40, b.right - b.left + 80, b.bottom - b.top + 80);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#06100a';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+
+    // Dark circuit board, fine grid and a faint high-voltage watermark.
+    ctx.strokeStyle = 'rgba(109, 255, 168, 0.045)';
+    ctx.lineWidth = 1;
+    for (let x = b.left + 48; x < b.right; x += 64) {
+      ctx.beginPath();
+      ctx.moveTo(x, b.top + 20);
+      ctx.lineTo(x, b.bottom - 20);
+      ctx.stroke();
+    }
+    for (let y = b.top + 48; y < b.bottom; y += 64) {
+      ctx.beginPath();
+      ctx.moveTo(b.left + 20, y);
+      ctx.lineTo(b.right - 20, y);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(109, 255, 168, 0.13)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.left + 26, b.top + 26, b.right - b.left - 52, b.bottom - b.top - 52);
+    ctx.save();
+    ctx.globalAlpha = 0.035 * groundA;
+    ctx.fillStyle = '#d8ffe6';
+    ctx.font = '900 220px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('120V', centerX, centerY);
+    ctx.restore();
+
+    // Four socket modules. The ring starts at their inner faces.
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      const ledX = r.x + r.w - 26;
+      const ledY = r.y + 27;
+      const led = red ? '#ff5b52' : '#6dffa8';
+      const ledGlow = red
+        ? `rgba(255, 91, 82, ${0.12 + (warn ? pulse * 0.2 : 0.08)})`
+        : 'rgba(109, 255, 168, 0.12)';
+
+      ctx.globalAlpha = groundA;
+      ctx.fillStyle = '#09110d';
+      ctx.fillRect(r.x - 5, r.y - 5, r.w + 10, r.h + 10);
+      ctx.fillStyle = '#111f18';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = 'rgba(178, 255, 207, 0.32)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = '#0a1711';
+      ctx.fillRect(r.x + 10, r.y + 10, r.w - 20, r.h - 20);
+      ctx.fillStyle = 'rgba(109, 255, 168, 0.1)';
+      for (let v = 0; v < 4; v++) ctx.fillRect(r.x + 18, r.y + 62 + v * 12, 42, 4);
+      ctx.fillStyle = 'rgba(178, 255, 207, 0.74)';
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`PLUG 0${i + 1}`, r.x + 18, r.y + 31);
+      ctx.fillStyle = ledGlow;
+      ctx.beginPath();
+      ctx.arc(ledX, ledY, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = led;
+      ctx.beginPath();
+      ctx.arc(ledX, ledY, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = red ? `rgba(255, 91, 82, ${0.5 + pulse * 0.4})` : 'rgba(109, 255, 168, 0.72)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(ledX, ledY, 12, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = red ? '#ff9c8e' : '#9fffc0';
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'center';
+      ctx.fillText(red ? 'LIVE' : 'SAFE', ledX, r.y + 50);
+    }
+
+    // The circuit itself. Safe is a green guide, warning is a red dashed preview,
+    // and live is a jagged, layered arc between the two socket faces.
+    for (let i = 0; i < plug.arcs.length; i++) {
+      const arc = plug.arcs[i];
+      const dx = arc.bx - arc.ax;
+      const dy = arc.by - arc.ay;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+      ctx.globalAlpha = groundA;
+      if (live) {
+        for (let pass = 0; pass < 3; pass++) {
+          ctx.globalAlpha = groundA * (pass === 0 ? 0.16 : pass === 1 ? 0.56 : 1);
+          ctx.strokeStyle = pass === 2 ? '#ffe7d2' : '#ff5548';
+          ctx.lineWidth = pass === 0 ? plug.arcWidth + 20 : pass === 1 ? plug.arcWidth * 0.58 : 2.5;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          for (let s = 0; s <= 24; s++) {
+            const k = s / 24;
+            const envelope = Math.sin(Math.PI * k);
+            const jitter = (Math.sin(t * 43 + s * 2.6 + i * 1.7) + Math.sin(t * 67 + s * 1.1) * 0.55) * 6 * envelope;
+            const x = arc.ax + dx * k + nx * jitter;
+            const y = arc.ay + dy * k + ny * jitter;
+            if (s === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+        ctx.globalAlpha = groundA;
+        for (let s = 0; s < 4; s++) {
+          const k = (t * 0.9 + s * 0.25 + i * 0.17) % 1;
+          ctx.fillStyle = '#fff0c8';
+          ctx.fillRect(arc.ax + dx * k - 2, arc.ay + dy * k - 2, 4, 4);
+        }
+      } else {
+        ctx.strokeStyle = warn
+          ? `rgba(255, 86, 74, ${0.35 + pulse * 0.45})`
+          : 'rgba(109, 255, 168, 0.23)';
+        ctx.lineWidth = warn ? 3 : 1.5;
+        if (warn) ctx.setLineDash([10, 8]);
+        ctx.beginPath();
+        ctx.moveTo(arc.ax, arc.ay);
+        ctx.lineTo(arc.bx, arc.by);
+        ctx.stroke();
+        if (warn) ctx.setLineDash([]);
+        if (!warn) {
+          for (let s = 0; s < 4; s++) {
+            const k = (t * 0.28 + s * 0.25 + i * 0.2) % 1;
+            ctx.fillStyle = 'rgba(109, 255, 168, 0.6)';
+            ctx.beginPath();
+            ctx.arc(arc.ax + dx * k, arc.ay + dy * k, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    // Socket plates sit on the module faces where each arc terminates.
+    ctx.globalAlpha = groundA;
+    for (let i = 0; i < plug.arcs.length; i++) {
+      const arc = plug.arcs[i];
+      const angle = Math.atan2(arc.by - arc.ay, arc.bx - arc.ax);
+      for (let end = 0; end < 2; end++) {
+        const x = end === 0 ? arc.ax : arc.bx;
+        const y = end === 0 ? arc.ay : arc.by;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.fillStyle = '#020805';
+        ctx.fillRect(-9, -14, 18, 28);
+        ctx.strokeStyle = red ? 'rgba(255, 91, 82, 0.72)' : 'rgba(109, 255, 168, 0.48)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(-9, -14, 18, 28);
+        ctx.fillStyle = '#0a1711';
+        ctx.fillRect(-5, -9, 10, 18);
+        ctx.fillStyle = '#010403';
+        ctx.fillRect(-3, -6, 2, 7);
+        ctx.fillRect(1, -6, 2, 7);
+        ctx.restore();
+      }
+    }
+
+    // Status strip and the rule, in the top margin above the ring.
+    ctx.globalAlpha = groundA;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = FONT_SMALL;
+    ctx.fillStyle = red ? '#ff6a5e' : '#6dffa8';
+    ctx.fillText(live ? 'RED // CIRCUIT LIVE' : warn ? 'RED // BRACE' : 'GREEN // SAFE', centerX, b.top + 26);
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(207, 255, 224, 0.52)';
+    ctx.fillText('GREEN = CROSS  //  RED = WAIT', centerX, b.top + 43);
+    ctx.fillStyle = 'rgba(109, 255, 168, 0.38)';
+    ctx.fillText('4-PORT POWER BOARD // 60 HZ', centerX, b.bottom - 18);
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(109, 255, 168, 0.68)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.restore();
+  }
+
   private drawArena(
     t: number,
     arena: ArenaDef,
@@ -5072,6 +5924,18 @@ export class Renderer {
     const frameA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 0.7) / 0.75));
     const pillarA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 1.15) / 0.8));
     const pillarDrop = (1 - pillarA) * 30;
+    if (arena.laptop) {
+      this.drawLaptopArena(satelliteState, groundA, frameA, t);
+      return;
+    }
+    if (arena.watch) {
+      this.drawWatchArena(satelliteState, groundA, frameA, t);
+      return;
+    }
+    if (arena.smoke) {
+      this.drawSmokeArena(satelliteState, groundA, frameA, t);
+      return;
+    }
     if (arena.disc) {
       this.drawDiscArena(t, arena, groundA, frameA, discT);
       return;
@@ -5098,6 +5962,10 @@ export class Renderer {
     }
     if (arena.invaders) {
       this.drawInvadersArena(satelliteState, groundA, frameA, t);
+      return;
+    }
+    if (arena.plug) {
+      this.drawPlugArena(satelliteState, groundA, frameA, t);
       return;
     }
     if (arena.seek) {
