@@ -5268,3 +5268,35 @@ and no campaign node uses the floor yet.
 
 **Next:** a conflict alert when two aircraft cross close together, then a campaign node that treats the
 sweep as a patrol clock.
+
+## 2026-11-02 — AIRPORT: the board becomes the floor (v0.1.130)
+
+**Goal:** the split-flap level was a terminal with a board on it. The request was the opposite: drop the
+apron, triple the board, and make every line of text a flap element that can hurt you.
+
+- The board now covers the arena (`flip.board` 1680×920 inside the bounds). The terminal floor, the gate
+  windows, the runway lights and the four bench blocks are gone, and `pillars` is empty: the rows are the
+  terrain. Eight spawn stations moved onto the board itself.
+- Rows went from six to eighteen, split into two banks of nine (`banks: 2`), arrivals left and departures
+  right, with 88-pixel rows so the cells stay legible without stretching a destination across the floor.
+  Flight data is generated from balanced destination/gate/time decks in `airportFlights()`.
+- Every text field is now a flap element. Time keeps its own cycling deck; destination, gate and status
+  each cycle through a deck (`flip.destinations` / `gates` / `statuses`) offset by row, and each cell draws
+  its own squeeze a beat behind the time tile, so the row reads as one machine working rather than a
+  single flashing tile.
+- A landed row damages its whole bank band (`flipRowRectAt`), not just the time cell, which is the point of
+  making all the text flappable. One landing per row per period; the wave staggers across both banks.
+- `drawFlapCell` carries the flap drawing, including the hinge line and the sweep, so every field shares one
+  visual language. AIRPORT stays local-only (`isOnlineArena` excludes `flip`).
+
+**Verification:** `.tmp/flipboard-check.ts` passes (the board covers over 85% of the bounds, 18 rows in two
+banks, no static destination on any row, every row band on the board, and a body standing on the
+destination/status cells — away from the time tile — takes exactly one segment when that row lands and not
+a second). `.tmp/radar-check.ts`, `.tmp/capcom-check.ts`, `.tmp/islands-ports-check.ts` and
+`.tmp/laptop-variants-check.ts` still pass. `npm run build` passes. `npm run bench` is clean: gauntlet max
+0.145 ms avg / 0.481 ms p99.
+
+**Limitations:** destinations do not respect their flight time, and the two banks share one wave clock
+rather than having independent rhythms.
+
+**Next:** a gate-change callout every few cycles, then per-bank rhythms so the floor always has a safe half.

@@ -32,6 +32,8 @@ import {
   flipRowFlapProgressAt,
   flipRowStateAt,
   flipRowTimeAt,
+  flipFieldAt,
+  flipRowRectAt,
   FLIP_STATE,
   rocketArcAt,
   rocketProgressAt,
@@ -5888,6 +5890,66 @@ export class Renderer {
   }
 
   /** AIRPORT: a terminal floor under a split-flap arrivals/departures board. */
+  /** One split-flap text cell. `progress` is 0..1 through a flip, or -1 when idle. */
+  private drawFlapCell(
+    text: string,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    progress: number,
+    hot: boolean,
+    size: number,
+  ): void {
+    const ctx = this.ctx;
+    ctx.fillStyle = hot ? '#241708' : '#05070a';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = hot ? 'rgba(255, 196, 80, 0.9)' : 'rgba(255, 200, 87, 0.34)';
+    ctx.lineWidth = hot ? 2 : 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+    const chars = Math.max(1, text.length);
+    const charW = (w - 16) / chars;
+    const squeeze = progress >= 0 ? Math.max(0.12, Math.abs(Math.cos(Math.PI * progress))) : 1;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x + 2, y + 2, w - 4, h - 4);
+    ctx.clip();
+    ctx.font = `700 ${size}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let c = 0; c < chars; c++) {
+      const gx = x + 8 + charW * (c + 0.5);
+      ctx.save();
+      ctx.translate(gx, y + h * 0.55);
+      ctx.scale(1, squeeze);
+      ctx.fillStyle = hot ? '#ffe6a8' : '#ffe9bd';
+      ctx.fillText(text.charAt(c), 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // The hinge line is what makes a flap read as a flap.
+    ctx.strokeStyle = 'rgba(4, 7, 11, 0.85)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + 4, y + h * 0.5);
+    ctx.lineTo(x + w - 4, y + h * 0.5);
+    ctx.stroke();
+    if (progress >= 0) {
+      const sweepY = y + h * progress;
+      ctx.fillStyle = 'rgba(255, 211, 111, 0.18)';
+      ctx.fillRect(x + 3, sweepY - 3, w - 6, 6);
+      ctx.strokeStyle = '#ffe5a3';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + 3, sweepY);
+      ctx.lineTo(x + w - 3, sweepY);
+      ctx.stroke();
+    }
+  }
+
+  /** AIRPORT: the split-flap board is the whole floor, and every line flips and hurts. */
   private drawFlipArena(
     state: RenderState | undefined,
     groundA: number,
@@ -5901,169 +5963,99 @@ export class Renderer {
     const b = arena.bounds;
     const board = flip.board;
     const clock = state?.flipT ?? t;
-    const timeX = board.x + 24;
-    const textX = board.x + flip.timeW + 52;
-    const gateX = board.x + board.w - 300;
-    const statusX = board.x + board.w - 158;
+    const banks = Math.max(1, flip.banks ?? 1);
+    const perBank = Math.ceil(flip.rows.length / banks);
+    const cellScratch = { x: 0, y: 0, w: 0, h: 0 };
 
     ctx.save();
-    ctx.fillStyle = '#080b12';
+    ctx.fillStyle = '#05070b';
     ctx.fillRect(b.left - 40, b.top - 40, b.right - b.left + 80, b.bottom - b.top + 80);
+
+    // Housing fills the arena: there is no floor outside the board any more.
     ctx.globalAlpha = groundA;
-    ctx.fillStyle = '#111722';
+    ctx.fillStyle = '#0a0f16';
     ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
-
-    // Terminal floor: pale gate windows, carpet tiles and runway edge lights.
-    ctx.fillStyle = '#0b111b';
-    ctx.fillRect(b.left + 20, b.top + 20, b.right - b.left - 40, b.bottom - b.top - 40);
-    ctx.strokeStyle = 'rgba(255, 200, 87, 0.08)';
-    ctx.lineWidth = 1;
-    for (let x = b.left + 64; x < b.right; x += 64) {
-      ctx.beginPath();
-      ctx.moveTo(x, b.top + 20);
-      ctx.lineTo(x, b.bottom - 20);
-      ctx.stroke();
-    }
-    for (let y = b.top + 64; y < b.bottom; y += 64) {
-      ctx.beginPath();
-      ctx.moveTo(b.left + 20, y);
-      ctx.lineTo(b.right - 20, y);
-      ctx.stroke();
-    }
-    ctx.fillStyle = 'rgba(120, 190, 255, 0.12)';
-    for (let x = b.left + 80; x < b.right - 40; x += 180) {
-      ctx.fillRect(x, b.top + 26, 94, 34);
-      ctx.strokeStyle = 'rgba(160, 220, 255, 0.2)';
-      ctx.strokeRect(x + 0.5, b.top + 26.5, 94, 34);
-    }
-
-    // Board housing. The rows and time tiles are the readable centre of the floor.
-    ctx.fillStyle = '#070a10';
-    ctx.fillRect(board.x - 18, board.y - 18, board.w + 36, board.h + 36);
-    ctx.strokeStyle = 'rgba(255, 200, 87, 0.34)';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(board.x - 18, board.y - 18, board.w + 36, board.h + 36);
+    ctx.globalAlpha = 1;
     ctx.fillStyle = '#171d29';
     ctx.fillRect(board.x, board.y, board.w, board.h);
     ctx.fillStyle = '#202838';
     ctx.fillRect(board.x, board.y, board.w, flip.headerH);
-    ctx.fillStyle = 'rgba(255, 200, 87, 0.18)';
-    ctx.fillRect(board.x + 16, board.y + flip.headerH - 3, board.w - 32, 3);
+
     ctx.font = FONT_MID;
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffe5a3';
-    ctx.fillText('FLIGHT INFORMATION', board.x + 24, board.y + 28);
+    ctx.fillText('FLIGHT INFORMATION', board.x + 22, board.y + 26);
     ctx.font = FONT_TINY;
-    ctx.fillStyle = 'rgba(255, 227, 164, 0.56)';
-    ctx.fillText('ARRIVALS  //  DEPARTURES', board.x + 24, board.y + 45);
-    ctx.fillText('TIME', timeX, board.y + 62);
-    ctx.fillText('DESTINATION', textX, board.y + 62);
-    ctx.fillText('GATE', gateX, board.y + 62);
-    ctx.fillText('STATUS', statusX, board.y + 62);
+    ctx.fillStyle = 'rgba(255, 227, 164, 0.62)';
+    ctx.fillText('EVERY LINE FLIPS // STAND CLEAR OF A LANDING ROW', board.x + 22, board.y + 46);
+    ctx.fillStyle = 'rgba(255, 200, 87, 0.18)';
+    ctx.fillRect(board.x + 16, board.y + flip.headerH - 3, board.w - 32, 3);
 
     for (let i = 0; i < flip.rows.length; i++) {
       const row = flip.rows[i];
-      const rowY = board.y + flip.headerH + i * flip.rowH;
-      const cellY = rowY + (flip.rowH - flip.timeH) * 0.5;
+      const rect = flipRowRectAt(flip, i, cellScratch);
       const rowState = state?.flipStates?.[i] ?? flipRowStateAt(flip, i, clock);
       const flap = flipRowFlapProgressAt(flip, i, clock);
       const warning = rowState === FLIP_STATE.warn;
       const flapping = rowState === FLIP_STATE.flap;
       const pulse = 0.55 + Math.sin(t * 9) * 0.25;
+      const rowY = rect.y + (flip.rowH - flip.timeH) * 0.5;
 
-      ctx.fillStyle = i % 2 === 0 ? 'rgba(255, 255, 255, 0.025)' : 'rgba(0, 0, 0, 0.08)';
-      ctx.fillRect(board.x + 10, rowY, board.w - 20, flip.rowH);
+      // The whole bank band reads as the hazard on a warning or a flip.
+      ctx.fillStyle = flapping
+        ? `rgba(255, 170, 50, ${0.1 + pulse * 0.06})`
+        : warning
+          ? `rgba(255, 150, 40, ${0.05 + pulse * 0.04})`
+          : i % 2 === 0
+            ? 'rgba(255, 255, 255, 0.025)'
+            : 'rgba(0, 0, 0, 0.08)';
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      if (warning || flapping) {
+        ctx.strokeStyle = `rgba(255, 190, 65, ${pulse})`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2);
+      }
       ctx.strokeStyle = 'rgba(255, 200, 87, 0.12)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(board.x + 10, rowY + flip.rowH);
-      ctx.lineTo(board.x + board.w - 10, rowY + flip.rowH);
+      ctx.moveTo(rect.x, rect.y + rect.h);
+      ctx.lineTo(rect.x + rect.w, rect.y + rect.h);
       ctx.stroke();
+      // Section stripe: arrivals on the left bank, departures on the right.
+      ctx.fillStyle = row.section === 'ARRIVALS' ? 'rgba(255, 208, 112, 0.7)' : 'rgba(255, 164, 112, 0.7)';
+      ctx.fillRect(rect.x + 2, rect.y + 6, 4, rect.h - 12);
 
-      // The time tile is the only damaging part of the board.
-      ctx.fillStyle = flapping ? '#24170a' : warning ? '#1d160c' : '#05070a';
-      ctx.fillRect(timeX, cellY, flip.timeW, flip.timeH);
-      ctx.strokeStyle = flapping || warning ? `rgba(255, 190, 65, ${pulse})` : 'rgba(255, 200, 87, 0.42)';
-      ctx.lineWidth = flapping || warning ? 3 : 1;
-      ctx.strokeRect(timeX, cellY, flip.timeW, flip.timeH);
-      if (warning) {
-        ctx.fillStyle = `rgba(255, 176, 40, ${0.08 + pulse * 0.08})`;
-        ctx.fillRect(timeX + 4, cellY + 4, flip.timeW - 8, flip.timeH - 8);
-      }
+      const timeText = flipRowTimeAt(flip, i, clock);
+      const destText = flipFieldAt(flip, i, flip.destinations, row.destination, clock);
+      const gateText = flipFieldAt(flip, i, flip.gates, row.gate, clock);
+      const statusText = flipFieldAt(flip, i, flip.statuses, row.status, clock);
+      const timeX = rect.x + 16;
+      const destX = timeX + flip.timeW + 18;
+      const destW = 250;
+      const gateX = destX + destW + 16;
+      const gateW = 120;
+      const statusX = gateX + gateW + 16;
+      const statusW = Math.max(110, rect.x + rect.w - 16 - statusX);
+      // Fields ripple a beat behind the time tile, so a row reads as one machine working.
+      const ripple = (offset: number) => (flap >= 0 ? Math.min(1, flap + offset) : -1);
 
-      const time = flipRowTimeAt(flip, i, clock);
-      const chars = Math.max(1, time.length);
-      const charW = (flip.timeW - 18) / chars;
-      const charY = cellY + flip.timeH * 0.68;
-      const squeeze = flap >= 0 ? Math.max(0.12, Math.abs(Math.cos(Math.PI * flap))) : 1;
-      ctx.font = '700 27px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-      ctx.textAlign = 'center';
-      for (let c = 0; c < chars; c++) {
-        const glyph = time.charAt(c);
-        const gx = timeX + 9 + charW * (c + 0.5);
-        ctx.save();
-        ctx.translate(gx, charY);
-        ctx.scale(1, squeeze);
-        ctx.fillStyle = flapping ? '#ffdd8b' : '#ffe9bd';
-        ctx.fillText(glyph, 0, 0);
-        ctx.restore();
-      }
-      ctx.strokeStyle = 'rgba(4, 7, 11, 0.9)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(timeX + 5, cellY + flip.timeH * 0.5);
-      ctx.lineTo(timeX + flip.timeW - 5, cellY + flip.timeH * 0.5);
-      ctx.stroke();
-      if (flap >= 0) {
-        const sweepY = cellY + flip.timeH * flap;
-        ctx.fillStyle = 'rgba(255, 211, 111, 0.2)';
-        ctx.fillRect(timeX + 4, sweepY - 3, flip.timeW - 8, 6);
-        ctx.strokeStyle = '#ffe5a3';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(timeX + 4, sweepY);
-        ctx.lineTo(timeX + flip.timeW - 4, sweepY);
-        ctx.stroke();
-      }
-
-      ctx.textAlign = 'left';
-      ctx.font = FONT_SMALL;
-      ctx.fillStyle = '#f4e9d4';
-      ctx.fillText(row.destination, textX, rowY + 27);
-      ctx.font = FONT_TINY;
-      ctx.fillStyle = row.section === 'ARRIVALS' ? 'rgba(255, 208, 112, 0.56)' : 'rgba(255, 164, 112, 0.56)';
-      ctx.fillText(row.section, textX, rowY + 45);
-      ctx.font = FONT_SMALL;
-      ctx.fillStyle = '#ffe6ac';
-      ctx.fillText(row.gate, gateX, rowY + 30);
-      ctx.font = FONT_TINY;
-      ctx.fillStyle = row.status === 'DELAYED' ? '#ff9d72' : row.status === 'BOARDING' ? '#8ce5b0' : '#ffe19a';
-      ctx.fillText(row.status, statusX, rowY + 30);
+      this.drawFlapCell(timeText, timeX, rowY, flip.timeW, flip.timeH, flap, flapping, 24);
+      this.drawFlapCell(destText, destX, rowY, destW, flip.timeH, ripple(0.06), flapping, 22);
+      this.drawFlapCell(gateText, gateX, rowY, gateW, flip.timeH, ripple(0.11), flapping, 22);
+      this.drawFlapCell(statusText, statusX, rowY, statusW, flip.timeH, ripple(0.16), flapping, 18);
     }
 
-    // Benches and check-in desks frame the board but never overlap a time tile.
-    const labels = ['CHECK-IN', 'BAGGAGE', 'CAFE', 'GATES'];
-    for (let i = 0; i < arena.pillars.length; i++) {
-      const r = arena.pillars[i];
-      ctx.fillStyle = '#2a2119';
-      ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.fillStyle = '#3b2d1f';
-      ctx.fillRect(r.x + 8, r.y + 8, r.w - 16, r.h - 22);
-      ctx.strokeStyle = 'rgba(255, 200, 87, 0.42)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(r.x, r.y, r.w, r.h);
-      ctx.font = FONT_TINY;
-      ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(255, 230, 176, 0.62)';
-      ctx.fillText(labels[i] ?? 'TERMINAL', r.x + r.w * 0.5, r.y + r.h * 0.58);
-    }
-
-    ctx.textAlign = 'center';
+    // Bank headers, drawn once above each column set.
+    ctx.textAlign = 'left';
     ctx.font = FONT_TINY;
-    ctx.fillStyle = 'rgba(255, 200, 87, 0.58)';
-    ctx.fillText('TIME CELLS FLIP // STAND CLEAR', b.left + (b.right - b.left) * 0.5, board.y + board.h + 38);
-    ctx.fillStyle = 'rgba(255, 200, 87, 0.34)';
-    ctx.fillText('GATE 07  //  LOCALHOST INTERNATIONAL', b.left + (b.right - b.left) * 0.5, board.y + board.h + 54);
+    ctx.fillStyle = 'rgba(255, 227, 164, 0.5)';
+    for (let bank = 0; bank < banks; bank++) {
+      const first = bank * perBank;
+      if (first >= flip.rows.length) break;
+      const rect = flipRowRectAt(flip, first, cellScratch);
+      const label = flip.rows[first].section;
+      ctx.fillText(label, rect.x + 20, board.y + flip.headerH - 12);
+    }
 
     ctx.globalAlpha = frameA;
     ctx.strokeStyle = 'rgba(255, 200, 87, 0.7)';

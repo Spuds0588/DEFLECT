@@ -89,6 +89,7 @@ import {
   SATELLITE_SOLAR_STATE,
   carRouteAt,
   carProgressAt,
+  flipRowRectAt,
   flipTimeRectAt,
   flipRowStateAt,
   FLIP_STATE,
@@ -9803,11 +9804,11 @@ export class World {
     }
   }
 
-  /** A time tile lands: damage and shove anything standing on its footprint. */
+  /** A row lands: every text cell in the bank flips, so the whole band is the hazard. */
   private slamFlipRow(row: number): void {
     const flip = this.flip;
     if (!flip) return;
-    const cell = flipTimeRectAt(flip, row, this.flipCellScratch);
+    const cell = flipRowRectAt(flip, row, this.flipCellScratch);
     const cx = cell.x + cell.w * 0.5;
     const cy = cell.y + cell.h * 0.5;
     for (let i = 0; i < this.players.length; i++) {

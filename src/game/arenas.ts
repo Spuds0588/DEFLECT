@@ -590,6 +590,14 @@ export interface ArenaFlipDef {
   damage: number;
   enemyDamage: number;
   knockback: number;
+  /** Text banks side by side. Two fills a wide floor without giant cells. */
+  banks?: number;
+  /** Gap between banks, in world units. */
+  bankGap?: number;
+  /** Destinations every row cycles through. The row's own value is the opening entry. */
+  destinations?: string[];
+  gates?: string[];
+  statuses?: string[];
 }
 
 /**
@@ -1353,6 +1361,25 @@ const browserPages: ArenaBrowserPageDef[] = [
     link: { x: 790, y: 800, w: 320, h: 70, label: 'RETURN TO INDEX' },
   },
 ];
+
+/** Eighteen flights: nine arrivals in the left bank, nine departures in the right. */
+function airportFlights(): ArenaFlipRowDef[] {
+  const destinations = [
+    'OSAKA', 'LISBON', 'NAIROBI', 'REYKJAVIK', 'SINGAPORE', 'SANTIAGO',
+    'HELSINKI', 'MARRAKESH', 'AUCKLAND', 'MONTREAL', 'DOHA', 'PRAGUE',
+    'HANOI', 'LAGOS', 'OSLO', 'CUSCO', 'TAIPEI', 'DENVER',
+  ];
+  const gates = ['A12', 'B04', 'C07', 'D02', 'E11', 'F08', 'G03', 'H09', 'A21', 'C14', 'B17', 'D06', 'E02', 'F12', 'G08', 'H04', 'B22', 'C19'];
+  const statuses = ['ON TIME', 'BOARDING', 'DELAYED', 'GATE OPEN', 'FINAL CALL', 'ON TIME'];
+  const times = ['09:10', '10:45', '11:20', '12:10', '13:05', '13:40', '14:15', '15:02', '15:38', '16:11', '16:47', '17:20', '17:55', '18:31', '19:04', '19:42', '20:15', '20:58'];
+  return destinations.map((destination, i) => ({
+    section: i < 9 ? 'ARRIVALS' : 'DEPARTURES',
+    times: [times[i], times[(i + 3) % times.length], times[(i + 7) % times.length]],
+    destination,
+    gate: gates[i],
+    status: statuses[i % statuses.length],
+  }));
+}
 
 export const ARENAS: readonly ArenaDef[] = [
   {
@@ -2399,44 +2426,41 @@ export const ARENAS: readonly ArenaDef[] = [
     accentFaint: 'rgba(255, 200, 87, 0.034)',
     signature: 1,
     bounds: { left: 80, top: 60, right: 1780, bottom: 1000 },
-    // Terminal benches and check-in desks frame the board. The board itself is floor.
-    pillars: [
-      { x: 120, y: 180, w: 180, h: 86 },
-      { x: 1500, y: 180, w: 180, h: 86 },
-      { x: 120, y: 790, w: 160, h: 86 },
-      { x: 1520, y: 790, w: 160, h: 86 },
-    ],
+    // The board is the floor. There is no terminal apron and no furniture to hide behind;
+    // the rows are the terrain, and a row landing is the threat.
+    pillars: [],
     spawns: [
-      { x: 230, y: 150 },
-      { x: 600, y: 140 },
-      { x: 1180, y: 140 },
-      { x: 1600, y: 420 },
-      { x: 1720, y: 860 },
-      { x: 1200, y: 900 },
-      { x: 600, y: 900 },
-      { x: 320, y: 930 },
+      { x: 380, y: 180 },
+      { x: 720, y: 270 },
+      { x: 1180, y: 180 },
+      { x: 1520, y: 270 },
+      { x: 380, y: 860 },
+      { x: 720, y: 940 },
+      { x: 1180, y: 940 },
+      { x: 1520, y: 860 },
     ],
     flip: {
-      board: { x: 390, y: 210, w: 1000, h: 510 },
-      rows: [
-        { section: 'ARRIVALS', times: ['10:45', '10:52', '11:04'], destination: 'OSAKA', gate: 'A12', status: 'ON TIME' },
-        { section: 'ARRIVALS', times: ['11:20', '11:28', '11:41'], destination: 'LISBON', gate: 'B04', status: 'BOARDING' },
-        { section: 'ARRIVALS', times: ['12:10', '12:18', '12:25'], destination: 'NAIROBI', gate: 'C07', status: 'DELAYED' },
-        { section: 'DEPARTURES', times: ['13:05', '13:14', '13:22'], destination: 'REYKJAVIK', gate: 'D02', status: 'ON TIME' },
-        { section: 'DEPARTURES', times: ['13:40', '13:48', '13:59'], destination: 'SINGAPORE', gate: 'E11', status: 'BOARDING' },
-        { section: 'DEPARTURES', times: ['14:15', '14:24', '14:36'], destination: 'SANTIAGO', gate: 'F08', status: 'GATE OPEN' },
-      ],
-      headerH: 78,
-      rowH: 64,
-      timeW: 168,
-      timeH: 50,
+      // The board fills the arena. Two banks of nine rows.
+      board: { x: 90, y: 70, w: 1680, h: 920 },
+      rows: airportFlights(),
+      headerH: 70,
+      rowH: 88,
+      timeW: 150,
+      timeH: 40,
       period: 7.6,
       warn: 1.2,
       flap: 0.38,
-      stagger: 0.35,
+      // A wave across eighteen rows: fast enough to read as a board working, not a blur.
+      stagger: 0.28,
       damage: 1,
       enemyDamage: 3,
       knockback: 460,
+      banks: 2,
+      bankGap: 24,
+      // Every text field cycles through these decks, so no line is static.
+      destinations: ['OSAKA', 'LISBON', 'NAIROBI', 'REYKJAVIK', 'SINGAPORE', 'SANTIAGO', 'HELSINKI', 'MARRAKESH'],
+      gates: ['A12', 'B04', 'C07', 'D02', 'E11', 'F08', 'G03', 'H09'],
+      statuses: ['ON TIME', 'BOARDING', 'DELAYED', 'GATE OPEN', 'FINAL CALL'],
     },
   },
   {
@@ -3067,6 +3091,35 @@ export function flipRowTimeAt(flip: ArenaFlipDef, row: number, t: number): strin
   if (!times || times.length === 0) return '';
   const cycle = Math.floor((t - row * flip.stagger) / Math.max(0.001, flip.period));
   return times[((cycle % times.length) + times.length) % times.length];
+}
+
+/** The floor footprint of one flipping row: the whole bank band is the hazard. */
+export function flipRowRectAt(flip: ArenaFlipDef, row: number, out: Rect): Rect {
+  const inset = 10;
+  const banks = Math.max(1, flip.banks ?? 1);
+  const gap = flip.bankGap ?? 24;
+  const perBank = Math.ceil(flip.rows.length / banks);
+  const bank = Math.min(banks - 1, Math.floor(row / perBank));
+  const local = row % perBank;
+  const bankW = (flip.board.w - inset * 2 - gap * (banks - 1)) / banks;
+  out.x = flip.board.x + inset + bank * (bankW + gap);
+  out.y = flip.board.y + flip.headerH + local * flip.rowH;
+  out.w = bankW;
+  out.h = flip.rowH;
+  return out;
+}
+
+/** The value a deck-driven text field shows at `t`. Every text field flips. */
+export function flipFieldAt(
+  flip: ArenaFlipDef,
+  row: number,
+  deck: string[] | undefined,
+  fallback: string,
+  t: number,
+): string {
+  if (!deck || deck.length === 0) return fallback;
+  const cycle = Math.floor((t - row * flip.stagger) / Math.max(0.001, flip.period));
+  return deck[(((row + cycle) % deck.length) + deck.length) % deck.length];
 }
 
 /** The floor footprint of one flipping time tile. */

@@ -2447,6 +2447,26 @@ crossing it. The planes are the arena's hazard, so they are simulated, not decor
 - It authors no `ingress` or `replicator`, and `isOnlineArena` excludes `radar`, so it is local-only like
   the other fixture arenas. Aircraft never enter `Snapshot`.
 
+### D63 — AIRPORT is the board, and every line flips (revised 2026-11-02, built v0.1.130)
+
+The AIRPORT floor used to be a terminal with a split-flap board standing on it: most of the arena was
+apron, and only the time tile could hurt a body. That is the wrong shape for a level about a board.
+
+- The board now fills the arena (`flip.board` covers the bounds, and `pillars` is empty). There is no
+  terminal floor, no gate windows and no benches: the rows are the terrain. Do not put furniture back
+  outside the board; add a row instead.
+- Eighteen rows in two banks (`banks: 2`), nine arrivals on the left and nine departures on the right, so
+  cells stay legible at floor scale instead of stretching a destination across the whole arena.
+- **Every text field is a flipboard element.** Time, destination, gate and status each cycle through their
+  own deck (`flip.destinations` / `flip.gates` / `flip.statuses`) and each cell animates its own squeeze,
+  rippled a beat behind the time tile so the row reads as one machine working. A new field is another deck
+  and another cell, not a static label.
+- A landed row damages its whole band (`flipRowRectAt`), not just the time tile, because the whole band is
+  a flap bank now. One landing per row per period, resolved on the frame the flap starts.
+- Rows are staggered (`stagger: 0.28`) so the board flips as a wave across both banks rather than all at
+  once.
+- Still local-only: `isOnlineArena` excludes `flip`, and its clock stays out of `SnapshotHazards`.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

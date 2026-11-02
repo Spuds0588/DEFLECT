@@ -60,6 +60,19 @@ Formerly: 2026-11-02 (PORTS)
 
 ---
 
+## AIRPORT flipboard (2026-11-02)
+
+- [x] The board fills the arena: no terminal apron, no furniture cover, spawns moved onto the board
+- [x] 18 rows in two banks (3x the old six), nine arrivals and nine departures
+- [x] Every text field flips: time, destination, gate and status each cycle a deck and animate separately
+- [x] A landed row damages its whole bank band (`flipRowRectAt`), once per period
+- [x] Probe: board coverage, row counts, static-text rejection, text-field damage away from the time cell
+- [ ] Destinations that suit the flight time (a 09:10 board should not show a 20:58 leg)
+- [ ] A gate-change callout every few cycles, so the board has one readable event beyond the wave
+- [ ] Decide whether a flipped row should also shove loose props, not only bodies
+
+---
+
 ## AIR TRAFFIC (2026-11-02)
 
 - [x] Arena 33: circular radar disc, six console desks as cover, slow sweep (11 s) that never damages
