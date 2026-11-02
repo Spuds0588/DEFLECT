@@ -6312,3 +6312,17 @@ full body.
 **Verification:** `bossintro-check` now includes STORM CLOUD (`seconds 2.6, ticks 156`) and passes for all
 five bosses; `storm-check` and `bossrush-check` pass, `npm run build` clean, `npm run bench` clean,
 `git diff --check` clean.
+
+## 2026-11-02 — Idle Hands stop strobing
+
+**Goal:** the palms visibly flashed in the browser at `?hands=1`.
+
+- `drawIdleHand` multiplied the palm under-pass, accent pass and eye socket by the renderer's `alpha`
+  argument. That argument is the fixed-step interpolation factor, not an opacity fade, so it swings between
+  0 and 1 every frame and the whole hand strobed at the sim rate. The body fills and the eye socket are now
+  opaque; `alpha` stays only on the charge trail, hand shadow, telegraph and landing rings.
+- The blend-mode fix from the earlier pass was necessary but not sufficient: `source-over` stopped the
+  layers blooming, while the per-frame alpha is what actually flashed.
+
+**Verification:** `npm run build` clean, `idlehands-check` passes, `git diff --check` clean; the local dev
+build was checked at `?hands=1` for a steady palm across frames, and the change was shipped to Pages.

@@ -2778,6 +2778,9 @@ and can commit to a finger charge.
 - **Render mode.** `drawIdleHand` saves the context and forces `source-over` because `drawWorms` sets
   `lighter` for the whole worm pool. Do not draw the hand under additive blending; its layered fill, eye
   socket and shadow bloom into each other and read as flashing. Restore the pool's blend mode on exit.
+  The palm and eye are also **opaque**: `alpha` in the renderer is the fixed-step interpolation factor, not
+  an opacity fade, so multiplying the body fill by it made the whole hand strobe at the sim rate. Keep body
+  fills at 1 and reserve `alpha` for the charge trail, shadow, telegraph and landing rings.
 - **Scale pass (2026-11-02).** Each hand is roughly three times its original body size: `radius` 126,
   spawn ring 390/300, orbit 520–680, slam range 700, slam AOE 240 and rise 360. Health and damage are
   unchanged; scale the spatial values together so two 126-radius hands never spawn inside each other.

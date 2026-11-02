@@ -9129,11 +9129,14 @@ export class Renderer {
 
     // The palm is entirely red. A dark-red under-pass keeps the silhouette on the
     // grid, but no bone plate or pale palm shows through the glyph.
-    ctx.globalAlpha = 0.8 * alpha;
+    // `alpha` is the fixed-step interpolation factor, not an opacity fade: it swings
+    // every frame, so multiplying the palm by it strobed the whole hand at the sim
+    // rate. Body fills stay opaque; only trails, shadows and rings use `alpha`.
+    ctx.globalAlpha = 0.8;
     ctx.fillStyle = '#5c0f18';
     ctx.fillText(handGlyph, 0, 0);
 
-    ctx.globalAlpha = 0.96 * alpha;
+    ctx.globalAlpha = 0.96;
     ctx.fillStyle = accent;
     ctx.fillText(handGlyph, 0, 0);
 
@@ -9148,7 +9151,7 @@ export class Renderer {
       // a 3x hand gets roughly a 2.2x eye, keeping the glyph legible instead of
       // turning the palm into one giant pupil.
       const eyeSize = Math.min(r * 0.9, 84);
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = 1;
       ctx.fillStyle = '#000000';
       ctx.beginPath();
       ctx.ellipse(0, 0, eyeSize * 0.62, eyeSize * 0.48, 0, 0, TWO_PI);

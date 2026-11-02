@@ -3473,6 +3473,10 @@ arrive.
 - [x] Storm Cloud entrance: one square appears, then the body gathers into the full cloud (v0.1.147).
 - [ ] Watch the storm entrance at full size and confirm the gathering squares do not read as a loading or
       glitch effect, then tune `introTime` or the per-square spread if they do.
+- [x] Idle Hands stop strobing: the palm and eye are drawn opaque instead of multiplying the render
+      interpolation factor into their fill (v0.1.148).
+- [ ] Audit the other hand-drawn boss fills for `* alpha` on body geometry, so the same interpolation leak
+      cannot come back in a new silhouette.
 - [ ] Watch the scaled Starfish on a cover-heavy arena: arms should sweep over pillars, and the staging pad
       should not pin it to the middle of small arenas.
 
