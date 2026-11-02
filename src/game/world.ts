@@ -401,12 +401,6 @@ export class World {
   private sentrySpawnT: number = SENTRY.spawnDelay;
   private sentryPack = 0;
   /** Sentry packs land one silhouette at a time instead of all at once. */
-  private sentryQueue = new Int8Array(12);
-  private sentryQueueCount = 0;
-  private sentryQueueIndex = 0;
-  private sentryQueueT = 0;
-  private sentryQueueX = 0;
-  private sentryQueueY = 0;
   private errorSpawnT: number = CASCADING_ERROR.spawnDelay;
   private errorGrowT: number = CASCADING_ERROR.growthInterval;
   private virusSplitT: number = VIRUS.splitInterval;
@@ -1137,9 +1131,6 @@ export class World {
     }
     this.sentrySpawnT = SENTRY.spawnDelay;
     this.sentryPack = 0;
-    this.sentryQueueCount = 0;
-    this.sentryQueueIndex = 0;
-    this.sentryQueueT = 0;
     this.errorSpawnT = CASCADING_ERROR.spawnDelay;
     this.errorGrowT = CASCADING_ERROR.growthInterval;
     this.virusSplitT = VIRUS.splitInterval;
