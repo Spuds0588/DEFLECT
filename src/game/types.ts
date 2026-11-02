@@ -508,6 +508,10 @@ export interface Player {
   fastT: number;
   /** Per-tick movement multiplier from time effects. 1 when nothing is warping time. */
   speedMult: number;
+  /** Memory fragments collected this run: +1 segment, +20% speed, +25% damage each. */
+  memory: number;
+  /** One shard per player per run; a respawn does not earn another. */
+  memoryDropped: boolean;
   /** Active pickup effect, -1 when none. See powerups.ts. */
   powerupKind: number;
   powerupT: number;
@@ -980,6 +984,20 @@ export interface CascadingError {
   touchCd: number;
   phase: number;
   spawnT: number;
+}
+
+/** A downed player's left-behind memory shard. PvE modes only. */
+export interface Fragment {
+  active: boolean;
+  x: number;
+  y: number;
+  prevX: number;
+  prevY: number;
+  /** Seconds left before it fades; the last two blink. */
+  t: number;
+  /** Bounds the drift bob so two shards never move in lockstep. */
+  spin: number;
+  fromSlot: number;
 }
 
 export interface Pickup {

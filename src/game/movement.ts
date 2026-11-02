@@ -1,4 +1,5 @@
-import { BUG, COMPRESS, GHOST, PLAYER, WEDGE, type Bounds, type Rect } from './config';
+import { BUG, COMPRESS, GHOST, PLAYER, WEDGE, type Bounds, type Rect, } from './config';
+import { MEMORY } from './memory';
 import type { ArenaDef } from './arenas';
 import { circleRect, hitScratch } from './collision';
 import type { Player } from './types';
@@ -55,8 +56,10 @@ export function stepPlayerMotion(
     // Compress's skill folds the body small so it covers ground fast. It is a walking
     // multiplier, not a dash: dashes and plows keep their own committed distances.
     const compressFactor = p.shrinkT > 0 ? COMPRESS.skillSpeed : 1;
-    const tx = held * mx * PLAYER.speed * slow * trapFactor * p.speedMult * dazeFactor * compressFactor;
-    const ty = held * my * PLAYER.speed * slow * trapFactor * p.speedMult * dazeFactor * compressFactor;
+    const tx = held * mx * PLAYER.speed * slow * trapFactor * p.speedMult * dazeFactor * compressFactor *
+      (1 + MEMORY.speedPerStack * p.memory);
+    const ty = held * my * PLAYER.speed * slow * trapFactor * p.speedMult * dazeFactor * compressFactor *
+      (1 + MEMORY.speedPerStack * p.memory);
     const k = 1 - Math.exp(-PLAYER.accel * dt);
     p.vx += (tx - p.vx) * k;
     p.vy += (ty - p.vy) * k;

@@ -5482,3 +5482,29 @@ clean; megaworm, assault, jet, flipboard, radar, islands-ports and laptop-varian
 `npm run bench`: gauntlet max 0.113 ms avg / 0.374 ms p99.
 
 **Next:** a short visual pass on the slam flip timing and the palm eye during the charge tell.
+
+## 2026-11-02 — Memory fragments give PvE deaths a reward (v0.1.137)
+
+**Goal:** implement the discussed rule where a downed player drops a shard that permanently strengthens
+whoever picks it up, making PvP inside a PvE mode worth doing.
+
+- `src/game/memory.ts` owns the rule: three stacks, +1 health segment, +20% walk speed and +25% damage
+  each. `Player.memory` and `Player.memoryDropped` are the only state.
+- The drop hangs off the shared death block in `damagePlayer`, so environment, enemy and player kills all
+  leave a shard. It is skipped in `match` (straight PvP), in attract runs, and for thralls and clones.
+- Health is a real segment, so the program hull draws it. Speed multiplies walking in `movement.ts` only.
+  Damage scales at the top of every outgoing `damage*` entry point, leaving enemy hits and copies alone.
+- One shard per body per run, so respawning bots cannot be farmed. Campaign carries stacks between nodes
+  through `main.ts` (`campaignMemory`) and `World.setMemoryStacks`.
+- The shard is a spinning diamond with a magnet radius and a two-second fade-out. No HUD counter: the
+  extra hull segment and the pickup flash are the read.
+
+**Verification:** `.tmp/memory-check.ts` passes: a downed bot leaves exactly one shard, collecting it
+yields one stack and a four-segment pool, three stacks deal 1.75 damage while an enemy hit still deals 1,
+the cap leaves the shard on the floor, a respawn does not drop a second shard, respawn and campaign carry
+keep the enlarged pool, and a match drops nothing. Build clean; idlehands, megaworm, assault, jet,
+flipboard, radar, islands-ports, laptop-variants and capcom probes still pass. `npm run bench`:
+gauntlet max 0.119 ms avg / 0.403 ms p99.
+
+**Next:** decide whether a saved campaign slot should persist stacks; today resuming a slot starts that
+session empty.

@@ -378,3 +378,9 @@ for the full terms.
 `src/game/minibosses.ts` registers two bosses. `MEGA WORM` is a segmented chain with per-plate health;
 `IDLE HANDS` is three floating palms with red eyes that slam and charge, and can be dashed into each
 other. Both arrive through the gauntlet ingress and live in the worm body pool.
+
+## Memory fragments
+
+`src/game/memory.ts` holds the PvE comeback rule: a downed player leaves a shard that grants +1 health
+segment, +20% walking speed and +25% damage for the rest of the run, stacking to three. It drops in every
+mode except the versus match, once per body per run, and campaign carries the stacks between nodes.

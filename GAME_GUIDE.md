@@ -622,3 +622,18 @@ defeated when all three palms are gone, and each one you delete counts as a kill
 - Hands float over cover, so do not expect a pillar to block their path. They do have to respect the
   arena walls.
 - **Controls note:** the boss is designed for the single stick and the dash; there is no special input.
+
+## MEMORY FRAGMENTS
+
+Any player who goes down in a PvE mode leaves a memory fragment at the spot where they fell, whether an
+enemy, the environment or another player put them there. Walk over it to collect it.
+
+- Each fragment gives **+1 health segment, +20% movement speed and +25% damage**, and the bonus lasts for
+  the rest of the run. It stacks up to **three** times.
+- Health is real: the extra segment shows up in your program's hull outline and stays through respawns.
+- A body only leaves one fragment per run, so a respawning training bot cannot be farmed.
+- Fragments are magnetic within a short radius and fade after about forty seconds.
+- **Not in versus.** Straight PvP matches never drop one; this is a PvE rule that makes betrayal and
+  squad wipes meaningful in campaign, gauntlet, infection co-op and training.
+- In campaign, your stacks carry into the next node. Starting from a saved slot begins that session with
+  none.

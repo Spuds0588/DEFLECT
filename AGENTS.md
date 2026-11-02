@@ -2666,3 +2666,33 @@ and can commit to a finger charge.
 - **Tuning** lives in `tuning/threats.json` under `IDLE_HANDS`, exported from `config.ts`. `.tmp/idlehands-check.ts`
   covers the trio shape, the slam in and out of the ring, the redirect damage, kill credit and ingress.
   `?hands=1` is a QA-only boot hook beside `?mega=1`; it never enters menus or `Snapshot`.
+
+
+### D68 — Memory fragments: a downed player feeds the survivors (built 2026-11-02)
+
+A body that dies in a PvE mode leaves a **memory fragment**. Whoever picks it up gains one permanent
+stack for that run: **+1 health segment, +20% walking speed, +25% outgoing damage**, up to **three**
+stacks. This is the reason PvP is worth playing inside a PvE mode: every fallen teammate or betraying
+bot makes the survivor stronger for the rest of the run.
+
+- **Scope.** Every mode except the versus `match` (local and online). Gauntlet, INFECTION co-op,
+  campaign and training all drop one. Kiosk/attract runs do not. Thralls and Copy Pasta clones never
+  drop one; they are not players.
+- **One drop per body per run.** `Player.memoryDropped` latches on the first death, so a respawning
+  training bot cannot be farmed for free stacks. In campaign the flag lives on the body, and `main.ts`
+  carries the stack count to the next node (`campaignMemory` + `World.setMemoryStacks`). Loading a saved
+  slot starts that session at zero stacks; the save record does not carry them yet.
+- **Death source is irrelevant.** Environment, enemy fire or another player all drop the shard, because
+  the drop happens in the shared death block of `damagePlayer`, not in a weapon branch.
+- **Stacking.** `memory` on the player is the single source. Health adds a real segment (`maxHp`), so the
+  program hull draws the extra segment automatically; speed multiplies walking in `movement.ts` only, not
+  dashes or plugs; damage scales at the top of every outgoing `damage*` entry point through
+  `memoryDamage(sourceSlot, amount)`, so enemies (slot -1) and clones never scale. At the cap the shard is
+  left on the floor instead of being wasted.
+- **Presentation.** A shard is a spinning diamond over a soft well, magnetised within
+  `MEMORY.magnetRadius` and blinking out over its last two seconds. Rules live in `src/game/memory.ts`
+  (`MEMORY`), which is the only place the numbers belong. There is no stack counter in the HUD: the extra
+  hull segment is the read, plus the pickup flash.
+- **Do not** turn this into a powerup, a snapshot field, or a match rule. It is local run progression,
+  like gauntlet records. `.tmp/memory-check.ts` covers the drop, collection, cap, once-per-run latch,
+  damage scale (1.75 at three stacks, enemies still 1), respawn carry, campaign carry and match exclusion.

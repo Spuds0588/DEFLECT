@@ -70,6 +70,8 @@ Formerly: 2026-11-02 (PORTS)
 - [x] Arrives through the edge ingress on wave 8, repeating every 14 waves
 - [x] Cracks and code debris instead of a health bar
 - [x] Probe: `.tmp/megaworm-check.ts`; `?mega=1` QA boot hook
+- [x] Memory fragments: downed players drop a stacking +1 HP / +20% speed / +25% damage shard, PvE only
+- [x] Campaign carry-over for stacks across nodes, with one drop per body per run
 - [x] Idle Hands: three floating palms, slam telegraph, finger charge, dash redirect
 - [x] Hand bodies reuse the worm pool via `bossKind`, so every weapon and bot already hits them
 - [x] Mini-boss registry (`minibosses.ts`), `Worm.bossKind` and one `spawnMiniboss` entry point

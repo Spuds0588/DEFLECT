@@ -1,4 +1,4 @@
-import type { AssaultPortal } from './types';
+import type { AssaultPortal, Fragment } from './types';
 import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { AimMark, CopyMark, InvaderShot } from './types';
 import {
@@ -66,6 +66,7 @@ import { P_COLOR_DANGER, P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
 import { MINIBOSS } from './minibosses';
+import { MEMORY } from './memory';
 import { drawDroppedFiles, drawRegularProgram, regularFace, regularProgram, type RegularMood, type RegularProgramDef } from './regulars';
 import { PROP, SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type SatelliteMeteor, type Sentry, type SmokeWave, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
@@ -102,6 +103,8 @@ export interface RenderState {
   errors?: readonly CascadingError[];
   sentries?: readonly Sentry[];
   pickups?: readonly Pickup[];
+  /** Downed-player memory shards. PvE modes only. */
+  fragments?: readonly Fragment[];
   /** Local Fisher webs, lure beacons and Wedge walls. Match snapshots never carry these. */
   nets?: readonly Net[];
   lures?: readonly Lure[];
@@ -686,6 +689,7 @@ export class Renderer {
         if (state.sentries) this.drawSentries(state.sentries, alpha, t);
         if (state.errors) this.drawErrors(state.errors, alpha, t);
         if (state.pickups) this.drawPickups(state.pickups, alpha, t);
+        if (state.fragments) this.drawFragments(state.fragments, alpha, t);
         if (state.nets) this.drawNets(state, alpha, t);
         if (state.barriers) this.drawBarriers(state.barriers, t);
         this.drawPinballArms(state, alpha, t);
@@ -12606,6 +12610,52 @@ export class Renderer {
     ctx.restore();
 
     void t;
+  }
+
+
+  /** Memory shard: a slow-spinning diamond over a soft well, fading over its last two seconds. */
+  private drawFragments(fragments: readonly Fragment[], alpha: number, t: number): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < fragments.length; i++) {
+      const f = fragments[i];
+      if (!f.active) continue;
+      const x = lerp(f.prevX, f.x, alpha);
+      const y = lerp(f.prevY, f.y, alpha) + Math.sin(t * 2.4 + f.spin) * 4;
+      const fade = f.t < 2 ? Math.max(0, f.t / 2) : 1;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.globalAlpha = 0.14 * fade;
+      ctx.fillStyle = MEMORY.color;
+      ctx.beginPath();
+      ctx.arc(0, 0, 22, 0, TWO_PI);
+      ctx.fill();
+      ctx.globalAlpha = 0.7 * fade;
+      ctx.strokeStyle = MEMORY.color;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, 18 + Math.sin(t * 3 + f.spin) * 2, 0, TWO_PI);
+      ctx.stroke();
+      ctx.rotate(t * 1.6 + f.spin);
+      ctx.globalAlpha = 0.95 * fade;
+      ctx.fillStyle = MEMORY.color;
+      ctx.beginPath();
+      ctx.moveTo(0, -11);
+      ctx.lineTo(8, 0);
+      ctx.lineTo(0, 11);
+      ctx.lineTo(-8, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = MEMORY.core;
+      ctx.beginPath();
+      ctx.moveTo(0, -5);
+      ctx.lineTo(4, 0);
+      ctx.lineTo(0, 5);
+      ctx.lineTo(-4, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    void alpha;
   }
 
   /** Pickups are drawn in world space; their icon shape identifies the effect. */

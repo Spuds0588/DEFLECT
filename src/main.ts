@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.136';
+const BUILD = '0.1.137';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -378,6 +378,8 @@ let campaignPlayers = 1;
 let campaignSaved = false;
 let campaignPlaySeconds = 0;
 let lastCampaignPhase = '';
+/** Memory stacks earned in the live campaign run, carried between nodes. */
+let campaignMemory: number[] = new Array(MAX_PLAYERS).fill(0);
 
 const touchControlsEl = el('touch-controls');
 const touchStickEl = el('touch-stick');
@@ -1545,6 +1547,7 @@ function startNewCampaign(): void {
   campaignLevelIndex = 0;
   campaignSaved = false;
   campaignPlaySeconds = 0;
+  campaignMemory = new Array(MAX_PLAYERS).fill(0);
   startCampaignLevel();
 }
 
@@ -1556,6 +1559,7 @@ function resumeCampaign(index: number, save: StorySave): void {
   selectedProgram = clampProgram(save.program);
   campaignSaved = false;
   campaignPlaySeconds = 0;
+  campaignMemory = new Array(MAX_PLAYERS).fill(0);
   // `level` is the number of completed levels, so it is also the next index.
   if (save.level >= PLAYABLE_CAMPAIGN_LEVELS.length) {
     campaignLevelIndex = 0;
@@ -1603,6 +1607,7 @@ function startCampaignLevel(): void {
     level.clearKills,
   );
   world.friendlyFire = friendlyFire;
+  for (let i = 0; i < MAX_PLAYERS; i++) world.setMemoryStacks(i, campaignMemory[i] ?? 0);
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
   botBrains = new Array(MAX_PLAYERS).fill(null);

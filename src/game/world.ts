@@ -1,4 +1,5 @@
-import type { AssaultPortal } from './types';
+import type { AssaultPortal, Fragment } from './types';
+import { MEMORY } from './memory';
 import {
   AIMBOT,
   ATTRACT,
@@ -301,6 +302,18 @@ export class World {
    */
   friendlyFire = true;
   /** Internal bench/headless path: endless respawns and max threat caps. Not exposed in the UI. */
+  /** One shard per player slot; PvE drops only. Local content, never in `Snapshot`. */
+  readonly fragments: Fragment[] = Array.from({ length: MAX_PLAYERS }, () => ({
+    active: false,
+    x: 0,
+    y: 0,
+    prevX: 0,
+    prevY: 0,
+    t: 0,
+    spin: 0,
+    fromSlot: -1,
+  }));
+
   readonly gauntletPractice: boolean;
   /**
    * Campaign script running on the gauntlet simulation: sparring drill, breach warning,
@@ -3787,6 +3800,7 @@ export class World {
     this.updateProps(dt);
 
     if (this.mode === 'training' || this.mode === 'gauntlet') this.updatePickups(dt);
+    if (this.mode !== 'match') this.updateFragments(dt);
     // Threats are the other half of the dilation: the whole hostile simulation slows.
     const threatDt = this.timeSlowT > 0 ? dt * BUFFER.slowScale : dt;
     this.updateDrone(threatDt);
@@ -10860,6 +10874,7 @@ export class World {
     sourceKind: number = SRC.PLAYER,
     sourceId = -1,
   ): void {
+    amount = this.memoryDamage(sourceSlot, amount);
     if (!p.alive || p.iframes > 0 || phased(p) || p.travelT > 0) return;
     // Atomize spends one shield ball per real hit, before health or campaign damage is
     // recorded. A chip tick (venom) is not a hit, and the floor is never shielded.
@@ -10890,6 +10905,7 @@ export class World {
         this.despawnCopyClone(p);
         return;
       }
+      this.dropMemoryFragment(p);
       p.swingPhase = 0;
       p.swingT = 0;
       p.swingPct = 0;
@@ -10990,6 +11006,111 @@ export class World {
     }
   }
 
+
+  // --- Memory fragments ----------------------------------------------------
+  //
+  // A downed player leaves one shard. Picking it up is permanent for the run:
+  // +1 health segment, +20% walking speed and +25% outgoing damage per stack, up
+  // to three. Match mode never drops one; this is the reward for a PvE betrayal.
+
+  /** One shard per body per run. Respawning does not earn another. */
+  private dropMemoryFragment(p: Player): void {
+    if (this.mode === 'match' || this.attractMode) return;
+    if (p.thrall || p.copyClone || p.memoryDropped) return;
+    let f: Fragment | null = null;
+    for (let i = 0; i < this.fragments.length; i++) {
+      if (!this.fragments[i].active) {
+        f = this.fragments[i];
+        break;
+      }
+    }
+    if (!f) return;
+    p.memoryDropped = true;
+    f.active = true;
+    f.x = p.x;
+    f.y = p.y;
+    f.prevX = p.x;
+    f.prevY = p.y;
+    f.t = MEMORY.lifetime;
+    f.spin = this.rng.range(0, Math.PI * 2);
+    f.fromSlot = p.slot;
+    this.emit(EV.POWERUP, p.slot, p.x, p.y, -1);
+  }
+
+  private updateFragments(dt: number): void {
+    for (let i = 0; i < this.fragments.length; i++) {
+      const f = this.fragments[i];
+      if (!f.active) continue;
+      f.prevX = f.x;
+      f.prevY = f.y;
+      f.t -= dt;
+      if (f.t <= 0) {
+        f.active = false;
+        continue;
+      }
+      // Drift toward the nearest living body that still has room for a stack.
+      let best: Player | null = null;
+      let bestD = MEMORY.magnetRadius * MEMORY.magnetRadius;
+      for (let k = 0; k < this.players.length; k++) {
+        const p = this.players[k];
+        if (!p.active || !p.alive || p.thrall || p.copyClone) continue;
+        if (p.memory >= MEMORY.maxStacks) continue;
+        const dx = p.x - f.x;
+        const dy = p.y - f.y;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) {
+          bestD = d;
+          best = p;
+        }
+      }
+      if (best) {
+        const dx = best.x - f.x;
+        const dy = best.y - f.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (d <= MEMORY.pickupRadius) {
+          this.takeMemory(best, f);
+          continue;
+        }
+        const step = Math.min(d, MEMORY.magnetSpeed * dt) / d;
+        f.x += dx * step;
+        f.y += dy * step;
+      }
+    }
+  }
+
+  private takeMemory(p: Player, f: Fragment): void {
+    if (p.memory >= MEMORY.maxStacks) return;
+    p.memory++;
+    p.maxHp += MEMORY.hpPerStack;
+    p.hp = Math.min(p.maxHp, p.hp + MEMORY.hpPerStack);
+    f.active = false;
+    this.emit(EV.POWERUP, p.slot, p.x, p.y, -1);
+  }
+
+  /** Re-apply the run's stacks to a fresh body, after a respawn or a level load. */
+  private applyMemoryHealth(p: Player, heal: boolean): void {
+    if (p.memory <= 0) return;
+    p.maxHp = (programDef(p.program).healthSegments ?? PLAYER.hp) + p.memory;
+    if (heal) p.hp = p.maxHp;
+    else p.hp = Math.min(p.maxHp, p.hp + p.memory);
+  }
+
+  /** Campaign carry-over: the run's stacks are restored when the next node builds. */
+  setMemoryStacks(slot: number, stacks: number): void {
+    if (slot < 0 || slot >= this.players.length) return;
+    const p = this.players[slot];
+    p.memory = Math.max(0, Math.min(MEMORY.maxStacks, Math.floor(stacks)));
+    this.applyMemoryHealth(p, true);
+  }
+
+  /** Outgoing damage scale. Enemy hits (slot -1) and copies never scale. */
+  private memoryDamage(sourceSlot: number, amount: number): number {
+    if (sourceSlot < 0) return amount;
+    const p = this.players[sourceSlot];
+    if (!p || p.memory <= 0 || p.copyClone) return amount;
+    return amount * (1 + MEMORY.damagePerStack * p.memory);
+  }
+
   private respawnTrainingPlayer(p: Player): void {
     let sx = this.spawnX[p.slot];
     let sy = this.spawnY[p.slot];
@@ -11000,6 +11121,7 @@ export class World {
       sy = this.spawnTmpY[p.slot - 1];
     }
     clearPlayerForSpawn(p, sx, sy, Math.atan2(this.centerY - sy, this.centerX - sx));
+    this.applyMemoryHealth(p, true);
     p.thrall = false;
     if (this.mode === 'gauntlet') p.iframes = 0.9;
     this.emit(EV.RESPAWN, p.slot, sx, sy, 0);
@@ -12782,6 +12904,7 @@ export class World {
   }
 
   private damageDrone(amount: number, sourceSlot: number): void {
+    amount = this.memoryDamage(sourceSlot, amount);
     const d = this.drone;
     if (!d.active) return;
     d.hp -= amount;
@@ -14987,6 +15110,7 @@ export class World {
   }
 
   private damageSentry(s: Sentry, amount: number, sourceSlot: number, dirX: number, dirY: number, force = 0): void {
+    amount = this.memoryDamage(sourceSlot, amount);
     if (!s.active) return;
     // A dormant calibration subject absorbs the first hit and wakes the class. The
     // prologue is a scripted reveal, so shooting one starts the test instead of
@@ -15169,6 +15293,7 @@ export class World {
   }
 
   private damageError(e: CascadingError, amount: number, sourceSlot: number, dirX: number, dirY: number): void {
+    amount = this.memoryDamage(sourceSlot, amount);
     if (!e.active) return;
     e.hp -= amount;
     e.hitFlash = 0.2;
@@ -16531,6 +16656,7 @@ export class World {
     hitX = NaN,
     hitY = NaN,
   ): void {
+    amount = this.memoryDamage(sourceSlot, amount);
     if (!w.active || w.held) return;
     if (w.bossKind === MINIBOSS.IDLE_HANDS) {
       this.damageHand(w, amount, sourceSlot, dirX, dirY, force);
@@ -17175,6 +17301,7 @@ export class World {
   }
 
   private damageVirus(v: Virus, amount: number, sourceSlot: number, dirX: number, dirY: number, force = 0): void {
+    amount = this.memoryDamage(sourceSlot, amount);
     if (!v.active || v.held) return;
     v.hp -= amount;
     v.hitFlash = 0.18;

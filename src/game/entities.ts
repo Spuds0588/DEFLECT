@@ -170,6 +170,8 @@ export function createPlayer(slot: number): Player {
     bugCd: 0,
     fastT: 0,
     speedMult: 1,
+    memory: 0,
+    memoryDropped: false,
     powerupKind: -1,
     powerupT: 0,
     autoFireT: 0,
