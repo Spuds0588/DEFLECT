@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.145';
+const BUILD = '0.1.146';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -317,7 +317,7 @@ let mode: Mode = 'none';
 let autoplay = false;
 /** QA-only boot flag: `?mega=1` lands the Mega Worm immediately. */
 let megaBoot = false;
-/** QA-only boot flag: `?hands=1` lands the Idle Hands trio immediately. */
+/** QA-only boot flag: `?hands=1` lands the Idle Hands pair immediately. */
 let handsBoot = false;
 /** QA-only boot flag: `?starfish=1` lands the Starfish immediately. */
 let starfishBoot = false;

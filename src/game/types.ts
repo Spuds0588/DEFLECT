@@ -768,7 +768,7 @@ export interface HandState {
   /** Palm eye flare and a per-hand bob phase. */
   eyeT: number;
   bob: number;
-  /** Spawn group, so the trio reads as one boss. */
+  /** Spawn group, so the palms read as one boss. */
   group: number;
 }
 

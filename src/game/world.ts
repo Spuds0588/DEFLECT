@@ -431,7 +431,7 @@ export class World {
   private wormSpawnT: number = GAUNTLET.wormSpawnDelay;
   /** Last wave each mini-boss gate fired on; one boss per gate entry. */
   private bossGateWave: number[] = new Array(GAUNTLET.bossSchedule.length).fill(-1);
-  /** Idle Hands spawn group counter, so a trio reads as one boss. */
+  /** Idle Hands spawn group counter, so the palms read as one boss. */
   private handGroup = 0;
   /** Starfish group counter: one center plus its five arm bodies. */
   private starfishGroup = 0;
@@ -15671,7 +15671,7 @@ export class World {
   // no chain (`segCount` 0), so every weapon, blast, beam and bot scan that already
   // walks `world.worms` reaches them without a second collision system.
 
-  /** Three hands in a ring around the ingress point. */
+  /** The palms spawn on a ring around the ingress point; `hands` is tuning. */
   private spawnIdleHands(x: number, y: number): Worm | null {
     const cfg = IDLE_HANDS;
     const group = ++this.handGroup;
@@ -15687,7 +15687,7 @@ export class World {
       }
       if (!w) break;
       const a = base + (k / cfg.hands) * Math.PI * 2;
-      // The trio's arrival ring scales with the body, so three 126-radius hands
+      // The arrival ring scales with the body, so two 126-radius hands
       // do not spawn inside each other. Keep it wide but front/side only: the
       // hands are a floor fight, not an overhead canopy.
       const front = Math.max(0, Math.sin(a));
@@ -15949,7 +15949,7 @@ export class World {
   }
 
   /**
-   * Keep the trio from collapsing into one silhouette while they hover. Attack states
+   * Keep the pair from collapsing into one silhouette while they hover. Attack states
    * are exempt: a slam is a committed path, and the charge redirect needs two bodies
    * to meet. The margin is wider than two hitboxes because the palm glyph reads wider
    * than its collision circle.

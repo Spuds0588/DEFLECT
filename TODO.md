@@ -3466,6 +3466,10 @@ arrive.
       (v0.1.145).
 - [ ] Look at the fatter Starfish in a fight and confirm the 92-radius arms do not crowd each other at the
       hub or read as one merged shape.
+- [x] Idle Hands runs two palms instead of three for solo balancing (`hands` 2); the count is tuning, so the
+      ring, separation, redirect and kill credit followed without code changes (v0.1.146).
+- [ ] Play a solo pair fight and decide whether two palms still make the hand-on-hand redirect worth setting
+      up, or whether the pair needs a shorter slam/charge cadence.
 - [ ] Watch the scaled Starfish on a cover-heavy arena: arms should sweep over pillars, and the staging pad
       should not pin it to the middle of small arenas.
 

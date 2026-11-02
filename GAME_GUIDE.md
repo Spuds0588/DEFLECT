@@ -598,7 +598,7 @@ the reveal finishes.
 
 - **File Blob:** one file pops up and holds, then a couple more, then the whole 96-plate pile packs out at full size.
 - **Mega Worm:** it swims in from beyond the arena on a slower arc, crosses around the fight and holds a longer roar before its first pass.
-- **Idle Hands:** the three palms rise slowly while yawing through a full turn—front, back, front—then grow and bounce up to their full size.
+- **Idle Hands:** the palms rise slowly while yawing through a full turn—front, back, front—then grow and bounce up to their full size.
 - **Starfish:** the center and its arms hang overhead for a beat, then drop under their own weight and land with a thud.
 
 ### Mega Worm
@@ -645,10 +645,10 @@ stay versus-only: those bosses are local bodies and are not sent over the networ
 
 ## IDLE HANDS (mini-boss)
 
-Three hands hover around the floor with a Unicode eye (`👁`) set in each palm. One boss, three bodies: the trio is
-defeated when all three palms are gone, and each one you delete counts as a kill.
+Two hands hover around the floor with a Unicode eye (`👁`) set in each palm. One boss, both bodies: the pair is
+defeated when both palms are gone, and each one you delete counts as a kill.
 
-- **Scale and tell pass.** The trio is roughly three times its old body size, with a wider arrival ring,
+- **Scale and tell pass.** Each hand is roughly three times its old body size, with a wider arrival ring,
   orbit and slam footprint. The palm is filled entirely in red, with the Unicode eye laid over an opaque
   black socket. The eye is fixed rather than animated. The slam and charge tells are longer, and the charge
   moves at 800 units/s without gaining reach.
@@ -662,10 +662,10 @@ defeated when all three palms are gone, and each one you delete counts as a kill
   not save you, but the shove is huge, so getting caught near a wall hurts.
 - **The redirect.** Dash into a hand while it is mid-charge and you do not scratch it: you turn it around.
   A redirected hand slams into one of its partners for heavy damage. Both hands then tumble away spinning
-  for a second, stunned and unable to attack, so the collision creates a real punish window. The trio is
+  for a second, stunned and unable to attack, so the collision creates a real punish window. The pair is
   easiest to break by feeding one hand into another.
 - Hands float over cover, so do not expect a pillar to block their path. They do have to respect the
-  arena walls. A palm behind you slides to the nearest side; a palm ahead stays in the lower half. The trio
+  arena walls. A palm behind you slides to the nearest side; a palm ahead stays in the lower half. The pair
   never settles over your character, so all three stay visible and their next tell is readable.
 - **Spacing.** The palms hold a 340-unit center margin, so they cannot stack into one silhouette. The
   margin is released for committed slams and charges, where the hand-on-hand collision is the attack.

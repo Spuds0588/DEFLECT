@@ -6280,3 +6280,17 @@ clean; build output removed and no dev server left.
 
 **Verification:** `starfish-check` passes with the new scale, `npm run build` clean, `npm run bench` clean,
 `git diff --check` clean; build output removed and no dev server left.
+
+## 2026-11-02 — Idle Hands cut to a pair for solo play
+
+**Goal:** three palms give a solo player three angles of slam and charge to cover, which read as too hard.
+
+- `IDLE_HANDS.hands` 3 → 2. The spawn ring, separation, redirect and kill credit all read the count, so the
+  pair spawns on opposite sides and the hand-on-hand redirect still works without a code branch.
+- Slam, the 1 s palm hold, charge, health and cooldowns are untouched. The entrance still announces IDLE HANDS.
+- The count is recorded as tuning, not structure: raising it back is a one-value change and a pair fight
+  should be checked again for whether the redirect is still worth setting up.
+
+**Verification:** `idlehands-check` passes with `trio:2` and unchanged slam, AOE, redirect, void cull,
+separation 340, hover, ingress and the 1.35 s palm hold; `bossrush-check` passes with the pair in the ladder;
+`npm run build` clean, `npm run bench` clean, `git diff --check` clean.

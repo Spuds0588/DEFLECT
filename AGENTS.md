@@ -351,10 +351,10 @@ solo and host-authoritative online co-op (D32); every other gauntlet threat stay
   It is local-only, set when the run is created, and never enters `Snapshot`.
 - Every enemy assembles in over a short spawn window, holds still while its parts arrive, and de-rezzes
   into a size-scaled triangle burst on death.
-- **Floating bosses are not floor-culled.** `cullVoidThreats` skips Idle Hands: the trio hovers over the
+- **Floating bosses are not floor-culled.** `cullVoidThreats` skips Idle Hands: the palms hover over the
   USB HUB's open gaps, and its own arena-bounds clamp is the only limit. Do not make the hands stand on
-  the disc floor or restore the 9,999 void hit, which deleted the whole trio on the first simulation tick
-  after their entrance.
+  the disc floor or restore the 9,999 void hit, which deleted the whole boss on the first simulation tick
+  after its entrance.
 - Waves are 30 s and the difficulty ramp is intentionally long: threat families unlock one at a time
   (worms 3, viruses 6, triplex 9, cascading errors 12, homing pods 15, flocks 18) and spawn intervals
   taper across `fullPressureWave` = 120. A new wave does **not** force every threat timer to zero, so there
@@ -2648,13 +2648,13 @@ trim these timings back to combat pace without checking the entrance on screen.
   the entrance: front, edge-on, back, edge-on, front. The yaw is `cos(2πu)` on the glyph's x-axis with a
   small `sin(2πu)` in-plane twist; the palm eye is suppressed on the back half so the turn reads as a
   front/back rotation rather than a flat mirror. It then grows and bounces into its normal silhouette. The
-  trio still starts in the same ring; only the visual emergence is staged. After the reveal, a hand behind
+  pair still starts in the same ring; only the visual emergence is staged. After the reveal, a hand behind
   the player is steered to the nearest side; a front hand stays in the lower half. The target band is
   `orbitYSide`/`orbitYFront`, and the arrival ring uses `spawnRingY`/`spawnYOffset`. Do not restore a
   full vertical orbit or let a hand target the player's back: that put a palm over the player sprite and
   above the camera frame, where it could not be read or tracked. Hovering hands (states 0 and 3) also run
   a six-pass pair separation with `separation` 340 before the frame; slam, charge and redirect states are
-  exempt so committed attacks still land. Do not remove the margin or let the trio stack. This is
+  exempt so committed attacks still land. Do not remove the margin or let the palms stack. This is
   presentation-only and out of `Snapshot`.
 - **Starfish (2.9 s).** The center and its attached arms hang 620 units above the landing point for the first
   18% of the entrance, then fall under acceleration instead of easing gently into the floor. A landing ring
@@ -2732,13 +2732,13 @@ promise of online bots or networked PvE.
 The core PvP loop, PWA install, controller support, N-player rooms, and training must be solid first.
 
 
-### D67 — Idle Hands: three floating palms, one boss (built 2026-11-02)
+### D67 — Idle Hands: floating palms, one boss (built 2026-11-02)
 
 The second mini-boss is **IDLE HANDS** (`MINIBOSS.IDLE_HANDS = 1`, body `idle-hands`, gauntlet wave 14,
-repeat every 28). It is three hands at once, not three bosses: each palm carries a red eye, hovers, slams,
+repeat every 28). It is a pair of hands at once, not two bosses: each palm carries a red eye, hovers, slams,
 and can commit to a finger charge.
 
-- **One boss, three bodies, no second collision system.** Hands live in the `worms` pool as boss bodies
+- **One boss, two bodies, no second collision system.** Hands live in the `worms` pool as boss bodies
   with `bossKind = IDLE_HANDS`, `mega = false`, `segCount = 0` and their own `hand` state object. Because
   `damageWorm` and `updateWorm` dispatch on `bossKind`, every weapon, beam, blast, melee, dash and bot
   scan that already walks `world.worms` reaches them for free. Do not add a parallel `hands` array; that
@@ -2761,7 +2761,7 @@ and can commit to a finger charge.
 - **The dash redirect.** A player dash that reaches a hand *while it is in its charge dash* does not
   dent it: it redirects the hand along the dash direction at 1100 units/s. A redirected hand that touches
   another hand deals `charge.deflectDamage` (14) to the partner, which is the boss's biggest punish and
-  the reason the trio is worth fighting together. Both hands then enter stun state 7: they are launched
+  the reason the pair is worth fighting together. Both hands then enter stun state 7: they are launched
   apart at `charge.stunKnockback` (900), spin for `charge.stunTime` (1 s), and cannot attack until the
   lockout ends. Deflect credit goes to the player. Do not gate this on the charged dash specifically; any
   dash that connects during the charge works.
@@ -2778,11 +2778,16 @@ and can commit to a finger charge.
 - **Render mode.** `drawIdleHand` saves the context and forces `source-over` because `drawWorms` sets
   `lighter` for the whole worm pool. Do not draw the hand under additive blending; its layered fill, eye
   socket and shadow bloom into each other and read as flashing. Restore the pool's blend mode on exit.
-- **Scale pass (2026-11-02).** The trio is now roughly three times its original body size: `radius` 126,
+- **Scale pass (2026-11-02).** Each hand is roughly three times its original body size: `radius` 126,
   spawn ring 390/300, orbit 520–680, slam range 700, slam AOE 240 and rise 360. Health and damage are
-  unchanged; scale the spatial values together so three 126-radius hands never spawn inside each other.
+  unchanged; scale the spatial values together so two 126-radius hands never spawn inside each other.
   The eye uses a capped 84 px font, so a 3x palm gets about a 2.2x eye and still reads as an eye rather
   than a pupil filling the hand.
+- **Hand count is tuning (2026-11-02).** `hands` is **2** for now: three palms give a solo pilot three
+  slam/charge angles to cover and played as too hard. The spawn ring, pair separation, redirect and kill
+  credit all read the count, so there is no code branch on it; the pair spawns opposite each other and the
+  hand-on-hand redirect still lands. Raising it back to 3 is a one-value change, but re-check the separation
+  margin and whether a solo player can actually cover the extra angle before shipping it.
 - **Near-player staging (2026-11-02).** `spawnMiniboss` places Idle Hands, Starfish and File Blob around
   the nearest live player instead of at the distant assault portal. Hands ring the player; the Starfish
   center sits 440 units toward the arena center; the Blob 360 units, with the anchor clamped by its

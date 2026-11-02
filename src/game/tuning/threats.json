@@ -211,7 +211,7 @@
   },
   "IDLE_HANDS": {
     "introTime": 2.7,
-    "hands": 3,
+    "hands": 2,
     "radius": 126,
     "hp": 22,
     "spawnTime": 1,
