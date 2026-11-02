@@ -8,3 +8,9 @@ dist/
 *.log
 *.pid
 .DS_Store
+.cloud-attachments/
+screenshots/
+.tmp/*.log
+.tmp/*.txt
+.tmp/*.json
+.tmp/*.png
