@@ -159,7 +159,7 @@ const nodeY = (w: Worm, k: number) => (k === 0 ? w.y : w.segY[k - 1]);
 // --- mini-boss registry, ingress family and wave gate ----------------------
 {
   const def = MINIBOSSES.find((d) => d.id === MINIBOSS.MEGA_WORM) ?? fail('the Mega Worm is missing from the mini-boss registry');
-  if (!def.segmentedWorm) fail('the registry lost the segmented-worm body flag');
+  if (def.body !== 'segmented-worm') fail('the registry lost the segmented-worm body flag');
   if (!GAUNTLET.bossSchedule.some((g) => g.kind === MINIBOSS.MEGA_WORM)) {
     fail('no gauntlet wave gate schedules the Mega Worm');
   }

@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.135';
+const BUILD = '0.1.136';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -313,6 +313,8 @@ let mode: Mode = 'none';
 let autoplay = false;
 /** QA-only boot flag: `?mega=1` lands the Mega Worm immediately. */
 let megaBoot = false;
+/** QA-only boot flag: `?hands=1` lands the Idle Hands trio immediately. */
+let handsBoot = false;
 let autoplayRestartAt = 0;
 /**
  * Title-screen attract demo. `attract` is true while the bot-run gauntlet owns the
@@ -513,6 +515,7 @@ function boot(): void {
   const gauntletParam = Number(params.get('gauntlet') ?? '0');
   // QA-only boss hook: `?mega=1` boots a gauntlet run with the Mega Worm already up.
   megaBoot = params.get('mega') === '1';
+  handsBoot = params.get('hands') === '1';
   const infectionParam = params.get('infection') === '1';
   const gauntletBot = Number(params.get('bot') ?? '0') >= 1;
   // QA-only inspection handle. Nothing in normal play reads it; it keeps split and
@@ -559,7 +562,7 @@ function boot(): void {
     window.setTimeout(() => startStress(stressParam), 250);
   } else if (infectionParam) {
     window.setTimeout(() => startInfection(gauntletBot), 250);
-  } else if (gauntletParam >= 1 || megaBoot) {
+  } else if (gauntletParam >= 1 || megaBoot || handsBoot) {
     window.setTimeout(() => startGauntlet(gauntletBot), 250);
   } else if (playtestMode) {
     window.setTimeout(startPlaytest, 250);
@@ -2885,9 +2888,10 @@ function startGauntlet(aiLocal = false): void {
   const arena = getArena(arenaIndex);
   world = new World('gauntlet', [getCallsign()], 0, arena, false, selectedProgram);
   world.friendlyFire = friendlyFire;
-  if (megaBoot) {
+  if (megaBoot || handsBoot) {
     const lead = world.players[0];
-    world.spawnMiniboss(MINIBOSS.MEGA_WORM, lead.x + 380, lead.y - 90);
+    if (megaBoot) world.spawnMiniboss(MINIBOSS.MEGA_WORM, lead.x + 380, lead.y - 90);
+    if (handsBoot) world.spawnMiniboss(MINIBOSS.IDLE_HANDS, lead.x + 380, lead.y - 90);
   }
   trainingInputs = [localFrame];
   botInputs = new Array(MAX_PLAYERS);

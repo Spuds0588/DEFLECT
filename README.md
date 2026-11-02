@@ -372,3 +372,9 @@ non-commercial use. Selling it or building a paid product on it requires prior w
 Modders are explicitly welcome to build and share free mods, provided they credit Corey Burns, link back
 to this repository, include the license, and do not present their work as official. See [LICENSE](LICENSE)
 for the full terms.
+
+## Mini-bosses
+
+`src/game/minibosses.ts` registers two bosses. `MEGA WORM` is a segmented chain with per-plate health;
+`IDLE HANDS` is three floating palms with red eyes that slam and charge, and can be dashed into each
+other. Both arrive through the gauntlet ingress and live in the worm body pool.

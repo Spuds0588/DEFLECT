@@ -387,6 +387,7 @@ export function createWorm(): Worm {
     biteDirX: 1,
     biteDirY: 0,
     bossKind: -1,
+    hand: null,
     mega: false,
     segHp: new Float32Array(Math.max(WORM.maxSegments, MEGA_WORM.maxSegments + 1)),
     segMaxHp: new Float32Array(Math.max(WORM.maxSegments, MEGA_WORM.maxSegments + 1)),

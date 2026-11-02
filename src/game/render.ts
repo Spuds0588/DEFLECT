@@ -1,5 +1,5 @@
 import type { AssaultPortal } from './types';
-import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { AimMark, CopyMark, InvaderShot } from './types';
 import {
   discArmAngle,
@@ -65,6 +65,7 @@ import { ATOM_BALL_COLOR, ATOM_BOLT_COLORS, drawGhostEye, drawGlyph, drawHourgla
 import { P_COLOR_DANGER, P_COLOR_DUST, P_COLOR_ICE, P_COLOR_TOXIN, particleColor } from './particles';
 import { POWERUPS, POWERUP_KIND } from './powerups';
 import { PROGRAM_ID, programDef } from './programs';
+import { MINIBOSS } from './minibosses';
 import { drawDroppedFiles, drawRegularProgram, regularFace, regularProgram, type RegularMood, type RegularProgramDef } from './regulars';
 import { PROP, SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type SatelliteMeteor, type Sentry, type SmokeWave, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
@@ -8478,6 +8479,10 @@ export class Renderer {
       const w = worms[i];
       if (!w.active || w.held) continue;
       // `mega` is the body shape; a future mini-boss branches on `bossKind` here.
+      if (w.bossKind === MINIBOSS.IDLE_HANDS) {
+        this.drawIdleHand(w, alpha, t);
+        continue;
+      }
       if (w.mega) {
         this.drawMegaWorm(w, alpha, t);
         continue;
@@ -8621,6 +8626,193 @@ export class Renderer {
     ctx.restore();
   }
 
+
+
+  /**
+   * Idle Hands. The slam is the read: the hand rears up, squashes vertically and flips
+   * palm-out, then grows back down through the floor onto the telegraph ring, with dust
+   * on the landing frame. A charge pins the hand into a finger point and shakes before
+   * it fires; a deflected hand tumbles with its eye blown wide.
+   */
+  private drawIdleHand(w: Worm, alpha: number, t: number): void {
+    const h = w.hand;
+    if (!h) return;
+    const ctx = this.ctx;
+    const cfg = IDLE_HANDS;
+    const accent = cfg.color;
+    const bone = cfg.bone;
+    const x = lerp(w.prevX, w.x, alpha);
+    const y = lerp(w.prevY, w.y, alpha);
+    const r = w.hitR;
+    const slam = cfg.slam;
+
+    let lift = 0;
+    let scaleY = 1;
+    let flipped = false;
+    let shakeX = 0;
+    let shakeY = 0;
+    let point = 0;
+    let spin = 0;
+
+    if (h.state === 1) {
+      const u = Math.min(1, h.t / slam.windup);
+      lift = slam.riseHeight * (0.35 + 0.65 * u);
+      scaleY = 1 - 0.68 * u;
+      flipped = u > 0.5;
+    } else if (h.state === 2) {
+      const u = Math.min(1, h.t / slam.drop);
+      lift = slam.riseHeight * (1 - u);
+      scaleY = 0.32 + 0.68 * u;
+      flipped = u < 0.45;
+    } else if (h.state === 3) {
+      const u = Math.min(1, h.t / slam.recover);
+      scaleY = 1 + 0.18 * (1 - u) * (1 - u);
+    } else if (h.state === 4) {
+      point = Math.min(1, h.t / cfg.charge.windup);
+      shakeX = Math.sin(t * 66) * 4.5 * point;
+      shakeY = Math.cos(t * 59) * 3.5 * point;
+      scaleY = 1 + 0.1 * point;
+    } else if (h.state === 5) {
+      point = 1;
+      scaleY = 0.86;
+    } else if (h.state === 6) {
+      spin = t * 16;
+      scaleY = 0.82;
+    }
+
+    // Ground shadow tightens as the hand rises, then snaps wide on the landing.
+    ctx.save();
+    ctx.globalAlpha = 0.2 * alpha;
+    ctx.fillStyle = '#000000';
+    const shadow = Math.max(0.32, 1 - lift / (slam.riseHeight * 2.2));
+    ctx.beginPath();
+    ctx.ellipse(x, y + r * 0.85, r * 0.95 * shadow, r * 0.32 * shadow, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+
+    // Telegraph ring on the ground, growing through the windup and the drop.
+    if (h.state === 1 || h.state === 2) {
+      const u = h.state === 1 ? Math.min(1, h.t / slam.windup) : 1;
+      const ring = slam.aoe * (0.35 + 0.65 * u);
+      ctx.save();
+      ctx.globalAlpha = (0.18 + 0.34 * u) * alpha;
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(h.slamX, h.slamY, ring, 0, TWO_PI);
+      ctx.stroke();
+      ctx.globalAlpha = (0.05 + 0.1 * u) * alpha;
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.arc(h.slamX, h.slamY, ring, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Charge trail: three ghosts behind the palm while it is flying.
+    if (h.state === 5 || h.state === 6) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let k = 3; k >= 1; k--) {
+        ctx.globalAlpha = 0.1 * k * alpha;
+        ctx.fillStyle = h.state === 6 ? '#ffffff' : accent;
+        const bx = x - h.dirX * k * r * 0.9;
+        const by = y - h.dirY * k * r * 0.9;
+        ctx.fillRect(bx - r * 0.5, by - r * 0.5, r, r);
+      }
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.translate(x + shakeX, y - lift + shakeY);
+    ctx.rotate(w.angle + Math.PI * 0.25 + spin);
+    ctx.scale(1, flipped ? -scaleY : scaleY);
+
+    // Palm plate.
+    const pw = r * 1.25;
+    const ph = r * 1.05;
+    ctx.globalAlpha = 0.18 * alpha;
+    ctx.fillStyle = accent;
+    ctx.fillRect(-pw - 7, -ph - 7, pw * 2 + 14, ph * 2 + 14);
+    ctx.globalAlpha = 0.88 * alpha;
+    ctx.fillStyle = '#17100f';
+    ctx.fillRect(-pw, -ph, pw * 2, ph * 2);
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = bone;
+    ctx.lineWidth = 2.4;
+    ctx.strokeRect(-pw, -ph, pw * 2, ph * 2);
+
+    // Four digits; the index extends when the hand points.
+    for (let f = 0; f < 4; f++) {
+      const fw = r * 0.3;
+      const fx = -pw + r * 0.24 + f * (r * 0.44);
+      const base = ph;
+      const fold = f === 0 ? 0 : r * 0.1 * point;
+      const len = f === 0 && point > 0 ? r * (0.7 + 0.9 * point) : r * 0.72 * (1 - 0.55 * (f === 0 ? 0 : point));
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = '#17100f';
+      ctx.fillRect(fx, base - fold, fw, len);
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = bone;
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(fx, base - fold, fw, len);
+    }
+    // Thumb.
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = '#17100f';
+    ctx.fillRect(-pw - r * 0.34, -r * 0.1, r * 0.34, r * 0.72);
+    ctx.strokeStyle = bone;
+    ctx.lineWidth = 1.6;
+    ctx.strokeRect(-pw - r * 0.34, -r * 0.1, r * 0.34, r * 0.72);
+
+    // Palm eye. It widens while the hand is committing and narrows when it hovers.
+    const wide = h.eyeT > 0 || h.state === 1 || h.state === 4 || h.state === 5;
+    const open = wide ? 1 : 0.5 + 0.2 * Math.sin(t * 1.8 + h.bob);
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#120206';
+    ctx.fillRect(-r * 0.55, -r * 0.3, r * 1.1, r * 0.6);
+    ctx.globalAlpha = 0.95;
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-r * 0.55, -r * 0.3, r * 1.1, r * 0.6);
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.2 * (0.6 + 0.4 * open), r * 0.16 * open, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = '#120206';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.07, 0, TWO_PI);
+    ctx.fill();
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = '#120206';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.5, -r * 0.02 + (1 - open) * r * 0.12);
+    ctx.lineTo(r * 0.5, -r * 0.02 + (1 - open) * r * 0.12);
+    ctx.stroke();
+
+    if (w.hitFlash > 0) {
+      ctx.globalAlpha = Math.min(1, w.hitFlash * 5);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-pw - 4, -ph - 4, pw * 2 + 8, ph * 2 + 8);
+    }
+    ctx.restore();
+
+    // Landing seam: a white ring under the palm on the frame it hits.
+    if (h.state === 3 && h.t < slam.recover * 0.45) {
+      const u = Math.min(1, h.t / (slam.recover * 0.45));
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = (1 - u) * 0.7 * alpha;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y + r * 0.5, slam.aoe * (0.3 + 0.7 * u), 0, TWO_PI);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
 
   /**
    * Mega Worm. There is no health bar: every plate carries its own damage, drawn as

@@ -70,6 +70,8 @@ Formerly: 2026-11-02 (PORTS)
 - [x] Arrives through the edge ingress on wave 8, repeating every 14 waves
 - [x] Cracks and code debris instead of a health bar
 - [x] Probe: `.tmp/megaworm-check.ts`; `?mega=1` QA boot hook
+- [x] Idle Hands: three floating palms, slam telegraph, finger charge, dash redirect
+- [x] Hand bodies reuse the worm pool via `bossKind`, so every weapon and bot already hits them
 - [x] Mini-boss registry (`minibosses.ts`), `Worm.bossKind` and one `spawnMiniboss` entry point
 - [x] Data-driven wave gates (`GAUNTLET.bossSchedule`); bosses arrive through assault family 3
 - [ ] Second mini-boss entry, plus a level that spawns two kinds at once

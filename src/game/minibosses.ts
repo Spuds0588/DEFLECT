@@ -1,4 +1,4 @@
-import { MEGA_WORM } from './config';
+import { IDLE_HANDS, MEGA_WORM } from './config';
 
 /**
  * Mini-boss registry. A mini-boss is an ordinary gauntlet arrival with boss-scale
@@ -8,16 +8,19 @@ import { MEGA_WORM } from './config';
  */
 export const MINIBOSS = {
   MEGA_WORM: 0,
+  IDLE_HANDS: 1,
 } as const;
+
+export type MinibossBody = 'segmented-worm' | 'idle-hands';
 
 export interface MinibossDef {
   id: number;
   key: string;
   label: string;
   /** Tuning block the body reads. */
-  tuning: typeof MEGA_WORM;
-  /** True while this boss uses the segmented worm body (`Worm` with per-plate health). */
-  segmentedWorm: boolean;
+  tuning: typeof MEGA_WORM | typeof IDLE_HANDS;
+  /** Which body builder and renderer this boss uses. */
+  body: MinibossBody;
 }
 
 export const MINIBOSSES: readonly MinibossDef[] = [
@@ -26,7 +29,14 @@ export const MINIBOSSES: readonly MinibossDef[] = [
     key: 'mega-worm',
     label: 'MEGA WORM',
     tuning: MEGA_WORM,
-    segmentedWorm: true,
+    body: 'segmented-worm',
+  },
+  {
+    id: MINIBOSS.IDLE_HANDS,
+    key: 'idle-hands',
+    label: 'IDLE HANDS',
+    tuning: IDLE_HANDS,
+    body: 'idle-hands',
   },
 ];
 

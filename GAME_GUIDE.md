@@ -605,3 +605,20 @@ chain of heavy plates with a head at the front. Every plate has its own health, 
 - Damage reads as cracks spreading across a plate and loose code drifting off the body. A nearly dead
   plate shudders. There is no health bar.
 - It moves slowly for its size. The pressure is the sweep and the plates, not a chase.
+
+## IDLE HANDS (mini-boss)
+
+Three hands hover around the floor with a red eye set in each palm. One boss, three bodies: the trio is
+defeated when all three palms are gone, and each one you delete counts as a kill.
+
+- **Slam.** A hand rears up, shrinks and flips palm-out, then drops onto a red ring on the ground. The ring
+  is fixed the moment the tell starts, so walking out of it is the counter. Anything inside takes a
+  segment and a hard shove, with dust on the landing.
+- **Finger charge.** A hand turns to point at you, shakes, then fires forward along that line. Cover will
+  not save you, but the shove is huge, so getting caught near a wall hurts.
+- **The redirect.** Dash into a hand while it is mid-charge and you do not scratch it: you turn it around.
+  A redirected hand slams into one of its partners for heavy damage. The trio is easiest to break by
+  feeding one hand into another.
+- Hands float over cover, so do not expect a pillar to block their path. They do have to respect the
+  arena walls.
+- **Controls note:** the boss is designed for the single stick and the dash; there is no special input.

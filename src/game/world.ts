@@ -46,6 +46,7 @@ import {
   VIRUS,
   WORM,
   MEGA_WORM,
+  IDLE_HANDS,
   type Rect,
 } from './config';
 import {
@@ -396,6 +397,8 @@ export class World {
   private wormSpawnT: number = GAUNTLET.wormSpawnDelay;
   /** Last wave each mini-boss gate fired on; one boss per gate entry. */
   private bossGateWave: number[] = new Array(GAUNTLET.bossSchedule.length).fill(-1);
+  /** Idle Hands spawn group counter, so a trio reads as one boss. */
+  private handGroup = 0;
   private virusSpawnT: number = GAUNTLET.virusSpawnDelay;
   private firewallSpawnT: number = GAUNTLET.firewallSpawnDelay;
   /** Shared clock for arena emitters. `offset` per emitter staggers the beams. */
@@ -836,7 +839,7 @@ export class World {
     for (let i = 0; i < MAX_PLAYERS; i++) this.players[i] = createPlayer(i);
     this.projectiles = createProjectilePool();
     this.drone = createDrone();
-    this.worms = new Array(GAUNTLET.maxWorms + MEGA_WORM.slots);
+    this.worms = new Array(GAUNTLET.maxWorms + MEGA_WORM.slots + IDLE_HANDS.hands);
     for (let i = 0; i < this.worms.length; i++) this.worms[i] = createWorm();
     // INFECTION floods the floor, so that run owns a larger pool. Every other local mode
     // and every hosted match keep the gauntlet-sized pool.
@@ -1413,7 +1416,7 @@ export class World {
       if (live < this.virusLimit()) this.spawnVirus(x, y);
     } else if (fam === 2) {
       let live = 0;
-      for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active && !this.worms[i].mega) live++;
+      for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active && this.worms[i].bossKind < 0) live++;
       if (live < this.wormLimit()) this.spawnWorm(x, y);
     } else {
       let live = 0;
@@ -13816,7 +13819,7 @@ export class World {
     if (this.wave >= GAUNTLET.wormWave) {
       let wormCount = 0;
       for (let i = 0; i < this.worms.length; i++) {
-        if (this.worms[i].active && !this.worms[i].mega) wormCount++;
+        if (this.worms[i].active && this.worms[i].bossKind < 0) wormCount++;
       }
       if (wormCount < this.wormLimit()) {
         this.wormSpawnT -= dt;
@@ -15210,6 +15213,7 @@ export class World {
     w.active = true;
     w.mega = false;
     w.bossKind = -1;
+    w.hand = null;
     w.held = held;
     w.hitR = w.hitR;
     w.segR = w.segR;
@@ -15307,6 +15311,311 @@ export class World {
   }
 
 
+
+  // --- Idle Hands ----------------------------------------------------------
+  //
+  // Three floating palms are one boss. They live in the worm pool as boss bodies with
+  // no chain (`segCount` 0), so every weapon, blast, beam and bot scan that already
+  // walks `world.worms` reaches them without a second collision system.
+
+  /** Three hands in a ring around the ingress point. */
+  private spawnIdleHands(x: number, y: number): Worm | null {
+    const cfg = IDLE_HANDS;
+    const group = ++this.handGroup;
+    const base = this.rng.range(0, Math.PI * 2);
+    let first: Worm | null = null;
+    for (let k = 0; k < cfg.hands; k++) {
+      let w: Worm | null = null;
+      for (let i = 0; i < this.worms.length; i++) {
+        if (!this.worms[i].active) {
+          w = this.worms[i];
+          break;
+        }
+      }
+      if (!w) break;
+      const a = base + (k / cfg.hands) * Math.PI * 2;
+      const sx = x + Math.cos(a) * 130;
+      const sy = y + Math.sin(a) * 100;
+      w.active = true;
+      w.mega = false;
+      w.bossKind = MINIBOSS.IDLE_HANDS;
+      w.held = false;
+      w.hitR = cfg.radius;
+      w.segR = cfg.radius * 0.6;
+      w.segCount = 0;
+      w.shrink = 1;
+      w.x = Math.max(this.arena.bounds.left + cfg.radius, Math.min(this.arena.bounds.right - cfg.radius, sx));
+      w.y = Math.max(this.arena.bounds.top + cfg.radius, Math.min(this.arena.bounds.bottom - cfg.radius, sy));
+      w.prevX = w.x;
+      w.prevY = w.y;
+      w.vx = 0;
+      w.vy = 0;
+      w.kx = 0;
+      w.ky = 0;
+      w.angle = Math.atan2(this.centerY - w.y, this.centerX - w.x);
+      w.phase = this.rng.range(0, Math.PI * 2);
+      w.hp = cfg.hp;
+      w.maxHp = cfg.hp;
+      w.spawnT = cfg.spawnTime;
+      w.hitFlash = 0;
+      w.touchCd = 0;
+      w.pinT = 0;
+      w.infected = false;
+      w.biteT = 0;
+      w.legs = false;
+      w.eyeT = 0;
+      w.whipT = 0;
+      w.acidT = 0;
+      w.anchorX = w.x;
+      w.anchorY = w.y;
+      w.hand = {
+        state: 0,
+        t: 0,
+        cd: 1.1 + k * 0.45,
+        hitCd: 0,
+        hitMask: 0,
+        dirX: Math.cos(w.angle),
+        dirY: Math.sin(w.angle),
+        slamX: w.x,
+        slamY: w.y,
+        fromX: w.x,
+        fromY: w.y,
+        eyeT: 1.2,
+        bob: this.rng.range(0, Math.PI * 2),
+        group,
+      };
+      if (!first) first = w;
+    }
+    this.emit(EV.PROP_BREAK, -1, x, y, 40);
+    return first;
+  }
+
+  private updateIdleHand(w: Worm, dt: number): void {
+    const cfg = IDLE_HANDS;
+    const h = w.hand;
+    if (!h) return;
+    w.prevX = w.x;
+    w.prevY = w.y;
+    w.phase += dt;
+    if (w.hitFlash > 0) w.hitFlash = Math.max(0, w.hitFlash - dt);
+    if (h.cd > 0) h.cd = Math.max(0, h.cd - dt);
+    if (h.hitCd > 0) h.hitCd = Math.max(0, h.hitCd - dt);
+    if (h.eyeT > 0) h.eyeT = Math.max(0, h.eyeT - dt);
+    if (w.kx !== 0 || w.ky !== 0) {
+      w.x += w.kx * dt;
+      w.y += w.ky * dt;
+      w.kx *= Math.exp(-cfg.knockDrag * dt);
+      w.ky *= Math.exp(-cfg.knockDrag * dt);
+    }
+    if (w.spawnT > 0) {
+      w.spawnT = Math.max(0, w.spawnT - dt);
+      return;
+    }
+    if (w.pinT > 0) {
+      w.pinT = Math.max(0, w.pinT - dt);
+      return;
+    }
+
+    const p = this.threatTarget(w.x, w.y);
+    const pdx = p.x - w.x;
+    const pdy = p.y - w.y;
+    const dist = Math.hypot(pdx, pdy) || 1;
+    h.t += dt;
+
+    if (h.state === 0) {
+      // Hover at a working distance: close in on a far player, give ground when crowded.
+      const orbit = Math.min(cfg.orbitMax, Math.max(cfg.orbitMin, dist));
+      const ang = Math.atan2(w.y - p.y, w.x - p.x) + Math.sin(w.phase * 0.42 + h.bob) * 0.22;
+      const tx = p.x + Math.cos(ang) * orbit;
+      const ty = p.y + Math.sin(ang) * orbit;
+      const dx = tx - w.x;
+      const dy = ty - w.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const speed = Math.min(cfg.driftSpeed, d * 2.2);
+      w.x += (dx / d) * speed * dt;
+      w.y += (dy / d) * speed * dt;
+      w.angle = Math.atan2(p.y - w.y, p.x - w.x);
+      if (h.cd <= 0 && p.alive && p.cloakT <= 0) {
+        const canSlam = dist <= cfg.slam.range;
+        const canCharge = dist <= cfg.charge.range && !this.lineBlocked(w.x, w.y, p.x, p.y);
+        if (canSlam || canCharge) {
+          if (canSlam && (!canCharge || this.rng.next() < 0.6)) {
+            // The ground point is latched at the start of the tell, so stepping out
+            // of the ring is the counterplay.
+            h.state = 1;
+            h.t = 0;
+            h.slamX = p.x;
+            h.slamY = p.y;
+            h.eyeT = cfg.slam.windup + cfg.slam.drop;
+          } else {
+            h.state = 4;
+            h.t = 0;
+            h.dirX = pdx / dist;
+            h.dirY = pdy / dist;
+            h.hitMask = 0;
+            h.eyeT = cfg.charge.windup;
+          }
+        }
+      }
+    } else if (h.state === 1) {
+      if (h.t >= cfg.slam.windup) {
+        h.state = 2;
+        h.t = 0;
+        h.fromX = w.x;
+        h.fromY = w.y;
+      }
+    } else if (h.state === 2) {
+      const u = Math.min(1, h.t / cfg.slam.drop);
+      w.x = h.fromX + (h.slamX - h.fromX) * u;
+      w.y = h.fromY + (h.slamY - h.fromY) * u;
+      if (u >= 1) {
+        h.state = 3;
+        h.t = 0;
+        this.slamImpact(w);
+      }
+    } else if (h.state === 3) {
+      if (h.t >= cfg.slam.recover) {
+        h.state = 0;
+        h.t = 0;
+        h.cd = cfg.slam.cooldown;
+      }
+    } else if (h.state === 4) {
+      w.angle = Math.atan2(h.dirY, h.dirX);
+      if (h.t >= cfg.charge.windup) {
+        h.state = 5;
+        h.t = 0;
+        h.hitMask = 0;
+      }
+    } else if (h.state === 5) {
+      w.x += h.dirX * cfg.charge.speed * dt;
+      w.y += h.dirY * cfg.charge.speed * dt;
+      w.angle = Math.atan2(h.dirY, h.dirX);
+      if (h.hitCd <= 0) {
+        for (let i = 0; i < this.players.length; i++) {
+          const other = this.players[i];
+          if (!other.active || !other.alive || other.cloakT > 0) continue;
+          if ((h.hitMask & (1 << i)) !== 0) continue;
+          const dx = other.x - w.x;
+          const dy = other.y - w.y;
+          const rr = w.hitR + PLAYER.radius;
+          if (dx * dx + dy * dy > rr * rr) continue;
+          const d = Math.hypot(dx, dy) || 1;
+          h.hitMask |= 1 << i;
+          h.hitCd = cfg.contactCooldown;
+          this.damagePlayer(
+            other,
+            cfg.charge.damage,
+            -1,
+            dx / d,
+            dy / d,
+            cfg.charge.knockback,
+            SRC.WORM,
+            this.worms.indexOf(w),
+          );
+        }
+      }
+      if (h.t >= cfg.charge.dashTime) {
+        h.state = 0;
+        h.t = 0;
+        h.cd = cfg.charge.cooldown;
+      }
+    } else if (h.state === 6) {
+      w.x += h.dirX * cfg.charge.deflectSpeed * dt;
+      w.y += h.dirY * cfg.charge.deflectSpeed * dt;
+      for (let i = 0; i < this.worms.length; i++) {
+        const other = this.worms[i];
+        if (other === w || !other.active || other.bossKind !== w.bossKind) continue;
+        const dx = other.x - w.x;
+        const dy = other.y - w.y;
+        const rr = w.hitR + other.hitR;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        const d = Math.hypot(dx, dy) || 1;
+        // The redirected hand is the weapon: the partner takes the big hit.
+        this.damageHand(other, cfg.charge.deflectDamage, 0, dx / d, dy / d, 600);
+        this.damageHand(w, 3, 0, -dx / d, -dy / d, 0);
+        this.emit(EV.EXPLODE, -1, w.x, w.y, 70);
+        if (w.active) {
+          h.state = 0;
+          h.t = 0;
+          h.cd = 1.2;
+        }
+        break;
+      }
+      if (w.active && h.state === 6 && h.t >= cfg.charge.deflectLife) {
+        h.state = 0;
+        h.t = 0;
+        h.cd = cfg.charge.cooldown * 0.5;
+      }
+    }
+
+    // Floating bodies ignore cover; the arena wall still stops them, and a charge
+    // that meets it ends there rather than grinding along the edge.
+    const pad = w.hitR;
+    const bx = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.x));
+    const by = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.y));
+    if ((h.state === 5 || h.state === 6) && (bx !== w.x || by !== w.y)) {
+      const wasCharge = h.state === 5;
+      h.state = 0;
+      h.t = 0;
+      h.cd = wasCharge ? cfg.charge.cooldown : 0.8;
+    }
+    w.x = bx;
+    w.y = by;
+  }
+
+  /** The landing frame: dust, a shove, and damage inside the telegraph ring. */
+  private slamImpact(w: Worm): void {
+    const cfg = IDLE_HANDS.slam;
+    this.emit(EV.PROP_BREAK, -1, w.x, w.y, Math.round(cfg.aoe * 0.75));
+    this.emit(EV.WORM_HIT, -1, w.x, w.y, 2, 0, 0);
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.cloakT > 0) continue;
+      const dx = p.x - w.x;
+      const dy = p.y - w.y;
+      if (dx * dx + dy * dy > cfg.aoe * cfg.aoe) continue;
+      const d = Math.hypot(dx, dy) || 1;
+      this.damagePlayer(p, cfg.damage, -1, dx / d, dy / d, cfg.knockback, SRC.WORM, this.worms.indexOf(w));
+    }
+  }
+
+  /**
+   * A hand takes damage like any body, except while it is mid-charge: a dash that
+   * reaches it redirects it instead, and a redirected hand is what hits its partner.
+   */
+  private damageHand(w: Worm, amount: number, sourceSlot: number, dirX: number, dirY: number, force: number): void {
+    const h = w.hand;
+    if (!h || !w.active) return;
+    const p = sourceSlot >= 0 ? this.players[sourceSlot] : null;
+    if (p && h.state === 5 && p.dashKind > 0 && p.dashT > 0) {
+      h.state = 6;
+      h.t = 0;
+      h.dirX = p.dashDirX;
+      h.dirY = p.dashDirY;
+      h.hitCd = 0;
+      w.hitFlash = 0.22;
+      this.emit(EV.DEFLECT, sourceSlot, w.x, w.y, 3, h.dirX, h.dirY);
+      return;
+    }
+    w.hp -= amount;
+    w.hitFlash = 0.2;
+    if (sourceSlot >= 0) w.aggroT = 2;
+    if (force > 0) {
+      w.kx += dirX * force * 0.22;
+      w.ky += dirY * force * 0.22;
+    }
+    this.emit(EV.WORM_HIT, sourceSlot, w.x, w.y, amount, dirX, dirY);
+    if (w.hp > 0) return;
+    w.active = false;
+    w.hand = null;
+    const last = !this.worms.some((other) => other !== w && other.active && other.bossKind === w.bossKind);
+    this.emit(EV.WORM_KILL, sourceSlot, w.x, w.y, last ? 220 : 90, dirX, dirY);
+    if (sourceSlot === 0) {
+      this.gauntletKills++;
+      this.dropPickupFromKill(w.x, w.y, true);
+    }
+  }
+
   // --- Mega Worm -----------------------------------------------------------
   //
   // The boss is still a Worm: it lives in the same pool, so bots, projectiles,
@@ -15341,7 +15650,8 @@ export class World {
   spawnMiniboss(kind: number, x?: number, y?: number): Worm | null {
     const def = minibossDef(kind);
     if (!def) return null;
-    if (def.segmentedWorm) return this.spawnMegaWorm(x, y, kind);
+    if (def.body === 'segmented-worm') return this.spawnMegaWorm(x, y, kind);
+    if (def.body === 'idle-hands') return this.spawnIdleHands(x ?? this.centerX, y ?? this.centerY);
     return null;
   }
 
@@ -15957,6 +16267,10 @@ export class World {
   }
 
   private updateWorm(w: Worm, dt: number): void {
+    if (w.bossKind === MINIBOSS.IDLE_HANDS) {
+      this.updateIdleHand(w, dt);
+      return;
+    }
     if (w.mega) {
       this.updateMegaWorm(w, dt);
       return;
@@ -16218,6 +16532,10 @@ export class World {
     hitY = NaN,
   ): void {
     if (!w.active || w.held) return;
+    if (w.bossKind === MINIBOSS.IDLE_HANDS) {
+      this.damageHand(w, amount, sourceSlot, dirX, dirY, force);
+      return;
+    }
     if (w.mega) {
       this.damageMegaWorm(w, amount, sourceSlot, dirX, dirY, force, hitX, hitY);
       return;

@@ -27,7 +27,7 @@
     "wormMinInterval": 12,
     "maxWorms": 2,
     "wormCapStep": 20,
-    "bossSchedule": [{ "kind": 0, "wave": 8, "repeatStep": 14 }],
+    "bossSchedule": [{ "kind": 0, "wave": 8, "repeatStep": 14 }, { "kind": 1, "wave": 14, "repeatStep": 28 }],
     "virusSpawnDelay": 10,
     "virusInterval": 28,
     "virusMinInterval": 11,
@@ -171,6 +171,42 @@
       "acidDamage": 1,
       "acidTtl": 2.2,
       "acidSpread": 0.24
+    }
+  },
+  "IDLE_HANDS": {
+    "hands": 3,
+    "radius": 42,
+    "hp": 22,
+    "spawnTime": 1,
+    "driftSpeed": 70,
+    "orbitMin": 250,
+    "orbitMax": 400,
+    "color": "#ff5a5a",
+    "bone": "#eadcd2",
+    "contactCooldown": 0.9,
+    "knockDrag": 8,
+    "slam": {
+      "range": 380,
+      "windup": 0.55,
+      "drop": 0.18,
+      "recover": 0.55,
+      "riseHeight": 120,
+      "aoe": 118,
+      "damage": 1,
+      "knockback": 1050,
+      "cooldown": 3.2
+    },
+    "charge": {
+      "range": 720,
+      "windup": 0.6,
+      "speed": 900,
+      "dashTime": 0.55,
+      "damage": 1,
+      "knockback": 1520,
+      "cooldown": 4.2,
+      "deflectSpeed": 1100,
+      "deflectDamage": 14,
+      "deflectLife": 1.1
     }
   },
   "VIRUS": {

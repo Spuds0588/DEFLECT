@@ -114,6 +114,7 @@ export const GAUNTLET = threatsJson.GAUNTLET;
 export const INFECTION = threatsJson.INFECTION;
 export const WORM = threatsJson.WORM;
 export const MEGA_WORM = threatsJson.MEGA_WORM;
+export const IDLE_HANDS = threatsJson.IDLE_HANDS;
 export const VIRUS = threatsJson.VIRUS;
 export const SENTRY = threatsJson.SENTRY;
 export const CASCADING_ERROR = threatsJson.CASCADING_ERROR;

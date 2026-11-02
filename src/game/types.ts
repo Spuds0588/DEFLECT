@@ -725,6 +725,31 @@ export interface GameEvent {
   dirY: number;
 }
 
+/** Idle Hands: one floating hand. Three of these make the boss. */
+export interface HandState {
+  /** 0 hover, 1 slam windup, 2 slam drop, 3 slam recover, 4 charge windup, 5 charge dash, 6 deflected. */
+  state: number;
+  t: number;
+  /** Attack cooldown and the short contact clock after a charge connects. */
+  cd: number;
+  hitCd: number;
+  /** Players already hit by this slam or charge, one bit per slot. */
+  hitMask: number;
+  /** Latched charge direction, or the redirect direction once deflected. */
+  dirX: number;
+  dirY: number;
+  /** Ground point the slam is committed to, and the point it drops from. */
+  slamX: number;
+  slamY: number;
+  fromX: number;
+  fromY: number;
+  /** Palm eye flare and a per-hand bob phase. */
+  eyeT: number;
+  bob: number;
+  /** Spawn group, so the trio reads as one boss. */
+  group: number;
+}
+
 export interface Worm {
   active: boolean;
   /** Campaign holding cell: present, frozen and invulnerable until the power-down. */
@@ -772,6 +797,8 @@ export interface Worm {
   biteDirY: number;
   /** Mini-boss registry id (`minibosses.ts`), -1 for an ordinary worm. */
   bossKind: number;
+  /** Idle Hands bodies only; null on every other worm or boss. */
+  hand: HandState | null;
   /** Mega Worm: a boss chain whose nodes carry their own health. */
   mega: boolean;
   /** Per-node health. Index 0 is the head, index k is segment k-1. */

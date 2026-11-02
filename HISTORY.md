@@ -5453,3 +5453,32 @@ radar, islands-ports, laptop-variants and megaworm probes still pass. `npm run b
 
 **Next:** plate ring dressing (deck stripes and department signage) now that each station has its own
 silhouette.
+
+## 2026-11-02 — Idle Hands, the second mini-boss (v0.1.136)
+
+**Goal:** a second mini-boss that fights differently from the Mega Worm: three floating hands that slam,
+charge, and can be turned on each other.
+
+- New registry body `idle-hands` (`MINIBOSS.IDLE_HANDS = 1`), scheduled at gauntlet wave 14 and every 28
+  waves after. The trio arrives through the same family-3 ingress as every other threat.
+- Hands are boss bodies in the `worms` pool with `segCount` 0 and a `hand` state object, so the existing
+  projectile, beam, melee, blast and bot paths all reach them. Ordinary-worm caps now test `bossKind < 0`
+  instead of `!mega`, or a boss trio would have eaten the wave's worm budget.
+- Slam: ring latched at the start of the tell, 0.55 s windup, 0.18 s drop, 118 AOE, 1 damage, 1050
+  knockback. The renderer squashes the palm vertically, flips it palm-out, then grows it back down with a
+  white landing seam; the landing also emits `PROP_BREAK` for dust.
+- Finger charge: point, shake 0.6 s, then 900 units/s for 0.55 s with 1520 knockback. Hands are airborne,
+  so cover does not stop them; only the arena wall does.
+- Redirect: a player dash into a hand in its charge dash flips it along the dash at 1100 units/s. Hitting a
+  partner hand deals 14, and the reflected damage is credited to the player.
+- Palette: red palm eye `#ff5a5a`, bone `#eadcd2`. Vector palm and eye rather than a symbol glyph, because
+  the only literal hands available are emoji that ignore `fillStyle`.
+- `?hands=1` QA hook added beside `?mega=1`.
+
+**Verification:** `.tmp/idlehands-check.ts` passes: trio shape and count, slam damage inside the ring,
+no damage outside it, the landing lands on its own telegraph, the dash redirect deals 14 to a partner,
+three kills are credited, and the trio arrives via ingress with 726 units of player clearance. Build
+clean; megaworm, assault, jet, flipboard, radar, islands-ports and laptop-variants probes still pass.
+`npm run bench`: gauntlet max 0.113 ms avg / 0.374 ms p99.
+
+**Next:** a short visual pass on the slam flip timing and the palm eye during the charge tell.

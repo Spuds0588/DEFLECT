@@ -2630,3 +2630,39 @@ and the local GAUNTLET sandbox (`World` gauntlet mode) are in scope; they do not
 promise of online bots or networked PvE.
 
 The core PvP loop, PWA install, controller support, N-player rooms, and training must be solid first.
+
+
+### D67 — Idle Hands: three floating palms, one boss (built 2026-11-02)
+
+The second mini-boss is **IDLE HANDS** (`MINIBOSS.IDLE_HANDS = 1`, body `idle-hands`, gauntlet wave 14,
+repeat every 28). It is three hands at once, not three bosses: each palm carries a red eye, hovers, slams,
+and can commit to a finger charge.
+
+- **One boss, three bodies, no second collision system.** Hands live in the `worms` pool as boss bodies
+  with `bossKind = IDLE_HANDS`, `mega = false`, `segCount = 0` and their own `hand` state object. Because
+  `damageWorm` and `updateWorm` dispatch on `bossKind`, every weapon, beam, blast, melee, dash and bot
+  scan that already walks `world.worms` reaches them for free. Do not add a parallel `hands` array; that
+  would mean re-wiring a dozen hit paths. Anything counting *ordinary* worms must test `bossKind < 0`,
+  not `!mega`.
+- **Slam (the read).** The hand rises, squashes vertically, flips palm-out, then grows back down through
+  the floor onto a ground ring latched at the start of the tell (`slam.aoe` 118, 1 damage, 1050 knockback,
+  0.55 s windup, 0.18 s drop, 0.55 s recover, 3.2 s cooldown). The ground point is latched when the tell
+  begins, so stepping out of the ring is the counterplay. Landing emits `PROP_BREAK` for dust plus a white
+  landing seam in the renderer; there is no camera shake beyond those two. The renderer owns the squash
+  and flip, not the simulation.
+- **Finger charge.** The hand turns to point, shakes for 0.6 s, then fires along the latched direction at
+  900 units/s for 0.55 s, for 1 damage and 1520 knockback. Cover does not stop it: hands are airborne,
+  ignore cover, and only the arena wall ends a charge.
+- **The dash redirect.** A player dash that reaches a hand *while it is in its charge dash* does not
+  dent it: it redirects the hand along the dash direction at 1100 units/s. A redirected hand that touches
+  another hand deals `charge.deflectDamage` (14) to the partner, which is the boss's biggest punish and
+  the reason the trio is worth fighting together. Deflect credit goes to the player. Do not gate this on
+  the charged dash specifically; any dash that connects during the charge works.
+- **Identity.** The palm and the red eye are vector shapes, not a Unicode or Wingdings hand: the only
+  literal hands in the platform glyph stacks are emoji (which ignore `fillStyle` and would drop a bitmap
+  inside a one-hue body), and no monochrome hand glyph reads at 42 units. The symbol stack stays for
+  program identity. Palette: eye `#ff5a5a`, bone `#eadcd2`; no health bar, no cracks — a hand reads by its
+  palm eye and its state, and dies into the normal shard burst.
+- **Tuning** lives in `tuning/threats.json` under `IDLE_HANDS`, exported from `config.ts`. `.tmp/idlehands-check.ts`
+  covers the trio shape, the slam in and out of the ring, the redirect damage, kill credit and ingress.
+  `?hands=1` is a QA-only boot hook beside `?mega=1`; it never enters menus or `Snapshot`.
