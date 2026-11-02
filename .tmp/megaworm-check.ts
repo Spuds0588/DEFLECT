@@ -76,48 +76,55 @@ const outsideArena = (x: number, y: number) =>
   console.log(JSON.stringify({ sponge: { hp: fullHp, plates: MEGA_WORM.segments, pool: true } }));
 }
 
-// --- the lane is latched when the pass is staged ----------------------------
+// --- straight run, wide turn, no teleport ----------------------------------
 {
   const { world, priv } = freshWorld();
   const p = world.players[0];
   const boss: Worm = priv.spawnMegaWorm(p.x + 320, p.y - 60) ?? fail('the boss never spawned');
   boss.spawnT = 0;
   boss.entryT = 0;
+  boss.touchCd = 999; // isolate the geometry of the flight; contact is checked below
   p.hp = 40;
 
-  priv.stageMegaPass(boss, p);
-  if (boss.flyPhase !== 0) fail('staging did not hold the boss outside the floor');
-  if (!outsideArena(boss.x, boss.y)) fail('the staged boss is not off the map');
-  if (Math.abs(boss.anchorX - p.x) > 1 || Math.abs(boss.anchorY - p.y) > 1) {
-    fail('the pass did not latch the last detected position');
-  }
-  const anchoredX = boss.anchorX;
-  const anchoredY = boss.anchorY;
-  p.x += 620;
-  p.y += 240;
-  let sawPass = false;
+  boss.anchorX = p.x;
+  boss.anchorY = p.y;
+  priv.beginMegaPass(boss);
+  if (boss.flyPhase !== 0) fail('the first run did not start straight');
+
+  let sawRun = false;
+  let sawTurn = false;
+  let turns = 0;
   let straight = true;
-  for (let i = 0; i < 180 && boss.flyPhase !== 2; i++) {
+  let maxStep = 0;
+  let prevX = boss.x;
+  let prevY = boss.y;
+  let straightAngle = boss.angle;
+  for (let i = 0; i < 1600; i++) {
+    const wasTurn = boss.flyPhase === 1;
     priv.updateWorm(boss, SIM_DT);
-    if (boss.flyPhase === 1) sawPass = true;
-    if (Math.abs(boss.anchorX - anchoredX) > 1 || Math.abs(boss.anchorY - anchoredY) > 1) {
-      fail('the committed lane followed the player instead of staying latched');
-    }
-    if (boss.flyPhase === 1) {
-      const dx = Math.cos(boss.angle);
-      const dy = Math.sin(boss.angle);
-      for (let k = 0; k < boss.segCount; k++) {
-        const cross = (boss.segX[k] - boss.x) * dy - (boss.segY[k] - boss.y) * dx;
-        if (Math.abs(cross) > 2) straight = false;
-      }
+    maxStep = Math.max(maxStep, Math.hypot(boss.x - prevX, boss.y - prevY));
+    prevX = boss.x;
+    prevY = boss.y;
+    if (boss.flyPhase === 0) {
+      sawRun = true;
+      if (wasTurn) straightAngle = boss.angle;
+      else if (Math.abs(boss.angle - straightAngle) > 1e-9) straight = false;
+    } else {
+      if (!wasTurn) turns++;
+      sawTurn = true;
+      straightAngle = boss.angle;
     }
   }
-  if (!sawPass) fail('the boss never committed to a straight pass');
-  if (!straight) fail('the body bent off its heading during a pass');
-  console.log(JSON.stringify({ lane: { latched: true, straight, sawPass } }));
+  if (!sawRun) fail('the boss never ran straight');
+  if (!sawTurn) fail('the boss never turned back over the arena');
+  if (turns === 0) fail('the boss never began a turn');
+  if (!straight) fail('the heading changed during a straight run');
+  const teleportStep = 1400 * SIM_DT;
+  if (maxStep > teleportStep) fail(`the boss jumped ${maxStep.toFixed(1)} units in one tick, so it teleported`);
+  console.log(JSON.stringify({ flight: { runs: true, turns, straight, maxStep: +maxStep.toFixed(1) } }));
 }
 
-// --- pass cycle and contact-only damage ------------------------------------
+// --- contact on the run ----------------------------------------------------
 {
   const { world, priv } = freshWorld();
   const p = world.players[0];
@@ -127,30 +134,12 @@ const outsideArena = (x: number, y: number) =>
   boss.touchCd = 0;
   p.hp = 40;
   p.iframes = 0;
-
-  priv.stageMegaPass(boss, p);
-  let sawPass = false;
-  let sawRecover = false;
-  let sawStagedAgain = false;
-  let sawOutside = false;
-  let maxDist = 0;
-  const startX = boss.x;
-  const startY = boss.y;
-  for (let i = 0; i < 1400; i++) {
-    priv.updateWorm(boss, SIM_DT);
-    if (boss.flyPhase === 1) sawPass = true;
-    if (boss.flyPhase === 2) sawRecover = true;
-    if (sawPass && boss.flyPhase === 0) sawStagedAgain = true;
-    if (outsideArena(boss.x, boss.y)) sawOutside = true;
-    maxDist = Math.max(maxDist, Math.hypot(boss.x - startX, boss.y - startY));
-  }
-  if (!sawPass) fail('the boss never committed to a straight pass');
-  if (!sawRecover) fail('the pass never reached its run-out phase');
-  if (!sawStagedAgain) fail('the boss never staged a second lane after a pass');
-  if (!sawOutside) fail('the pass never left the arena bounds');
-  if (maxDist < 300) fail('the boss barely moved during its pass cycle');
-  if (!(p.hp < 40)) fail('the pass never touched a player standing on its lane');
-  console.log(JSON.stringify({ flight: { sawPass, sawRecover, contactHp: p.hp } }));
+  boss.anchorX = p.x;
+  boss.anchorY = p.y;
+  priv.beginMegaPass(boss);
+  for (let i = 0; i < 240; i++) priv.updateWorm(boss, SIM_DT);
+  if (!(p.hp < 40)) fail('the straight run never touched a player on its lane');
+  console.log(JSON.stringify({ contact: { hp: p.hp } }));
 }
 
 // --- mini-boss registry, ingress family and wave gate ----------------------
@@ -197,7 +186,7 @@ const outsideArena = (x: number, y: number) =>
   while (boss.entryT > 0 && steps++ < 900) priv.updateWorm(boss, SIM_DT);
   if (boss.entryT > 0) fail('the entrance never finished');
   if (!(boss.roarT > 0)) fail('the arrival never let out its cry');
-  if (boss.flyPhase !== 1) fail('the entrance did not hand off into a straight pass');
+  if (boss.flyPhase !== 0) fail('the entrance did not hand off into a straight run');
   if (Math.abs(boss.anchorX - p.x) > 1 || Math.abs(boss.anchorY - p.y) > 1) {
     fail('the first pass did not latch the player it detected');
   }

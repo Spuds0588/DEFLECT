@@ -141,12 +141,10 @@
 
 
     "flyby": {
-      "warning": 1.6,
       "speed": 1020,
-      "offscreen": 900,
-      "angleJitter": 0.3,
-      "exitRange": 1100,
-      "recoverTime": 1.1
+      "exitRange": 700,
+      "turnRate": 0.55,
+      "turnSpeed": 620
     }
   },
   "BOSS_RUSH": {

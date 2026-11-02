@@ -14309,7 +14309,14 @@ export class World {
       // Floating boss bodies are not standing on the plate. Idle Hands hover over
       // the USB HUB's gaps, and the Storm Cloud may now hang past the lip, so the floor
       // cull would delete a whole boss the moment its entrance ends.
-      if (w.bossKind === MINIBOSS.IDLE_HANDS || w.bossKind === MINIBOSS.STORM_CLOUD) continue;
+      if (
+        w.mega ||
+        w.bossKind === MINIBOSS.IDLE_HANDS ||
+        w.bossKind === MINIBOSS.STORM_CLOUD ||
+        w.bossKind === MINIBOSS.BLOB
+      ) {
+        continue;
+      }
       if (this.offFloor(w.x, w.y)) this.damageWorm(w, 9999, 0, 0, 0);
     }
     for (let i = 0; i < this.viruses.length; i++) {
@@ -17210,22 +17217,13 @@ export class World {
     }
 
     const fly = MEGA_WORM.flyby;
-    // The whole movement model: hold outside the floor on a latched lane, then run it
-    // straight through the arena. The lane is aimed where the boss last detected a
-    // player, so moving after the warning is a real dodge.
+    // Continuous flight: one long straight run, then a wide turn outside the arena that
+    // curls back over the player. The body trails the head, so the turn bends the chain
+    // instead of swinging a rigid stick through it.
     if (w.flyPhase === 0) {
       w.flyT += dt;
-      w.vx = 0;
-      w.vy = 0;
-      this.followMegaChain(w, dt);
-      if (w.flyT >= fly.warning) this.beginMegaPass(w);
-      return;
-    }
-    if (w.flyPhase === 1) {
-      w.flyT += dt;
-      const speed = fly.speed;
-      w.vx = w.flyDX * speed;
-      w.vy = w.flyDY * speed;
+      w.vx = Math.cos(w.angle) * fly.speed;
+      w.vy = Math.sin(w.angle) * fly.speed;
       w.x += (w.vx + w.kx) * dt;
       w.y += (w.vy + w.ky) * dt;
       w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
@@ -17233,23 +17231,38 @@ export class World {
       this.followMegaChain(w, dt);
       // Contact is the whole attack: the body is a sponge that flies over the floor.
       this.megaTouch(w, p);
-      const passed = (w.x - w.anchorX) * w.flyDX + (w.y - w.anchorY) * w.flyDY > fly.exitRange;
-      if (passed) {
-        w.flyPhase = 2;
+      const past = (w.x - w.anchorX) * Math.cos(w.angle) + (w.y - w.anchorY) * Math.sin(w.angle);
+      if (past > fly.exitRange) {
+        // Start the turn on the current player position. This is the only re-aim; once
+        // the next straight run begins the heading is locked again.
+        this.latchMegaTarget(w, p);
+        w.flyPhase = 1;
         w.flyT = 0;
       }
       return;
     }
-    // Off the far lip: keep running straight out, then teleport and stage the next lane.
+    // Wide outside turn. The radius is turnSpeed / turnRate, deliberately larger than
+    // the body so the head cannot double back through its own tail.
     w.flyT += dt;
-    w.vx = w.flyDX * fly.speed;
-    w.vy = w.flyDY * fly.speed;
+    const goal = Math.atan2(w.anchorY - w.y, w.anchorX - w.x);
+    let diff = goal - w.angle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const turn = fly.turnRate * dt;
+    w.angle += Math.max(-turn, Math.min(turn, diff));
+    w.vx = Math.cos(w.angle) * fly.turnSpeed;
+    w.vy = Math.sin(w.angle) * fly.turnSpeed;
     w.x += (w.vx + w.kx) * dt;
     w.y += (w.vy + w.ky) * dt;
     w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
     w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
     this.followMegaChain(w, dt);
-    if (w.flyT >= fly.recoverTime) this.stageMegaPass(w, p);
+    this.megaTouch(w, p);
+    if (Math.abs(diff) < 0.07) {
+      w.flyPhase = 0;
+      w.flyT = 0;
+      w.touchCd = Math.min(w.touchCd, 0.2);
+    }
   }
 
   /**
@@ -17315,17 +17328,23 @@ export class World {
    * crossing the room instead of a snake turning. Plates still ignore cover and the
    * arena lip, which is why the body can be staged off the map.
    */
-  private followMegaChain(w: Worm, _dt: number): void {
-    const dx = Math.cos(w.angle);
-    const dy = Math.sin(w.angle);
+  private followMegaChain(w: Worm, dt: number): void {
     for (let i = 0; i < w.segCount; i++) {
-      const sx = w.x - dx * MEGA_WORM.spacing * (i + 1);
-      const sy = w.y - dy * MEGA_WORM.spacing * (i + 1);
       w.segPrevX[i] = w.segX[i];
       w.segPrevY[i] = w.segY[i];
-      w.segX[i] = sx;
-      w.segY[i] = sy;
-      w.segAngle[i] = w.angle;
+      const ax = i === 0 ? w.x : w.segX[i - 1];
+      const ay = i === 0 ? w.y : w.segY[i - 1];
+      const dx = ax - w.segX[i];
+      const dy = ay - w.segY[i];
+      const d = Math.hypot(dx, dy);
+      if (d > 0.001) {
+        const tx = ax - (dx / d) * MEGA_WORM.spacing;
+        const ty = ay - (dy / d) * MEGA_WORM.spacing;
+        const k = Math.min(1, MEGA_WORM.followRate * dt);
+        w.segX[i] += (tx - w.segX[i]) * k;
+        w.segY[i] += (ty - w.segY[i]) * k;
+        w.segAngle[i] = Math.atan2(ay - w.segY[i], ax - w.segX[i]);
+      }
     }
   }
 
@@ -17337,53 +17356,16 @@ export class World {
     }
   }
 
-  /**
-   * Commit a straight run through the point latched at staging. The lane is fixed when
-   * the warning appears, so walking away during the telegraph is a real dodge.
-   */
+  /** Begin the straight run along the current heading; the turn sets that heading. */
   private beginMegaPass(w: Worm): void {
-    const dx = w.anchorX - w.x;
-    const dy = w.anchorY - w.y;
-    const d = Math.hypot(dx, dy) || 1;
-    w.flyDX = dx / d;
-    w.flyDY = dy / d;
-    w.angle = Math.atan2(w.flyDY, w.flyDX);
-    w.flyPhase = 1;
+    w.angle = Math.atan2(w.anchorY - w.y, w.anchorX - w.x);
+    w.flyDX = Math.cos(w.angle);
+    w.flyDY = Math.sin(w.angle);
+    w.flyPhase = 0;
     w.flyT = 0;
     w.touchCd = Math.min(w.touchCd, 0.15);
     w.aggroT = MEGA_WORM.aggroTime;
     this.followMegaChain(w, 0);
-  }
-
-  /** Teleport fully off the map and line the next straight run up on the last detected point. */
-  private stageMegaPass(w: Worm, p: Player): void {
-    const fly = MEGA_WORM.flyby;
-    const b = this.arena.bounds;
-    const half = Math.max(b.right - b.left, b.bottom - b.top) * 0.5;
-    this.latchMegaTarget(w, p);
-    const toTarget = Math.atan2(w.anchorY - this.centerY, w.anchorX - this.centerX);
-    const side = Math.sin(w.phase * 1.7) >= 0 ? 1 : -1;
-    const from = toTarget + Math.PI + side * fly.angleJitter;
-    const reach = half + MEGA_WORM.headRadius + fly.offscreen;
-    w.x = this.centerX + Math.cos(from) * reach;
-    w.y = this.centerY + Math.sin(from) * reach;
-    w.prevX = w.x;
-    w.prevY = w.y;
-    w.vx = 0;
-    w.vy = 0;
-    w.kx = 0;
-    w.ky = 0;
-    w.angle = Math.atan2(w.anchorY - w.y, w.anchorX - w.x);
-    w.flyPhase = 0;
-    w.flyT = 0;
-    w.touchCd = 0;
-    w.eyeT = Math.max(w.eyeT, 0.45);
-    this.followMegaChain(w, 0);
-    // No interpolation across a teleport.
-    for (let i = 0; i < w.segCount; i++) {
-      w.segPrevX[i] = w.segX[i];
-      w.segPrevY[i] = w.segY[i];
-    }
   }
 
   private megaTouch(w: Worm, p: Player): void {

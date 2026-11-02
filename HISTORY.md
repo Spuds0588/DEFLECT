@@ -6376,3 +6376,26 @@ and `npm run bench` clean. Headed check at `?mega=1` / `?bossrush=1`.
 
 **Next:** record a human boss-rush clear time; the boss is now a straightforward grind and only the pass
 lane and its warning need balance attention.
+
+## 2026-11-02 — Mega Worm flies continuous lanes; flying bosses ignore floor culls
+
+**Goal:** the Mega Worm teleported between lanes, which read as self-collision, and the File Blob was
+being killed by the floor cull when a slam crossed a hole.
+
+- `updateMegaWorm` is now two states: a straight run at `flyby.speed` (heading fixed until it passes the
+  latched point by `exitRange`), then a wide outside turn at `turnSpeed`/`turnRate` that re-aims once and
+  brings the head back over the player. Removed `stageMegaPass`, the warning lane and the teleport.
+- `followMegaChain` trails the head by one `spacing` with `followRate` again, so a turn bends the chain
+  instead of swinging the whole body through itself -> no teleport, no self-intersection.
+- `cullVoidThreats` skips `w.mega` and `MINIBOSS.BLOB`: both fly over holes and past the lip, and the
+  floor cull was deleting them. Firewalls, emitters and other hazards still damage them through their own
+  paths, so only the floor rule changed.
+- Tuning `MEGA_WORM.flyby` is `speed` 1020, `turnSpeed` 620, `turnRate` 0.55, `exitRange` 700; the
+  `warning`, `offscreen`, `angleJitter` and `recoverTime` keys are gone.
+
+**Verification:** `megaworm-check` asserts straight runs, wide turns, no teleport step, contact damage and
+the entrance handoff; `bossrush-check` and `blob-check` pass; `npx tsc --noEmit`, `npm run build` and
+`npm run bench` clean.
+
+**Next:** watch a full rush for turn lanes that loop too close to the camera edge; adjust `turnSpeed`
+before `turnRate` to open the arc.

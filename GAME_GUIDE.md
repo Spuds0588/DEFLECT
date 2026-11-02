@@ -609,9 +609,9 @@ creature: every hit anywhere on the body drains the same bar, and nothing breaks
 
 - **One health pool.** Where you hit does not matter. There is no weak plate, no head to break and no
   second worm to split off; keep shooting the body and it dies.
-- **Straight passes.** It leaves the map entirely, then a dotted line appears through the last place it
-  saw you. The whole body runs that lane in a straight line, and touching any plate hurts. The line is
-  fixed when it appears: step off it and the pass misses, because it cannot steer.
+- **Straight runs, wide turns.** It picks the last place it saw you and flies a straight line through
+  it, then banks in a wide arc outside the arena and comes back over. Touching any plate hurts. It only
+  re-aims at the start of a turn, so a run is fixed once it begins; step off the line and it misses.
 - **Arrival cry.** The lap ends with a bird-like call that shakes the screen. That is the handoff, not the
   end of the fight: the first pass follows right after it, so keep moving through the cry.
 - Damage reads as cracks spreading across the plates and loose code drifting off the body. All plates

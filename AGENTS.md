@@ -2568,18 +2568,22 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
 - **Scale pass (v0.1.143).** The Mega Worm is a 3x silhouette: `headRadius` 138, `segmentRadius` 99,
   `spacing` 168, with health doubled so it still reads as a boss. Health and radii are settled; do not
   change them without explicit approval.
-- **One rigid straight body (2026-11-02).** `followMegaChain` places every plate one `spacing` behind the
-  previous one on the head's heading. There is no follow lag, no coil and no bend: a pass reads as one
-  body crossing the room. Because the body is only ever laid out off the floor, the length never has to
-  fold into an arena. Do not restore the spiral arrival or the follow rule.
+- **One straight body that bends in turns (2026-11-02).** `followMegaChain` trails each plate one
+  `spacing` behind the one ahead with `followRate`. A straight run reads as one rigid line; a turn bends
+  the chain along the head's path instead of pivoting the whole body like a stick, which is what made the
+  old model cross over itself. Do not restore the spiral arrival.
 - **Offscreen entrance (2026-11-02).** `spawnMegaWorm` places the head `entrance.offscreen` beyond the
   arena's longest half-axis, then runs a 6.2 s arc around the arena center and inward to
   `entrance.endRadiusMult` before handing off into the first straight pass. It does no bite or acid
   during the entrance. Do not clamp the head back inside at spawn or restore the old assembly wait.
 - **The Mega Worm flies.** It has no arena clamp and no cover resolve: the head and every plate can
   leave the floor on a pass, and the camera gets `CAMERA.bossVoidMargin` to look past the lip while it
-  does. It is still hittable anywhere, and its attacks still target the arena. Ordinary worms, players,
-  pickups, hazards and projectiles keep normal clamping. Do not add `bossEdgePad` back to the Mega Worm.
+  does. It is still hittable anywhere, and its attacks still target the arena. `cullVoidThreats` skips
+  `w.mega` and the File Blob for the same reason it skips Idle Hands and the Storm Cloud: they fly over
+  holes and past the lip, and the floor cull would delete a whole boss mid-pass. Environmental hazards
+  still reach them through their own damage paths, so a firewall or emitter burns them normally. Ordinary
+  worms, players, pickups, hazards and projectiles keep normal clamping. Do not add `bossEdgePad` back to
+  the Mega Worm.
 
 - **One health pool (v0.1.150).** `w.hp`/`w.maxHp` are the only health. `damageMegaWorm` subtracts the
   hit anywhere on the body: there is no nearest-plate routing, no plate break, no head promotion and no
@@ -2589,13 +2593,12 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
 - **Damage is contact, and nothing else.** `megaTouch` on any plate is the whole attack. There is no maw
   snap, no bite, no acid and no legs phase; the head is not a separate creature. Normal worms keep their
   own `WORM` bite in `updateWorm`, which is a different branch.
-- **Straight passes, never a chase.** After the entrance, `updateMegaWorm` runs a three-state loop:
-  **staged** (teleported `flyby.offscreen` beyond the lip, `flyby.warning` 1.6 s while the lane is drawn),
-  **pass** (heading locked at staging, `flyby.speed` 1020, contact damage only), then **run-out**
-  (`flyby.recoverTime`) before `stageMegaPass` teleports the body out for
-  the next lane. The lane aims at the last position the boss detected, latched in `stageMegaPass`. Do not
-  re-latch it when the warning expires: the player must be able to step off a committed line. There is no
-  orbit, no steering mid-pass and no ground chase.
+- **Straight runs, wide turns, never a chase.** After the entrance, `updateMegaWorm` alternates two
+  states: a straight run at `flyby.speed` whose heading stays fixed until the head has passed the latched
+  point by `flyby.exitRange`, then a wide turn at `flyby.turnSpeed` / `flyby.turnRate` back toward the
+  player. The turn radius (`turnSpeed / turnRate`, about 1125 units) is deliberately larger than the
+  body so the head cannot double back through its own tail. It re-aims once when the turn starts; only
+  the turn steers. There is no teleport, no orbit and no ground chase.
 - **Arrival cry (2026-11-02).** The entrance is a full lap (`sweep` 6.28) starting beyond the arena lip,
   and it ends on `EV.MEGA_CRY`: a MIDI-note bird phrase (`audio.megaCry`), a 16-unit screen shake, a flash
   and a pressure ring. The first straight pass follows the cry. The cry is an event, not a renderer
