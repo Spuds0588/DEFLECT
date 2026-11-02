@@ -42,6 +42,9 @@ export interface ArenaTraversalDef {
 /** A tutorial room's visual identity. The floor is presentation; walls stay in `pillars`. */
 export type ArenaRoomTheme = 'office' | 'holding' | 'board' | 'router' | 'console';
 
+/** Console-room furniture set. Each department reads differently at a glance. */
+export type ConsoleRoomVariant = 'flight' | 'dynamics' | 'guidance' | 'systems';
+
 /**
  * One room in a connected tutorial arena. `x,y,w,h` is the room's footprint; a circle
  * uses the smaller of `w` and `h` as its diameter. Rooms only change presentation and
@@ -54,6 +57,8 @@ export interface ArenaRoomDef {
   w: number;
   h: number;
   theme: ArenaRoomTheme;
+  /** Console rooms only: which department's furniture set to draw. Defaults to flight. */
+  variant?: ConsoleRoomVariant;
   label: string;
   sub: string;
 }
@@ -3006,23 +3011,31 @@ export const ARENAS: readonly ArenaDef[] = [
     bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
     // Four plates in a ring, one department each. Console banks are the cover, so the
     // furniture and the fiction are the same objects.
+    // Each department lays its consoles out to suit its job. The four plates share the
+    // ring, not the furniture: CAPCOM sits in two wide tiers facing the board, FIDO gets
+    // plotting tables with an open plotting lane, GUIDO wraps a central gimbal, and EECOM
+    // lines the walls with switchgear and leaves a service lane down the middle.
     pillars: [
-      { x: 120, y: 140, w: 190, h: 52 },
-      { x: 120, y: 300, w: 190, h: 52 },
-      { x: 560, y: 140, w: 190, h: 52 },
-      { x: 560, y: 300, w: 190, h: 52 },
-      { x: 120, y: 780, w: 190, h: 52 },
-      { x: 120, y: 930, w: 190, h: 52 },
-      { x: 560, y: 780, w: 190, h: 52 },
-      { x: 560, y: 930, w: 190, h: 52 },
-      { x: 1170, y: 780, w: 190, h: 52 },
-      { x: 1170, y: 930, w: 190, h: 52 },
-      { x: 1610, y: 780, w: 190, h: 52 },
-      { x: 1610, y: 930, w: 190, h: 52 },
-      { x: 1170, y: 140, w: 190, h: 52 },
-      { x: 1170, y: 300, w: 190, h: 52 },
-      { x: 1610, y: 140, w: 190, h: 52 },
-      { x: 1610, y: 300, w: 190, h: 52 },
+      // CAPCOM: two tiers of wide flight desks, offset so the aisle dog-legs.
+      { x: 110, y: 150, w: 300, h: 46 },
+      { x: 500, y: 150, w: 250, h: 46 },
+      { x: 110, y: 300, w: 220, h: 46 },
+      { x: 470, y: 300, w: 280, h: 46 },
+      // FIDO: three plotting tables, one long pair and one wide board below.
+      { x: 150, y: 760, w: 200, h: 90 },
+      { x: 500, y: 760, w: 200, h: 90 },
+      { x: 300, y: 892, w: 240, h: 88 },
+      // GUIDO: a central gyro pedestal with four navigation racks at the corners.
+      { x: 1460, y: 190, w: 150, h: 120 },
+      { x: 1160, y: 110, w: 90, h: 90 },
+      { x: 1800, y: 110, w: 90, h: 90 },
+      { x: 1160, y: 320, w: 90, h: 90 },
+      { x: 1800, y: 320, w: 90, h: 90 },
+      // EECOM: switchgear along both walls, breaker cabinets on the open side.
+      { x: 1130, y: 720, w: 60, h: 270 },
+      { x: 1870, y: 720, w: 60, h: 270 },
+      { x: 1550, y: 700, w: 220, h: 56 },
+      { x: 1550, y: 925, w: 220, h: 56 },
     ],
     // Two stations per plate, clear of the console banks.
     spawns: [
@@ -3060,6 +3073,7 @@ export const ARENAS: readonly ArenaDef[] = [
         w: 810,
         h: 396,
         theme: 'console',
+        variant: 'flight',
         label: 'CAPCOM',
         sub: 'FLIGHT CONTROL // 1968',
       },
@@ -3070,6 +3084,7 @@ export const ARENAS: readonly ArenaDef[] = [
         w: 810,
         h: 382,
         theme: 'console',
+        variant: 'dynamics',
         label: 'FIDO',
         sub: 'FLIGHT DYNAMICS // TRAJECTORY',
       },
@@ -3080,6 +3095,7 @@ export const ARENAS: readonly ArenaDef[] = [
         w: 844,
         h: 382,
         theme: 'console',
+        variant: 'systems',
         label: 'EECOM',
         sub: 'ELECTRICAL // ENVIRONMENTAL',
       },
@@ -3090,6 +3106,7 @@ export const ARENAS: readonly ArenaDef[] = [
         w: 844,
         h: 396,
         theme: 'console',
+        variant: 'guidance',
         label: 'GUIDO',
         sub: 'GUIDANCE // NAVIGATION',
       },

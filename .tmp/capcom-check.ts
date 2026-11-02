@@ -58,4 +58,48 @@ for (const p of arena.pillars) {
   if (inVoid(p.x + p.w * 0.5, p.y + p.h * 0.5)) fail('a console floats over the void');
 }
 if (arena.ingress || arena.replicator) fail('CAPCOM is a fighting map, not an ingress node');
+
+// Every department reads differently: one furniture set and one cover layout each.
+const variantByDepartment: Record<string, string> = {
+  CAPCOM: 'flight',
+  FIDO: 'dynamics',
+  GUIDO: 'guidance',
+  EECOM: 'systems',
+};
+for (const room of rooms) {
+  if (room.variant !== variantByDepartment[room.label]) {
+    fail(`${room.label} draws the ${room.variant} set`);
+  }
+}
+if (new Set(rooms.map((r) => r.variant)).size !== 4) fail('two departments share a furniture set');
+const plateSignature = (plate: { x: number; y: number; w: number; h: number }) =>
+  arena.pillars
+    .filter(
+      (p) =>
+        p.x >= plate.x &&
+        p.y >= plate.y &&
+        p.x + p.w <= plate.x + plate.w &&
+        p.y + p.h <= plate.y + plate.h,
+    )
+    .map((p) => `${p.x},${p.y},${p.w},${p.h}`)
+    .sort()
+    .join('|');
+const signatures = islands.map(plateSignature);
+if (signatures.some((s) => s.length === 0)) fail('a department has no console banks');
+if (new Set(signatures).size !== 4) fail('two departments share a cover layout');
+for (const s of arena.spawns) {
+  for (const p of arena.pillars) {
+    const nx = Math.max(p.x, Math.min(s.x, p.x + p.w));
+    const ny = Math.max(p.y, Math.min(s.y, p.y + p.h));
+    if (Math.hypot(s.x - nx, s.y - ny) < PLAYER.radius + 6) {
+      fail(`spawn ${s.x},${s.y} sits inside a console bank`);
+    }
+  }
+}
+console.log(
+  JSON.stringify({
+    departments: rooms.map((r) => `${r.label}:${r.variant}`),
+    banks: arena.pillars.length,
+  }),
+);
 console.log('capcom-check: OK');

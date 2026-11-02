@@ -5427,3 +5427,29 @@ the wave-8 schedule asks for a boss. Every prior plate, split, whip and legs che
 pass. `npm run bench`: gauntlet max 0.108 ms avg / 0.406 ms p99.
 
 **Next:** a second registry entry to prove mixing, then a scripted level that spawns two kinds at once.
+
+## 2026-11-02 — CAPCOM departments get their own layouts (v0.1.135)
+
+**Goal:** the four mission-control plates shared one furniture set and one cover arrangement, so the
+departments read as copies with different labels.
+
+- `ArenaRoomDef.variant` (`flight`, `dynamics`, `guidance`, `systems`) selects the console-room set. The
+  theme stays `console`, so the graphite-and-phosphor palette is unchanged; only the station's furniture
+  changes. CAPCOM keeps the tiered CRT bank, trajectory board and clock. FIDO draws three paper recorders
+  and a tilted plotting table with two crossing plots and a live pen head. GUIDO draws a turning gimbal
+  cage over a fixed core, a star-fix board and an attitude readout. EECOM draws two buses with breakers and
+  lamps plus a four-dial gauge cluster.
+- Cover is per department in `pillars`: CAPCOM's two offset flight tiers, FIDO's three plotting tables,
+  GUIDO's central pedestal with four corner navigation racks, EECOM's wall switchgear with two breaker
+  cabinets. The first pass put FIDO's lower table and EECOM's lower cabinet inside their spawn clearance;
+  the probe caught it and both were moved up.
+- The ring, the four open decks and the dash-proof gaps are unchanged.
+
+**Verification:** `.tmp/capcom-check.ts` passes with the new assertions: four distinct variants mapped to
+their departments, four distinct cover signatures, every plate owns at least one bank, and every spawn
+sits at least `PLAYER.radius + 6` clear of a bank. `npm run build` is clean; assault, jet, flipboard,
+radar, islands-ports, laptop-variants and megaworm probes still pass. `npm run bench`: gauntlet max
+0.116 ms avg / 0.386 ms p99.
+
+**Next:** plate ring dressing (deck stripes and department signage) now that each station has its own
+silhouette.

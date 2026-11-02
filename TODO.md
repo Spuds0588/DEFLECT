@@ -133,6 +133,8 @@ Formerly: 2026-11-02 (PORTS)
 ## CAPCOM (2026-11-02)
 
 - [x] Arena 32: four department plates in a 2×2 ring (CAPCOM, FIDO, GUIDO, EECOM) with four open decks
+- [x] Per-department cover: offset flight tiers, plotting tables, gyro pedestal, switchgear walls
+- [x] Per-department furniture sets via `ArenaRoomDef.variant`, one palette (`console`)
 - [x] `console` room theme: CRT bank, plotting board with a live trajectory, mission clock, department stencil
 - [x] Console banks double as the cover pillars; two stations per plate for spawns
 - [x] Headless probe: plates do not overlap, every deck starts open, gaps beat a dash, spawns and cover sit on plates

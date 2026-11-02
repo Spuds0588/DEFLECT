@@ -2425,6 +2425,19 @@ copies of one console bank.
 - It authors no `ingress` and no `replicator`: it is a fighting map. Ingress fixtures belong to campaign and
   infection nodes.
 
+
+- **Each department owns its furniture and its cover.** `ArenaRoomDef.variant` picks the console-room
+  set: `flight` (CAPCOM) draws the tiered CRT bank, trajectory board and clock; `dynamics` (FIDO) draws
+  paper recorders and a tilted plotting table with two crossing plots; `guidance` (GUIDO) draws a turning
+  gimbal cage over a fixed core, a star-fix board and an attitude readout; `systems` (EECOM) draws bus
+  bars, breakers and a gauge cluster. The plate does not change theme, only variant, so the palette stays
+  one room.
+- **Cover is per department too.** `pillars` holds a different bank arrangement for each plate: CAPCOM's
+  two offset tiers, FIDO's three plotting tables, GUIDO's central pedestal plus four corner racks, and
+  EECOM's wall racks plus two breaker cabinets. Keep every spawn at least `PLAYER.radius + 6` clear of a
+  bank; the probe enforces it. The ring, the open decks and the dash-proof gaps are unchanged.
+- `.tmp/capcom-check.ts` asserts four distinct variants, four distinct bank signatures, every plate owns
+  a bank, and no spawn sits inside one. Extend it when a department is added.
 ### D62 — AIR TRAFFIC is a radar scope with aircraft as hazards (decided 2026-11-02, built v0.1.129)
 
 AIR TRAFFIC (id 33) is an air traffic control scope: a circular radar floor with a slow sweep and aircraft
