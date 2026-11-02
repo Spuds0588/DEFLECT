@@ -46,7 +46,20 @@ export const MSG = {
   HELLO: 5,
   REMATCH: 6,
   ERROR: 7,
+  PING: 8,
+  PONG: 9,
 } as const;
+
+/** Local, read-only connection telemetry for the in-game multiplayer status panel. */
+export interface MpStatus {
+  role: 'HOST' | 'GUEST';
+  code: string;
+  slot: number;
+  players: number;
+  capacity: number;
+  rttMs: number;
+  snapshotHz: number;
+}
 
 const PHASES: Phase[] = ['countdown', 'live', 'roundover', 'matchend', 'practice'];
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -110,6 +123,9 @@ interface HostEntry {
   conn: DataConnection | null;
   lastSeen: number;
   dropped: boolean;
+  /** Smoothed application-level round trip, or -1 until the first pong. */
+  rttMs: number;
+  lastPingAt: number;
 }
 
 export interface HostCallbacks {
@@ -132,6 +148,10 @@ export class HostNet {
   private seriesGame = 1;
   private seq = 0;
   private closed = false;
+  private statusWindowAt = performance.now();
+  private statusSnapCount = 0;
+  private statusSnapshotHz = 0;
+  private pingAt = 0;
 
   code = '';
 
@@ -149,6 +169,8 @@ export class HostNet {
       conn: null,
       lastSeen: 0,
       dropped: false,
+      rttMs: -1,
+      lastPingAt: 0,
     };
   }
 
@@ -219,6 +241,54 @@ export class HostNet {
 
   getMapRule(): number {
     return this.mapRule;
+  }
+
+  /** Local connection telemetry. It never enters the lobby packet or a snapshot. */
+  getStatus(): MpStatus {
+    let players = 0;
+    let rttTotal = 0;
+    let rttCount = 0;
+    for (let i = 0; i < this.entries.length; i++) {
+      const e = this.entries[i];
+      if (!e?.connected) continue;
+      players++;
+      if (e.rttMs >= 0) {
+        rttTotal += e.rttMs;
+        rttCount++;
+      }
+    }
+    return {
+      role: 'HOST',
+      code: this.code,
+      slot: 0,
+      players,
+      capacity: MAX_PLAYERS,
+      rttMs: rttCount > 0 ? rttTotal / rttCount : -1,
+      snapshotHz: this.statusSnapshotHz,
+    };
+  }
+
+  /** Measure snapshot cadence and ping every guest. Safe to call every frame. */
+  pollStatus(now = performance.now()): void {
+    if (this.closed) return;
+    if (now - this.statusWindowAt >= 1000) {
+      const seconds = Math.max(0.001, (now - this.statusWindowAt) / 1000);
+      this.statusSnapshotHz = this.statusSnapCount / seconds;
+      this.statusSnapCount = 0;
+      this.statusWindowAt = now;
+    }
+    if (now - this.pingAt < 2000) return;
+    this.pingAt = now;
+    for (let i = 1; i < this.entries.length; i++) {
+      const e = this.entries[i];
+      if (!e?.connected || !e.conn?.open || now - e.lastPingAt < 1800) continue;
+      e.lastPingAt = now;
+      try {
+        e.conn.send([MSG.PING, now]);
+      } catch {
+        /* the close handler owns a failed send */
+      }
+    }
   }
 
   setSeries(games: number): void {
@@ -292,6 +362,7 @@ export class HostNet {
   broadcastSnapshot(world: World, fromEvent: number): void {
     if (!this.peer || !this.inMatch) return;
     this.seq++;
+    this.statusSnapCount++;
 
     const players: number[][] = [];
     for (let i = 0; i < world.players.length; i++) {
@@ -429,6 +500,8 @@ export class HostNet {
       conn,
       lastSeen: 0,
       dropped: false,
+      rttMs: -1,
+      lastPingAt: 0,
     };
     this.entries[slot] = entry;
 
@@ -446,6 +519,23 @@ export class HostNet {
   private handleData(entry: HostEntry, data: unknown): void {
     if (entry.dropped || !Array.isArray(data)) return;
     const type = data[0];
+    if (type === MSG.PING) {
+      if (entry.conn?.open) {
+        try {
+          entry.conn.send([MSG.PONG, Number(data[1]) || 0]);
+        } catch {
+          /* the close handler owns a failed send */
+        }
+      }
+      return;
+    }
+    if (type === MSG.PONG) {
+      const sent = Number(data[1]);
+      if (!Number.isFinite(sent)) return;
+      const rtt = performance.now() - sent;
+      if (rtt >= 0 && rtt < 10000) entry.rttMs = entry.rttMs < 0 ? rtt : entry.rttMs + (rtt - entry.rttMs) * 0.25;
+      return;
+    }
     if (type === MSG.PROFILE) {
       entry.name = sanitizeName(String(data[1] ?? 'GUEST'));
       entry.ready = !!data[2];
@@ -636,6 +726,11 @@ export class GuestNet {
   private inputSeq = 0;
   private closed = false;
   private joined = false;
+  private rttMs = -1;
+  private pingAt = 0;
+  private statusWindowAt = performance.now();
+  private statusSnapCount = 0;
+  private statusSnapshotHz = 0;
   slot = -1;
   ready = false;
 
@@ -702,6 +797,36 @@ export class GuestNet {
     }
   }
 
+  getStatus(): MpStatus {
+    return {
+      role: 'GUEST',
+      code: this.code,
+      slot: this.slot,
+      players: 0,
+      capacity: MAX_PLAYERS,
+      rttMs: this.rttMs,
+      snapshotHz: this.statusSnapshotHz,
+    };
+  }
+
+  /** Measure the incoming snapshot rate and probe the host. Safe every frame. */
+  pollStatus(now = performance.now()): void {
+    if (this.closed) return;
+    if (now - this.statusWindowAt >= 1000) {
+      const seconds = Math.max(0.001, (now - this.statusWindowAt) / 1000);
+      this.statusSnapshotHz = this.statusSnapCount / seconds;
+      this.statusSnapCount = 0;
+      this.statusWindowAt = now;
+    }
+    if (!this.conn?.open || now - this.pingAt < 2000) return;
+    this.pingAt = now;
+    try {
+      this.conn.send([MSG.PING, now]);
+    } catch {
+      /* the close handler owns a failed send */
+    }
+  }
+
   private handleData(data: unknown): void {
     if (!Array.isArray(data)) return;
     switch (data[0]) {
@@ -736,7 +861,27 @@ export class GuestNet {
       }
       case MSG.SNAPSHOT: {
         const snap = parseSnapshot(data);
-        if (snap) this.callbacks.onSnapshot(snap);
+        if (snap) {
+          this.statusSnapCount++;
+          this.callbacks.onSnapshot(snap);
+        }
+        break;
+      }
+      case MSG.PING: {
+        if (this.conn?.open) {
+          try {
+            this.conn.send([MSG.PONG, Number(data[1]) || 0]);
+          } catch {
+            /* the close handler owns a failed send */
+          }
+        }
+        break;
+      }
+      case MSG.PONG: {
+        const sent = Number(data[1]);
+        if (!Number.isFinite(sent)) break;
+        const rtt = performance.now() - sent;
+        if (rtt >= 0 && rtt < 10000) this.rttMs = this.rttMs < 0 ? rtt : this.rttMs + (rtt - this.rttMs) * 0.25;
         break;
       }
       case MSG.ERROR: {

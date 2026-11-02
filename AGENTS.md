@@ -2046,6 +2046,52 @@ the player shares it.
   report or add automatic upload. If remote ingest is later required, put it behind a server endpoint, not
   a client-held key.
 
+### D47 — ROCKET NAVIGATION and WEAPON SYSTEMS are local display arenas (built 2026-11-02)
+
+Both maps are authored `ArenaDef` content, not new engine layers. `rocket` and `weapon` are additive
+records beside the existing `satellite`, `usb` and `swipe` fixtures; ids **18** and **19** keep the roster
+order after SATELLITE.
+
+- **ROCKET NAVIGATION** runs a 24 s launch. `World.rocketT` and `World.rocketProgress` drive both the
+  rendered arc and the collision wall; the renderer samples the same `rocketArcAt` quadratic curve the
+  simulation uses. The wall is 128 preallocated, overlapping `Rect`s in `solids` and `dashSolids`, so it
+  blocks bodies, dashes and shots without allocating per tick. Inactive blocks are zeroed rather than
+  removed. `beginRound()` resets the launch. The rocket, flame, atmosphere departure and stage debris are
+  presentation only; a separated stage never becomes a body or pickup.
+- **WEAPON SYSTEMS** is a fighter-jet status console. Its three large `FIRE WEAPONS`, `EJECTOR SEAT` and
+  `THRUSTERS` banks are the arena's static cover and are also drawn as cockpit controls. They do not
+  grant a second player kit, fire a jet weapon, eject a body or change thrust. The jet silhouette,
+  readouts and reticle are presentation.
+- Both maps are **local-only**. They are excluded by `isOnlineArena` because the launch clock/barrier and
+  the cockpit display have no `Snapshot` fields. Do not add either to hosted rooms, series or snapshots
+  without a protocol decision and guest-side presentation tests.
+- Keep the arena geometry in `arenas.ts`; the custom `drawRocketArena` / `drawWeaponArena` branches read the
+  records, and both picker previews use the same data. Do not branch on arena names in `World`.
+- Neither map changes health, damage or movement budgets. The rocket barrier is dynamic cover, not an
+  enemy or a new damage source.
+- Known limitation: the precomputed bot nav grid does not include the growing rocket wall. Bots can path
+  through the line while it is short; this is acceptable for the local display arena until the barrier
+  gets a nav representation or online support.
+
+### D48 — Multiplayer status is local telemetry, not synced game state (built 2026-11-02)
+
+Online rooms expose a small read-only `MpStatus` from `HostNet` and `GuestNet`: role, room code, local
+slot, connected count, capacity, smoothed application RTT and measured snapshot cadence. It powers the
+lobby `RTT` stat and the `MP STATUS` panel in the game HUD.
+
+- RTT is application-level. `MSG.PING` carries a send timestamp and `MSG.PONG` echoes it; each side
+  computes the round trip locally and smooths it. PeerJS/WebRTC exposes no portable RTT field. Hosts
+  average their connected guests; guests measure the host. A missing reply leaves the field at `--`.
+- Snapshot cadence is measured from snapshots the peer actually received or sent over a one-second window,
+  not copied from `NET.snapshotHz`. Older peers that ignore the ping messages still connect and play; their
+  status simply stays at `--` for RTT.
+- This is **local telemetry**. Do not put `MpStatus`, ping packets or the panel into `LobbyState`,
+  `Snapshot` or any world state, and do not let it influence simulation, scoring, input or prediction.
+- The panel hides with `GAME UI`/`?ui=0`, during loading and while a screen overlay owns the view. It must
+  not become a canvas name plate, minimap marker or per-player health read.
+- Known limitation: no two-real-client latency/loss test exists yet. `pollStatus` is rate-limited to one
+  ping every two seconds and never retries a lost ping immediately.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

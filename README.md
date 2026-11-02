@@ -15,7 +15,9 @@ Solo training, endless bot practice, round matches against local bots, a one-lif
 timed infection clear, the first campaign node, and host/join rooms for up to eight players. VS BOTS and
 online versus can run a 1, 3 or 5 game series with random map rotation by default or a fixed custom arena.
 SATELLITE's solar wings, meteors, capacitor pods and reentry front are host-synced in those rooms.
-Thirteen programs, eighteen arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
+ROCKET NAVIGATION and WEAPON SYSTEMS are local display arenas: the launch wall and cockpit console are not
+synced online.
+Thirteen programs, twenty arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
 session JSON with setup, player action totals, round results, deflect sources and FPS/sim samples, shared
 through the platform sheet or downloaded with a copied summary. Callsigns, room codes, IPs and raw inputs
 are omitted, and nothing is uploaded automatically. The alpha is deployed from `main` on every push.
@@ -155,7 +157,7 @@ in the hot path. Particles and projectile trails are pooled ring buffers.
 
 Content is data, not branches:
 
-- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), bridges, breakable props, pipe fixtures, moving keypad caps, USB drive geometry, satellite floor/solar/telescope/meteor/reentry data (host-synced online), wall style and floor signature.
+- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), bridges, breakable props, pipe fixtures, moving keypad caps, USB drive geometry, satellite floor/solar/telescope/meteor/reentry data (host-synced online), rocket launch/telemetry data, weapon-console data, wall style and floor signature.
 - `src/game/sessionReport.ts` owns the opt-in session tracker and share text; `World` and `Snapshot` do not carry its state.
 - `src/game/programs.ts` holds the roster identity and kit tuning; the four action jobs branch in `World`.
 - `src/game/tuning/*.json` holds all gameplay numbers, re-exported through the typed facade in
@@ -254,6 +256,10 @@ authority:
   host's upload that runs out first, not the protocol. A hazard arena adds about **16 B** on a clock-only
   map and up to **192 B** on SATELLITE with seven live meteors (v0.1.112), about 5.8 KB/s per guest at
   30 Hz.
+- **Live status.** The lobby shows a measured `RTT`; an online game adds a compact `MP STATUS` panel with
+  the role, room code, connected operators, smoothed round-trip time and measured snapshot cadence. The
+  host averages its guests and a guest measures the host. These are local UI metrics: they never enter
+  `LobbyState` or `Snapshot`, and a peer that does not answer the ping protocol simply shows `--`.
 - **Failure behavior.** If the host closes the tab the room ends; guests get a disconnect state. A guest
   leaving frees its slot. There is no migration and no dedicated server.
 - **What is not networked yet.** Versus rooms carry match state, infection co-op adds its clear readout

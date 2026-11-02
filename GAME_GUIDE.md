@@ -19,7 +19,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **CAMPAIGN:** `BUILD ROOT`, the first playable story level, with three local save slots. More levels are coming soon.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
-- Thirteen programs, eighteen arenas.
+- Thirteen programs, twenty arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
@@ -184,6 +184,15 @@ Clearing writes the slot, marks it COMPLETE and shows `MORE LEVELS COMING SOON`.
 is authored but parked until the next route segment ships; it is not in the live level list. A run is
 never saved mid-level. The layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
 
+### Online status
+
+Online rooms expose a small local status readout. The lobby shows the measured round-trip time beside the
+room stats, and a game adds an `MP STATUS` panel in the top-right with your role and slot, the room code,
+the connected operator count, smoothed RTT and the measured snapshot rate. The host averages its guests;
+a guest measures the host. This is connection feedback only: it never changes movement, hit detection,
+scoring or the host's authority. If a peer does not support the ping exchange, `RTT` stays at `--`.
+`GAME UI` hides the panel, as does any screen overlay.
+
 ### Online series
 
 When hosting a versus room, the lobby's `SERIES` control chooses `1`, `3` or `5` games and `MAPS` chooses
@@ -313,6 +322,8 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `QUARANTINE` | The campaign tutorial route: a round intake office, a square holding office with three jail cells, a mainboard rectangle and a larger router rectangle linked by three bridge decks. The six calibration subjects wait in holding; the router ends at a network port. Local-only tutorial staging. |
 | `USB HUB` | A round hub with four thumb-drive islands pushing out on a shared cycle. Only the hub and drives are floor; the gap grows to 230 units, so a dash can cross while the drives are travelling but not at full extension. While a drive extends, its current pushes outward; while it retracts, the current pulls inward, carrying players and threats off or onto the islands. Online: the drive clock is synced and the host resolves the ride. |
 | `SWIPE RIGHT` | A tall phone touchscreen showing a dating deck. Every 4.6 s the card swipes left or right and the whole floor slides 108 units that way, carrying every fighter and live shot toward the wall. A `YOU GOT A MATCH` popup rises from the center of the screen for a few seconds as real cover: it blocks bodies and shots, displaces anyone caught under it, then drops back into the floor. Online: the swipe and popup clocks are synced and the host owns the carry and collision. |
+| `ROCKET NAVIGATION` | A launch-control floor under a nav display. The rocket lifts from below the bottom lip while speed, altitude and trajectory count up. Its growing arc is a real barrier: a 24 s launch lays a continuous curved wall across the arena that bodies, dashes and shots cannot cross. The finished line splits the room for the rest of the round. Booster and fairing separation marks drift off the arc as presentation only. Local-only: the launch clock and barrier are not in the snapshot. |
+| `WEAPON SYSTEMS` | A fighter-jet status screen built as a cockpit floor. Three large console banks are real cover: `FIRE WEAPONS`, `EJECTOR SEAT` and `THRUSTERS`. The jet silhouette, status readouts and target reticle are display art; the buttons do not grant a jet weapon, eject a body or change thrust. Local-only presentation with static cover. |
 | `SATELLITE` | A long orbital hull joined to two solar wings by narrow bridges, with a telescoping mast below and three capacitor pods above. Only those plates are floor; the gaps are open space. The wings warn, then burn anyone standing on them on independent 16 s cycles. Micro-meteors fall every 12.5 s. Destroy all three capacitors and the thrusters fire: a heat front climbs the whole map from the bottom for 14 s, then the satellite cools and the pods return. Online: the satellite clock, live meteors, capacitor states and reentry front are synced; the host still resolves every hit. |
 
 ### Ordinary programs
@@ -402,7 +413,8 @@ It is the intended way to turn an arena emitter into a boss-fight weapon.
 A hosted match never arms the emitters: they remain local content and nothing about them enters a
 snapshot. The compactor, keypad, scanner, browser, USB, swipe and satellite are different: their clocks are
 carried, so those maps also open online. The pipe/firewall arenas still stay local because their spawned
-threats are not in the snapshot.
+threats are not in the snapshot. ROCKET NAVIGATION's launch wall and WEAPON SYSTEMS' cockpit console are
+local-only display content and are not in that clock list.
 
 ## Attract demo and kiosk
 

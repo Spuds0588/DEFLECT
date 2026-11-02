@@ -19,6 +19,8 @@ import {
   satelliteSolarStateAt,
   satelliteTelescopeExtensionAt,
   SATELLITE_SOLAR_STATE,
+  rocketArcAt,
+  rocketProgressAt,
   swipeDirectionAt,
   swipeIndexAt,
   swipeMoveProgressAt,
@@ -127,6 +129,9 @@ export interface RenderState {
   satelliteThrusterT?: number;
   satelliteReentryT?: number;
   satelliteMeteors?: readonly SatelliteMeteor[];
+  /** ROCKET NAVIGATION launch clock and 0..1 trajectory progress. Local-only. */
+  rocketT?: number;
+  rocketProgress?: number;
   /** Phone-pad phase and per-key state. The shared clock travels in Snapshot. */
   keypadT?: number;
   keypadStates?: ArrayLike<number>;
@@ -405,6 +410,7 @@ export class Renderer {
   private spectateX = 0;
   private spectateY = 0;
   private lastRenderT = 0;
+  private readonly rocketArcScratch = { x: 0, y: 0 };
   private introT = INTRO_LEN;
   private introActive = false;
   private dustArena = -1;
@@ -3641,6 +3647,374 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** ROCKET NAVIGATION: launch telemetry, a growing arc, and the wall it leaves behind. */
+  private drawRocketArena(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+  ): void {
+    const arena = state?.arena;
+    const rocket = arena?.rocket;
+    if (!arena || !rocket) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const progress = Math.max(
+      0,
+      Math.min(1, state?.rocketProgress ?? rocketProgressAt(rocket, state?.rocketT ?? 0)),
+    );
+    const point = this.rocketArcScratch;
+
+    ctx.save();
+    ctx.fillStyle = '#02080c';
+    ctx.fillRect(b.left - 40, b.top - 40, b.right - b.left + 80, b.bottom - b.top + 80);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#06141a';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+
+    // Navigation grid: the room reads as a radar/telemetry table, not a hangar.
+    ctx.strokeStyle = 'rgba(124, 247, 204, 0.08)';
+    ctx.lineWidth = 1;
+    for (let x = b.left + 64; x < b.right; x += 64) {
+      ctx.beginPath();
+      ctx.moveTo(x, b.top);
+      ctx.lineTo(x, b.bottom);
+      ctx.stroke();
+    }
+    for (let y = b.top + 64; y < b.bottom; y += 64) {
+      ctx.beginPath();
+      ctx.moveTo(b.left, y);
+      ctx.lineTo(b.right, y);
+      ctx.stroke();
+    }
+
+    // Atmosphere edge. The launch starts below the room and leaves this band behind.
+    ctx.fillStyle = 'rgba(124, 247, 204, 0.035)';
+    ctx.fillRect(b.left, b.top, b.right - b.left, 118);
+    ctx.strokeStyle = 'rgba(124, 247, 204, 0.24)';
+    ctx.setLineDash([12, 12]);
+    ctx.beginPath();
+    ctx.moveTo(b.left, b.top + 118);
+    ctx.lineTo(b.right, b.top + 118);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = 'rgba(124, 247, 204, 0.58)';
+    ctx.fillText('ATMOSPHERE EXIT', b.left + 24, b.top + 96);
+
+    // Full planned trajectory, then the portion already flown as the solid nav line.
+    ctx.strokeStyle = 'rgba(124, 247, 204, 0.22)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([9, 13]);
+    ctx.beginPath();
+    for (let i = 0; i <= 48; i++) {
+      rocketArcAt(rocket, i / 48, point);
+      if (i === 0) ctx.moveTo(point.x, point.y);
+      else ctx.lineTo(point.x, point.y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (progress > 0) {
+      const steps = Math.max(2, Math.ceil(progress * 72));
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(124, 247, 204, 0.18)';
+      ctx.lineWidth = 24;
+      ctx.beginPath();
+      for (let i = 0; i <= steps; i++) {
+        rocketArcAt(rocket, (i / steps) * progress, point);
+        if (i === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = '#7cf7cc';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+
+    // Launch pad and gantry are beneath the spawn ring, so the rocket leaves from cover
+    // rather than appearing in the middle of the fight.
+    const padX = rocket.launch.x;
+    const padY = b.bottom - 20;
+    ctx.fillStyle = '#0b2229';
+    ctx.fillRect(padX - 86, padY - 10, 172, 32);
+    ctx.strokeStyle = 'rgba(124, 247, 204, 0.5)';
+    ctx.strokeRect(padX - 86, padY - 10, 172, 32);
+    ctx.fillStyle = 'rgba(124, 247, 204, 0.16)';
+    ctx.fillRect(padX - 52, padY - 34, 20, 28);
+    ctx.fillRect(padX + 32, padY - 34, 20, 28);
+
+    // Rocket at the tip of the line. The tangent is sampled, so it banks with the arc.
+    const tipK = progress;
+    const tailK = Math.max(0, tipK - 0.012);
+    rocketArcAt(rocket, tipK, point);
+    const tipX = point.x;
+    const tipY = point.y;
+    rocketArcAt(rocket, tailK, point);
+    const heading = Math.atan2(tipY - point.y, tipX - point.x);
+    if (progress > 0) {
+      ctx.save();
+      ctx.translate(tipX, tipY);
+      ctx.rotate(heading);
+      const pulse = 0.65 + Math.sin(performance.now() * 0.018) * 0.2;
+      ctx.fillStyle = `rgba(255, 190, 92, ${pulse})`;
+      ctx.beginPath();
+      ctx.moveTo(-7, -5);
+      ctx.lineTo(-38 - Math.sin(performance.now() * 0.03) * 7, 0);
+      ctx.lineTo(-7, 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#dffbff';
+      ctx.beginPath();
+      ctx.moveTo(18, 0);
+      ctx.lineTo(-10, -8);
+      ctx.lineTo(-15, 0);
+      ctx.lineTo(-10, 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#7cf7cc';
+      ctx.fillRect(-7, -10, 7, 20);
+      ctx.restore();
+    }
+
+    // Spent stages drift off the line. They are cosmetic debris, never extra bodies.
+    for (let i = 0; i < rocket.stages.length; i++) {
+      const stage = rocket.stages[i];
+      if (progress < stage.at) continue;
+      const age = Math.min(1, (progress - stage.at) * 7);
+      rocketArcAt(rocket, stage.at, point);
+      const side = i % 2 === 0 ? -1 : 1;
+      const drift = age * 74;
+      ctx.save();
+      ctx.globalAlpha = 1 - age * 0.8;
+      ctx.translate(point.x + side * drift, point.y + (i === 0 ? drift * 0.45 : -drift * 0.35));
+      ctx.rotate(side * age * 0.8);
+      ctx.fillStyle = '#b8c9cc';
+      ctx.fillRect(-17, -5, 34, 10);
+      ctx.fillStyle = 'rgba(255, 190, 92, 0.75)';
+      ctx.fillRect(-22, -7, 5, 14);
+      ctx.restore();
+    }
+
+    // Telemetry is the arena's identity: speed, altitude and the line's state.
+    this.drawRocketReadout(b.left + 42, b.top + 154, 'SPEED', `${Math.round(1400 + progress * 6200)} M/S`);
+    this.drawRocketReadout(b.left + 42, b.top + 238, 'ALTITUDE', `${(progress * 148).toFixed(1)} KM`);
+    this.drawRocketReadout(
+      b.left + 42,
+      b.top + 322,
+      'TRAJECTORY',
+      progress >= 1 ? 'BARRIER SEALED' : `${Math.round(progress * 100)}% LOCKED`,
+    );
+
+    // Cover consoles carry the launch-control fiction without becoming new systems.
+    const labels = ['LAUNCH CONTROL', 'RANGE SAFETY', 'STAGE CACHE', 'TELEMETRY'];
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const rect = arena.pillars[i];
+      ctx.fillStyle = '#081c22';
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.strokeStyle = 'rgba(124, 247, 204, 0.46)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillStyle = 'rgba(124, 247, 204, 0.16)';
+      ctx.fillRect(rect.x + 8, rect.y + 8, rect.w - 16, 7);
+      ctx.fillStyle = 'rgba(214, 255, 247, 0.62)';
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'center';
+      ctx.fillText(labels[i] ?? 'NAV RELAY', rect.x + rect.w * 0.5, rect.y + rect.h * 0.62);
+    }
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(124, 247, 204, 0.62)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.restore();
+  }
+
+  private drawRocketReadout(x: number, y: number, label: string, value: string): void {
+    const ctx = this.ctx;
+    ctx.fillStyle = 'rgba(3, 15, 19, 0.82)';
+    ctx.fillRect(x, y, 202, 62);
+    ctx.strokeStyle = 'rgba(124, 247, 204, 0.28)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, 202, 62);
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(124, 247, 204, 0.58)';
+    ctx.fillText(label, x + 10, y + 19);
+    ctx.font = FONT_MID;
+    ctx.fillStyle = '#d9fff7';
+    ctx.fillText(value, x + 10, y + 44);
+  }
+
+  /** WEAPON SYSTEMS: a fighter-jet status display with three floor-mounted control banks. */
+  private drawWeaponArena(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const weapon = arena?.weapon;
+    if (!arena || !weapon) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+
+    ctx.save();
+    ctx.fillStyle = '#080506';
+    ctx.fillRect(b.left - 40, b.top - 40, b.right - b.left + 80, b.bottom - b.top + 80);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#160c0d';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+
+    // Instrument-grid floor and a cockpit frame.
+    ctx.strokeStyle = 'rgba(255, 107, 92, 0.08)';
+    ctx.lineWidth = 1;
+    for (let x = b.left + 48; x < b.right; x += 48) {
+      ctx.beginPath();
+      ctx.moveTo(x, b.top);
+      ctx.lineTo(x, b.bottom);
+      ctx.stroke();
+    }
+    for (let y = b.top + 48; y < b.bottom; y += 48) {
+      ctx.beginPath();
+      ctx.moveTo(b.left, y);
+      ctx.lineTo(b.right, y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255, 107, 92, 0.05)';
+    ctx.fillRect(b.left, b.top, 420, b.bottom - b.top);
+
+    // Fighter side profile, with the canopy and engine kept as simple vector shapes.
+    const jet = weapon.jet;
+    const cy = jet.y + jet.h * 0.48;
+    ctx.strokeStyle = 'rgba(255, 193, 153, 0.85)';
+    ctx.fillStyle = 'rgba(24, 20, 22, 0.82)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(jet.x + jet.w * 0.12, cy + 18);
+    ctx.lineTo(jet.x + jet.w * 0.34, cy - 42);
+    ctx.lineTo(jet.x + jet.w * 0.56, cy - 36);
+    ctx.lineTo(jet.x + jet.w * 0.68, cy - 10);
+    ctx.lineTo(jet.x + jet.w * 0.9, cy - 24);
+    ctx.lineTo(jet.x + jet.w * 0.82, cy + 10);
+    ctx.lineTo(jet.x + jet.w * 0.62, cy + 28);
+    ctx.lineTo(jet.x + jet.w * 0.4, cy + 42);
+    ctx.lineTo(jet.x + jet.w * 0.24, cy + 28);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Wing and tail planes.
+    ctx.fillStyle = 'rgba(70, 35, 31, 0.9)';
+    ctx.beginPath();
+    ctx.moveTo(jet.x + jet.w * 0.42, cy - 4);
+    ctx.lineTo(jet.x + jet.w * 0.23, cy + 90);
+    ctx.lineTo(jet.x + jet.w * 0.58, cy + 32);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(jet.x + jet.w * 0.5, cy + 20);
+    ctx.lineTo(jet.x + jet.w * 0.38, cy + 86);
+    ctx.lineTo(jet.x + jet.w * 0.7, cy + 52);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(110, 235, 255, 0.6)';
+    ctx.beginPath();
+    ctx.moveTo(jet.x + jet.w * 0.54, cy - 31);
+    ctx.lineTo(jet.x + jet.w * 0.63, cy - 27);
+    ctx.lineTo(jet.x + jet.w * 0.59, cy - 10);
+    ctx.lineTo(jet.x + jet.w * 0.5, cy - 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 190, 92, 0.5)';
+    ctx.fillRect(jet.x + jet.w * 0.87, cy - 16, 12, 32);
+
+    // Status readout.
+    ctx.font = FONT_MID;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffd4c7';
+    ctx.fillText('WEAPON SYSTEMS // F-19 SPECTRE', b.left + 42, b.top + 54);
+    ctx.font = FONT_TINY;
+    ctx.fillStyle = 'rgba(255, 175, 154, 0.68)';
+    ctx.fillText('STATUS: ARMED   //   LINK: STABLE', b.left + 42, b.top + 78);
+    ctx.fillStyle = 'rgba(255, 107, 92, 0.12)';
+    ctx.fillRect(b.left + 42, b.top + 96, 356, 122);
+    ctx.strokeStyle = 'rgba(255, 107, 92, 0.34)';
+    ctx.strokeRect(b.left + 42, b.top + 96, 356, 122);
+    ctx.fillStyle = '#ffb6a4';
+    ctx.font = FONT_SMALL;
+    ctx.fillText('SPD   MACH 1.82', b.left + 58, b.top + 124);
+    ctx.fillText('ALT   12,400 FT', b.left + 58, b.top + 148);
+    ctx.fillText('THR   78% NOMINAL', b.left + 58, b.top + 172);
+    ctx.fillText('ARM   GUN / MISSILE', b.left + 58, b.top + 196);
+
+    // Target reticle over the jet's nose.
+    const rx = jet.x + jet.w * 0.69;
+    const ry = cy - 26;
+    ctx.strokeStyle = 'rgba(255, 220, 160, 0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(rx, ry, 22, 0, TWO_PI);
+    ctx.moveTo(rx - 34, ry);
+    ctx.lineTo(rx - 12, ry);
+    ctx.moveTo(rx + 12, ry);
+    ctx.lineTo(rx + 34, ry);
+    ctx.moveTo(rx, ry - 34);
+    ctx.lineTo(rx, ry - 12);
+    ctx.moveTo(rx, ry + 12);
+    ctx.lineTo(rx, ry + 34);
+    ctx.stroke();
+
+    // The three big cockpit banks are also cover. Draw the non-button consoles first.
+    for (let i = weapon.buttons.length; i < arena.pillars.length; i++) {
+      const rect = arena.pillars[i];
+      ctx.fillStyle = '#1b1011';
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.strokeStyle = 'rgba(255, 150, 130, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillStyle = 'rgba(255, 170, 150, 0.38)';
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'center';
+      ctx.fillText(i === weapon.buttons.length ? 'FCS CORE' : 'HYDRAULIC', rect.x + rect.w * 0.5, rect.y + rect.h * 0.58);
+    }
+
+    const buttonColors = ['#ff5c4e', '#ffc857', '#63dcff'];
+    for (let i = 0; i < weapon.buttons.length; i++) {
+      const button = weapon.buttons[i];
+      const pulse = 0.62 + Math.sin(t * (button.kind === 1 ? 5.2 : 2.6) + i) * 0.18;
+      const color = buttonColors[button.kind];
+      ctx.fillStyle = 'rgba(28, 10, 12, 0.9)';
+      ctx.fillRect(button.x, button.y, button.w, button.h);
+      ctx.fillStyle = `rgba(${button.kind === 0 ? '255, 92, 78' : button.kind === 1 ? '255, 200, 87' : '99, 220, 255'}, ${0.14 + pulse * 0.1})`;
+      ctx.fillRect(button.x + 7, button.y + 7, button.w - 14, button.h - 14);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.65 + pulse * 0.35;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(button.x, button.y, button.w, button.h);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      ctx.font = FONT_MID;
+      ctx.textAlign = 'center';
+      ctx.fillText(button.label, button.x + button.w * 0.5, button.y + button.h * 0.46);
+      ctx.font = FONT_TINY;
+      ctx.fillStyle = 'rgba(255, 240, 225, 0.72)';
+      ctx.fillText(button.kind === 1 ? 'PULL // SAFE' : button.kind === 2 ? 'HOLD // BURN' : 'PRESS // FIRE', button.x + button.w * 0.5, button.y + button.h * 0.72);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(button.x + 14, button.y + 14, button.w - 28, button.h - 28);
+    }
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(255, 107, 92, 0.68)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.restore();
+  }
+
   private drawArena(
     t: number,
     arena: ArenaDef,
@@ -3670,6 +4044,14 @@ export class Renderer {
     }
     if (arena.swipe) {
       this.drawSwipeArena(arena, groundA, frameA, t, swipeT, swipePopupT);
+      return;
+    }
+    if (arena.rocket) {
+      this.drawRocketArena(satelliteState, groundA, frameA);
+      return;
+    }
+    if (arena.weapon) {
+      this.drawWeaponArena(satelliteState, groundA, frameA, t);
       return;
     }
     if (arena.satellite) {

@@ -74,6 +74,8 @@ import {
   satelliteSolarStateAt,
   satelliteTelescopeRectAt,
   SATELLITE_SOLAR_STATE,
+  rocketArcAt,
+  rocketProgressAt,
   swipeDirectionAt,
   swipeIndexAt,
   swipePhaseAt,
@@ -83,6 +85,7 @@ import {
   type ArenaKeypadDef,
   type ArenaPropDef,
   type ArenaSatelliteDef,
+  type ArenaRocketDef,
   type ArenaScannerDef,
   type ArenaSwipeDef,
   type ArenaUsbDef,
@@ -474,6 +477,15 @@ export class World {
   swipePopupSolid: Rect | null = null;
   /** SATELLITE layout. Host-authoritative online; its clocks and live meteors travel in SnapshotHazards. */
   readonly satellite: ArenaSatelliteDef | null;
+  /** ROCKET NAVIGATION layout and its growing trajectory wall. Local-only. */
+  readonly rocket: ArenaRocketDef | null;
+  /** Seconds since launch. Reset at the start of every round. */
+  rocketT = 0;
+  /** 0..1 arc progress. The renderer and the collision blocks share it. */
+  rocketProgress = 0;
+  /** Preallocated blocks that approximate the curved trajectory wall. */
+  private readonly rocketBarrierRects: Rect[] = [];
+  private readonly rocketScratch = { x: 0, y: 0 };
   /** Shared solar/telescope clock, seconds into the run. */
   satelliteT = 0;
   /** Countdown to the next meteor shower. */
@@ -556,11 +568,19 @@ export class World {
     this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
-    const staticSolids = arenaSolids(arena);
+    this.rocket = arena.rocket ?? null;
+    if (this.rocket) {
+      for (let i = 0; i < this.rocket.segments; i++) {
+        this.rocketBarrierRects.push({ x: 0, y: 0, w: 0, h: 0 });
+      }
+    }
+    const staticSolids = this.rocket
+      ? [...arenaSolids(arena), ...this.rocketBarrierRects]
+      : arenaSolids(arena);
     this.campaignBarSolids = campaign ? campaignCellBarRects(arena) : [];
     this.solids =
       this.campaignBarSolids.length > 0 ? [...staticSolids, ...this.campaignBarSolids] : staticSolids;
-    this.dashSolids = [...arena.pillars, ...this.campaignBarSolids];
+    this.dashSolids = [...arena.pillars, ...this.rocketBarrierRects, ...this.campaignBarSolids];
     this.keypad = arena.keypad ?? null;
     this.keypadStates = new Uint8Array(this.keypad?.keys.length ?? 0);
     this.keypadPrevStates = new Uint8Array(this.keypadStates.length);
@@ -2398,6 +2418,7 @@ export class World {
     if (this.usb) this.resetUsb();
     if (this.swipe) this.resetSwipe();
     if (this.satellite) this.resetSatellite();
+    if (this.rocket) this.resetRocket();
     const active = this.activeCount();
     if (active === 0) return;
     computeSpawns(active, this.arena, this.spawnTmpX, this.spawnTmpY);
@@ -2494,6 +2515,7 @@ export class World {
     if (this.usb && canAct) this.tickUsb(dt);
     if (this.swipe && canAct) this.tickSwipe(dt);
     if (this.satellite && canAct) this.tickSatellite(dt);
+    if (this.rocket && canAct) this.tickRocket(dt);
     for (let i = 0; i < this.bumperFlash.length; i++) {
       if (this.bumperFlash[i] > 0) this.bumperFlash[i] = Math.max(0, this.bumperFlash[i] - dt);
     }
@@ -8207,6 +8229,10 @@ export class World {
     // while it stands, so the card cannot be used as a free firing slit.
     if (this.swipePopupSolid && this.bounceCoverRect(proj, this.swipePopupSolid)) return;
     if (this.satelliteTelescopeRect.h > 0 && this.bounceCoverRect(proj, this.satelliteTelescopeRect)) return;
+    for (let i = 0; i < this.rocketBarrierRects.length; i++) {
+      const r = this.rocketBarrierRects[i];
+      if (r.h > 0 && this.bounceCoverRect(proj, r)) return;
+    }
   }
 
   /** Shared shot/cover response for static pillars and the temporary swipe popup. */
@@ -8694,6 +8720,48 @@ export class World {
       b.hazard = false;
       b.hurtCd = 0;
       b.capacitor = true;
+    }
+  }
+
+  /** Reset the launch arc before a new round. */
+  private resetRocket(): void {
+    this.rocketT = 0;
+    this.rocketProgress = 0;
+    this.refreshRocketBarrier();
+  }
+
+  /** Advance the launch and rebuild the collision blocks that approximate the arc. */
+  private tickRocket(dt: number): void {
+    const rocket = this.rocket;
+    if (!rocket) return;
+    this.rocketT += dt;
+    this.rocketProgress = rocketProgressAt(rocket, this.rocketT);
+    this.refreshRocketBarrier();
+  }
+
+  /**
+   * The rendered arc and the body/shot wall share one progress value. Inactive blocks
+   * are zeroed instead of removed, so the solid list stays fixed and allocation-free.
+   */
+  private refreshRocketBarrier(): void {
+    const rocket = this.rocket;
+    if (!rocket) return;
+    const active = Math.ceil(this.rocketProgress * rocket.segments);
+    const half = rocket.thickness * 0.5;
+    for (let i = 0; i < this.rocketBarrierRects.length; i++) {
+      const rect = this.rocketBarrierRects[i];
+      if (i >= active) {
+        rect.x = 0;
+        rect.y = 0;
+        rect.w = 0;
+        rect.h = 0;
+        continue;
+      }
+      rocketArcAt(rocket, (i + 1) / rocket.segments, this.rocketScratch);
+      rect.x = this.rocketScratch.x - half;
+      rect.y = this.rocketScratch.y - half;
+      rect.w = rocket.thickness;
+      rect.h = rocket.thickness;
     }
   }
 

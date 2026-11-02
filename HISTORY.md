@@ -4695,3 +4695,57 @@ SATELLITE stays out of the remote disc-emitter group and still uses the ordinary
 
 **Next:** host a two-client match on SATELLITE and verify a guest sees the solar warning, meteor impacts,
 capacitor sockets and reentry front at the same time as the host.
+
+## 2026-11-02 — ROCKET NAVIGATION and WEAPON SYSTEMS (v0.1.113)
+
+**Goal:** add the two requested display arenas without turning either into a new engine layer or an
+unsynced online hazard.
+
+- Added `ArenaRocketDef` and `ArenaWeaponDef` data to `ArenaDef`; ROCKET NAVIGATION is id 18 and WEAPON
+  SYSTEMS is id 19, after SATELLITE.
+- ROCKET NAVIGATION runs a 24 s launch from below the floor lip to the upper corner. Speed, altitude and
+  trajectory readouts count up while the arc grows; the atmosphere band and booster/fairing debris are
+  presentation only.
+- The trajectory is real cover: 128 preallocated overlapping `Rect`s grow along the same quadratic curve
+  the renderer samples. They are added to both `solids` and `dashSolids`, so bodies, dashes and shots
+  cannot cross the finished line. The launch clock resets in `beginRound()`; no snapshot fields were added.
+- WEAPON SYSTEMS is a fighter-jet status screen with a vector side profile, cockpit readouts and three
+  large console banks. Those banks are ordinary static cover and also the drawn controls (`FIRE WEAPONS`,
+  `EJECTOR SEAT`, `THRUSTERS`); they do not add a jet weapon, eject action or thruster system.
+- Added custom renderer branches and picker previews for both maps. Excluded both from `isOnlineArena`
+  because the rocket clock/barrier and cockpit display are local-only.
+
+**Verification:** `.tmp/two-new-maps-check.ts` passes arena ids/order, arc endpoints, 128-block barrier growth,
+reset, no-hazard-snapshot and three-bank cover assertions. `npx tsc --noEmit`, `npm run build`,
+`npm run bench` and `git diff --check` clean. Build: 802.14 kB JS / 224.27 kB gzip, 50.09 kB CSS /
+11.20 kB gzip, with the existing chunk-size warning. Bench: 8P max projectiles 0.074 ms avg; gauntlet max
+0.141 ms avg, 0.454 ms p99, 28.4 live threats.
+
+**Limitations:** the bot nav grid does not know the growing arc, so bots can path through it while short;
+both maps are local-only and have no guest presentation. Neither map was played in a headed session yet.
+
+**Next:** run a training pass on both maps at full size, then decide whether the rocket wall belongs in bot
+navigation or in a future snapshot protocol.
+
+## 2026-11-02 — Multiplayer status telemetry (v0.1.114)
+
+**Goal:** give online rooms visible connection data without turning telemetry into synced game state.
+
+- Added a read-only `MpStatus` to `HostNet` and `GuestNet` with role, room code, local slot, connected
+  count, measured application RTT and live snapshot cadence.
+- Added rate-limited `MSG.PING` / `MSG.PONG` messages. Hosts average their guests, guests measure the host,
+  and both smooth the result. Older peers ignore the messages and simply show `--`.
+- Added the lobby `RTT` stat and the in-game `MP STATUS` panel. The panel hides with `GAME UI`, loading and
+  overlays. No status field enters `LobbyState`, `Snapshot` or `World`.
+- Documented the local-telemetry boundary in AGENTS D48 and updated README, GAME_GUIDE and TODO.
+
+**Verification:** `npm run build` passes (includes `tsc --noEmit`): 805.20 kB JS / 225.09 kB gzip,
+51.04 kB CSS / 11.39 kB gzip, with the existing chunk-size warning. `npm run bench`: 8P max projectiles
+0.066 ms avg / 0.127 ms p99; gauntlet max 0.201 ms avg / 0.577 ms p99, 28.4 live threats.
+`git diff --check` clean.
+
+**Limitations:** no two-real-client pass yet. The RTT is application-level and peer-specific; it does not
+measure browser/network loss or jitter separately, and a late pong can leave the smooth value stale.
+
+**Next:** run a two-client room and verify RTT, snapshot cadence, disconnect fallback and the legacy-peer
+`--` state.

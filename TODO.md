@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-01 (SATELLITE online)
+Last updated: 2026-11-02 (multiplayer status telemetry)
 
 ---
 
@@ -17,6 +17,33 @@ Last updated: 2026-11-01 (SATELLITE online)
 - [x] `npx tsc --noEmit`, `npm run build` and `git diff --check` clean
 - [ ] Headed pass: native share sheet on a phone, and the download/copy fallback on desktop
 - [ ] Optional future ingest endpoint behind a server-side service; never a client token
+
+---
+
+## Multiplayer status (2026-11-02)
+
+- [x] Add `MpStatus` and rate-limited `MSG.PING` / `MSG.PONG` telemetry to host and guest peers
+- [x] Measure application RTT and live snapshot cadence without touching `LobbyState` or `Snapshot`
+- [x] Lobby `RTT` stat plus the in-game `MP STATUS` panel (role, room, players, RTT, snapshot Hz)
+- [x] Hide the panel with `GAME UI`, loading and overlays; older peers degrade to `--`
+- [x] `npx tsc --noEmit` clean
+- [ ] Two-real-client pass: verify RTT, snapshot cadence, disconnect fallback and legacy-peer `--` state
+
+---
+
+## Two new local arenas (2026-11-02)
+
+- [x] Add `rocket` and `weapon` data to `ArenaDef`; ids 18 and 19 after SATELLITE
+- [x] ROCKET NAVIGATION: 24 s launch, nav telemetry, growing quadratic arc, atmosphere band and stage-separation debris
+- [x] Make the arc a real wall: 128 preallocated overlapping blocks in `solids`/`dashSolids`, with shot and body collision
+- [x] Reset the launch clock and wall in `beginRound()`; keep the state out of `SnapshotHazards`
+- [x] WEAPON SYSTEMS: fighter-jet status display, reticle and three console banks (`FIRE WEAPONS`, `EJECTOR SEAT`, `THRUSTERS`) as static cover
+- [x] Custom arena renderers and picker previews for both maps
+- [x] Exclude both maps from `isOnlineArena`; no snapshot or guest presentation yet
+- [x] Headless probe (`.tmp/two-new-maps-check.ts`): ids/order, arc endpoints, barrier growth, reset, hazard shape, console cover
+- [x] `npx tsc --noEmit`, `npm run build`, `npm run bench` and `git diff --check` clean
+- [ ] Headed training pass: read the launch arc and stage debris at full size, and fight around the console banks
+- [ ] Optional: teach bot nav about the growing wall, or carry its clock in a snapshot if online support is requested
 
 ---
 
@@ -3088,6 +3115,7 @@ arrive.
   or local match exists yet; the only local multi-body paths today are bots and the gauntlet thrall.
 - Story mode lists three local save slots, but nothing writes or reads a run: the first playable sector
   and the new-game/resume wiring do not exist. The slot format is already versioned in `saves.ts`.
+- ROCKET NAVIGATION's growing barrier is not in the bot nav grid or any snapshot. Bots can path through it while it is short, and the map is deliberately excluded from hosted rooms. WEAPON SYSTEMS' console banks are static cover and presentation only; no jet weapon, eject action or thruster system exists.
 - Compress is local-only like every program kit: a guest does not see a shrunk body and online still runs
   Probe. A compressed player's cover and arena-bound collision still use `PLAYER.radius` even though the
   drawn hull and projectile/bomb hitboxes shrink. A shrunk worm's contact and bite reach stay at the

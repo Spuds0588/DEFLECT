@@ -58,7 +58,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.112';
+const BUILD = '0.1.114';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -181,6 +181,13 @@ const countdownEl = el('countdown');
 const countdownLabel = el('countdown-label');
 const countdownValue = el<HTMLElement>('countdown-value');
 const perfEl = el('perf');
+const mpStatusEl = el('mp-status');
+const mpRoleEl = el('mp-role');
+const mpCodeEl = el('mp-code');
+const mpPlayersEl = el('mp-players');
+const mpRttEl = el('mp-rtt');
+const mpSnapEl = el('mp-snap');
+const mpDetailEl = el('mp-detail');
 const settingsBtn = el<HTMLButtonElement>('btn-settings');
 const howtoBtn = el<HTMLButtonElement>('btn-howto');
 const howtoBackBtn = el<HTMLButtonElement>('btn-howto-back');
@@ -197,6 +204,7 @@ const lobbyPlayersEl = el<HTMLUListElement>('lobby-players');
 const lobbyCount = el('lobby-count');
 const lobbyRole = el('lobby-role');
 const lobbyStatus = el('lobby-status');
+const lobbyLinkEl = el('lobby-link');
 const readyBtn = el<HTMLButtonElement>('btn-ready');
 const startBtn = el<HTMLButtonElement>('btn-start');
 const copyBtn = el<HTMLButtonElement>('btn-copy');
@@ -436,6 +444,7 @@ let lastRoundWinner = -2;
 let lastMatchWinner = -2;
 let goUntil = 0;
 let perfTimer = 0;
+let mpStatusAt = 0;
 let howtoDevicePollAt = 0;
 let lastCountdownText = '';
 let lastBounceSound = 0;
@@ -1149,11 +1158,13 @@ function selectArena(index: number): void {
  * Compactor, keypad, scanner, browser, USB, SWIPE and SATELLITE clocks ride the
  * snapshot, and the host resolves every hazard hit. Feed pipes and the firewall switch
  * are different: they spawn local threats and a sweep the snapshot does not carry.
+ * ROCKET NAVIGATION's barrier clock and WEAPON SYSTEMS' console display are local
+ * presentation too, so neither may enter a hosted room until its state is in Snapshot.
  */
 function isOnlineArena(a: ArenaDef): boolean {
   // Room arenas are tutorial staging: their chasms, props and fixture clocks are local
   // presentation/content, not a versus map. Keep them out of hosted rooms and series.
-  return !a.pipes && !a.firewallSwitch && !a.rooms;
+  return !a.pipes && !a.firewallSwitch && !a.rooms && !a.rocket && !a.weapon;
 }
 
 function onlineArenaIndex(index: number): number {
@@ -1965,6 +1976,7 @@ function loop(now: number): void {
 
   const wasGame = screen === 'game';
   syncTouchUi();
+  updateMpStatus(now);
   input.poll();
   pollLocalSetup();
   const menuEdges = input.readMenuEdges();
@@ -4574,6 +4586,7 @@ function renderLobby(state: LobbyState | null, connectingCode: string | null = n
   lobbyUrlEl.textContent = url;
   copyBtn.disabled = !url;
   lobbyRole.textContent = mode === 'host' ? 'HOST' : mode === 'guest' ? `GUEST / P${Math.max(1, localSlot + 1)}` : '—';
+  lobbyLinkEl.textContent = mpRttText();
   const lobbyArena = getArena(state?.arenaId ?? arenaIndex);
   lobbyArenaBtn.textContent = `ARENA: ${lobbyArena.name}`;
   lobbyArenaBtn.disabled = mode !== 'host' || busy;
@@ -4737,6 +4750,41 @@ function togglePerf(): void {
     perfTimer = 1;
     updatePerf(0);
   }
+}
+
+function mpRttText(): string {
+  const status = mode === 'host' ? hostNet?.getStatus() : mode === 'guest' ? guestNet?.getStatus() : null;
+  return status && status.rttMs >= 0 ? `${Math.round(status.rttMs)} MS` : '--';
+}
+
+/**
+ * Online room telemetry: role, room code, connected operators, measured RTT and the
+ * live snapshot cadence. It is local UI only; no field here is written to Snapshot.
+ */
+function updateMpStatus(now: number): void {
+  hostNet?.pollStatus(now);
+  guestNet?.pollStatus(now);
+  if (lobbyLinkEl && screen === 'lobby' && (mode === 'host' || mode === 'guest')) {
+    lobbyLinkEl.textContent = mpRttText();
+  }
+
+  const online = mode === 'host' || mode === 'guest';
+  const status = mode === 'host' ? hostNet?.getStatus() : mode === 'guest' ? guestNet?.getStatus() : null;
+  if (!online || !status || screen !== 'game' || loading || overlayKind !== 'none' || !uiEnabled) {
+    mpStatusEl.hidden = true;
+    return;
+  }
+  if (now < mpStatusAt) return;
+  mpStatusAt = now + 250;
+  const connected = lobbyState?.players.filter((p) => p.connected).length ?? status.players;
+  const players = mode === 'host' ? status.players : Math.max(connected, status.slot + 1);
+  mpStatusEl.hidden = false;
+  mpRoleEl.textContent = `${status.role} // P${Math.max(1, status.slot + 1)}`;
+  mpCodeEl.textContent = status.code || '----';
+  mpPlayersEl.textContent = `${players} / ${status.capacity}`;
+  mpRttEl.textContent = status.rttMs >= 0 ? `${Math.round(status.rttMs)} MS` : '--';
+  mpSnapEl.textContent = status.snapshotHz > 0 ? `${Math.round(status.snapshotHz)} HZ` : '--';
+  mpDetailEl.textContent = mode === 'host' ? 'HOST AUTHORITY // P2P' : 'CLIENT PREDICTION // P2P';
 }
 
 // Input routing -----------------------------------------------------------------------------

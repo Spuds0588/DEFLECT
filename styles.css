@@ -1157,6 +1157,74 @@ input:focus {
   pointer-events: none;
 }
 
+.mp-status {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  min-width: 196px;
+  padding: 10px 12px 9px;
+  border: 1px solid rgba(78, 200, 226, 0.26);
+  border-right: 2px solid var(--cyan);
+  background: rgba(3, 10, 16, 0.82);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
+.mp-status-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(78, 200, 226, 0.16);
+  color: rgba(175, 220, 232, 0.58);
+  font-size: 9px;
+}
+
+.mp-status-head b {
+  color: var(--cyan);
+  font-weight: 700;
+  text-align: right;
+}
+
+.mp-status-grid {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 3px 18px;
+  padding-top: 7px;
+}
+
+.mp-status-grid span {
+  color: rgba(160, 220, 235, 0.5);
+}
+
+.mp-status-grid b {
+  color: var(--lime);
+  font-weight: 700;
+  text-align: right;
+}
+
+.mp-status-detail {
+  margin: 7px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid rgba(78, 200, 226, 0.12);
+  color: rgba(160, 220, 235, 0.4);
+  font-size: 8px;
+}
+
+@media (pointer: coarse) {
+  .mp-status {
+    top: 62px;
+    right: 12px;
+    min-width: 172px;
+    padding: 8px 10px;
+    font-size: 9px;
+  }
+}
+
 .icon-btn {
   position: absolute;
   right: 14px;

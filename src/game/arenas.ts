@@ -349,6 +349,51 @@ export interface ArenaSatelliteDef {
   reentry: ArenaSatelliteReentryDef;
 }
 
+/** One staged separation on a ROCKET NAVIGATION launch. */
+export interface ArenaRocketStageDef {
+  /** 0..1 arc progress where the stage lets go. */
+  at: number;
+  label: string;
+}
+
+/**
+ * ROCKET NAVIGATION: a launch-control floor under a rocket's telemetry display. The
+ * arc is a real growing body/shot barrier; the rocket and stage debris are presentation.
+ * Local-only because the host owns the growth clock.
+ */
+export interface ArenaRocketDef {
+  /** Start of the trajectory, usually just outside the bottom lip. */
+  launch: { x: number; y: number };
+  /** Quadratic control point. */
+  control: { x: number; y: number };
+  /** End of the trajectory, usually just outside the top lip. */
+  end: { x: number; y: number };
+  /** Seconds from launch to a completed barrier. */
+  duration: number;
+  /** Number of collision blocks used to approximate the arc. */
+  segments: number;
+  /** Width of one collision block, in world units. */
+  thickness: number;
+  stages: ArenaRocketStageDef[];
+}
+
+/** One floor-mounted control bank on the WEAPON SYSTEMS status screen. */
+export interface ArenaWeaponButtonDef extends Rect {
+  label: string;
+  /** 0 fire, 1 eject, 2 thrusters. Presentation and preview colour only. */
+  kind: 0 | 1 | 2;
+}
+
+/**
+ * WEAPON SYSTEMS: a fighter-jet status screen used as a local arena. This is a
+ * cockpit display, not a second player kit; the buttons are cover and presentation.
+ */
+export interface ArenaWeaponDef {
+  buttons: ArenaWeaponButtonDef[];
+  /** Bounding box for the jet side-view drawing. */
+  jet: Rect;
+}
+
 /**
  * A breakable file box. Bodies step over it; shots and lashes delete it in one or two
  * hits. Kind is a `PROP` id, which picks the mark on the box.
@@ -655,6 +700,10 @@ export interface ArenaDef {
   swipe?: ArenaSwipeDef;
   /** Satellite hull, solar wings, telescope and reentry hazard. Online-safe under D45. */
   satellite?: ArenaSatelliteDef;
+  /** ROCKET NAVIGATION launch display and growing trajectory barrier. Local-only. */
+  rocket?: ArenaRocketDef;
+  /** WEAPON SYSTEMS fighter-jet status console. Local-only presentation. */
+  weapon?: ArenaWeaponDef;
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
   /** Tutorial room floors and labels. Presentation only; never collision. */
@@ -710,6 +759,13 @@ const usbSpawns: SpawnPoint[] = [
   { x: 864, y: 1132 },
   { x: 804, y: 998 },
   { x: 864, y: 864 },
+];
+
+// The three cockpit banks are both the visible controls and the arena's cover.
+const weaponButtons: ArenaWeaponButtonDef[] = [
+  { x: 1190, y: 214, w: 280, h: 132, label: 'FIRE WEAPONS', kind: 0 },
+  { x: 1190, y: 420, w: 280, h: 132, label: 'EJECTOR SEAT', kind: 1 },
+  { x: 1190, y: 626, w: 280, h: 132, label: 'THRUSTERS', kind: 2 },
 ];
 
 const browserPages: ArenaBrowserPageDef[] = [
@@ -1598,7 +1654,93 @@ export const ARENAS: readonly ArenaDef[] = [
       reentry: { fuse: 5, rise: 14, tick: 0.8, damage: 1, hold: 2.5, reset: 5 },
     },
   },
+  {
+    id: 18,
+    name: 'ROCKET NAVIGATION',
+    tagline: 'Speed, altitude, trajectory. The line stays.',
+    hudLabel: 'ARENA // ROCKET NAVIGATION',
+    accent: '#7cf7cc',
+    accentSoft: 'rgba(124, 247, 204, 0.32)',
+    accentFaint: 'rgba(124, 247, 204, 0.034)',
+    signature: 2,
+    bounds: { left: 80, top: 60, right: 1780, bottom: 1000 },
+    pillars: [
+      { x: 112, y: 112, w: 160, h: 84 },
+      { x: 1552, y: 804, w: 156, h: 100 },
+      { x: 612, y: 566, w: 118, h: 72 },
+      { x: 1244, y: 700, w: 100, h: 82 },
+    ],
+    spawns: [
+      { x: 206, y: 214 },
+      { x: 702, y: 132 },
+      { x: 1518, y: 192 },
+      { x: 1626, y: 560 },
+      { x: 1400, y: 910 },
+      { x: 760, y: 888 },
+      { x: 250, y: 702 },
+      { x: 158, y: 462 },
+    ],
+    rocket: {
+      launch: { x: 930, y: 1050 },
+      control: { x: 260, y: 330 },
+      end: { x: 1550, y: 40 },
+      duration: 24,
+      // The blocks overlap along the arc, so the wall is continuous rather than a row
+      // of posts with walkable gaps between them. The arc's fastest end advances more
+      // than 20 units per segment, so 128 blocks at 24 units stay overlapped at the top.
+      segments: 128,
+      thickness: 24,
+      stages: [
+        { at: 0.32, label: 'BOOSTER SEPARATION' },
+        { at: 0.62, label: 'FAIRING JETTISON' },
+      ],
+    },
+  },
+  {
+    id: 19,
+    name: 'WEAPON SYSTEMS',
+    tagline: 'Fire. Eject. Burn. Mind the console.',
+    hudLabel: 'ARENA // WEAPON SYSTEMS',
+    accent: '#ff6b5c',
+    accentSoft: 'rgba(255, 107, 92, 0.32)',
+    accentFaint: 'rgba(255, 107, 92, 0.034)',
+    signature: 1,
+    bounds: { left: 60, top: 60, right: 1780, bottom: 1000 },
+    pillars: [
+      ...weaponButtons,
+      { x: 760, y: 790, w: 180, h: 70 },
+      { x: 1010, y: 780, w: 140, h: 80 },
+    ],
+    spawns: [
+      { x: 232, y: 174 },
+      { x: 760, y: 138 },
+      { x: 1580, y: 168 },
+      { x: 1600, y: 804 },
+      { x: 1080, y: 900 },
+      { x: 620, y: 882 },
+      { x: 224, y: 640 },
+      { x: 168, y: 382 },
+    ],
+    weapon: {
+      buttons: weaponButtons,
+      jet: { x: 176, y: 244, w: 780, h: 500 },
+    },
+  },
 ];
+
+/** 0..1 trajectory progress at `t` seconds after launch. */
+export function rocketProgressAt(rocket: ArenaRocketDef, t: number): number {
+  return Math.max(0, Math.min(1, t / Math.max(0.001, rocket.duration)));
+}
+
+/** Point on the quadratic launch arc. `out` is reused to avoid render allocation. */
+export function rocketArcAt(rocket: ArenaRocketDef, k: number, out: Point2): Point2 {
+  const p = Math.max(0, Math.min(1, k));
+  const u = 1 - p;
+  out.x = u * u * rocket.launch.x + 2 * u * p * rocket.control.x + p * p * rocket.end.x;
+  out.y = u * u * rocket.launch.y + 2 * u * p * rocket.control.y + p * p * rocket.end.y;
+  return out;
+}
 
 export function discCenterX(arena: ArenaDef): number {
   return (arena.bounds.left + arena.bounds.right) * 0.5;
@@ -2100,6 +2242,82 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
       const p = arena.props![i];
       ctx.fillStyle = p.capacitor ? '#ff8b4d' : '#ffd06a';
       ctx.fillRect(mapX(p.x), mapY(p.y), Math.max(1, p.w * sx), Math.max(1, p.h * sy));
+    }
+    return;
+  }
+
+  if (arena.rocket) {
+    const rocket = arena.rocket;
+    ctx.fillStyle = '#06141a';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(bounds.left) + 0.5, mapY(bounds.top) + 0.5, previewW - 1, previewH - 1);
+    const p = { x: 0, y: 0 };
+    ctx.strokeStyle = 'rgba(124, 247, 204, 0.24)';
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    for (let i = 0; i <= 24; i++) {
+      rocketArcAt(rocket, i / 24, p);
+      if (i === 0) ctx.moveTo(mapX(p.x), mapY(p.y));
+      else ctx.lineTo(mapX(p.x), mapY(p.y));
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const previewProgress = 0.62;
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i <= 28; i++) {
+      rocketArcAt(rocket, (i / 28) * previewProgress, p);
+      if (i === 0) ctx.moveTo(mapX(p.x), mapY(p.y));
+      else ctx.lineTo(mapX(p.x), mapY(p.y));
+    }
+    ctx.stroke();
+    rocketArcAt(rocket, previewProgress, p);
+    ctx.fillStyle = '#e7ffff';
+    ctx.beginPath();
+    ctx.arc(mapX(p.x), mapY(p.y), 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = arena.accent;
+    for (let i = 0; i < rocket.stages.length; i++) {
+      if (previewProgress < rocket.stages[i].at) continue;
+      rocketArcAt(rocket, rocket.stages[i].at, p);
+      ctx.fillRect(mapX(p.x) - 2, mapY(p.y) - 2, 4, 4);
+    }
+    return;
+  }
+
+  if (arena.weapon) {
+    const weapon = arena.weapon;
+    ctx.fillStyle = '#160c0d';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(bounds.left) + 0.5, mapY(bounds.top) + 0.5, previewW - 1, previewH - 1);
+    const jet = weapon.jet;
+    ctx.fillStyle = 'rgba(255, 160, 135, 0.24)';
+    ctx.beginPath();
+    ctx.moveTo(mapX(jet.x + jet.w * 0.12), mapY(jet.y + jet.h * 0.56));
+    ctx.lineTo(mapX(jet.x + jet.w * 0.56), mapY(jet.y + jet.h * 0.3));
+    ctx.lineTo(mapX(jet.x + jet.w * 0.9), mapY(jet.y + jet.h * 0.42));
+    ctx.lineTo(mapX(jet.x + jet.w * 0.62), mapY(jet.y + jet.h * 0.68));
+    ctx.lineTo(mapX(jet.x + jet.w * 0.3), mapY(jet.y + jet.h * 0.78));
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = arena.accent;
+    ctx.stroke();
+    const colors = ['#ff5c4e', '#ffc857', '#63dcff'];
+    for (let i = 0; i < weapon.buttons.length; i++) {
+      const button = weapon.buttons[i];
+      ctx.fillStyle = 'rgba(28, 10, 12, 0.92)';
+      ctx.fillRect(mapX(button.x), mapY(button.y), button.w * sx, button.h * sy);
+      ctx.strokeStyle = colors[button.kind];
+      ctx.strokeRect(mapX(button.x) + 0.5, mapY(button.y) + 0.5, button.w * sx - 1, button.h * sy - 1);
+      ctx.fillStyle = colors[button.kind];
+      ctx.font = '700 7px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(button.kind === 0 ? 'FIRE' : button.kind === 1 ? 'EJECT' : 'THRUST', mapX(button.x + button.w * 0.5), mapY(button.y + button.h * 0.55));
     }
     return;
   }
