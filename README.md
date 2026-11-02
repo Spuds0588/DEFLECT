@@ -400,3 +400,12 @@ step out of its rain lane through the same hazard-steering layer that handles em
 Mini-bosses are allowed to overhang the arena edge by up to half their radius (`bossEdgePad`), so a boss
 silhouette is never squeezed to fit the playfield. Ordinary worms, players and projectiles keep
 full-radius clamping.
+
+
+## Test range
+
+`TEST RANGE` is a QA-only sandbox arena (3480x1920, empty floor) hidden from the arena picker. Boot it with
+`?range=1`, optionally `&bot=1&mega=1`, to read boss scale and behaviour before geometry gets a vote.
+
+The Mega Worm now arrives at roughly three times its old silhouette, doubled health and a slower turn,
+coiled around its own head so the body does not string across the room on spawn.

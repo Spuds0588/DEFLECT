@@ -5639,3 +5639,25 @@ wall, while keeping it hittable.
 the probe suite passes; bench `Gauntlet max avg 0.144ms p99 0.477ms max 2.072ms threats 27.3 (2W/10V/2F/14E + sentries + thrall)`.
 
 **Next:** the campaign can size a boss against the room rather than the other way around.
+
+## 2026-11-02 — Mega Worm at 3x, curled arrival, TEST RANGE sandbox (v0.1.143)
+
+**Goal:** read the Mega Worm's behaviour and scale without fighting arena geometry, and give it the
+larger silhouette the boss wanted.
+
+- Added `TEST RANGE` (`ARENAS` id 90, `qa: true`): 3480x1920, empty `pillars`, no fixtures, voids or
+  hazards, eight perimeter spawns. `renderArenaPicker` skips `qa` arenas, and `?range=1` boots a gauntlet
+  run there (`&bot=1` autopilot, `&mega=1` Mega Worm). The arena is data, not a second mode.
+- Mega Worm scaled roughly 3x: head 46-to-138, plate 33-to-99, spacing 56-to-168, whip/bite/leg ranges
+  scaled to match, health doubled (head 12-to-24, plate 7-to-14), turn slowed. It is now a room-sized boss.
+- `spawnMegaWorm` lays the opening chain on an arc-length spiral around the head (`MEGA_WORM.curl`), so the
+  body arrives coiled instead of trailing 2,000+ units in a straight line. This is the arrival pose only;
+  `followMegaChain` unrolls it as the head moves.
+- Probes: `.tmp/megaworm-check.ts` asserts the 3x radii and a compact spawn footprint; new
+  `.tmp/range-check.ts` asserts the sandbox is empty, huge and has eight spawns.
+
+**Verification:** `.tmp/megaworm-check.ts`, `.tmp/range-check.ts` and the rest of the probe suite pass;
+`npm run build` clean; bench `Gauntlet max avg 0.131ms p99 0.373ms max 1.465ms threats 27.3 (2W/10V/2F/14E + sentries + thrall)`.
+
+**Next:** watch the 3x boss in a normal arena; the shared threat pool may hand it a room it cannot fit, so a
+dedicated boss room is the likely follow-up.

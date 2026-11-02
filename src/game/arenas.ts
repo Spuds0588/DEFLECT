@@ -1258,6 +1258,8 @@ export const KEYPAD_STATE = {
  * the host snapshot all read this one definition so a guest can never simulate a different map.
  */
 export interface ArenaDef {
+  /** QA sandbox: hidden from the arena picker and only reachable by an explicit hook. */
+  qa?: boolean;
   id: number;
   name: string;
   tagline: string;
@@ -3174,6 +3176,32 @@ export const ARENAS: readonly ArenaDef[] = [
         { tag: 'FDX 88', bearing: 5.2, heading: 5.2 + Math.PI - 0.26, entry: 650, run: 1300, speed: 320, radius: 30, period: 20, delay: 15, kind: 0 },
       ],
     },
+  },
+
+  {
+    id: 90,
+    qa: true,
+    name: 'TEST RANGE',
+    tagline: 'Empty floor. Only the boss to blame.',
+    hudLabel: 'ARENA // TEST RANGE',
+    accent: '#9fb3c8',
+    accentSoft: 'rgba(159, 179, 200, 0.3)',
+    accentFaint: 'rgba(159, 179, 200, 0.03)',
+    signature: 1,
+    // Deliberately huge and empty: no pillars, no fixtures, no voids, no hazards.
+    // Boss scale and behaviour can be read here before geometry gets a vote.
+    bounds: { left: 60, top: 60, right: 3540, bottom: 1980 },
+    pillars: [],
+    spawns: [
+      { x: 600, y: 420 },
+      { x: 1740, y: 300 },
+      { x: 2900, y: 420 },
+      { x: 3200, y: 1000 },
+      { x: 2900, y: 1620 },
+      { x: 1740, y: 1740 },
+      { x: 600, y: 1620 },
+      { x: 300, y: 1000 },
+    ],
   },
 ];
 

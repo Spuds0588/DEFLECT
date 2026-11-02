@@ -2533,6 +2533,12 @@ label, tuning block and body shape; `Worm.bossKind` carries that id; and `World.
 is the only entry point. Assault family 3 carries the id in its existing `kind` field, so a mini-boss is
 delivered by the same edge portal as a sentry, worm or virus and can be scheduled by any wave or level.
 
+- **Scale pass (v0.1.143).** The Mega Worm is a 3x silhouette: `headRadius` 138, `segmentRadius` 99,
+  `spacing` 168, with whip/bite/leg reach scaled to match, health doubled so it still reads as a boss, and
+  a slower turn. It **arrives curled** (`MEGA_WORM.curl`): `spawnMegaWorm` lays the opening chain on an
+  arc-length spiral around the head, so a body this long lands in a compact footprint. The coil is the
+  arrival pose only; `followMegaChain` unrolls it as the head moves. Do not restore the straight-line
+  spawn without measuring the footprint, or the body strings across the whole arena.
 - **Bosses may overhang the arena edge.** A mini-boss body clamps against `bossEdgePad` (half its
   `hitR`), not its whole radius, so a silhouette that has to be big can sit through a wall instead of
   being squeezed into the playfield. Half the body stays inside, which keeps it hittable and keeps its
@@ -2827,3 +2833,12 @@ apply; nothing here is a second collision system.
 - **Tuning** is `STORM_CLOUD` in `tuning/threats.json`; `?storm=1` is the QA boot hook. `.tmp/storm-check.ts`
   covers shape, the ceiling band, row emission, shooting a drop down, the reflect payoff and kill credit;
   `.tmp/storm-balance.ts` is the bot tuning harness.
+
+
+## TEST RANGE sandbox
+
+`TEST RANGE` (`ARENAS` id 90, `qa: true`) is a deliberately huge, empty arena: 3480x1920, no pillars,
+fixtures, voids or hazards, eight perimeter spawns. It exists so a boss or a kit can be read before
+geometry collision and spawn placement get a vote. `?range=1` boots a gauntlet run there (`&bot=1` adds
+the autopilot, `&mega=1` spawns the Mega Worm). It is filtered from the arena picker and is not selected
+by normal play; do not ship it as a menu arena or a campaign node.

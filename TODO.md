@@ -3429,3 +3429,8 @@ arrive.
 ## BOSS BOUNDS
 
 - [x] `bossEdgePad`: mini-boss bodies may overhang the arena edge by half their radius, applied to all five
+
+- [x] TEST RANGE sandbox arena (`?range=1`, hidden from pickers) for geometry-free boss reads.
+- [x] Mega Worm 3x silhouette, doubled health, curled arrival pose (v0.1.143).
+- [ ] Watch the 3x Mega Worm in a normal gauntlet arena; it may want a dedicated boss room rather than
+      the shared threat pool.

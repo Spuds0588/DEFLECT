@@ -43,7 +43,13 @@ const nodeY = (w: Worm, k: number) => (k === 0 ? w.y : w.segY[k - 1]);
   const nodes = boss.segCount + 1;
   if (nodes !== MEGA_WORM.segments + 1) fail(`boss started with ${nodes} plates, expected ${MEGA_WORM.segments + 1}`);
   if (!(boss.hp > 60)) fail(`boss health is only ${boss.hp}`);
-  if (boss.hitR < 40) fail('the boss is not scaled up');
+  if (boss.hitR < MEGA_WORM.headRadius - 1) fail(`the boss head is ${boss.hitR}, expected ${MEGA_WORM.headRadius}`);
+  if (Math.abs(boss.segR - MEGA_WORM.segmentRadius) > 1) fail('the boss plates are not the tuned size');
+  // The arrival is coiled: the far plates stay within a few spacings of the head, where
+  // a straight chain would trail the whole length of the body.
+  let far = 0;
+  for (let i = 0; i < 8; i++) far = Math.max(far, Math.hypot(nodeX(boss, i) - boss.x, nodeY(boss, i) - boss.y));
+  if (far > MEGA_WORM.spacing * 8) fail(`the spawn coil reaches ${Math.round(far)} units from the head`);
 
   const mid = 6;
   const before = boss.segHp[mid];

@@ -16683,23 +16683,30 @@ export class World {
     w.biteDirY = Math.sin(w.angle);
     w.segHp[0] = MEGA_WORM.headHp;
     w.segMaxHp[0] = MEGA_WORM.headHp;
-    const ca = Math.cos(w.angle);
-    const sa = Math.sin(w.angle);
+    // Arrive curled. The chain coils around the head instead of trailing straight out,
+    // so a boss scaled to 3x still lands in a footprint a room can hold. This is the
+    // arrival pose only: the follow rule unrolls it as the head moves.
+    const curl = MEGA_WORM.curl;
     const nodes = MEGA_WORM.maxSegments + 1;
+    let curlA = w.angle + Math.PI;
+    let curlR = MEGA_WORM.spacing * curl.start;
     for (let i = 0; i < nodes - 1; i++) {
+      // Arc-length step keeps neighbouring plates about one spacing apart on the spiral.
+      curlA += MEGA_WORM.spacing / Math.max(1, curlR);
+      curlR += MEGA_WORM.spacing * curl.grow;
       const sx = Math.max(
         this.arena.bounds.left + w.segR,
-        Math.min(this.arena.bounds.right - w.segR, w.x - ca * MEGA_WORM.spacing * (i + 1)),
+        Math.min(this.arena.bounds.right - w.segR, w.x + Math.cos(curlA) * curlR),
       );
       const sy = Math.max(
         this.arena.bounds.top + w.segR,
-        Math.min(this.arena.bounds.bottom - w.segR, w.y - sa * MEGA_WORM.spacing * (i + 1)),
+        Math.min(this.arena.bounds.bottom - w.segR, w.y + Math.sin(curlA) * curlR),
       );
       w.segX[i] = sx;
       w.segY[i] = sy;
       w.segPrevX[i] = sx;
       w.segPrevY[i] = sy;
-      w.segAngle[i] = w.angle;
+      w.segAngle[i] = Math.atan2(w.y - sy, w.x - sx);
       const hp = i < w.segCount ? MEGA_WORM.hpPerSegment : 0;
       w.segHp[i + 1] = hp;
       w.segMaxHp[i + 1] = MEGA_WORM.hpPerSegment;

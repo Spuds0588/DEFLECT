@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.142';
+const BUILD = '0.1.143';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -520,6 +520,12 @@ function boot(): void {
   }
   const arenaParam = Number(params.get('arena') ?? '-1');
   if (arenaParam >= 0 && arenaParam < ARENAS.length) arenaIndex = arenaParam;
+  // QA-only empty sandbox: `?range=1` boots on the test range.
+  const rangeParam = params.get('range') === '1';
+  if (rangeParam) {
+    const rangeIndex = ARENAS.findIndex((entry) => entry.qa);
+    if (rangeIndex >= 0) arenaIndex = rangeIndex;
+  }
   // QA-only gauntlet hook: `?gauntlet=1&arena=5&bot=1` boots straight into a run and
   // lets a BotBrain drive the local player so the camera can be watched hands-off.
   const gauntletParam = Number(params.get('gauntlet') ?? '0');
@@ -575,7 +581,7 @@ function boot(): void {
     window.setTimeout(() => startStress(stressParam), 250);
   } else if (infectionParam) {
     window.setTimeout(() => startInfection(gauntletBot), 250);
-  } else if (gauntletParam >= 1 || megaBoot || handsBoot || starfishBoot || blobBoot || stormBoot) {
+  } else if (gauntletParam >= 1 || megaBoot || handsBoot || starfishBoot || blobBoot || stormBoot || rangeParam) {
     window.setTimeout(() => startGauntlet(gauntletBot), 250);
   } else if (playtestMode) {
     window.setTimeout(startPlaytest, 250);
@@ -1272,6 +1278,7 @@ function renderArenaPicker(): void {
   clearChildren(arenaPicker);
   for (let i = 0; i < ARENAS.length; i++) {
     const option = ARENAS[i];
+    if (option.qa) continue;
     const card = document.createElement('button');
     card.type = 'button';
     card.className = `console-arena-card${i === arenaIndex ? ' selected' : ''}`;

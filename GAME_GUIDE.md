@@ -605,6 +605,9 @@ chain of heavy plates with a head at the front. Every plate has its own health, 
 - Damage reads as cracks spreading across a plate and loose code drifting off the body. A nearly dead
   plate shudders. There is no health bar.
 - It moves slowly for its size. The pressure is the sweep and the plates, not a chase.
+- **Scale pass (v0.1.143).** It now arrives at roughly three times its old size, with twice the plate
+  and head health. It spawns curled around its own head, so the first read is a coiled mass instead of a
+  body laid across the arena; the coil unrolls as it moves.
 
 ## IDLE HANDS (mini-boss)
 
