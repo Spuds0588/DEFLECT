@@ -58,7 +58,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.132';
+const BUILD = '0.1.133';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -310,6 +310,8 @@ let screen: Screen = 'title';
 let mode: Mode = 'none';
 /** QA self-play: bots drive every slot in a bot match, including slot 0. */
 let autoplay = false;
+/** QA-only boot flag: `?mega=1` lands the Mega Worm immediately. */
+let megaBoot = false;
 let autoplayRestartAt = 0;
 /**
  * Title-screen attract demo. `attract` is true while the bot-run gauntlet owns the
@@ -508,6 +510,8 @@ function boot(): void {
   // QA-only gauntlet hook: `?gauntlet=1&arena=5&bot=1` boots straight into a run and
   // lets a BotBrain drive the local player so the camera can be watched hands-off.
   const gauntletParam = Number(params.get('gauntlet') ?? '0');
+  // QA-only boss hook: `?mega=1` boots a gauntlet run with the Mega Worm already up.
+  megaBoot = params.get('mega') === '1';
   const infectionParam = params.get('infection') === '1';
   const gauntletBot = Number(params.get('bot') ?? '0') >= 1;
   // QA-only inspection handle. Nothing in normal play reads it; it keeps split and
@@ -554,7 +558,7 @@ function boot(): void {
     window.setTimeout(() => startStress(stressParam), 250);
   } else if (infectionParam) {
     window.setTimeout(() => startInfection(gauntletBot), 250);
-  } else if (gauntletParam >= 1) {
+  } else if (gauntletParam >= 1 || megaBoot) {
     window.setTimeout(() => startGauntlet(gauntletBot), 250);
   } else if (playtestMode) {
     window.setTimeout(startPlaytest, 250);
@@ -2880,6 +2884,10 @@ function startGauntlet(aiLocal = false): void {
   const arena = getArena(arenaIndex);
   world = new World('gauntlet', [getCallsign()], 0, arena, false, selectedProgram);
   world.friendlyFire = friendlyFire;
+  if (megaBoot) {
+    const lead = world.players[0];
+    world.spawnMegaWorm(lead.x + 380, lead.y - 90);
+  }
   trainingInputs = [localFrame];
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };

@@ -770,6 +770,28 @@ export interface Worm {
   biteHit: boolean;
   biteDirX: number;
   biteDirY: number;
+  /** Mega Worm: a boss chain whose nodes carry their own health. */
+  mega: boolean;
+  /** Per-node health. Index 0 is the head, index k is segment k-1. */
+  segHp: Float32Array;
+  segMaxHp: Float32Array;
+  /** Collision radii, so one worm loop serves both body sizes. */
+  hitR: number;
+  segR: number;
+  /** Body whip: remaining time, cooldown, sweep side, pivot, sweep pose, hit mask. */
+  whipT: number;
+  whipCd: number;
+  whipDir: number;
+  whipPivotX: number;
+  whipPivotY: number;
+  whipA: number;
+  whipR: number;
+  whipHit: number;
+  /** One node left: legs, a fast body, a lunge bite and acid spit. */
+  legs: boolean;
+  acidT: number;
+  /** A promoted or detached head flashes its new eyes. */
+  eyeT: number;
 }
 
 export interface Virus {

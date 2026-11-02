@@ -1,4 +1,4 @@
-import { BOLT, FISHER, CASCADING_ERROR, MAX_PROJECTILES, PLAYER, POWERUP, SENTRY, TRAIL_LEN, TRAINING, VIRUS, WORM } from './config';
+import { BOLT, FISHER, CASCADING_ERROR, MAX_PROJECTILES, MEGA_WORM, PLAYER, POWERUP, SENTRY, TRAIL_LEN, TRAINING, VIRUS, WORM } from './config';
 import { programDef } from './programs';
 import {
   PF,
@@ -367,11 +367,11 @@ export function createWorm(): Worm {
     retargetT: 0,
     aggroT: 0,
     segCount: 0,
-    segX: new Float32Array(WORM.maxSegments),
-    segY: new Float32Array(WORM.maxSegments),
-    segPrevX: new Float32Array(WORM.maxSegments),
-    segPrevY: new Float32Array(WORM.maxSegments),
-    segAngle: new Float32Array(WORM.maxSegments),
+    segX: new Float32Array(Math.max(WORM.maxSegments, MEGA_WORM.maxSegments + 1)),
+    segY: new Float32Array(Math.max(WORM.maxSegments, MEGA_WORM.maxSegments + 1)),
+    segPrevX: new Float32Array(Math.max(WORM.maxSegments, MEGA_WORM.maxSegments + 1)),
+    segPrevY: new Float32Array(Math.max(WORM.maxSegments, MEGA_WORM.maxSegments + 1)),
+    segAngle: new Float32Array(Math.max(WORM.maxSegments, MEGA_WORM.maxSegments + 1)),
     touchCd: 0,
     hitFlash: 0,
     kx: 0,
@@ -386,6 +386,22 @@ export function createWorm(): Worm {
     biteHit: false,
     biteDirX: 1,
     biteDirY: 0,
+    mega: false,
+    segHp: new Float32Array(Math.max(WORM.maxSegments, MEGA_WORM.maxSegments + 1)),
+    segMaxHp: new Float32Array(Math.max(WORM.maxSegments, MEGA_WORM.maxSegments + 1)),
+    hitR: WORM.headRadius,
+    segR: WORM.segmentRadius,
+    whipT: 0,
+    whipCd: 0,
+    whipDir: 1,
+    whipPivotX: 0,
+    whipPivotY: 0,
+    whipA: 0,
+    whipR: 0,
+    whipHit: 0,
+    legs: false,
+    acidT: 0,
+    eyeT: 0,
   };
 }
 

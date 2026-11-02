@@ -589,3 +589,19 @@ second, and slam shut. The mouth is always an edge lane and always well away fro
 readable side to watch instead of a squad appearing on top of you. Sentries, worms and virus clusters all
 use the same ingress. If every edge point is blocked or too close, the burst waits rather than spawning
 next to you.
+
+### Mega Worm
+
+The first boss. It comes through an edge portal like everything else, but it is not one body: it is a
+chain of heavy plates with a head at the front. Every plate has its own health, so where you hit matters.
+
+- **Break the middle** and the tail half tears free as a second worm. The plate at the far tip opens its
+  eyes and becomes that half's head. Two bosses is a real option, and usually a mistake.
+- **Break the head** and the plate right behind it opens its eyes and takes over. You cannot decapitate
+  it; you can only shorten the head end the same way you shorten the tail.
+- **Whip.** When it curls its head back, clear the arc. The body then sweeps a wide half-circle and throws
+  anything it crosses, hard. One hit per swing.
+- **One plate left** and it grows legs: it sprints, lunges with a fast bite, and spits acid in pairs.
+- Damage reads as cracks spreading across a plate and loose code drifting off the body. A nearly dead
+  plate shudders. There is no health bar.
+- It moves slowly for its size. The pressure is the sweep and the plates, not a chase.

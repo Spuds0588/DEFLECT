@@ -5363,3 +5363,42 @@ arrives through the same ingress). `.tmp/jet-check.ts`, `.tmp/flipboard-check.ts
 a portal that opens off-screen has no camera cue yet.
 
 **Next:** route the first error block through the queue, then add an edge cue for off-screen portals.
+
+## 2026-11-02 — Mega Worm: the first boss (v0.1.133)
+
+**Goal:** a boss that forces a decision instead of soaking damage. Every plate is a target, and breaking
+one changes the shape of the fight.
+
+- `Worm` carries the boss state (`mega`, `segHp`/`segMaxHp`, `hitR`/`segR`, whip and legs fields). The boss
+  lives in the normal worm pool with `MEGA_WORM.slots` extra bodies, so bots, shells, melee, beams, blasts
+  and arena hazards already target it. `hitR`/`segR` replace the hard-coded `WORM` radii in the worm
+  collision sites, so one loop serves both sizes.
+- `spawnMegaWorm` lays 13 trailing plates behind the head: 14 nodes, 12 hp head, 7 hp per plate, 46-unit
+  head and 33-unit plates. In gauntlet it arrives through the edge ingress on wave 8 and every 14 waves
+  after, queued as assault family 3, so the entrance is a portal on the rim.
+- Damage is per node and follows the contact point: shells pass their own position, melee falls back to
+  the attacker, and the nearest plate takes it. `breakMegaNode` owns the chain rules: a head loss
+  promotes the plate behind it (new eyes flare), a tail loss shortens the chain, and an interior loss
+  splits the chain. The detached back half becomes its own boss with the far tip as its head, provided it
+  still holds two plates; anything shorter, or a split with no free pool slot, is shredded.
+- Whip: a committed arc around a pivot two plates behind the head. The windup curls back, the active beat
+  drags the chain through 3.55 rad, and a player in the path takes a hit and a tangential throw. Hits use
+  the `whipHit` mask (one per player per swing); contact damage is its own slower clock.
+- Last plate: legs, 3.1x speed, a fast latched lunge and paired acid on the existing hostile projectile
+  type 3, so deflect, friendly fire and cover already apply.
+- No health bar. Cracks climb out of a plate's seams as it loses health, a nearly dead plate shudders, and
+  loose code debris drifts off the body in proportion to total damage.
+- `?mega=1` is a QA-only boot hook that lands the boss beside the player for inspection.
+
+**Verification:** `.tmp/megaworm-check.ts` passes: a mid-chain break yields two bosses (front 5 /
+back 7 plates) with eyes open on the detached head, a head break promotes the next plate and
+moves the body onto it, the whip crosses a player placed in the committed arc and deals 1 damage,
+chewing the chain down to one plate sets `legs`, the legs phase moves at the 3.1x speed multiplier, throws a
+pair of acid balls and the final plate credits the kill. `npm run build` passes; `.tmp/assault-check.ts`,
+`.tmp/jet-check.ts`, `.tmp/flipboard-check.ts`, `.tmp/radar-check.ts`, `.tmp/islands-ports-check.ts` and
+`.tmp/laptop-variants-check.ts` still pass. `npm run bench` is clean: gauntlet max 0.128 ms avg / 0.440 ms p99.
+
+**Limitations:** acid reuses the hostile bolt art, so it reads orange rather than green, and an off-screen
+split has no minimap marker yet.
+
+**Next:** acid art, a minimap boss marker, then a second boss on the same plate language.

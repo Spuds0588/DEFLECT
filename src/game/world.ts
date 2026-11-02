@@ -45,6 +45,7 @@ import {
   VIEW_W,
   VIRUS,
   WORM,
+  MEGA_WORM,
   type Rect,
 } from './config';
 import {
@@ -392,6 +393,8 @@ export class World {
   private spawnTmpX = new Float32Array(MAX_PLAYERS);
   private spawnTmpY = new Float32Array(MAX_PLAYERS);
   private wormSpawnT: number = GAUNTLET.wormSpawnDelay;
+  /** Wave the last mega ingress was queued on; one boss per gate. */
+  private megaWave = -1;
   private virusSpawnT: number = GAUNTLET.virusSpawnDelay;
   private firewallSpawnT: number = GAUNTLET.firewallSpawnDelay;
   /** Shared clock for arena emitters. `offset` per emitter staggers the beams. */
@@ -832,7 +835,7 @@ export class World {
     for (let i = 0; i < MAX_PLAYERS; i++) this.players[i] = createPlayer(i);
     this.projectiles = createProjectilePool();
     this.drone = createDrone();
-    this.worms = new Array(GAUNTLET.maxWorms);
+    this.worms = new Array(GAUNTLET.maxWorms + MEGA_WORM.slots);
     for (let i = 0; i < this.worms.length; i++) this.worms[i] = createWorm();
     // INFECTION floods the floor, so that run owns a larger pool. Every other local mode
     // and every hosted match keep the gauntlet-sized pool.
@@ -1409,7 +1412,7 @@ export class World {
       if (live < this.virusLimit()) this.spawnVirus(x, y);
     } else if (fam === 2) {
       let live = 0;
-      for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) live++;
+      for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active && !this.worms[i].mega) live++;
       if (live < this.wormLimit()) this.spawnWorm(x, y);
     } else {
       let live = 0;
@@ -4434,10 +4437,10 @@ export class World {
       if (!w.active) continue;
       // The whole chain is a target. Checking only the head made beams that crossed a
       // worm's body look like they passed through without damage.
-      let hit = this.beamLineHits(ox, oy, dx, dy, reach, w.x, w.y, WORM.headRadius);
+      let hit = this.beamLineHits(ox, oy, dx, dy, reach, w.x, w.y, w.hitR);
       if (!hit) {
         for (let s = 0; s < w.segCount; s++) {
-          if (this.beamLineHits(ox, oy, dx, dy, reach, w.segX[s], w.segY[s], WORM.segmentRadius)) {
+          if (this.beamLineHits(ox, oy, dx, dy, reach, w.segX[s], w.segY[s], w.segR)) {
             hit = true;
             break;
           }
@@ -5900,9 +5903,9 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      let touching = visible(w.x, w.y, WORM.headRadius);
+      let touching = visible(w.x, w.y, w.hitR);
       for (let s = 0; s < w.segCount && !touching; s++) {
-        if (visible(w.segX[s], w.segY[s], WORM.segmentRadius)) touching = true;
+        if (visible(w.segX[s], w.segY[s], w.segR)) touching = true;
       }
       if (!touching) continue;
       w.kx = kx;
@@ -5992,13 +5995,13 @@ export class World {
       if (!w.active) continue;
       let touchX = 0;
       let touchY = 0;
-      let touching = this.broomReaches(p, w.x, w.y, WORM.headRadius, fx, fy, half, width);
+      let touching = this.broomReaches(p, w.x, w.y, w.hitR, fx, fy, half, width);
       if (touching) {
         touchX = w.x;
         touchY = w.y;
       }
       for (let s = 0; s < w.segCount && !touching; s++) {
-        if (!this.broomReaches(p, w.segX[s], w.segY[s], WORM.segmentRadius, fx, fy, half, width)) continue;
+        if (!this.broomReaches(p, w.segX[s], w.segY[s], w.segR, fx, fy, half, width)) continue;
         touching = true;
         touchX = w.segX[s];
         touchY = w.segY[s];
@@ -6145,9 +6148,9 @@ export class World {
         if (!w.active) continue;
         const bit = 1 << i;
         if ((p.fanHitWorms & bit) !== 0) continue;
-        let touching = this.fanReaches(bx, by, w.x, w.y, WORM.headRadius, reach);
+        let touching = this.fanReaches(bx, by, w.x, w.y, w.hitR, reach);
         for (let s = 0; s < w.segCount && !touching; s++) {
-          touching = this.fanReaches(bx, by, w.segX[s], w.segY[s], WORM.segmentRadius, reach);
+          touching = this.fanReaches(bx, by, w.segX[s], w.segY[s], w.segR, reach);
         }
         if (!touching) continue;
         p.fanHitWorms |= bit;
@@ -6331,8 +6334,8 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      let hit = reaches(w.x, w.y, WORM.headRadius);
-      for (let s = 0; s < w.segCount && !hit; s++) hit = reaches(w.segX[s], w.segY[s], WORM.segmentRadius);
+      let hit = reaches(w.x, w.y, w.hitR);
+      for (let s = 0; s < w.segCount && !hit; s++) hit = reaches(w.segX[s], w.segY[s], w.segR);
       if (hit) this.damageWorm(w, amount, p.slot, 0, 0, 0);
     }
     for (let i = 0; i < this.errors.length; i++) {
@@ -6511,10 +6514,10 @@ export class World {
       for (let s = 0; s < this.worms.length; s++) {
         const worm = this.worms[s];
         if (!worm.active) continue;
-        let touching = this.netReaches(net, worm.x, worm.y, WORM.headRadius);
+        let touching = this.netReaches(net, worm.x, worm.y, worm.hitR);
         if (!touching) {
           for (let g = 0; g < worm.segCount; g++) {
-            if (this.netReaches(net, worm.segX[g], worm.segY[g], WORM.segmentRadius)) {
+            if (this.netReaches(net, worm.segX[g], worm.segY[g], worm.segR)) {
               touching = true;
               break;
             }
@@ -6849,7 +6852,7 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      this.shoveClearOfBlast(w, p.x, p.y, radius, clear, WORM.knockDrag, WORM.headRadius);
+      this.shoveClearOfBlast(w, p.x, p.y, radius, clear, WORM.knockDrag, w.hitR);
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
@@ -7263,7 +7266,7 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      if (!this.armTouches(p, w.x, w.y, WORM.headRadius)) continue;
+      if (!this.armTouches(p, w.x, w.y, w.hitR)) continue;
       const ux = this.pinballBodyAim(p, w.x, w.y, -1, i, -1, -1, -1);
       this.damageWorm(w, PINBALL.armDamage, p.slot, ux, this.pinAimY, PINBALL.armKnockback);
       this.swatPinballArm(p);
@@ -9235,7 +9238,7 @@ export class World {
       if (!w.active || w.held) continue;
       const beforeX = w.x;
       const beforeY = w.y;
-      this.shiftSwipeBody(w, dx, WORM.segmentRadius);
+      this.shiftSwipeBody(w, dx, w.segR);
       const moveX = w.x - beforeX;
       const moveY = w.y - beforeY;
       for (let s = 0; s < w.segCount; s++) {
@@ -9310,7 +9313,7 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      if (!circleRect(w.x, w.y, WORM.segmentRadius, solid, hitScratch)) continue;
+      if (!circleRect(w.x, w.y, w.segR, solid, hitScratch)) continue;
       const mx = hitScratch.px - w.x;
       const my = hitScratch.py - w.y;
       w.x = hitScratch.px;
@@ -9728,9 +9731,9 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      let hit = this.pongBounceOff(w.x, w.y, WORM.headRadius);
+      let hit = this.pongBounceOff(w.x, w.y, w.hitR);
       for (let s = 0; s < w.segCount && !hit; s++) {
-        hit = this.pongBounceOff(w.segX[s], w.segY[s], WORM.segmentRadius);
+        hit = this.pongBounceOff(w.segX[s], w.segY[s], w.segR);
       }
       if (hit) this.damageWorm(w, pong.enemyDamage, -1, this.pongHitNx, this.pongHitNy);
     }
@@ -9833,9 +9836,9 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      let hit = circleRect(w.x, w.y, WORM.headRadius, cell, hitScratch);
+      let hit = circleRect(w.x, w.y, w.hitR, cell, hitScratch);
       for (let s = 0; s < w.segCount && !hit; s++) {
-        hit = circleRect(w.segX[s], w.segY[s], WORM.segmentRadius, cell, hitScratch);
+        hit = circleRect(w.segX[s], w.segY[s], w.segR, cell, hitScratch);
       }
       if (hit) this.damageWorm(w, flip.enemyDamage, -1, 0, -1);
     }
@@ -9990,9 +9993,9 @@ export class World {
       for (let j = 0; j < this.worms.length && !hit; j++) {
         const w = this.worms[j];
         if (!w.active) continue;
-        let touched = this.invaderShotHitsBody(shot, w.x, w.y, WORM.headRadius);
+        let touched = this.invaderShotHitsBody(shot, w.x, w.y, w.hitR);
         for (let s = 0; s < w.segCount && !touched; s++) {
-          touched = this.invaderShotHitsBody(shot, w.segX[s], w.segY[s], WORM.segmentRadius);
+          touched = this.invaderShotHitsBody(shot, w.segX[s], w.segY[s], w.segR);
         }
         if (!touched) continue;
         this.damageWorm(w, inv.enemyDamage, -1, 0, -1);
@@ -10737,7 +10740,7 @@ export class World {
     if (!this.arena.bumpers) return;
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
-      if (w.active) this.bumpBody(w, WORM.headRadius);
+      if (w.active) this.bumpBody(w, w.hitR);
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
@@ -11113,9 +11116,9 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      let hit = Math.hypot(w.x - cx, w.y - cy) <= r + WORM.headRadius;
+      let hit = Math.hypot(w.x - cx, w.y - cy) <= r + w.hitR;
       for (let s = 0; s < w.segCount && !hit; s++) {
-        hit = Math.hypot(w.segX[s] - cx, w.segY[s] - cy) <= r + WORM.segmentRadius;
+        hit = Math.hypot(w.segX[s] - cx, w.segY[s] - cy) <= r + w.segR;
       }
       if (hit) this.damageWorm(w, BROWSER.enemyDamage, -1, 0, 0);
     }
@@ -11167,7 +11170,7 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      this.pushBodyOutOfBrowser(w, WORM.headRadius);
+      this.pushBodyOutOfBrowser(w, w.hitR);
       for (let s = 0; s < w.segCount; s++) {
         const body = this.browserBodyScratch;
         body.x = w.segX[s];
@@ -11339,9 +11342,9 @@ export class World {
       if (!w.active) continue;
       const bit = 1 << i;
       if (this.scannerHitWorms & bit) continue;
-      let hit = this.scannerHits(w.x, w.y, WORM.headRadius, sc, line, half);
+      let hit = this.scannerHits(w.x, w.y, w.hitR, sc, line, half);
       for (let s = 0; s < w.segCount && !hit; s++) {
-        hit = this.scannerHits(w.segX[s], w.segY[s], WORM.segmentRadius, sc, line, half);
+        hit = this.scannerHits(w.segX[s], w.segY[s], w.segR, sc, line, half);
       }
       if (!hit) continue;
       this.scannerHitWorms |= bit;
@@ -11463,9 +11466,9 @@ export class World {
       if (!w.active) continue;
       const bit = 1 << i;
       if (this.faxHitWorms & bit) continue;
-      let hit = this.faxHits(w.x, w.y, WORM.headRadius, fx, headX, half);
+      let hit = this.faxHits(w.x, w.y, w.hitR, fx, headX, half);
       for (let s = 0; s < w.segCount && !hit; s++) {
-        hit = this.faxHits(w.segX[s], w.segY[s], WORM.segmentRadius, fx, headX, half);
+        hit = this.faxHits(w.segX[s], w.segY[s], w.segR, fx, headX, half);
       }
       if (!hit) continue;
       this.faxHitWorms |= bit;
@@ -11599,9 +11602,9 @@ export class World {
       let hit = false;
       for (let a = 0; a < plug.arcs.length && !hit; a++) {
         const arc = plug.arcs[a];
-        hit = this.plugArcHit(arc, w.x, w.y, WORM.headRadius, plug.arcWidth);
+        hit = this.plugArcHit(arc, w.x, w.y, w.hitR, plug.arcWidth);
         for (let s = 0; s < w.segCount && !hit; s++) {
-          hit = this.plugArcHit(arc, w.segX[s], w.segY[s], WORM.segmentRadius, plug.arcWidth);
+          hit = this.plugArcHit(arc, w.segX[s], w.segY[s], w.segR, plug.arcWidth);
         }
       }
       if (!hit) continue;
@@ -11798,8 +11801,8 @@ export class World {
       if (!w.active) continue;
       const bit = 1 << i;
       if (this.watchHitWorms & bit) continue;
-      let hit = this.watchHits(w.x, w.y, WORM.headRadius);
-      for (let s = 0; s < w.segCount && !hit; s++) hit = this.watchHits(w.segX[s], w.segY[s], WORM.segmentRadius);
+      let hit = this.watchHits(w.x, w.y, w.hitR);
+      for (let s = 0; s < w.segCount && !hit; s++) hit = this.watchHits(w.segX[s], w.segY[s], w.segR);
       if (!hit) continue;
       this.watchHitWorms |= bit;
       this.damageWorm(w, watch.enemyDamage, -1, this.watchHitNx, this.watchHitNy, watch.knockback);
@@ -11965,7 +11968,7 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      this.pushBodyOutOfLaptop(w, WORM.headRadius);
+      this.pushBodyOutOfLaptop(w, w.hitR);
       for (let s = 0; s < w.segCount; s++) {
         const body = this.laptopBodyScratch;
         body.x = w.segX[s];
@@ -12264,9 +12267,9 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      let hit = circleRect(w.x, w.y, WORM.headRadius, key, hitScratch);
+      let hit = circleRect(w.x, w.y, w.hitR, key, hitScratch);
       for (let s = 0; s < w.segCount && !hit; s++) {
-        hit = circleRect(w.segX[s], w.segY[s], WORM.segmentRadius, key, hitScratch);
+        hit = circleRect(w.segX[s], w.segY[s], w.segR, key, hitScratch);
       }
       if (hit) this.damageWorm(w, KEYPAD.threatDamage, -1, 0, -1);
     }
@@ -12322,7 +12325,7 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      this.pushBodyOutOfKeypad(w, WORM.headRadius);
+      this.pushBodyOutOfKeypad(w, w.hitR);
       for (let s = 0; s < w.segCount; s++) {
         const body = this.keypadBodyScratch;
         body.x = w.segX[s];
@@ -13794,9 +13797,26 @@ export class World {
       }
     }
 
+    // The boss gate. It uses the same edge ingress as every other arrival, so a boss
+    // is announced by a portal on the rim rather than appearing beside the player.
+    if (!this.campaign && !this.infectionMode && !this.gauntletPractice) {
+      const gate = this.wave - MEGA_WORM.wave;
+      if (
+        gate >= 0 &&
+        gate % MEGA_WORM.repeatStep === 0 &&
+        this.megaWave !== this.wave &&
+        this.megaLiveCount() === 0
+      ) {
+        this.megaWave = this.wave;
+        this.queueAssault(3, 0, 1);
+      }
+    }
+
     if (this.wave >= GAUNTLET.wormWave) {
       let wormCount = 0;
-      for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) wormCount++;
+      for (let i = 0; i < this.worms.length; i++) {
+        if (this.worms[i].active && !this.worms[i].mega) wormCount++;
+      }
       if (wormCount < this.wormLimit()) {
         this.wormSpawnT -= dt;
         if (this.wormSpawnT <= 0) {
@@ -13887,7 +13907,7 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      this.clampToDisc(w, WORM.headRadius, cx, cy, disc.radius);
+      this.clampToDisc(w, w.hitR, cx, cy, disc.radius);
       for (let s = 0; s < w.segCount; s++) {
         let dx = w.segX[s] - cx;
         let dy = w.segY[s] - cy;
@@ -14020,7 +14040,7 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      if (!this.readerHit(w.x, w.y, WORM.headRadius, disc, dAng)) continue;
+      if (!this.readerHit(w.x, w.y, w.hitR, disc, dAng)) continue;
       w.x += this.armMoveX;
       w.y += this.armMoveY;
       w.kx = this.armShoveX;
@@ -14306,8 +14326,8 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      if (w.y > front + WORM.headRadius) continue;
-      w.y = Math.min(bottom - WORM.headRadius, front + WORM.headRadius);
+      if (w.y > front + w.hitR) continue;
+      w.y = Math.min(bottom - w.hitR, front + w.hitR);
       w.ky = 0;
     }
     for (let i = 0; i < this.viruses.length; i++) {
@@ -14405,6 +14425,7 @@ export class World {
     if (family === 0) this.spawnSentry(kind as 0 | 1 | 2 | 3, x, y, true);
     else if (family === 1) this.spawnWorm(x, y);
     else if (family === 2) this.spawnVirus(x, y);
+    else if (family === 3) this.spawnMegaWorm(x, y);
     this.emit(EV.PROP_HIT, 0, portal.x, portal.y, 1);
   }
 
@@ -15186,7 +15207,14 @@ export class World {
     if (!w) return null;
     const spawn = x !== undefined && y !== undefined ? { x, y } : this.arena.spawns[this.wormAnchorIndex()];
     w.active = true;
+    w.mega = false;
     w.held = held;
+    w.hitR = w.hitR;
+    w.segR = w.segR;
+    w.legs = false;
+    w.eyeT = 0;
+    w.whipT = 0;
+    w.acidT = 0;
     w.x = spawn.x;
     w.y = spawn.y;
     w.prevX = w.x;
@@ -15276,7 +15304,644 @@ export class World {
     w.retargetT = this.rng.range(WORM.retargetMin, WORM.retargetMax);
   }
 
+
+  // --- Mega Worm -----------------------------------------------------------
+  //
+  // The boss is still a Worm: it lives in the same pool, so bots, projectiles,
+  // melee sweeps, blasts and arena hazards already target it. What changes is that
+  // every plate on the chain carries its own health, and a plate that breaks either
+  // promotes a new head or tears the chain in two.
+
+  private megaNodeX(w: Worm, node: number): number {
+    return node === 0 ? w.x : w.segX[node - 1];
+  }
+
+  private megaNodeY(w: Worm, node: number): number {
+    return node === 0 ? w.y : w.segY[node - 1];
+  }
+
+  private megaLiveCount(): number {
+    let live = 0;
+    for (let i = 0; i < this.worms.length; i++) {
+      if (this.worms[i].active && this.worms[i].mega) live++;
+    }
+    return live;
+  }
+
+  private megaTotalHp(w: Worm): number {
+    let total = 0;
+    const nodes = w.segCount + 1;
+    for (let i = 0; i < nodes; i++) total += Math.max(0, w.segHp[i]);
+    return total;
+  }
+
+  /** Land a boss. Its plates are strung out behind the head along its facing. */
+  spawnMegaWorm(x?: number, y?: number): Worm | null {
+    let w: Worm | null = null;
+    for (let i = 0; i < this.worms.length; i++) {
+      if (!this.worms[i].active) {
+        w = this.worms[i];
+        break;
+      }
+    }
+    if (!w) return null;
+    const spawn = x !== undefined && y !== undefined ? { x, y } : this.arena.spawns[this.wormAnchorIndex()];
+    w.active = true;
+    w.mega = true;
+    w.held = false;
+    w.hitR = MEGA_WORM.headRadius;
+    w.segR = MEGA_WORM.segmentRadius;
+    w.shrink = 1;
+    w.x = Math.max(this.arena.bounds.left + w.hitR, Math.min(this.arena.bounds.right - w.hitR, spawn.x));
+    w.y = Math.max(this.arena.bounds.top + w.hitR, Math.min(this.arena.bounds.bottom - w.hitR, spawn.y));
+    w.prevX = w.x;
+    w.prevY = w.y;
+    w.vx = 0;
+    w.vy = 0;
+    w.kx = 0;
+    w.ky = 0;
+    w.angle = Math.atan2(this.centerY - w.y, this.centerX - w.x);
+    w.anchorX = w.x;
+    w.anchorY = w.y;
+    w.patrolX = w.x;
+    w.patrolY = w.y;
+    w.aggroT = 0;
+    w.segCount = MEGA_WORM.segments;
+    w.spawnT = MEGA_WORM.spawnTime;
+    w.touchCd = 0;
+    w.hitFlash = 0;
+    w.infected = false;
+    w.phase = this.rng.range(0, Math.PI * 2);
+    w.pinT = 0;
+    w.legs = false;
+    w.eyeT = 1.4;
+    w.whipT = 0;
+    w.whipCd = 1.8;
+    w.whipDir = 1;
+    w.whipHit = 0;
+    w.whipA = 0;
+    w.whipR = 0;
+    w.whipPivotX = w.x;
+    w.whipPivotY = w.y;
+    w.acidT = MEGA_WORM.legs.acidInterval;
+    w.biteT = 0;
+    w.biteCd = MEGA_WORM.bite.cooldown * 0.6;
+    w.biteHit = false;
+    w.biteDirX = Math.cos(w.angle);
+    w.biteDirY = Math.sin(w.angle);
+    w.segHp[0] = MEGA_WORM.headHp;
+    w.segMaxHp[0] = MEGA_WORM.headHp;
+    const ca = Math.cos(w.angle);
+    const sa = Math.sin(w.angle);
+    const nodes = MEGA_WORM.maxSegments + 1;
+    for (let i = 0; i < nodes - 1; i++) {
+      const sx = Math.max(
+        this.arena.bounds.left + w.segR,
+        Math.min(this.arena.bounds.right - w.segR, w.x - ca * MEGA_WORM.spacing * (i + 1)),
+      );
+      const sy = Math.max(
+        this.arena.bounds.top + w.segR,
+        Math.min(this.arena.bounds.bottom - w.segR, w.y - sa * MEGA_WORM.spacing * (i + 1)),
+      );
+      w.segX[i] = sx;
+      w.segY[i] = sy;
+      w.segPrevX[i] = sx;
+      w.segPrevY[i] = sy;
+      w.segAngle[i] = w.angle;
+      const hp = i < w.segCount ? MEGA_WORM.hpPerSegment : 0;
+      w.segHp[i + 1] = hp;
+      w.segMaxHp[i + 1] = MEGA_WORM.hpPerSegment;
+    }
+    w.maxHp = MEGA_WORM.headHp + w.segCount * MEGA_WORM.hpPerSegment;
+    w.hp = w.maxHp;
+    this.emit(EV.PROP_BREAK, 0, w.x, w.y, 64);
+    return w;
+  }
+
+  /**
+   * A hit lands on the plate nearest the contact point. Shells pass their own position,
+   * melee shells fall back to the attacker's side, so a pair can chew the boss from
+   * both ends of the same plate.
+   */
+  private damageMegaWorm(
+    w: Worm,
+    amount: number,
+    sourceSlot: number,
+    dirX: number,
+    dirY: number,
+    force: number,
+    hitX: number,
+    hitY: number,
+  ): void {
+    const nodes = w.segCount + 1;
+    let hx = hitX;
+    let hy = hitY;
+    if (!Number.isFinite(hx) || !Number.isFinite(hy)) {
+      const p = this.threatTarget(w.x, w.y);
+      hx = p.x;
+      hy = p.y;
+    }
+    let node = 0;
+    let best = Infinity;
+    for (let k = 0; k < nodes; k++) {
+      const nx = this.megaNodeX(w, k);
+      const ny = this.megaNodeY(w, k);
+      const d = (nx - hx) * (nx - hx) + (ny - hy) * (ny - hy);
+      if (d < best) {
+        best = d;
+        node = k;
+      }
+    }
+    const bx = this.megaNodeX(w, node);
+    const by = this.megaNodeY(w, node);
+    w.segHp[node] -= amount;
+    w.hitFlash = 0.22;
+    if (sourceSlot >= 0) w.aggroT = MEGA_WORM.aggroTime;
+    if (force > 0 && node === 0) {
+      w.kx += dirX * force;
+      w.ky += dirY * force;
+    }
+    this.emit(EV.WORM_HIT, sourceSlot, bx, by, amount, dirX, dirY);
+    if (w.segHp[node] <= 0) this.breakMegaNode(w, node, sourceSlot);
+    if (w.active) w.hp = this.megaTotalHp(w);
+  }
+
+  /**
+   * One plate gone. A head loss promotes the plate behind it, a tail loss just shortens
+   * the chain, and a cut through the middle detaches the back half as its own worm whose
+   * far tip opens eyes. A detached piece shorter than two plates is shredded instead.
+   */
+  private breakMegaNode(w: Worm, node: number, sourceSlot: number): void {
+    const bx = this.megaNodeX(w, node);
+    const by = this.megaNodeY(w, node);
+    this.emit(EV.PROP_BREAK, -1, bx, by, 46);
+
+    if (node === 0) {
+      if (w.segCount === 0) {
+        this.killMegaWorm(w, sourceSlot);
+        return;
+      }
+      // The closest plate opens its eyes and takes the chain over.
+      w.x = w.segX[0];
+      w.y = w.segY[0];
+      const nodes = w.segCount + 1;
+      for (let i = 0; i < w.segCount - 1; i++) {
+        w.segX[i] = w.segX[i + 1];
+        w.segY[i] = w.segY[i + 1];
+        w.segPrevX[i] = w.segX[i];
+        w.segPrevY[i] = w.segY[i];
+        w.segAngle[i] = w.segAngle[i + 1];
+      }
+      for (let i = 1; i < nodes; i++) w.segHp[i - 1] = w.segHp[i];
+      w.segCount--;
+      w.eyeT = 1.2;
+      w.hitFlash = 0.3;
+      w.legs = w.segCount === 0;
+      w.hp = this.megaTotalHp(w);
+      this.emit(EV.WORM_HIT, -1, w.x, w.y, 3, 0, 0);
+      return;
+    }
+
+    const s = node - 1;
+    if (node === w.segCount) {
+      // The tail plate snaps off cleanly; no head to promote.
+      w.segCount--;
+      w.legs = w.segCount === 0;
+      w.hp = this.megaTotalHp(w);
+      return;
+    }
+
+    const backFirst = s + 1;
+    const backLast = w.segCount - 1;
+    const backNodes = backLast - backFirst + 1;
+    w.segCount = s;
+    w.legs = w.segCount === 0;
+    w.hp = this.megaTotalHp(w);
+    if (backNodes >= 2) this.splitMegaPiece(w, backFirst, backLast);
+  }
+
+  /** The detached half becomes a boss in its own right, head at the old tail tip. */
+  private splitMegaPiece(parent: Worm, from: number, to: number): void {
+    let piece: Worm | null = null;
+    for (let i = 0; i < this.worms.length; i++) {
+      if (!this.worms[i].active) {
+        piece = this.worms[i];
+        break;
+      }
+    }
+    // No free body: the cut part is shredded rather than left standing.
+    if (!piece) return;
+    const nodes = to - from + 1;
+    piece.active = true;
+    piece.mega = true;
+    piece.held = false;
+    piece.hitR = MEGA_WORM.headRadius;
+    piece.segR = MEGA_WORM.segmentRadius;
+    piece.shrink = 1;
+    piece.segCount = nodes - 1;
+    piece.x = parent.segX[to];
+    piece.y = parent.segY[to];
+    piece.prevX = piece.x;
+    piece.prevY = piece.y;
+    piece.vx = 0;
+    piece.vy = 0;
+    piece.kx = 0;
+    piece.ky = 0;
+    const inX = to > 0 ? parent.segX[to - 1] : parent.x;
+    const inY = to > 0 ? parent.segY[to - 1] : parent.y;
+    piece.angle = Math.atan2(inY - piece.y, inX - piece.x);
+    piece.phase = parent.phase + 1.7;
+    piece.spawnT = MEGA_WORM.spawnTime * 0.55;
+    piece.touchCd = 0.7;
+    piece.hitFlash = 0.22;
+    piece.infected = false;
+    piece.pinT = 0;
+    piece.aggroT = MEGA_WORM.aggroTime;
+    piece.anchorX = piece.x;
+    piece.anchorY = piece.y;
+    piece.patrolX = piece.x;
+    piece.patrolY = piece.y;
+    piece.eyeT = 1.2;
+    piece.whipT = 0;
+    piece.whipCd = 1.4;
+    piece.whipDir = 1;
+    piece.whipHit = 0;
+    piece.whipA = 0;
+    piece.whipR = 0;
+    piece.whipPivotX = piece.x;
+    piece.whipPivotY = piece.y;
+    piece.acidT = MEGA_WORM.legs.acidInterval;
+    piece.biteT = 0;
+    piece.biteCd = MEGA_WORM.bite.cooldown * 0.5;
+    piece.biteHit = false;
+    piece.biteDirX = Math.cos(piece.angle);
+    piece.biteDirY = Math.sin(piece.angle);
+    piece.segHp[0] = Math.max(1, parent.segHp[to + 1]);
+    let total = piece.segHp[0];
+    for (let j = 0; j < piece.segCount; j++) {
+      const oldSeg = to - 1 - j;
+      const sx = parent.segX[oldSeg];
+      const sy = parent.segY[oldSeg];
+      piece.segX[j] = sx;
+      piece.segY[j] = sy;
+      piece.segPrevX[j] = sx;
+      piece.segPrevY[j] = sy;
+      piece.segAngle[j] = parent.segAngle[oldSeg];
+      piece.segHp[j + 1] = Math.max(1, parent.segHp[oldSeg + 1]);
+      total += piece.segHp[j + 1];
+    }
+    for (let j = piece.segCount + 1; j < piece.segHp.length; j++) piece.segHp[j] = 0;
+    piece.maxHp = total;
+    piece.hp = total;
+    piece.legs = piece.segCount === 0;
+    this.emit(EV.WORM_HIT, -1, piece.x, piece.y, 3, 0, 0);
+  }
+
+  private killMegaWorm(w: Worm, sourceSlot: number): void {
+    const nodes = w.segCount + 1;
+    for (let k = 0; k < nodes; k++) {
+      this.emit(EV.WORM_KILL, sourceSlot, this.megaNodeX(w, k), this.megaNodeY(w, k), 120, 0, 0);
+    }
+    w.active = false;
+    w.segCount = 0;
+    if (sourceSlot === 0) {
+      this.gauntletKills++;
+      this.dropPickupFromKill(w.x, w.y, true);
+    }
+  }
+
+  private updateMegaWorm(w: Worm, dt: number): void {
+    w.prevX = w.x;
+    w.prevY = w.y;
+    w.phase += dt;
+    if (w.hitFlash > 0) w.hitFlash = Math.max(0, w.hitFlash - dt);
+    if (w.touchCd > 0) w.touchCd = Math.max(0, w.touchCd - dt);
+    if (w.biteCd > 0) w.biteCd = Math.max(0, w.biteCd - dt);
+    if (w.whipCd > 0) w.whipCd = Math.max(0, w.whipCd - dt);
+    if (w.acidT > 0) w.acidT = Math.max(0, w.acidT - dt);
+    if (w.eyeT > 0) w.eyeT = Math.max(0, w.eyeT - dt);
+    if (w.spawnT > 0) {
+      w.spawnT = Math.max(0, w.spawnT - dt);
+      w.vx = 0;
+      w.vy = 0;
+      this.followMegaChain(w, dt);
+      return;
+    }
+    if (w.pinT > 0) {
+      w.pinT = Math.max(0, w.pinT - dt);
+      w.vx = 0;
+      w.vy = 0;
+      this.followMegaChain(w, dt);
+      return;
+    }
+
+    w.legs = w.segCount === 0;
+    const p = this.threatTarget(w.x, w.y);
+    const pdx = p.x - w.x;
+    const pdy = p.y - w.y;
+    const dist = Math.hypot(pdx, pdy);
+    const awake = p.alive && p.cloakT <= 0 && dist < MEGA_WORM.aggroRadius;
+    if (awake) w.aggroT = MEGA_WORM.aggroTime;
+    else w.aggroT = Math.max(0, w.aggroT - dt);
+
+    // Body whip first: it owns the whole body for a beat, so nothing else may steer.
+    if (w.whipT > 0 || (w.whipCd <= 0 && awake && !w.legs && dist < MEGA_WORM.whip.range)) {
+      if (w.whipT <= 0) this.beginMegaWhip(w, pdx, pdy);
+      this.stepMegaWhip(w, dt);
+      this.followMegaChain(w, dt);
+      this.megaTouch(w, p);
+      return;
+    }
+
+    const attack = w.legs ? MEGA_WORM.legs : MEGA_WORM.bite;
+    let moving = false;
+    if (w.biteT > 0) {
+      const elapsed = attack.windup + attack.active + attack.recovery - w.biteT;
+      const biteTurn = (w.legs ? MEGA_WORM.legs.turnRateBite : MEGA_WORM.bite.turnRate) * dt;
+      const face = Math.atan2(w.biteDirY, w.biteDirX);
+      let diff = face - w.angle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      w.angle += Math.max(-biteTurn, Math.min(biteTurn, diff));
+      if (elapsed < attack.windup) {
+        w.vx = 0;
+        w.vy = 0;
+      } else if (elapsed < attack.windup + attack.active) {
+        w.vx = w.biteDirX * attack.lungeSpeed;
+        w.vy = w.biteDirY * attack.lungeSpeed;
+      } else {
+        w.vx = 0;
+        w.vy = 0;
+      }
+      w.biteT = Math.max(0, w.biteT - dt);
+      moving = true;
+      const reach = w.hitR + PLAYER.radius + attack.reach;
+      if (
+        elapsed >= attack.windup &&
+        elapsed < attack.windup + attack.active &&
+        !w.biteHit &&
+        p.alive &&
+        p.cloakT <= 0
+      ) {
+        const bdx = p.x - w.x;
+        const bdy = p.y - w.y;
+        const forward = bdx * w.biteDirX + bdy * w.biteDirY;
+        if (
+          forward > 0 &&
+          bdx * bdx + bdy * bdy <= reach * reach &&
+          !this.lineBlocked(w.x, w.y, p.x, p.y)
+        ) {
+          const d = Math.hypot(bdx, bdy) || 1;
+          w.biteHit = true;
+          w.aggroT = MEGA_WORM.aggroTime;
+          this.damagePlayer(
+            p,
+            attack.damage,
+            -1,
+            bdx / d,
+            bdy / d,
+            attack.knockback,
+            SRC.WORM,
+            this.worms.indexOf(w),
+          );
+        }
+      }
+    }
+
+    if (!moving) {
+      // A slow body: the mass is the threat, not the pursuit.
+      let tx = p.x;
+      let ty = p.y;
+      if (w.aggroT <= 0) {
+        tx = w.anchorX + Math.cos(w.phase * 0.32) * MEGA_WORM.patrolRadius;
+        ty = w.anchorY + Math.sin(w.phase * 0.27) * MEGA_WORM.patrolRadius * 0.7;
+      }
+      let desired = Math.atan2(ty - w.y, tx - w.x);
+      desired += Math.sin(w.phase * 0.9) * 0.08;
+      let diff = desired - w.angle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      const turn = (w.legs ? MEGA_WORM.legs.turnRate : MEGA_WORM.turnRate) * dt;
+      w.angle += Math.max(-turn, Math.min(turn, diff));
+      const speed = w.legs
+        ? MEGA_WORM.speed * MEGA_WORM.legs.speedMult
+        : MEGA_WORM.speed * (w.aggroT > 0 ? 1 : MEGA_WORM.patrolSpeedMult);
+      w.vx = Math.cos(w.angle) * speed;
+      w.vy = Math.sin(w.angle) * speed;
+
+      if (
+        w.biteCd <= 0 &&
+        awake &&
+        dist < attack.range &&
+        !this.lineBlocked(w.x, w.y, p.x, p.y)
+      ) {
+        const d = dist || 1;
+        w.biteT = attack.windup + attack.active + attack.recovery;
+        w.biteCd = attack.cooldown;
+        w.biteHit = false;
+        w.biteDirX = pdx / d;
+        w.biteDirY = pdy / d;
+      }
+    }
+
+    w.x += (w.vx + w.kx) * dt;
+    w.y += (w.vy + w.ky) * dt;
+    w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
+    w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
+    if (!this.openWalls) {
+      const pad = w.hitR + WORM.wallPad;
+      w.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.x));
+      w.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.y));
+    }
+    this.pushOutOfCover(w, w.hitR);
+    this.followMegaChain(w, dt);
+    this.megaTouch(w, p);
+    if (w.legs) this.spitAcid(w, p);
+  }
+
+  private followMegaChain(w: Worm, dt: number): void {
+    for (let i = 0; i < w.segCount; i++) {
+      w.segPrevX[i] = w.segX[i];
+      w.segPrevY[i] = w.segY[i];
+      const ax = i === 0 ? w.x : w.segX[i - 1];
+      const ay = i === 0 ? w.y : w.segY[i - 1];
+      const dx = ax - w.segX[i];
+      const dy = ay - w.segY[i];
+      const d = Math.hypot(dx, dy);
+      if (d > 0.001) {
+        const targetX = ax - (dx / d) * MEGA_WORM.spacing;
+        const targetY = ay - (dy / d) * MEGA_WORM.spacing;
+        const k = Math.min(1, MEGA_WORM.followRate * dt);
+        w.segX[i] += (targetX - w.segX[i]) * k;
+        w.segY[i] += (targetY - w.segY[i]) * k;
+        w.segAngle[i] = Math.atan2(ay - w.segY[i], ax - w.segX[i]);
+      }
+      w.segX[i] = Math.max(
+        this.arena.bounds.left + w.segR,
+        Math.min(this.arena.bounds.right - w.segR, w.segX[i]),
+      );
+      w.segY[i] = Math.max(
+        this.arena.bounds.top + w.segR,
+        Math.min(this.arena.bounds.bottom - w.segR, w.segY[i]),
+      );
+      for (let s = 0; s < this.solids.length; s++) {
+        if (!circleRect(w.segX[i], w.segY[i], w.segR, this.solids[s], hitScratch)) continue;
+        w.segX[i] = hitScratch.px;
+        w.segY[i] = hitScratch.py;
+      }
+    }
+  }
+
+  /** Start a committed swing: the head curls back, then drags the chain through an arc. */
+  private beginMegaWhip(w: Worm, dx: number, dy: number): void {
+    const cfg = MEGA_WORM.whip;
+    const pivot = Math.min(2, w.segCount);
+    w.whipT = cfg.windup + cfg.active + cfg.recovery;
+    w.whipCd = cfg.cooldown;
+    w.whipHit = 0;
+    w.whipPivotX = this.megaNodeX(w, pivot);
+    w.whipPivotY = this.megaNodeY(w, pivot);
+    w.whipA = Math.atan2(w.y - w.whipPivotY, w.x - w.whipPivotX);
+    w.whipR = Math.max(120, Math.hypot(w.x - w.whipPivotX, w.y - w.whipPivotY));
+    const cross = Math.cos(w.angle) * dy - Math.sin(w.angle) * dx;
+    w.whipDir = cross >= 0 ? -1 : 1;
+  }
+
+  private stepMegaWhip(w: Worm, dt: number): void {
+    const cfg = MEGA_WORM.whip;
+    const total = cfg.windup + cfg.active + cfg.recovery;
+    const elapsed = total - w.whipT;
+    w.whipT = Math.max(0, w.whipT - dt);
+    let a = w.whipA;
+    let live = false;
+    if (elapsed < cfg.windup) {
+      a = w.whipA - w.whipDir * cfg.curl * (elapsed / cfg.windup);
+      w.vx = 0;
+      w.vy = 0;
+    } else if (elapsed < cfg.windup + cfg.active) {
+      const raw = (elapsed - cfg.windup) / cfg.active;
+      const e = raw * raw * (3 - 2 * raw);
+      a = w.whipA - w.whipDir * cfg.curl + w.whipDir * cfg.sweepArc * e;
+      live = true;
+      w.vx = 0;
+      w.vy = 0;
+    } else {
+      a = w.whipA - w.whipDir * cfg.curl + w.whipDir * cfg.sweepArc;
+      w.vx = 0;
+      w.vy = 0;
+    }
+    w.x = w.whipPivotX + Math.cos(a) * w.whipR;
+    w.y = w.whipPivotY + Math.sin(a) * w.whipR;
+    if (!live) return;
+
+    const nodes = w.segCount + 1;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.cloakT > 0 || p.iframes > 0) continue;
+      if ((w.whipHit & (1 << i)) !== 0) continue;
+      let hit = false;
+      for (let k = 0; k < nodes; k++) {
+        const nx = this.megaNodeX(w, k);
+        const ny = this.megaNodeY(w, k);
+        const r = (k === 0 ? w.hitR : w.segR) + PLAYER.radius + 6;
+        const ddx = p.x - nx;
+        const ddy = p.y - ny;
+        if (ddx * ddx + ddy * ddy <= r * r) {
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) continue;
+      // Thrown along the sweep, not straight out: the arc is what carries a body.
+      const rx = p.x - w.whipPivotX;
+      const ry = p.y - w.whipPivotY;
+      const d = Math.hypot(rx, ry) || 1;
+      const kx = (-ry / d) * w.whipDir;
+      const ky = (rx / d) * w.whipDir;
+      w.whipHit |= 1 << i;
+      w.aggroT = MEGA_WORM.aggroTime;
+      this.damagePlayer(
+        p,
+        cfg.damage,
+        -1,
+        kx,
+        ky,
+        cfg.knockback,
+        SRC.WORM,
+        this.worms.indexOf(w),
+      );
+    }
+  }
+
+  /** Body contact still hurts: the boss is a wall of plates, not a bag of health. */
+  private megaTouch(w: Worm, p: Player): void {
+    if (!p.alive || p.cloakT > 0 || w.touchCd > 0) return;
+    const nodes = w.segCount + 1;
+    let hit = false;
+    let hx = 0;
+    let hy = 0;
+    for (let k = 0; k < nodes; k++) {
+      const nx = this.megaNodeX(w, k);
+      const ny = this.megaNodeY(w, k);
+      const r = (k === 0 ? w.hitR : w.segR) + PLAYER.radius;
+      const dx = p.x - nx;
+      const dy = p.y - ny;
+      if (dx * dx + dy * dy <= r * r) {
+        hit = true;
+        hx = dx;
+        hy = dy;
+        break;
+      }
+    }
+    if (!hit) return;
+    const d = Math.hypot(hx, hy) || 1;
+    w.touchCd = MEGA_WORM.touchCooldown;
+    this.damagePlayer(
+      p,
+      MEGA_WORM.touchDamage,
+      -1,
+      hx / d,
+      hy / d,
+      MEGA_WORM.knockback * 0.6,
+      SRC.WORM,
+      this.worms.indexOf(w),
+    );
+  }
+
+  /** Last plate: legs, a sprint and thrown acid. */
+  private spitAcid(w: Worm, p: Player): void {
+    if (w.acidT > 0) return;
+    const cfg = MEGA_WORM.legs;
+    if (!p.alive || p.cloakT > 0) return;
+    const dx = p.x - w.x;
+    const dy = p.y - w.y;
+    if (dx * dx + dy * dy > cfg.acidRange * cfg.acidRange) return;
+    if (this.lineBlocked(w.x, w.y, p.x, p.y)) return;
+    w.acidT = cfg.acidInterval;
+    const base = Math.atan2(dy, dx);
+    const sx = w.x + Math.cos(base) * (w.hitR + 6);
+    const sy = w.y + Math.sin(base) * (w.hitR + 6);
+    for (let side = -1; side <= 1; side += 2) {
+      this.spawnHostileProjectile(
+        sx,
+        sy,
+        base + side * cfg.acidSpread,
+        cfg.acidSpeed,
+        cfg.acidRadius,
+        cfg.acidDamage,
+        3,
+        cfg.acidTtl,
+        this.worms.indexOf(w),
+      );
+    }
+    this.emit(EV.SENTRY_SHOOT, -1, sx, sy, base);
+  }
+
   private updateWorm(w: Worm, dt: number): void {
+    if (w.mega) {
+      this.updateMegaWorm(w, dt);
+      return;
+    }
     w.prevX = w.x;
     w.prevY = w.y;
     w.phase += dt;
@@ -15409,7 +16074,7 @@ export class World {
     }
     // Worms are not one of the cover-phasing threats. Their chain is pushed out of
     // geometry exactly like a player body, so cover is real against them.
-    this.pushOutOfCover(w, WORM.headRadius);
+    this.pushOutOfCover(w, w.hitR);
 
     for (let i = 0; i < w.segCount; i++) {
       w.segPrevX[i] = w.segX[i];
@@ -15427,10 +16092,10 @@ export class World {
         w.segY[i] += (targetY - w.segY[i]) * k;
         w.segAngle[i] = Math.atan2(ay - w.segY[i], ax - w.segX[i]);
       }
-      w.segX[i] = Math.max(this.arena.bounds.left + WORM.segmentRadius, Math.min(this.arena.bounds.right - WORM.segmentRadius, w.segX[i]));
-      w.segY[i] = Math.max(this.arena.bounds.top + WORM.segmentRadius, Math.min(this.arena.bounds.bottom - WORM.segmentRadius, w.segY[i]));
+      w.segX[i] = Math.max(this.arena.bounds.left + w.segR, Math.min(this.arena.bounds.right - w.segR, w.segX[i]));
+      w.segY[i] = Math.max(this.arena.bounds.top + w.segR, Math.min(this.arena.bounds.bottom - w.segR, w.segY[i]));
       for (let p = 0; p < this.solids.length; p++) {
-        if (!circleRect(w.segX[i], w.segY[i], WORM.segmentRadius, this.solids[p], hitScratch)) continue;
+        if (!circleRect(w.segX[i], w.segY[i], w.segR, this.solids[p], hitScratch)) continue;
         w.segX[i] = hitScratch.px;
         w.segY[i] = hitScratch.py;
       }
@@ -15523,8 +16188,21 @@ export class World {
     }
   }
 
-  private damageWorm(w: Worm, amount: number, sourceSlot: number, dirX: number, dirY: number, force = 0): void {
+  private damageWorm(
+    w: Worm,
+    amount: number,
+    sourceSlot: number,
+    dirX: number,
+    dirY: number,
+    force = 0,
+    hitX = NaN,
+    hitY = NaN,
+  ): void {
     if (!w.active || w.held) return;
+    if (w.mega) {
+      this.damageMegaWorm(w, amount, sourceSlot, dirX, dirY, force, hitX, hitY);
+      return;
+    }
     w.hp -= amount;
     w.hitFlash = 0.2;
     // Only the player provokes a worm. Crossfire between rival factions should not
@@ -16127,10 +16805,10 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      let hit = this.beamHits(f, w.x, w.y, WORM.headRadius);
+      let hit = this.beamHits(f, w.x, w.y, w.hitR);
       if (!hit) {
         for (let s = 0; s < w.segCount; s++) {
-          if (this.beamHits(f, w.segX[s], w.segY[s], WORM.segmentRadius)) {
+          if (this.beamHits(f, w.segX[s], w.segY[s], w.segR)) {
             hit = true;
             break;
           }
@@ -16264,10 +16942,14 @@ export class World {
       if ((proj.hitWorms & bit) !== 0) continue;
       const hdx = proj.x - w.x;
       const hdy = proj.y - w.y;
-      const hr = proj.radius + WORM.headRadius;
+      const hr = proj.radius + w.hitR;
       if (hdx * hdx + hdy * hdy > hr * hr) continue;
-      // A worm swallows the shell instead of being pierced by it.
-      this.eatProjectile(proj, w);
+      // A worm swallows the shell instead of being pierced by it. A boss plate takes the hit.
+      if (w.mega) {
+        this.damageWorm(w, proj.damage, proj.owner, ux, uy, 0, proj.x, proj.y);
+      } else {
+        this.eatProjectile(proj, w);
+      }
       return true;
     }
     return false;
@@ -16495,13 +17177,13 @@ export class World {
       if (!w.active) continue;
       const hdx = proj.x - w.x;
       const hdy = proj.y - w.y;
-      const hr = proj.radius + WORM.headRadius;
+      const hr = proj.radius + w.hitR;
       if (hdx * hdx + hdy * hdy <= hr * hr) {
         if (proj.type === 1) {
           this.explodeMine(proj, proj.owner);
         } else {
           const speed = Math.hypot(proj.vx, proj.vy) || 1;
-          this.damageWorm(w, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed);
+          this.damageWorm(w, proj.damage, proj.owner, proj.vx / speed, proj.vy / speed, 0, proj.x, proj.y);
           if (proj.type === 13) this.compressWormHit(w, proj.owner);
           if (proj.type === 16) this.splitCopyShot(proj);
           proj.active = false;
@@ -16511,13 +17193,13 @@ export class World {
       for (let s = 0; s < w.segCount; s++) {
         const sdx = proj.x - w.segX[s];
         const sdy = proj.y - w.segY[s];
-        const sr = proj.radius + WORM.segmentRadius;
+        const sr = proj.radius + w.segR;
         if (sdx * sdx + sdy * sdy > sr * sr) continue;
         if (proj.type === 1) {
           this.explodeMine(proj, proj.owner);
-        } else if (hostile) {
+        } else if (hostile || w.mega) {
           const speed = Math.hypot(proj.vx, proj.vy) || 1;
-          this.damageWorm(w, proj.damage, -1, proj.vx / speed, proj.vy / speed);
+          this.damageWorm(w, proj.damage, hostile ? -1 : proj.owner, proj.vx / speed, proj.vy / speed, 0, proj.x, proj.y);
           proj.active = false;
         } else {
           this.eatProjectile(proj, w);

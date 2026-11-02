@@ -1,5 +1,5 @@
 import type { AssaultPortal } from './types';
-import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, KEYPAD, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { AimMark, CopyMark, InvaderShot } from './types';
 import {
   discArmAngle,
@@ -8477,6 +8477,10 @@ export class Renderer {
     for (let i = 0; i < worms.length; i++) {
       const w = worms[i];
       if (!w.active || w.held) continue;
+      if (w.mega) {
+        this.drawMegaWorm(w, alpha, t);
+        continue;
+      }
       const base = w.infected ? THREAT_COLORS.virus : THREAT_COLORS.worm;
       const build = w.spawnT > 0 ? 1 - w.spawnT / WORM.spawnTime : 1;
       const builtSegments = 1 + Math.floor(build * w.segCount);
@@ -8613,6 +8617,191 @@ export class Renderer {
 
     }
     ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+
+  /**
+   * Mega Worm. There is no health bar: every plate carries its own damage, drawn as
+   * cracks climbing out of its seams, and a plate that breaks leaves loose code drifting
+   * where it used to sit. A promoted head flares its new eyes; the last plate grows legs.
+   */
+  private drawMegaWorm(w: Worm, alpha: number, t: number): void {
+    const ctx = this.ctx;
+    const base = THREAT_COLORS.worm;
+    const build = w.spawnT > 0 ? 1 - w.spawnT / MEGA_WORM.spawnTime : 1;
+    const nodes = w.segCount + 1;
+    const builtNodes = Math.max(1, Math.ceil(Math.max(0, build) * nodes));
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Loose code: the closer the body is to fragmenting, the more debris drifts off it.
+    let stress = 0;
+    for (let k = 0; k < nodes; k++) {
+      const max = Math.max(1, w.segMaxHp[k]);
+      stress += 1 - Math.min(1, Math.max(0, w.segHp[k]) / max);
+    }
+    const debris = Math.min(22, Math.round(stress * 4));
+    for (let k = 0; k < debris; k++) {
+      const node = k % nodes;
+      const seg = node - 1;
+      const nx = node === 0 ? lerp(w.prevX, w.x, alpha) : lerp(w.segPrevX[seg], w.segX[seg], alpha);
+      const ny = node === 0 ? lerp(w.prevY, w.y, alpha) : lerp(w.segPrevY[seg], w.segY[seg], alpha);
+      const a = t * (0.7 + (k % 7) * 0.14) + k * 2.31;
+      const orbit = 30 + (k % 5) * 16;
+      const px = nx + Math.cos(a) * orbit;
+      const py = ny + Math.sin(a * 1.17 + 0.6) * orbit * 0.62;
+      const s = 2 + (k % 3);
+      ctx.globalAlpha = 0.16 + 0.18 * (0.5 + 0.5 * Math.sin(t * 3.4 + k * 1.7));
+      ctx.fillStyle = base;
+      ctx.fillRect(px - s, py - s, s * 2, s * 2);
+    }
+
+    for (let k = nodes - 1; k >= 1; k--) {
+      if (k >= builtNodes) continue;
+      const seg = k - 1;
+      const x = lerp(w.segPrevX[seg], w.segX[seg], alpha);
+      const y = lerp(w.segPrevY[seg], w.segY[seg], alpha);
+      const frac = Math.min(1, Math.max(0, w.segHp[k]) / Math.max(1, w.segMaxHp[k]));
+      const size = w.segR * (1 - Math.min(0.26, k * 0.004));
+      this.drawMegaPlate(x, y, w.segAngle[seg], size, frac, base, t, k);
+    }
+
+    const hx = lerp(w.prevX, w.x, alpha);
+    const hy = lerp(w.prevY, w.y, alpha);
+    const headFrac = Math.min(1, Math.max(0, w.segHp[0]) / Math.max(1, w.segMaxHp[0]));
+    this.drawMegaPlate(hx, hy, w.angle, w.hitR, headFrac, base, t, -1);
+
+    // Eyes are the head read. A promoted or freshly detached head flares white.
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(w.angle + Math.PI * 0.25);
+    ctx.globalCompositeOperation = 'source-over';
+    const er = w.hitR;
+    ctx.fillStyle = '#14030a';
+    ctx.fillRect(-er * 0.62, -er * 0.62, er * 1.24, er * 1.24);
+    const flare = w.eyeT > 0 ? 0.5 + 0.5 * Math.sin(t * 26) : 0;
+    ctx.fillStyle = w.eyeT > 0 ? '#ffffff' : '#ffe9e4';
+    ctx.fillRect(-er * 0.52, -er * 0.3, er * 0.32, er * 0.32);
+    ctx.fillRect(er * 0.2, -er * 0.3, er * 0.32, er * 0.32);
+    if (flare > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = flare * 0.6;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-er * 1.1, -er * 1.1, er * 2.2, er * 2.2);
+    }
+    ctx.restore();
+
+    // Last plate: eight legs, twitching faster than the body can turn.
+    if (w.legs) {
+      ctx.save();
+      ctx.translate(hx, hy);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = '#ffd9cf';
+      ctx.lineWidth = 3;
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2 + Math.sin(t * 7 + k * 1.3) * 0.18;
+        const knee = w.hitR * 0.95;
+        const reach = w.hitR * (1.55 + 0.16 * Math.sin(t * 9 + k * 1.1));
+        ctx.globalAlpha = 0.62;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * w.hitR * 0.5, Math.sin(a) * w.hitR * 0.5);
+        ctx.lineTo(Math.cos(a + 0.4) * knee, Math.sin(a + 0.4) * knee);
+        ctx.lineTo(Math.cos(a) * reach, Math.sin(a) * reach);
+        ctx.stroke();
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = base;
+        ctx.fillRect(Math.cos(a) * reach - 3, Math.sin(a) * reach - 3, 6, 6);
+      }
+      ctx.restore();
+    }
+
+    // The swing itself: a hot arc around the pivot while the whip is live.
+    if (w.whipT > 0) {
+      const a1 = Math.atan2(hy - w.whipPivotY, hx - w.whipPivotX);
+      const lo = Math.min(w.whipA, a1);
+      const hi = Math.max(w.whipA, a1);
+      ctx.save();
+      ctx.translate(w.whipPivotX, w.whipPivotY);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = base;
+      ctx.globalAlpha = 0.26;
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.arc(0, 0, w.whipR, lo, hi);
+      ctx.stroke();
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, w.whipR, lo, hi);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /** One boss plate: heavy frame, dark core and a crack pattern that tracks its health. */
+  private drawMegaPlate(
+    x: number,
+    y: number,
+    angle: number,
+    size: number,
+    frac: number,
+    base: string,
+    t: number,
+    index: number,
+  ): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.PI * 0.25);
+    ctx.globalAlpha = 0.1 + 0.1 * (1 - frac);
+    ctx.fillStyle = base;
+    ctx.fillRect(-size - 9, -size - 9, size * 2 + 18, size * 2 + 18);
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = '#1a0509';
+    ctx.fillRect(-size, -size, size * 2, size * 2);
+    ctx.globalAlpha = 0.5 + 0.45 * frac;
+    ctx.strokeStyle = base;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-size, -size, size * 2, size * 2);
+    ctx.globalAlpha = 0.28 + 0.3 * frac;
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(-size * 0.68, -size * 0.68, size * 1.36, size * 1.36);
+
+    if (frac < 0.999) {
+      const cracks = Math.min(6, Math.ceil((1 - frac) * 6));
+      ctx.globalAlpha = 0.45 + 0.45 * (1 - frac);
+      ctx.strokeStyle = '#ffe9e4';
+      ctx.lineWidth = 1.2 + (1 - frac) * 1.8;
+      for (let c = 0; c < cracks; c++) {
+        const seed = Math.sin((index + 5) * 12.9898 + c * 78.233) * 43758.5453;
+        const r1 = seed - Math.floor(seed);
+        const r2 = Math.abs(Math.sin(seed * 1.7));
+        const edge = Math.floor(r1 * 4) % 4;
+        const along = (r2 - 0.5) * 1.5 * size;
+        const sx = edge === 0 ? -size : edge === 1 ? size : along;
+        const sy = edge === 2 ? -size : edge === 3 ? size : along;
+        const mx = (sx + (r2 - 0.5) * size) * 0.62;
+        const my = (sy + (r1 - 0.5) * size) * 0.62;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(mx + (r1 - 0.5) * size * 0.35, my);
+        ctx.lineTo(mx * 0.26, my * 0.26);
+        ctx.stroke();
+      }
+      // A plate near collapse shudders on its own.
+      if (frac < 0.34) {
+        ctx.globalAlpha = 0.3 + 0.3 * Math.sin(t * 18 + index);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.6;
+        ctx.strokeRect(-size * 0.9, -size * 0.9, size * 1.8, size * 1.8);
+      }
+    }
     ctx.restore();
   }
 

@@ -60,6 +60,23 @@ Formerly: 2026-11-02 (PORTS)
 
 ---
 
+## Mega Worm boss (2026-11-02)
+
+- [x] Chain of plates with per-node health; damage follows the contact point
+- [x] Interior break splits the chain; detached half grows a head at its far tip
+- [x] Head break promotes the next plate instead of killing the worm
+- [x] Committed body whip with a tangential throw and one hit per player per swing
+- [x] Last plate grows legs: sprint, lunge bite and paired acid
+- [x] Arrives through the edge ingress on wave 8, repeating every 14 waves
+- [x] Cracks and code debris instead of a health bar
+- [x] Probe: `.tmp/megaworm-check.ts`; `?mega=1` QA boot hook
+- [ ] Give the acid its own green render instead of reusing hostile bolt art
+- [ ] Boss health and phase read on the minimap so an off-screen split is visible
+- [ ] Second boss silhouette once this one has been played; keep the plate language
+- [ ] Campaign boss slot for THE BROODMOTHER using this chain
+
+---
+
 ## Gauntlet ingress (2026-11-02)
 
 - [x] Edge portals: open, spew a batch, close immediately; no mid-floor spawns

@@ -2508,6 +2508,40 @@ one second, then get surrounded" run the demos kept showing.
 - Portals are local-only (`AssaultPortal`, never in `SnapshotHazards`) and drawn by `drawAssaultPortals`,
   which shares the red-square language of campaign ingress. Do not reintroduce a direct gauntlet spawn.
 
+### D66 — Mega Worm is the first boss: a chain you break, not a bar you drain (decided 2026-11-02, built v0.1.133)
+
+The Mega Worm is a boss built on the existing `Worm` entity, not a parallel creature. That is deliberate:
+every weapon, blast, hazard, bot scan and minimap read already walks `world.worms`, so the boss inherits
+them all. It occupies `MEGA_WORM.slots` extra pool bodies beyond `GAUNTLET.maxWorms`, and every cap that
+counts normal worms excludes `mega`.
+
+- **Plates carry the health.** `segHp`/`segMaxHp` are per node (index 0 = head, k = segment k-1);
+  `w.hp` stays a sane total for anything that reads it. `hitR`/`segR` replaced the hard-coded `WORM`
+  radii in the worm collision sites, so a single loop serves both body sizes. Do not reintroduce a
+  `WORM.headRadius` test on a body that can be the boss.
+- **Damage follows the contact point.** `damageWorm(..., hitX, hitY)` routes to the nearest plate.
+  Shells pass their own position; melee and blasts fall back to the attacker's side. That is what makes
+  chewing one plate from both sides possible, and it is why the boss is not simply a large single pool.
+- **Chain rules.** `breakMegaNode` is the whole design: a head loss promotes the plate behind it (and
+  flares new eyes), a tail loss shortens the chain, and an interior loss splits the chain. The detached
+  back half becomes its own boss with its head at the old tail tip, provided it holds at least two
+  plates; a single detached plate is shredded rather than left as a headless body. Splits take free pool
+  slots, so a cut with no room is shredded too. Never kill the worm outright when only the head breaks.
+- **Whip.** The main attack is a committed arc, not a chase: windup curls the head back, the active beat
+  drags it through `whip.sweepArc` (3.55 rad) around a pivot two plates behind it, and a player in the
+  path takes `whip.damage` plus a tangential throw. Hits are once per player per swing (`whipHit` mask);
+  it does not rely on iframes. Body contact is a separate, slower touch clock.
+- **Legs.** The last plate grows legs: 3.1x speed, a fast latched lunge bite and pairs of acid on the
+  existing hostile projectile type 3, so deflect, friendly fire and cover already apply. Do not add a
+  new projectile type for acid.
+- **Arrival.** Gauntlet queues assault family 3 on wave `MEGA_WORM.wave` (8) and every
+  `repeatStep` (14) after, only when no boss is up. It uses the same edge portal as every other family;
+  a boss must never materialise beside the player. `?mega=1` is the QA-only boot hook and never enters
+  menus or `Snapshot`.
+- **Read.** There is no health bar: cracks climb out of a plate's seams as it loses health, a nearly
+  dead plate shudders, and loose code debris drifts off the body in proportion to total damage. Tune
+  crack counts in `drawMegaPlate`; keep the plate frames and the eye mark so the head is always legible.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.
