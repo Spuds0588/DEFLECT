@@ -16,10 +16,11 @@ timed infection clear, the first campaign node, and host/join rooms for up to ei
 online versus can run a 1, 3 or 5 game series with random map rotation by default or a fixed custom arena.
 SATELLITE's solar wings, meteors, capacitor pods and reentry front are host-synced in those rooms.
 ROCKET NAVIGATION, WEAPON SYSTEMS, SPEAK & FIND, CAR NAVIGATION, PONG, AIRPORT, SPACE INVADERS, FAX
-MACHINE, SMART PLUG, SMOKE DETECTOR, SMART WATCH and BUSINESS LAPTOP are local display arenas: their
-launch walls, cockpit consoles, toy cards, car routes, rally balls, flip boards, simulated cannons, shuttle
-print heads, live circuit rings, alarm sirens, sweeping watch hands and scrolling mail are not synced online.
-Thirteen programs, thirty arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
+MACHINE, SMART PLUG, SMOKE DETECTOR, SMART WATCH, BUSINESS LAPTOP, SPREADSHEET and CHAT are local display
+arenas: their launch walls, cockpit consoles, toy cards, car routes, rally balls, flip boards, simulated
+cannons, shuttle print heads, live circuit rings, alarm sirens, sweeping watch hands, scrolling mail,
+breakable sheet cells and rising chat bubbles are not synced online.
+Thirteen programs, thirty-two arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
 session JSON with setup, player action totals, round results, deflect sources and FPS/sim samples, shared
 through the platform sheet or downloaded with a copied summary. Callsigns, room codes, IPs and raw inputs
 are omitted, and nothing is uploaded automatically. The alpha is deployed from `main` on every push.

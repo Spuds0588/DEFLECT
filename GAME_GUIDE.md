@@ -19,7 +19,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **CAMPAIGN:** `BUILD ROOT`, the first playable story level, with three local save slots. More levels are coming soon.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
-- Thirteen programs, thirty arenas.
+- Thirteen programs, thirty-two arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
@@ -334,6 +334,8 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `SMOKE DETECTOR` | A round detector face with a drop around its rim. Four floor smoke sensors arm the central siren when a body steps on one; it emits expanding sound rings that damage anything caught in the band. The siren runs in timed bursts, then re-arms. A mounted battery beside the siren has six health and can be shot out; destroying it breaks the alarm and disables the sensors for the round. The detector ridges, vents, LEDs and siren horn are presentation. Local-only: the alarm clock, waves and battery are not in the snapshot. |
 | `SMART WATCH` | A large watch face with a digital crown, minute ticks and four raised app complications as cover. A live second hand sweeps clockwise from twelve. A body the hand crosses takes a segment and is shoved, at most once per revolution; dashing and phased bodies avoid it. The hand is a floor projection, so cover does not stop it. Local-only: the hand clock is not in the snapshot. |
 | `BUSINESS LAPTOP` | A mail window with an endless inbox on the left and a message preview on the right. Four inbox cards scroll upward continuously; they block bodies and shots and keep moving when they wrap. The open message rewrites the right-side cover every eight seconds, with a new-message flash. Local-only: the inbox clock, card positions and preview layout are not in the snapshot. |
+| `SPREADSHEET` | A sheet window with a 6×4 grid of cell blocks and 70-unit corridors between them. The cells are solid cover and every one can be broken: a direct ranged shot spends one of its two hits, a cracked cell shows its damage, and a cleared cell opens its lane for the rest of the round. Bombs and the heavy beam stop on a cell without breaking it. A selection cursor walks the columns and the inspector names the selected cell. Corridors do not line up, so the sheet never becomes one straight run. Local-only: cell health, the cursor and the grid are not in the snapshot. |
+| `CHAT` | A chat window with four message bubbles rising continuously. Each bubble is solid cover, and the bubbles alternate the left and right half of the pane, so the open lane zig-zags as the thread scrolls. A bubble is only solid while it is fully inside the pane, so a wrapping bubble cannot block the spawn row. The pinned strip names the active line. Local-only: the bubble clock and positions are not in the snapshot. |
 | `SATELLITE` | A long orbital hull joined to two solar wings by narrow bridges, with a telescoping mast below and three capacitor pods above. Only those plates are floor; the gaps are open space. The wings warn, then burn anyone standing on them on independent 16 s cycles. Micro-meteors fall every 12.5 s. Destroy all three capacitors and the thrusters fire: a heat front climbs the whole map from the bottom for 14 s, then the satellite cools and the pods return. Online: the satellite clock, live meteors, capacitor states and reentry front are synced; the host still resolves every hit. |
 
 ### Ordinary programs
@@ -426,8 +428,8 @@ carried, so those maps also open online. The pipe/firewall arenas still stay loc
 threats are not in the snapshot. ROCKET NAVIGATION's launch wall, WEAPON SYSTEMS' cockpit console,
 SPEAK & FIND's card board, CAR NAVIGATION's route clock, PONG's rally ball, AIRPORT's flip clock,
 SPACE INVADERS' simulated cannon, FAX MACHINE's shuttle print bar, SMART PLUG's green/red circuit ring,
-SMOKE DETECTOR's alarm rings, SMART WATCH's second hand and BUSINESS LAPTOP's moving mail are local-only
-display content and are not in that clock list.
+SMOKE DETECTOR's alarm rings, SMART WATCH's second hand, BUSINESS LAPTOP's moving mail, SPREADSHEET's
+breakable cells and CHAT's rising bubbles are local-only display content and are not in that clock list.
 
 ## Attract demo and kiosk
 

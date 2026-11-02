@@ -22,6 +22,7 @@ import {
   PLUG_STATE,
   watchHandAngle,
   laptopCardY,
+  laptopCellRect,
   satelliteSolarPhaseAt,
   satelliteSolarStateAt,
   satelliteTelescopeExtensionAt,
@@ -64,6 +65,9 @@ import { drawDroppedFiles, drawRegularProgram, regularFace, regularProgram, type
 import { PROP, SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type SatelliteMeteor, type Sentry, type SmokeWave, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
 import { beamReach } from './collision';
+
+/** Reused sheet-cell rect for the SPREADSHEET draw path: one allocation, not one per cell. */
+const laptopCellDraw = { x: 0, y: 0, w: 0, h: 0 };
 
 export interface RenderState {
   mode: GameMode;
@@ -195,6 +199,9 @@ export interface RenderState {
   laptopT?: number;
   laptopMessage?: number;
   laptopFlashT?: number;
+  /** SPREADSHEET cell health (0 means cleared) and the selection cursor column. Local-only. */
+  laptopCellHp?: ArrayLike<number>;
+  laptopCursor?: number;
   /** Forum browser page, cursor and click flash. Guests derive these from Snapshot. */
   browserPage?: number;
   browserPhase?: number;
@@ -3591,6 +3598,16 @@ export class Renderer {
     const arena = state?.arena;
     const lap = arena?.laptop;
     if (!arena || !lap) return;
+    // The sheet and chat screens share this record and its clocks; only the chrome and the
+    // cover shapes differ, so each variant gets one draw path over the same world state.
+    if (lap.variant === 'sheet') {
+      this.drawLaptopSheet(state, groundA, frameA, t);
+      return;
+    }
+    if (lap.variant === 'chat') {
+      this.drawLaptopChat(state, groundA, frameA, t);
+      return;
+    }
     const ctx = this.ctx;
     const b = arena.bounds;
     const screen = lap.screen;
@@ -3791,6 +3808,325 @@ export class Renderer {
 
     ctx.globalAlpha = frameA;
     ctx.strokeStyle = 'rgba(138, 199, 255, 0.72)';
+    ctx.lineWidth = 2.5;
+    roundRect(ctx, b.left, b.top, b.right - b.left, b.bottom - b.top, 34);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** SPREADSHEET: a cell grid whose blocks are breakable cover. */
+  private drawLaptopSheet(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const lap = arena?.laptop;
+    const sheet = lap?.sheet;
+    if (!arena || !lap || !sheet) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const screen = lap.screen;
+    const inspector = lap.preview;
+    const clock = state?.laptopT ?? t;
+    const hp = state?.laptopCellHp;
+    const cols = Math.max(1, sheet.cols);
+    const cursor = state?.laptopCursor ?? Math.floor(clock / Math.max(0.15, sheet.cursorEvery)) % cols;
+    const stepX = sheet.cellW + sheet.gap;
+    const stepY = sheet.cellH + sheet.gap;
+    const labels = ['TOTAL', 'MARGIN', 'RUNWAY', 'DELTA'];
+
+    ctx.save();
+    ctx.fillStyle = '#020608';
+    ctx.fillRect(b.left - 50, b.top - 50, b.right - b.left + 100, b.bottom - b.top + 100);
+    ctx.globalAlpha = groundA;
+
+    ctx.fillStyle = '#0b1115';
+    roundRect(ctx, b.left, b.top, b.right - b.left, b.bottom - b.top, 34);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(214, 232, 238, 0.24)';
+    ctx.lineWidth = 5;
+    roundRect(ctx, b.left + 3, b.top + 3, b.right - b.left - 6, b.bottom - b.top - 6, 32);
+    ctx.stroke();
+    ctx.fillStyle = '#07130d';
+    roundRect(ctx, screen.x, screen.y, screen.w, screen.h, 12);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(127, 227, 166, 0.5)';
+    ctx.lineWidth = 2;
+    roundRect(ctx, screen.x + 1, screen.y + 1, screen.w - 2, screen.h - 2, 11);
+    ctx.stroke();
+
+    // Window bar: a sheet tab strip and the document clock.
+    ctx.fillStyle = '#0d1f16';
+    ctx.fillRect(screen.x + 18, screen.y + 18, screen.w - 36, 44);
+    ctx.strokeStyle = 'rgba(127, 227, 166, 0.18)';
+    ctx.strokeRect(screen.x + 18.5, screen.y + 18.5, screen.w - 37, 43);
+    const dots = ['#ff6d5e', '#ffc457', '#74d38a'];
+    for (let i = 0; i < dots.length; i++) {
+      ctx.fillStyle = dots[i];
+      ctx.beginPath();
+      ctx.arc(screen.x + 40 + i * 18, screen.y + 40, 5, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(220, 245, 232, 0.88)';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SHEETS', screen.x + 104, screen.y + 40);
+    ctx.fillStyle = 'rgba(127, 227, 166, 0.62)';
+    ctx.fillText('Q4 MODEL', screen.x + 164, screen.y + 40);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(200, 240, 220, 0.58)';
+    ctx.fillText('17 COLUMNS // 06 NOV', screen.x + screen.w - 32, screen.y + 40);
+
+    // Formula bar and name box for the selection cursor.
+    const barY = sheet.origin.y - 62;
+    ctx.fillStyle = '#0b1712';
+    ctx.fillRect(screen.x + 18, barY, screen.w - 36, 34);
+    ctx.strokeStyle = 'rgba(127, 227, 166, 0.22)';
+    ctx.strokeRect(screen.x + 18.5, barY + 0.5, screen.w - 37, 33);
+    ctx.fillStyle = '#0c1a13';
+    ctx.fillRect(screen.x + 26, barY + 4, 92, 26);
+    ctx.fillStyle = '#bff3d5';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.fillText((sheet.columns[cursor] ?? 'A') + '1', screen.x + 40, barY + 17);
+    ctx.fillStyle = 'rgba(190, 235, 214, 0.6)';
+    ctx.font = FONT_TINY;
+    ctx.fillText(
+      'fx  =SUM(' + (sheet.columns[0] ?? 'A') + '1:' + (sheet.columns[cols - 1] ?? 'F') + sheet.rows + ')',
+      screen.x + 138,
+      barY + 17,
+    );
+
+    // Column headers and row numbers share the cell grid metrics.
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'center';
+    for (let c = 0; c < cols; c++) {
+      const x = sheet.origin.x + c * stepX;
+      ctx.fillStyle = c === cursor ? 'rgba(127, 227, 166, 0.32)' : 'rgba(127, 227, 166, 0.12)';
+      ctx.fillRect(x, sheet.origin.y - 30, sheet.cellW, 26);
+      ctx.fillStyle = c === cursor ? '#e6fff2' : 'rgba(190, 235, 214, 0.72)';
+      ctx.fillText(sheet.columns[c] ?? String(c + 1), x + sheet.cellW * 0.5, sheet.origin.y - 17);
+    }
+    for (let r = 0; r < sheet.rows; r++) {
+      const y = sheet.origin.y + r * stepY;
+      ctx.fillStyle = 'rgba(127, 227, 166, 0.12)';
+      ctx.fillRect(sheet.origin.x - 34, y, 28, sheet.cellH);
+      ctx.fillStyle = 'rgba(190, 235, 214, 0.6)';
+      ctx.fillText(String(r + 1), sheet.origin.x - 20, y + sheet.cellH * 0.5);
+    }
+
+    // Cell blocks. A cleared cell leaves its lane open for the rest of the round.
+    for (let i = 0; i < sheet.cells.length; i++) {
+      const cell = sheet.cells[i];
+      const r = laptopCellRect(sheet, cell, laptopCellDraw);
+      const remaining = hp ? hp[i] : cell.hp;
+      if (remaining <= 0) {
+        ctx.strokeStyle = 'rgba(127, 227, 166, 0.18)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([7, 9]);
+        ctx.strokeRect(r.x + 4, r.y + 4, r.w - 8, r.h - 8);
+        ctx.setLineDash([]);
+        continue;
+      }
+      const cracked = remaining < cell.hp;
+      ctx.fillStyle = cracked ? '#263620' : '#16281a';
+      roundRect(ctx, r.x, r.y, r.w, r.h, 6);
+      ctx.fill();
+      ctx.strokeStyle = cell.col === cursor ? 'rgba(127, 227, 166, 0.9)' : 'rgba(127, 227, 166, 0.34)';
+      ctx.lineWidth = cell.col === cursor ? 2.5 : 1.5;
+      roundRect(ctx, r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1, 6);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(127, 227, 166, 0.66)';
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'left';
+      ctx.fillText((sheet.columns[cell.col] ?? 'A') + (cell.row + 1), r.x + 12, r.y + 18);
+      ctx.fillStyle = cracked ? 'rgba(255, 170, 120, 0.9)' : 'rgba(232, 255, 242, 0.92)';
+      ctx.font = FONT_MID;
+      ctx.textAlign = 'center';
+      ctx.fillText(String(120 + ((i * 97) % 870)), r.x + r.w * 0.5, r.y + r.h * 0.56);
+      ctx.fillStyle = 'rgba(190, 235, 214, 0.42)';
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'left';
+      ctx.fillText(labels[i % labels.length], r.x + 12, r.y + r.h - 14);
+      if (cracked) {
+        ctx.strokeStyle = 'rgba(255, 170, 120, 0.75)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(r.x + r.w * 0.28, r.y + 20);
+        ctx.lineTo(r.x + r.w * 0.42, r.y + r.h * 0.5);
+        ctx.lineTo(r.x + r.w * 0.3, r.y + r.h - 18);
+        ctx.stroke();
+      }
+    }
+
+    // Inspector dock: the selected cell's reference and its cover state.
+    ctx.fillStyle = '#0b1712';
+    ctx.fillRect(inspector.x, inspector.y, inspector.w, inspector.h);
+    ctx.strokeStyle = 'rgba(127, 227, 166, 0.26)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(inspector.x + 0.5, inspector.y + 0.5, inspector.w - 1, inspector.h - 1);
+    ctx.fillStyle = '#dff8ea';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.fillText('CELL', inspector.x + 16, inspector.y + 26);
+    ctx.fillStyle = 'rgba(127, 227, 166, 0.8)';
+    ctx.fillText((sheet.columns[cursor] ?? 'A') + '1', inspector.x + 16, inspector.y + 52);
+    ctx.fillStyle = 'rgba(190, 235, 214, 0.46)';
+    ctx.font = FONT_TINY;
+    ctx.fillText('TYPE  COVER', inspector.x + 16, inspector.y + 76);
+    ctx.fillText('HITS  2', inspector.x + 16, inspector.y + 94);
+    ctx.fillText('LANE  ' + (cursor % 2 === 0 ? 'OPEN' : 'HELD'), inspector.x + 16, inspector.y + 112);
+
+    ctx.fillStyle = 'rgba(196, 232, 214, 0.46)';
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'left';
+    ctx.fillText('SPREADSHEET // CELLS', b.left + 22, b.bottom - 16);
+    ctx.textAlign = 'right';
+    ctx.fillText('SHOTS CLEAR CELLS', b.right - 22, b.bottom - 16);
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(127, 227, 166, 0.72)';
+    ctx.lineWidth = 2.5;
+    roundRect(ctx, b.left, b.top, b.right - b.left, b.bottom - b.top, 34);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** CHAT: bubbles rise and alternate sides, so the open lane zig-zags down the screen. */
+  private drawLaptopChat(
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const arena = state?.arena;
+    const lap = arena?.laptop;
+    if (!arena || !lap) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const screen = lap.screen;
+    const inbox = lap.inbox;
+    const composer = lap.preview;
+    const clock = state?.laptopT ?? t;
+    const count = Math.max(1, lap.messages.length);
+    const active = (((state?.laptopMessage ?? 0) % count) + count) % count;
+    const bubbleW = Math.max(24, inbox.w * Math.max(0.3, Math.min(1, lap.bubbleW ?? 0.58)) - 20);
+    const typing = 1 + (Math.floor(clock * 2.2) % 3);
+
+    ctx.save();
+    ctx.fillStyle = '#020608';
+    ctx.fillRect(b.left - 50, b.top - 50, b.right - b.left + 100, b.bottom - b.top + 100);
+    ctx.globalAlpha = groundA;
+
+    ctx.fillStyle = '#0b1115';
+    roundRect(ctx, b.left, b.top, b.right - b.left, b.bottom - b.top, 34);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(214, 232, 238, 0.24)';
+    ctx.lineWidth = 5;
+    roundRect(ctx, b.left + 3, b.top + 3, b.right - b.left - 6, b.bottom - b.top - 6, 32);
+    ctx.stroke();
+    ctx.fillStyle = '#150d13';
+    roundRect(ctx, screen.x, screen.y, screen.w, screen.h, 12);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 154, 213, 0.5)';
+    ctx.lineWidth = 2;
+    roundRect(ctx, screen.x + 1, screen.y + 1, screen.w - 2, screen.h - 2, 11);
+    ctx.stroke();
+
+    // Window bar: channel name and a live member count.
+    ctx.fillStyle = '#1d1220';
+    ctx.fillRect(screen.x + 18, screen.y + 18, screen.w - 36, 44);
+    ctx.strokeStyle = 'rgba(255, 154, 213, 0.2)';
+    ctx.strokeRect(screen.x + 18.5, screen.y + 18.5, screen.w - 37, 43);
+    ctx.fillStyle = 'rgba(255, 226, 243, 0.9)';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('CHAT', screen.x + 30, screen.y + 40);
+    ctx.fillStyle = 'rgba(255, 154, 213, 0.66)';
+    ctx.fillText('# GENERAL', screen.x + 92, screen.y + 40);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255, 214, 236, 0.55)';
+    ctx.fillText('8 ONLINE // 2 TYPING', screen.x + screen.w - 32, screen.y + 40);
+
+    // The bubble pane. Bubbles are the moving cover and their lane alternates per card.
+    ctx.fillStyle = '#120b10';
+    ctx.fillRect(inbox.x, inbox.y, inbox.w, inbox.h);
+    ctx.strokeStyle = 'rgba(255, 154, 213, 0.22)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(inbox.x + 0.5, inbox.y + 0.5, inbox.w - 1, inbox.h - 1);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(inbox.x + 1, inbox.y + 1, inbox.w - 2, inbox.h - 2);
+    ctx.clip();
+    for (let i = 0; i < lap.cards; i++) {
+      const y = laptopCardY(lap, i, clock);
+      if (y + lap.cardH < inbox.y || y > inbox.y + inbox.h) continue;
+      const right = i % 2 === 0;
+      const x = right ? inbox.x + inbox.w - 10 - bubbleW : inbox.x + 10;
+      const line = lap.messages[(i + active) % count];
+      ctx.fillStyle = right ? 'rgba(255, 154, 213, 0.09)' : 'rgba(120, 170, 255, 0.09)';
+      roundRect(ctx, x + 4, y + 4, bubbleW, lap.cardH, 14);
+      ctx.fill();
+      ctx.fillStyle = right ? '#241722' : '#141d2a';
+      roundRect(ctx, x, y, bubbleW, lap.cardH, 14);
+      ctx.fill();
+      ctx.strokeStyle = right ? 'rgba(255, 154, 213, 0.55)' : 'rgba(130, 175, 255, 0.5)';
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, x + 0.5, y + 0.5, bubbleW - 1, lap.cardH - 1, 14);
+      ctx.stroke();
+      ctx.fillStyle = right ? '#ffc3e6' : '#bcd4ff';
+      ctx.font = FONT_TINY;
+      ctx.textAlign = 'left';
+      ctx.fillText(line?.sender ?? 'SYSTEM', x + 16, y + 20);
+      ctx.fillStyle = 'rgba(255, 226, 243, 0.5)';
+      ctx.textAlign = 'right';
+      ctx.fillText(right ? 'NOW' : '2m', x + bubbleW - 16, y + 20);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(255, 240, 250, 0.88)';
+      ctx.font = FONT_SMALL;
+      ctx.fillText(line?.subject ?? 'message', x + 16, y + 48);
+      ctx.fillStyle = 'rgba(230, 214, 228, 0.6)';
+      ctx.fillText((line?.preview ?? '').slice(0, 54), x + 16, y + 74);
+      ctx.fillStyle = 'rgba(255, 154, 213, 0.32)';
+      ctx.font = FONT_TINY;
+      ctx.fillText(right ? 'READ' : 'DELIVERED', x + 16, y + lap.cardH - 14);
+    }
+    ctx.restore();
+
+    // Composer strip: the pinned line, a typing indicator and the send bar.
+    ctx.fillStyle = '#1a1118';
+    ctx.fillRect(composer.x, composer.y, composer.w, composer.h);
+    ctx.strokeStyle = 'rgba(255, 154, 213, 0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(composer.x + 0.5, composer.y + 0.5, composer.w - 1, composer.h - 1);
+    ctx.fillStyle = '#ffc3e6';
+    ctx.font = FONT_SMALL;
+    ctx.textAlign = 'left';
+    ctx.fillText('PINNED // ' + (lap.messages[active]?.sender ?? 'SYSTEM'), composer.x + 20, composer.y + 28);
+    ctx.fillStyle = 'rgba(240, 220, 235, 0.62)';
+    ctx.font = FONT_TINY;
+    ctx.fillText(lap.messages[active]?.preview ?? '', composer.x + 20, composer.y + 50);
+    ctx.fillStyle = 'rgba(255, 154, 213, 0.14)';
+    ctx.fillRect(composer.x + 20, composer.y + 68, composer.w - 40, 28);
+    ctx.fillStyle = 'rgba(255, 226, 243, 0.7)';
+    ctx.fillText('MESSAGE #GENERAL', composer.x + 34, composer.y + 82);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255, 196, 120, 0.85)';
+    ctx.fillText('.'.repeat(typing), composer.x + composer.w - 34, composer.y + 82);
+
+    ctx.fillStyle = 'rgba(240, 214, 232, 0.46)';
+    ctx.font = FONT_TINY;
+    ctx.textAlign = 'left';
+    ctx.fillText('CHAT // #GENERAL', b.left + 22, b.bottom - 16);
+    ctx.textAlign = 'right';
+    ctx.fillText('BUBBLES ALTERNATE // KEEP MOVING', b.right - 22, b.bottom - 16);
+
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(255, 154, 213, 0.72)';
     ctx.lineWidth = 2.5;
     roundRect(ctx, b.left, b.top, b.right - b.left, b.bottom - b.top, 34);
     ctx.stroke();

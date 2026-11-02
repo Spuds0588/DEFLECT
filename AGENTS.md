@@ -21,6 +21,25 @@ These files keep us from re-litigating decisions or rebuilding old work:
 Before starting: read `HISTORY.md` (last entry) and `TODO.md`. Do not start a phase that a newer
 HISTORY entry says was deliberately deferred without calling that out.
 
+### Shipping a finished feature (decided 2026-11-02)
+
+The repo ships from `main`: `.github/workflows/pages.yml` builds and publishes
+<https://spuds0588.github.io/DEFLECT/> on every push. A finished feature is therefore not finished while it
+is only local. Once a feature, arena or program passes its checks, commit and push it without asking for a
+separate confirmation:
+
+1. Its headless probe (`.tmp/*-check.ts`) passes, or the equivalent verification is written down.
+2. `npm run build` passes (`tsc --noEmit` + Vite).
+3. `npm run bench` is clean when the change touched `World`, bots, collision, networking or threat pools.
+4. README, GAME_GUIDE, AGENTS, TODO and HISTORY are updated in the same commit, and the version stamps
+   (`package.json`, `package-lock.json`, `index.html`, `src/main.ts` `BUILD`, `public/sw.js`) are bumped.
+5. The commit is pushed to `origin main`, then the Pages run is confirmed successful and the published page
+   is checked for the new version string.
+
+Do not push when a check is red, when the change is half-finished or deliberately deferred, or when it only
+exists behind a QA hook no player can reach. Report a red check instead of committing around it. Never fix a
+bad deploy by unpublishing; fix forward.
+
 ### Dev environment cleanup (required)
 
 This is a limited-memory development environment. A finished task must leave it idle:
@@ -2284,6 +2303,23 @@ data, not add a second laptop simulation.
 - Known limitation: the bot nav grid cannot represent moving cards or changing preview cover. Bots can
   be pushed by a card and can stand where a new layout appears; the flash and card movement need to stay
   readable rather than becoming a hidden trap.
+
+**Variants (built 2026-11-02, v0.1.124).** SPREADSHEET (id 30) and CHAT (id 31) are the two screen riffs the
+notes recorded, and both extend `ArenaLaptopDef` rather than adding a second screen simulation:
+
+- `variant` picks the chrome: absent or `'mail'` is the inbox, `'sheet'` is the cell grid, `'chat'` is the
+  bubble conveyor. Keep new content inside those three; a fourth draw path that reimplements the clocks is
+  the failure mode this rule exists to prevent.
+- SPREADSHEET cells are `laptop.sheet.cells` as `{col,row,hp}`, laid out by `laptopCellRect`. Every intact
+  cell is in `laptopSolids`. A **direct ranged shot** spends one hit, and a cleared cell zeroes its rect so
+  the lane opens until the round ends. `resetLaptop()` restores every cell's authored health and the cursor.
+  Bombs and the heavy beam stop on a cell without chipping it, because those paths carry no cover target;
+  that asymmetry is deliberate. Re-test spawn clearance before teaching another path to damage cells.
+- CHAT bubbles ride the same conveyor with `bubbleW`: they alternate the right and left half of the pane, so
+  the open lane zig-zags. A card is solid only while **fully inside the pane**; a clipped card mid-wrap is
+  invisible and must not keep blocking a spawn row. That rule is shared, so the mail inbox obeys it too.
+- Both variants stay local-only through `isOnlineArena` (`!a.laptop` already covers them). Their clocks,
+  cell health, cursor and bubble positions never enter `SnapshotHazards`.
 
 ## 8. Performance guardrails
 

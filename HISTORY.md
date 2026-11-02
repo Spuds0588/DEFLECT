@@ -5011,3 +5011,36 @@ attached yet. The spreadsheet and chat variants are not implemented.
 
 **Next:** play the moving inbox and preview swap at full size, then decide whether the laptop becomes a
 campaign screen before adding the spreadsheet-corridor or rising-chat variants.
+
+## 2026-11-02 — SPREADSHEET and CHAT laptop variants (v0.1.124)
+
+**Goal:** build the two screen riffs the BUSINESS LAPTOP notes recorded, on the same arena record rather
+than a second laptop simulation.
+
+- Extended `ArenaLaptopDef` with `variant` (`mail` | `sheet` | `chat`), `bubbleW` and an optional `sheet`
+  grid. BUSINESS LAPTOP keeps the mail path with no data change.
+- SPREADSHEET (id 30): a 6×4 sheet with 17 authored cells and 70-unit corridors. Cells are breakable solid
+  cover: a direct ranged shot spends one of two hits, a cracked cell shows the damage, and a cleared cell
+  opens its lane until the round ends. Added `laptopCellRect`, `laptopCellRects`/`laptopCellHp`, a
+  selection cursor clock and a cell inspector. Bombs and the heavy beam stop on a cell without chipping it.
+- CHAT (id 31): four bubbles rise on the shared card clock and alternate the left and right half of the
+  pane, so the open lane zig-zags. Bubbles are solid only while fully inside the pane, so a clipped card
+  mid-wrap cannot block a spawn row.
+- Card and cell cover still feed player, threat, shot, bomb and laser collision and the bot repulsor. Both
+  variants stay local-only through `isOnlineArena` and never enter `SnapshotHazards`.
+- Fixed the cover rule the variants exposed: a card clipped above the pane used to stay solid and block a
+  spawn row.
+- Updated README, GAME_GUIDE, AGENTS D57, TODO and the version stamps to v0.1.124.
+
+**Verification:** `.tmp/laptop-variants-check.ts` passes 32-arena order, ids 30/31, 17 cells inside the
+screen with a passable corridor, clear spawns, two-hit cell destruction with a cleared lane, cursor advance,
+round restore of cell health and cover, four alternating chat bubbles with an open lane at every sampled
+spawn across a full scroll, upward bubble travel and `SnapshotHazards === null` on both. `npm run build`
+passes (includes `tsc --noEmit`): 909.31 kB JS / 250.80 kB gzip. `npm run bench` clean: 8P max projectiles
+0.072 ms avg / 0.225 ms p99; gauntlet max 0.170 ms avg / 0.547 ms p99, 28.4 threats.
+
+**Limitations:** no headed playtest was run. Cell damage is projectile-only, bots do not path around a
+cleared lane, and neither variant is attached to a campaign node. Chat bubbles carry no hazard.
+
+**Next:** play both screens at full size; decide whether the sheet earns a formula-error or firewall-style
+sweep, and whether chat gains a pinned-message hazard.

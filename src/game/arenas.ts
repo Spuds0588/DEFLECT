@@ -729,15 +729,47 @@ export interface ArenaLaptopMessageDef {
 }
 
 /**
- * BUSINESS LAPTOP: an email screen with an endless inbox on the left and changing
- * message layouts on the right. The inbox cards and the active preview layout are
- * dynamic solid cover; there is no separate hazard clock. Local-only until the moving
- * cover is carried in SnapshotHazards.
+ * Which screen the laptop chassis is showing. The variants share one record, one clock and
+ * one cover list: mail scrolls an inbox beside a swapping preview, chat scrolls full-width
+ * bubbles that alternate sides, sheet is a breakable cell grid.
+ */
+export type ArenaLaptopVariant = 'mail' | 'sheet' | 'chat';
+
+/** One breakable spreadsheet cell, addressed by its authored grid position. */
+export interface ArenaLaptopCellDef {
+  col: number;
+  row: number;
+  /** Direct ranged hits needed to clear the cell. */
+  hp: number;
+}
+
+/** Cell grid metrics and the intact cells that form the sheet's corridors. */
+export interface ArenaLaptopSheetDef {
+  origin: { x: number; y: number };
+  cellW: number;
+  cellH: number;
+  /** Corridor width between two neighbouring cells. */
+  gap: number;
+  cols: number;
+  rows: number;
+  cells: ArenaLaptopCellDef[];
+  /** Seconds the selection cursor holds one column before it steps right. */
+  cursorEvery: number;
+  /** Column labels for the header row, one per column. */
+  columns: string[];
+}
+
+/**
+ * BUSINESS LAPTOP: a screen chassis whose panes hold moving, solid cover. The inbox cards
+ * and the active preview layout are dynamic solid cover; there is no separate hazard clock.
+ * Local-only until the moving cover is carried in SnapshotHazards.
  */
 export interface ArenaLaptopDef {
+  /** Screen flavour. Absent means the mail inbox. */
+  variant?: ArenaLaptopVariant;
   /** Visual screen bezel. Bounds remain the body/camera footprint. */
   screen: Rect;
-  /** Left inbox pane. Cards only; the pane itself is not solid. */
+  /** Left inbox (or chat bubble) pane. Cards only; the pane itself is not solid. */
   inbox: Rect;
   /** Right preview pane. Its message layouts are the dynamic cover. */
   preview: Rect;
@@ -749,6 +781,10 @@ export interface ArenaLaptopDef {
   /** Seconds each message stays open before the next one replaces it. */
   messageEvery: number;
   messages: ArenaLaptopMessageDef[];
+  /** Chat only: bubble width as a fraction of the inbox pane. Sides alternate per card. */
+  bubbleW?: number;
+  /** Sheet only: the cell grid, its breakable cells and the selection cursor clock. */
+  sheet?: ArenaLaptopSheetDef;
 }
 
 /** One tab in the browser chrome. Width is data so the strip stays editable. */
@@ -984,6 +1020,15 @@ export function laptopCardY(laptop: ArenaLaptopDef, i: number, t: number): numbe
   const span = step * Math.max(1, laptop.cards);
   const scroll = ((t * laptop.speed) % span + span) % span;
   return laptop.inbox.y + laptop.inbox.h - laptop.cardH - i * step - scroll;
+}
+
+/** World rect of one authored sheet cell. `out` is reused to avoid per-frame allocation. */
+export function laptopCellRect(sheet: ArenaLaptopSheetDef, cell: ArenaLaptopCellDef, out: Rect): Rect {
+  out.x = sheet.origin.x + cell.col * (sheet.cellW + sheet.gap);
+  out.y = sheet.origin.y + cell.row * (sheet.cellH + sheet.gap);
+  out.w = sheet.cellW;
+  out.h = sheet.cellH;
+  return out;
 }
 
 export const KEYPAD_STATE = {
@@ -2596,6 +2641,117 @@ export const ARENAS: readonly ArenaDef[] = [
       ],
     },
   },
+  {
+    id: 30,
+    name: 'SPREADSHEET',
+    tagline: 'Every cell is cover. Every cell breaks.',
+    hudLabel: 'ARENA // SPREADSHEET',
+    accent: '#7fe3a6',
+    accentSoft: 'rgba(127, 227, 166, 0.32)',
+    accentFaint: 'rgba(127, 227, 166, 0.034)',
+    signature: 1,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    // The sheet cells are dynamic cover, so the static pillar list stays empty.
+    pillars: [],
+    spawns: [
+      { x: 260, y: 110 },
+      { x: 700, y: 110 },
+      { x: 1140, y: 110 },
+      { x: 1580, y: 110 },
+      { x: 260, y: 990 },
+      { x: 700, y: 990 },
+      { x: 1140, y: 990 },
+      { x: 1580, y: 990 },
+    ],
+    laptop: {
+      variant: 'sheet',
+      screen: { x: 80, y: 64, w: 1830, h: 966 },
+      // The grid pane; the cells themselves are the cover.
+      inbox: { x: 150, y: 190, w: 1490, h: 730 },
+      // Cell inspector. Presentation only; it never becomes solid.
+      preview: { x: 1700, y: 190, w: 170, h: 730 },
+      cards: 0,
+      cardH: 0,
+      cardGap: 0,
+      speed: 0,
+      messageEvery: 8,
+      messages: [],
+      sheet: {
+        origin: { x: 150, y: 190 },
+        cellW: 190,
+        cellH: 130,
+        gap: 70,
+        cols: 6,
+        rows: 4,
+        cursorEvery: 0.55,
+        columns: ['A', 'B', 'C', 'D', 'E', 'F'],
+        // A staggered mask, so the corridors never line up into one straight run.
+        cells: [
+          { col: 0, row: 0, hp: 2 },
+          { col: 1, row: 0, hp: 2 },
+          { col: 3, row: 0, hp: 2 },
+          { col: 4, row: 0, hp: 2 },
+          { col: 5, row: 0, hp: 2 },
+          { col: 0, row: 1, hp: 2 },
+          { col: 1, row: 1, hp: 2 },
+          { col: 4, row: 1, hp: 2 },
+          { col: 5, row: 1, hp: 2 },
+          { col: 0, row: 2, hp: 2 },
+          { col: 2, row: 2, hp: 2 },
+          { col: 3, row: 2, hp: 2 },
+          { col: 5, row: 2, hp: 2 },
+          { col: 1, row: 3, hp: 2 },
+          { col: 2, row: 3, hp: 2 },
+          { col: 3, row: 3, hp: 2 },
+          { col: 4, row: 3, hp: 2 },
+        ],
+      },
+    },
+  },
+  {
+    id: 31,
+    name: 'CHAT',
+    tagline: 'The thread never stops.',
+    hudLabel: 'ARENA // CHAT',
+    accent: '#ff9ad5',
+    accentSoft: 'rgba(255, 154, 213, 0.32)',
+    accentFaint: 'rgba(255, 154, 213, 0.034)',
+    signature: 1,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    spawns: [
+      { x: 260, y: 100 },
+      { x: 720, y: 100 },
+      { x: 1140, y: 100 },
+      { x: 1560, y: 100 },
+      { x: 260, y: 990 },
+      { x: 720, y: 990 },
+      { x: 1140, y: 990 },
+      { x: 1560, y: 990 },
+    ],
+    laptop: {
+      variant: 'chat',
+      screen: { x: 80, y: 64, w: 1830, h: 966 },
+      // Bubble pane. Bubbles alternate sides, so one lane is always open.
+      inbox: { x: 130, y: 150, w: 1690, h: 700 },
+      // Composer strip. Presentation only.
+      preview: { x: 130, y: 872, w: 1690, h: 110 },
+      cards: 4,
+      cardH: 118,
+      cardGap: 26,
+      speed: 52,
+      messageEvery: 6,
+      // Bubble labels and the pinned line. Chat moves cover with the bubbles, not a preview
+      // layout, so every message carries an empty layout on purpose.
+      messages: [
+        { sender: 'OPS', subject: 'deploy window', preview: 'Moved to 14:00. Treat the lane as live.', layout: [] },
+        { sender: 'MAYA', subject: 're: standup', preview: 'Two blockers left, both in the middle column.', layout: [] },
+        { sender: 'BUILD BOT', subject: 'pipeline', preview: 'Green on main. Twelve minutes since last push.', layout: [] },
+        { sender: 'SAM', subject: 'lunch?', preview: 'Bring the pager. The thread never sleeps.', layout: [] },
+      ],
+      bubbleW: 0.56,
+    },
+  },
 ];
 
 /** 0..1 trajectory progress at `t` seconds after launch. */
@@ -3126,10 +3282,59 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
   const previewW = (bounds.right - bounds.left) * sx;
   const previewH = (bounds.bottom - bounds.top) * sy;
 
-  // BUSINESS LAPTOP is a mail window with a scrolling inbox and changing preview cover.
+  // BUSINESS LAPTOP is a screen chassis; the sheet and chat screens draw their own panes.
   if (arena.laptop) {
     const lap = arena.laptop;
     const screen = lap.screen;
+    if (lap.variant === 'sheet' && lap.sheet) {
+      const sh = lap.sheet;
+      ctx.fillStyle = '#060b0e';
+      ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+      ctx.fillStyle = '#0a1a12';
+      ctx.fillRect(mapX(screen.x), mapY(screen.y), screen.w * sx, screen.h * sy);
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(mapX(screen.x) + 0.5, mapY(screen.y) + 0.5, screen.w * sx - 1, screen.h * sy - 1);
+      ctx.fillStyle = 'rgba(127, 227, 166, 0.3)';
+      for (let i = 0; i < sh.cells.length; i++) {
+        const cell = sh.cells[i];
+        ctx.fillRect(
+          mapX(sh.origin.x + cell.col * (sh.cellW + sh.gap)),
+          mapY(sh.origin.y + cell.row * (sh.cellH + sh.gap)),
+          Math.max(1, sh.cellW * sx),
+          Math.max(1, sh.cellH * sy),
+        );
+      }
+      ctx.fillStyle = 'rgba(220, 240, 250, 0.82)';
+      ctx.font = '700 6px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('SPREADSHEET', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+      return;
+    }
+    if (lap.variant === 'chat') {
+      const bubble = Math.max(0.3, Math.min(1, lap.bubbleW ?? 0.58));
+      ctx.fillStyle = '#060b0e';
+      ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+      ctx.fillStyle = '#160d14';
+      ctx.fillRect(mapX(screen.x), mapY(screen.y), screen.w * sx, screen.h * sy);
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(mapX(screen.x) + 0.5, mapY(screen.y) + 0.5, screen.w * sx - 1, screen.h * sy - 1);
+      const bubbleW = Math.max(24, lap.inbox.w * bubble - 20) * sx;
+      for (let i = 0; i < lap.cards; i++) {
+        const y = laptopCardY(lap, i, 0);
+        if (y + lap.cardH < lap.inbox.y || y > lap.inbox.y + lap.inbox.h) continue;
+        const right = i % 2 === 0;
+        const x = right ? mapX(lap.inbox.x + lap.inbox.w - 10) - bubbleW : mapX(lap.inbox.x + 10);
+        ctx.fillStyle = right ? 'rgba(255, 154, 213, 0.3)' : 'rgba(160, 190, 255, 0.24)';
+        ctx.fillRect(x, mapY(y), Math.max(1, bubbleW), Math.max(1, lap.cardH * sy));
+      }
+      ctx.fillStyle = 'rgba(220, 240, 250, 0.82)';
+      ctx.font = '700 6px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('CHAT', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+      return;
+    }
     ctx.fillStyle = '#060b0e';
     ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
     ctx.fillStyle = '#0a1218';

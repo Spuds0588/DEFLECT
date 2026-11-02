@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-02 (BUSINESS LAPTOP)
+Last updated: 2026-11-02 (SPREADSHEET + CHAT)
 
 ---
 
@@ -31,6 +31,20 @@ Last updated: 2026-11-02 (BUSINESS LAPTOP)
 
 ---
 
+## SPREADSHEET + CHAT (2026-11-02)
+
+- [x] Extend `ArenaLaptopDef` with `variant`, `bubbleW` and a `sheet` cell grid; BUSINESS LAPTOP keeps the mail default
+- [x] SPREADSHEET (id 30): 6×4 grid, 17 breakable cells, 70-unit corridors, selection cursor and cell inspector
+- [x] A direct ranged shot spends one of two cell hits; a cleared cell opens its lane until the round ends
+- [x] CHAT (id 31): four rising bubbles that alternate sides, plus the pinned composer strip
+- [x] Bubbles are solid only while fully inside the pane, so a clipped card cannot block a spawn row
+- [x] Headless probe (`.tmp/laptop-variants-check.ts`): ids/order, cell destruction and round restore, cursor clock, bubble travel, spawn clearance across a full scroll and snapshot isolation
+- [x] `npx tsc --noEmit`, `npm run build` and `npm run bench` clean
+- [ ] Headed pass: read the sheet corridors, the cracked-cell state and the alternating bubble lanes at play size
+- [ ] Optional: bot pathing around a cleared lane, plus a sheet-cursor or chat-conveyor hazard
+
+---
+
 ## BUSINESS LAPTOP (2026-11-02)
 
 - [x] Add `laptop` data to `ArenaDef`; id 29 after SMART WATCH
@@ -42,7 +56,7 @@ Last updated: 2026-11-02 (BUSINESS LAPTOP)
 - [x] Headless probe (`.tmp/laptop-arena-check.ts`): id/order, message changes, moving cards, cover swap, spawn clearance, reset and snapshot isolation
 - [ ] Headed pass: read the moving inbox, preview flash and cover corridors at play size
 - [ ] Optional: add bot pathing around moving cards and preview cover
-- [ ] Future variants: spreadsheet corridors and breakable cells, then a rising chat conveyor
+- [x] Future variants: spreadsheet corridors and breakable cells, then a rising chat conveyor (shipped as SPREADSHEET and CHAT in v0.1.124)
 
 ---
 

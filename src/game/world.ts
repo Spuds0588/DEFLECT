@@ -75,6 +75,7 @@ import {
   PLUG_STATE,
   watchHandAngle,
   laptopCardY,
+  laptopCellRect,
   type ArenaLaptopDef,
   type ArenaSmokeDef,
   type ArenaWatchDef,
@@ -491,6 +492,11 @@ export class World {
   laptopFlashT = 0;
   /** Live inbox cards. Their y positions are refreshed from the shared clock. */
   readonly laptopCards: Rect[] = [];
+  /** SPREADSHEET breakable cells, parallel to `laptop.sheet.cells`. Local-only. */
+  readonly laptopCellRects: Rect[] = [];
+  readonly laptopCellHp: number[] = [];
+  /** SPREADSHEET selection cursor column. Presentation only, never collision. */
+  laptopCursor = 0;
   /** Inbox cards plus the active message layout, used for body and shot collision. */
   laptopSolids: Rect[] = [];
   private laptopMessageT = 0;
@@ -750,6 +756,11 @@ export class World {
     if (this.laptop) {
       for (let i = 0; i < this.laptop.cards; i++) {
         this.laptopCards.push({ x: this.laptop.inbox.x + 10, y: 0, w: this.laptop.inbox.w - 20, h: this.laptop.cardH });
+      }
+      const cells = this.laptop.sheet?.cells ?? [];
+      for (let i = 0; i < cells.length; i++) {
+        this.laptopCellRects.push({ x: 0, y: 0, w: 0, h: 0 });
+        this.laptopCellHp.push(0);
       }
       this.resetLaptop();
     }
@@ -11236,22 +11247,45 @@ export class World {
     this.laptopMessage = 0;
     this.laptopMessageT = 0;
     this.laptopFlashT = 0;
+    this.laptopCursor = 0;
+    // A sheet always starts the round on its authored grid with every cell intact.
+    const sheet = lap.sheet;
+    if (sheet) {
+      for (let i = 0; i < sheet.cells.length; i++) {
+        const cell = sheet.cells[i];
+        laptopCellRect(sheet, cell, this.laptopCellRects[i]);
+        this.laptopCellHp[i] = Math.max(1, cell.hp);
+      }
+    }
     this.refreshLaptopCards();
-    const layout = lap.messages[0]?.layout ?? [];
-    this.laptopSolids = this.laptopCards.concat(layout);
+    this.rebuildLaptopSolids();
+  }
+
+  /** Cards, the open preview layout and every intact sheet cell in one cover list. */
+  private rebuildLaptopSolids(): void {
+    const lap = this.laptop;
+    if (!lap) return;
+    const layout = lap.messages[this.laptopMessage]?.layout ?? [];
+    this.laptopSolids = this.laptopCards.concat(layout, this.laptopCellRects);
   }
 
   /** Move the inbox cards from the shared clock. Off-pane cards are collisionless. */
   private refreshLaptopCards(): void {
     const lap = this.laptop;
     if (!lap) return;
+    // CHAT alternates bubble sides so one lane stays open; MAIL keeps one narrow column.
+    const bubble = lap.variant === 'chat' ? Math.max(0.3, Math.min(1, lap.bubbleW ?? 0.58)) : 1;
+    const w = Math.max(24, lap.inbox.w * bubble - 20);
     for (let i = 0; i < this.laptopCards.length; i++) {
       const card = this.laptopCards[i];
       const y = laptopCardY(lap, i, this.laptopT);
-      card.x = lap.inbox.x + 10;
+      card.x = bubble < 1 && i % 2 === 0 ? lap.inbox.x + lap.inbox.w - 10 - w : lap.inbox.x + 10;
       card.y = y;
-      card.w = lap.inbox.w - 20;
-      card.h = y + lap.cardH <= lap.inbox.y || y >= lap.inbox.y + lap.inbox.h ? 0 : lap.cardH;
+      card.w = w;
+      // A card is only solid while it is fully inside the pane. A clipped card above the
+      // top edge is invisible mid-wrap, so it must not keep blocking a spawn row.
+      const inside = y >= lap.inbox.y && y + lap.cardH <= lap.inbox.y + lap.inbox.h;
+      card.h = inside ? lap.cardH : 0;
     }
   }
 
@@ -11261,19 +11295,26 @@ export class World {
     if (!lap || lap.messages.length === 0) return;
     this.laptopMessage = ((index % lap.messages.length) + lap.messages.length) % lap.messages.length;
     this.laptopFlashT = 1.2;
-    this.laptopSolids = this.laptopCards.concat(lap.messages[this.laptopMessage].layout);
+    this.rebuildLaptopSolids();
   }
 
   private tickLaptop(dt: number): void {
     const lap = this.laptop;
     if (!lap) return;
     this.laptopT += dt;
-    this.laptopMessageT += dt;
-    const every = Math.max(0.5, lap.messageEvery);
-    if (this.laptopMessageT >= every) {
-      const advances = Math.floor(this.laptopMessageT / every);
-      this.laptopMessageT -= advances * every;
-      this.setLaptopMessage(this.laptopMessage + advances);
+    if (lap.sheet) {
+      const every = Math.max(0.15, lap.sheet.cursorEvery);
+      this.laptopCursor = Math.floor(this.laptopT / every) % Math.max(1, lap.sheet.cols);
+    }
+    // A sheet has no preview messages, so its message clock has nothing to advance.
+    if (lap.messages.length > 0) {
+      this.laptopMessageT += dt;
+      const every = Math.max(0.5, lap.messageEvery);
+      if (this.laptopMessageT >= every) {
+        const advances = Math.floor(this.laptopMessageT / every);
+        this.laptopMessageT -= advances * every;
+        this.setLaptopMessage(this.laptopMessage + advances);
+      }
     }
     if (this.laptopFlashT > 0) this.laptopFlashT = Math.max(0, this.laptopFlashT - dt);
     this.refreshLaptopCards();
@@ -11343,7 +11384,34 @@ export class World {
     }
   }
 
+  /**
+   * A direct ranged shot landing on a sheet cell spends one of its hits. A cleared cell
+   * collapses its cover for the rest of the round. Bombs and the heavy beam stop on cover
+   * without chipping it; only the ranged hit path breaks cells.
+   */
+  private damageLaptopCell(proj: Projectile): boolean {
+    for (let i = 0; i < this.laptopCellRects.length; i++) {
+      const r = this.laptopCellRects[i];
+      if (r.w <= 0 || r.h <= 0) continue;
+      if (!circleRect(proj.x, proj.y, proj.radius, r, hitScratch)) continue;
+      this.laptopCellHp[i] -= 1;
+      if (this.laptopCellHp[i] <= 0) {
+        this.laptopCellHp[i] = 0;
+        r.w = 0;
+        r.h = 0;
+      }
+      return true;
+    }
+    return false;
+  }
+
   private laptopStopsProjectile(proj: Projectile): boolean {
+    // Sheet cells are breakable, so they take the hit before the general cover block.
+    if (this.laptopCellRects.length > 0 && this.damageLaptopCell(proj)) {
+      proj.active = false;
+      this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
+      return true;
+    }
     if (!this.laptopCoverAt(proj.x, proj.y, proj.radius)) return false;
     proj.active = false;
     this.emit(EV.BOUNCE, proj.owner, proj.x, proj.y, 1);
