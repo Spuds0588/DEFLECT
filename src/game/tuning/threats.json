@@ -141,10 +141,10 @@
 
 
     "flyby": {
-      "speed": 1020,
-      "exitRange": 700,
-      "turnRate": 0.55,
-      "turnSpeed": 620
+      "speed": 940,
+      "exitRange": 380,
+      "turnRate": 1.0,
+      "turnSpeed": 760
     }
   },
   "BOSS_RUSH": {

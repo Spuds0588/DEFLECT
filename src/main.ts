@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.151';
+const BUILD = '0.1.152';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -1635,8 +1635,8 @@ function resumeCampaign(index: number, save: StorySave): void {
   if (save.level >= PLAYABLE_CAMPAIGN_LEVELS.length) {
     campaignLevelIndex = 0;
     campaignSaved = true;
-    storyStatusLine.textContent = 'BUILD ROOT CLEAR // MORE LEVELS COMING SOON';
-    toast('BUILD ROOT CLEAR // MORE LEVELS COMING SOON', 'warn');
+    storyStatusLine.textContent = 'CAMPAIGN COMPLETE // MORE LEVELS COMING SOON';
+    toast('CAMPAIGN COMPLETE // MORE LEVELS COMING SOON', 'warn');
     renderStorySlots();
     return;
   }
@@ -1676,6 +1676,8 @@ function startCampaignLevel(): void {
     false,
     level.intro,
     level.clearKills,
+    false,
+    level.boss ?? -1,
   );
   world.friendlyFire = friendlyFire;
   for (let i = 0; i < MAX_PLAYERS; i++) world.setMemoryStacks(i, campaignMemory[i] ?? 0);
@@ -4540,7 +4542,7 @@ function showCampaignClearOverlay(w: World): void {
     });
     campaignSaved = true;
     bestLine = ` // BEST ${bestScore}`;
-    if (complete) storyStatusLine.textContent = 'BUILD ROOT CLEAR // MORE LEVELS COMING SOON';
+    if (complete) storyStatusLine.textContent = 'CAMPAIGN COMPLETE // MORE LEVELS COMING SOON';
   } else if (campaignSlot >= 0) {
     bestLine = ` // BEST ${loadStorySlots()[campaignSlot]?.bestScore ?? score}`;
   }
@@ -4563,7 +4565,7 @@ function showCampaignClearOverlay(w: World): void {
   }
   setOverlay(
     'runover',
-    complete ? 'CAMPAIGN // LEVEL 1 CLEAR' : 'CAMPAIGN // NODE CLEARED',
+    complete ? `CAMPAIGN // LEVEL ${PLAYABLE_CAMPAIGN_LEVELS.length} CLEAR` : 'CAMPAIGN // NODE CLEARED',
     complete ? 'MORE LEVELS COMING SOON' : `${cleared.name} SECURED`,
     `${cleared.name} SECURED // ${w.gauntletKills} KILLS // ${formatGauntletTime(campaignPlaySeconds)} // ${w.campaignDamage} DAMAGE TAKEN // ${dataLine}${
       clean ? ' // CLEAN SWEEP' : ''

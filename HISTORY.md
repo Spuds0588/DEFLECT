@@ -6399,3 +6399,43 @@ the entrance handoff; `bossrush-check` and `blob-check` pass; `npx tsc --noEmit`
 
 **Next:** watch a full rush for turn lanes that loop too close to the camera edge; adjust `turnSpeed`
 before `turnRate` to open the arc.
+
+## 2026-11-02 — Boss sweep, and campaign level 2 ends on the Mega Worm (v0.1.152)
+
+**Goal:** make every developed mini-boss work, survive the arenas and actually die, then ship campaign
+levels 1 and 2 with the Mega Worm as level 2's final encounter, verified with bots.
+
+- `.tmp/boss-matrix.ts` puts five mini-bosses through `CROSSROADS`, `GRID ZERO`, `SWITCHBACK` and
+  `QUARANTINE`: 20/20 spawn outside the fight, hold together for 3 s, stay finite and near their arena,
+  and die through their own damage path. This found the File Blob and Starfish disappearing over floor
+  voids: `cullVoidThreats` now skips every `bossKind >= 0`, not only the Mega Worm and the Blob.
+- **Bosses could not be hit properly.** Every worm collision test used `WORM.headRadius` (16) and
+  `WORM.segmentRadius` (10) instead of the body's own `w.hitR` / `w.segR`, so on the 3x Mega Worm a bomb,
+  lash, dash, orbit ball, radar or keypad only registered within 16 units of the head. Twenty-four sites
+  now read the body's radii. `spawnWorm` also stopped resetting radii to themselves: a pooled slot that
+  had carried a boss handed a 138-unit hit circle to the next ordinary worm.
+- **Explosions never reached it.** `explodeBlast` only tested the head circle and required floor line of
+  sight, so a blast on the chain did nothing and every off-map pass failed the LOS test. It now tests every
+  plate and skips the LOS check for a mini-boss (they fly over cover anyway).
+- **A virus could heal it to full.** `infectWorm` refills health because a converted worm becomes a thrall;
+  one virus touching the boss reset 200 HP to 206 repeatedly and made the level unwinnable. The virus host
+  scan and its contact test now skip `bossKind >= 0`.
+- **The fight was a 186 s grind.** The old wide arc (1020/700/0.55/620) spent about 80% of each cycle off
+  the floor: 18 passes, 19.5% uptime, and passes that only clipped the lip. `flyby` is now 940/380/1.0/760
+  (still a 760-unit turn radius, well above `spacing`, so the chain cannot fold through itself): ~35%
+  uptime, 8-10 readable crossings. Every one of the thirteen programs now kills it through its own kit in
+  12-115 s solo, where Kaboom, Fisher, Bad Lag, Pinball and Aim Bot previously could not finish at all.
+- **Level 2.** `CampaignLevel.boss` names the `MINIBOSS` id and `World` takes it as `campaignBoss`. On a
+  boss node the four assault kills are the run-up; the level clears only after the staged intro and when
+  no body of that kind is live, so a port or a fodder kill cannot end it. `REBOOT` on `GRID ZERO` is now
+  `playable: true` with the kitty briefing and the Mega Worm, and the overlays and slot copy read
+  `LEVEL 2 CLEAR` / `MORE LEVELS COMING SOON`.
+- `.tmp/campaign2-check.ts` runs the node three times with three bot companions: 67 s, 80 s and 72 s, all
+  `cleared`. `.tmp/mw-programs.ts` is the per-kit gate against the boss.
+
+**Verification:** `megaworm-check`, `idlehands-check`, `starfish-check`, `blob-check`, `storm-check`,
+`bossintro-check`, `bossrush-check` and `boss-matrix` (20/20) pass; `campaign2-check` 3/3; `npx tsc
+--noEmit`, `npm run build` and `npm run bench` clean (8P stress 0.046 ms avg). Headed pass still owed.
+
+**Next:** a human run of level 2 to judge the Mega Worm's contact pressure, and a recorded boss-rush clear
+time per boss.

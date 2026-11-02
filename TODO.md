@@ -2,8 +2,25 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-02 (PLATES + PORTS)
-Formerly: 2026-11-02 (PORTS)
+Last updated: 2026-11-02 (BOSS SWEEP + CAMPAIGN LEVEL 2)
+Formerly: 2026-11-02 (PLATES + PORTS)
+
+---
+
+## Boss sweep and campaign levels 1-2 (2026-11-02)
+
+- [x] Cross-arena boss matrix: five mini-bosses in `CROSSROADS`, `GRID ZERO`, `SWITCHBACK` and `QUARANTINE` spawn, stay finite, stay near their arena and die through their own damage path (20/20, `.tmp/boss-matrix.ts`)
+- [x] `cullVoidThreats` skips every mini-boss (`bossKind >= 0`), not only the Mega Worm and the Blob: the floor cull was deleting a boss that flew over a hole
+- [x] Worm hit tests use `w.hitR` / `w.segR` instead of the 16/10 normal-worm constants, so bombs, lash, dash, orbit balls and sentries actually touch a 3x body
+- [x] `spawnWorm` resets both radii; a pooled slot that carried a boss no longer gives a normal worm a 138-unit hit circle
+- [x] Explosions test every plate and skip the floor line-of-sight check for a mini-boss; Kaboom and the Pinball arm can damage the Mega Worm
+- [x] Viruses no longer infect mini-bosses (`infectWorm` healed the boss to full mid-fight and made it unkillable)
+- [x] Mega Worm flyby retuned to 940/380/1.0/760: ~35% floor uptime instead of ~20%, a solo clear in 55-115 s per kit instead of a 186 s grind
+- [x] `.tmp/mw-programs.ts` gate: all thirteen programs kill the boss through their own kit
+- [x] Campaign level 2 (`REBOOT` on `GRID ZERO`) is playable with the Mega Worm as its final encounter; boss nodes clear on the boss, not a kill count or a port
+- [x] `.tmp/campaign2-check.ts`: three level 2 runs with three bot companions clear in 67/80/72 s
+- [ ] Headed pass: watch a full level 2 run with a human pilot and judge the Mega Worm's contact pressure and the four-kill run-up
+- [ ] A human boss-rush clear time per boss, recorded in HISTORY
 
 ---
 

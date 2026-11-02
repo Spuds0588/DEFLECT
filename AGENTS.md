@@ -606,8 +606,13 @@ link is a `bridge`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   reattach it to the campaign stage without a decision.
 - The first playable node is **BUILD ROOT** (`src/game/campaign.ts`) on `QUARANTINE`; see D17 and D41. It
   is a scripted gauntlet-mode world, saves the slot on clear, and returns to the slot stage. **REBOOT** on
-  `GRID ZERO` is authored but parked with `playable: false` until the route continues; a completed BUILD
-  ROOT slot reports `MORE LEVELS COMING SOON` instead of starting it.
+  `GRID ZERO` is the second playable node (v0.1.152): a kitty briefing, a four-kill assault, then the
+  Mega Worm as the level's final encounter.
+- **A level may end on a mini-boss (2026-11-02).** `CampaignLevel.boss` names the `MINIBOSS` id; `World`
+  takes it as `campaignBoss` and spawns it once the assault kills are met (`campaignBossSpawned`). A boss
+  node ignores the port sweep and the bare kill count: it clears only after the staged intro and when no
+  body of that kind is live, so neither a port nor a fodder kill can end the fight. Mini-boss health is
+  not a level budget: do not tune a node by changing it.
 - The campaign route plate (`road.ts`) belongs to the between-level transition, not to the archive. Do not mount it in a menu.
 - **Narrative framing (first beat built 2026-11-01, v0.1.92)**: the run opens in the quarantine section of a dev
   system. Every roster program is a "bad" program pulled by antivirus and sent to be retrained; the pick is
@@ -2596,9 +2601,25 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
 - **Straight runs, wide turns, never a chase.** After the entrance, `updateMegaWorm` alternates two
   states: a straight run at `flyby.speed` whose heading stays fixed until the head has passed the latched
   point by `flyby.exitRange`, then a wide turn at `flyby.turnSpeed` / `flyby.turnRate` back toward the
-  player. The turn radius (`turnSpeed / turnRate`, about 1125 units) is deliberately larger than the
-  body so the head cannot double back through its own tail. It re-aims once when the turn starts; only
-  the turn steers. There is no teleport, no orbit and no ground chase.
+  player. It re-aims once when the turn starts; only the turn steers. There is no teleport, no orbit and
+  no ground chase. The turn radius (`turnSpeed / turnRate`, 760 units) must stay well above `spacing`, or
+  the trailing chain folds through itself; that is the rule, not the size of the old arc. Tuning is
+  `speed` 940, `exitRange` 380, `turnRate` 1.0, `turnSpeed` 760 (v0.1.152). The old wide arc
+  (1020/700/0.55/620) spent about 80% of every cycle outside the floor: 18 passes over 186 s with an
+  always-firing invulnerable pilot, including whole passes that only clipped the lip. The tighter loop
+  keeps ~35% of the fight on the floor and clears in 55-115 s depending on the kit. Measure passes and
+  uptime before changing these numbers; a slower pass also lets slow-projectile kits land more often.
+- **Bosses cannot be infected (2026-11-02).** `infectWorm` refills health because a converted worm becomes
+  a thrall. A virus touching the Mega Worm healed it to full mid-fight and made the level unkillable, so
+  both the virus host scan and its contact test skip `w.bossKind >= 0`.
+- **Collision uses the body's own radii (2026-11-02).** Every worm hit test reads `w.hitR` / `w.segR`, never
+  `WORM.headRadius` / `WORM.segmentRadius`, which are the 16/10 normal-worm sizes. Before this a bomb,
+  lash or dash only registered within 16 units of the 3x head: Kaboom landed 18 damage in 240 s and
+  several kits could not kill the boss at all. `spawnWorm` also resets both radii, because a pooled slot
+  that had carried a boss handed a 138-unit hit circle to the next ordinary worm.
+- **Blasts reach the whole body.** `explodeBlast` tests the head and every plate, and skips the floor
+  line-of-sight check for a mini-boss: a blast on the chain used to do nothing, and every off-map pass
+  failed LOS, so explosion kits could not damage it.
 - **Arrival cry (2026-11-02).** The entrance is a full lap (`sweep` 6.28) starting beyond the arena lip,
   and it ends on `EV.MEGA_CRY`: a MIDI-note bird phrase (`audio.megaCry`), a 16-unit screen shake, a flash
   and a pressure ring. The first straight pass follows the cry. The cry is an event, not a renderer

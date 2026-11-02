@@ -6,6 +6,7 @@
  * sector it belongs to. The script itself (sparring drill, breach, threat assault) lives
  * in `World`; every tuning number lives in the `CAMPAIGN` block in `config.ts`.
  */
+import { MINIBOSS } from './minibosses';
 import { PROP } from './types';
 
 /** A data crate the level asks the player to preserve. Local-only, spawned on the breach. */
@@ -32,6 +33,12 @@ export interface CampaignLevel {
   clearKills: number;
   /** False keeps an authored level out of the live campaign route until it ships. */
   playable?: boolean;
+  /**
+   * Mini-boss that ends the level. It arrives after the assault kills are met and the
+   * level clears when that boss leaves the floor; a level with a boss ignores the port
+   * sweep and the bare kill count.
+   */
+  boss?: number;
   /**
    * Data crates on the arena. They are the level's clean-sweep objective: break one and
    * the score loses its preservation pay. Spawned on the breach, never in snapshots.
@@ -71,10 +78,10 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     code: 'REMEMBER',
     arenaId: 1,
     intro: 'kitty',
-    // Parked until the campaign route continues past BUILD ROOT.
-    playable: false,
-    // A short live-fire check after the lesson, not a full assault.
+    playable: true,
+    // Four fodder bodies, then the Mega Worm is the level's final encounter.
     clearKills: 4,
+    boss: MINIBOSS.MEGA_WORM,
     dataCrates: [],
   },
 ];

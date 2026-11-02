@@ -342,6 +342,9 @@ export class World {
   readonly campaignIntro: CampaignIntro;
   /** Threats needed to clear the assault; a lesson node may shorten it. */
   campaignKillsToClear: number;
+  /** Mini-boss that ends the node, or -1 for a port/kill clear. */
+  campaignBoss: number;
+  private campaignBossSpawned = false;
   /** The node's onboarding lesson. Null when the node opens straight into play. */
   tutorial: TutorialRunner | null = null;
   campaignPhase: CampaignPhase = 'none';
@@ -780,6 +783,7 @@ export class World {
     campaignIntro: CampaignIntro = 'none',
     campaignClearKills = 0,
     bossRush = false,
+    campaignBoss = -1,
   ) {
     this.mode = mode;
     this.campaignIntro = campaignIntro;
@@ -787,6 +791,7 @@ export class World {
     this.campaign = campaign;
     this.infectionMode = infectionMode;
     this.bossRush = bossRush;
+    this.campaignBoss = campaignBoss;
     this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
@@ -1326,6 +1331,7 @@ export class World {
     this.campaignBarsOpen = false;
     this.campaignCivilianLossT = 0;
     this.campaignHoldingWait = 0;
+    this.campaignBossSpawned = false;
     // The kitty node is a quiet briefing room: no subjects, no threats, just the lesson.
     if (this.campaignIntro === 'kitty') {
       this.campaignPhase = 'briefing';
@@ -2622,6 +2628,22 @@ export class World {
     }
     if (this.campaignPhase === 'assault') {
       this.campaignT += dt;
+      if (this.campaignBoss >= 0) {
+        // Boss node: the assault kills are the run-up, then the mini-boss arrives and its
+        // death is the clear. Ports and the bare kill count do not end this node.
+        if (!this.campaignBossSpawned && this.gauntletKills >= this.campaignKillsToClear) {
+          this.campaignBossSpawned = true;
+          this.spawnMiniboss(this.campaignBoss, this.centerX + 260, this.centerY - 80);
+        }
+        if (
+          this.campaignBossSpawned &&
+          !this.bossIntro &&
+          this.minibossLiveCount(this.campaignBoss) === 0
+        ) {
+          this.clearCampaign();
+        }
+        return;
+      }
       if (this.portTotal > 0) {
         // Ports own the win: close every one, then leave through the white party port.
         // Enemies still in play do not block the exit, which is why a port cannot end a
@@ -4319,7 +4341,7 @@ export class World {
         const dy = w.y - p.y;
         const forward = dx * dirX + dy * dirY;
         const lateral = Math.abs(dx * dirY - dy * dirX);
-        if (forward < 0 || forward > range + WORM.headRadius || lateral > halfWidth + WORM.headRadius) continue;
+        if (forward < 0 || forward > range + w.hitR || lateral > halfWidth + w.hitR) continue;
         if (this.lineBlocked(p.x, p.y, w.x, w.y)) continue;
         this.damageWorm(w, waveDamage, p.slot, dirX, dirY, PLAYER.waveKnockback);
       }
@@ -5651,7 +5673,7 @@ export class World {
         for (let s = -1; s < w.segCount && !touching; s++) {
           const tx = s < 0 ? w.x : w.segX[s];
           const ty = s < 0 ? w.y : w.segY[s];
-          const radius = s < 0 ? WORM.headRadius : WORM.segmentRadius;
+          const radius = s < 0 ? w.hitR : w.segR;
           const dx = tx - p.x;
           const dy = ty - p.y;
           const forward = dx * cos + dy * sin;
@@ -5830,12 +5852,12 @@ export class World {
         let touching = false;
         let hx = w.x - p.x;
         let hy = w.y - p.y;
-        if (hx * hx + hy * hy <= (radius + WORM.headRadius) * (radius + WORM.headRadius)) touching = true;
+        if (hx * hx + hy * hy <= (radius + w.hitR) * (radius + w.hitR)) touching = true;
         if (!touching) {
           for (let s = 0; s < w.segCount; s++) {
             hx = w.segX[s] - p.x;
             hy = w.segY[s] - p.y;
-            const rr = radius + WORM.segmentRadius;
+            const rr = radius + w.segR;
             if (hx * hx + hy * hy <= rr * rr) {
               touching = true;
               break;
@@ -7826,17 +7848,17 @@ export class World {
         let hit = false;
         let hx = w.x;
         let hy = w.y;
-        let hr = WORM.headRadius;
+        let hr = w.hitR;
         if ((w.x - bx) ** 2 + (w.y - by) ** 2 <= (ATOMIZE.ballRadius + hr) ** 2) {
           hit = true;
         } else {
           for (let s = 0; s < w.segCount; s++) {
-            const rr = ATOMIZE.ballRadius + WORM.segmentRadius;
+            const rr = ATOMIZE.ballRadius + w.segR;
             if ((w.segX[s] - bx) ** 2 + (w.segY[s] - by) ** 2 > rr * rr) continue;
             hit = true;
             hx = w.segX[s];
             hy = w.segY[s];
-            hr = WORM.segmentRadius;
+            hr = w.segR;
             break;
           }
         }
@@ -9701,7 +9723,7 @@ export class World {
         let hy = 0;
         const dxh = w.x - x;
         const dyh = w.y - y;
-        const reachH = def.radius + WORM.headRadius;
+        const reachH = def.radius + w.hitR;
         if (dxh * dxh + dyh * dyh <= reachH * reachH) {
           hit = true;
           hx = dxh;
@@ -9710,7 +9732,7 @@ export class World {
         for (let s = 0; s < w.segCount && !hit; s++) {
           const dxs = w.segX[s] - x;
           const dys = w.segY[s] - y;
-          const reachS = def.radius + WORM.segmentRadius;
+          const reachS = def.radius + w.segR;
           if (dxs * dxs + dys * dys <= reachS * reachS) {
             hit = true;
             hx = dxs;
@@ -10419,7 +10441,7 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active || w.held) continue;
-      const rr = radius + WORM.segmentRadius;
+      const rr = radius + w.segR;
       if ((w.x - x) ** 2 + (w.y - y) ** 2 <= rr * rr) this.damageWorm(w, damage, -1, 0, 0, 0);
     }
     for (let i = 0; i < this.viruses.length; i++) {
@@ -12512,7 +12534,7 @@ export class World {
       for (let s = -1; s < w.segCount && !hit; s++) {
         const tx = s < 0 ? w.x : w.segX[s];
         const ty = s < 0 ? w.y : w.segY[s];
-        const radius = s < 0 ? WORM.headRadius : WORM.segmentRadius;
+        const radius = s < 0 ? w.hitR : w.segR;
         const dx = tx - cx;
         const dy = ty - cy;
         const distance = Math.hypot(dx, dy);
@@ -12811,7 +12833,7 @@ export class World {
       if (!w.active) continue;
       const dx = w.x - proj.x;
       const dy = w.y - proj.y;
-      const rr = reach + WORM.headRadius;
+      const rr = reach + w.hitR;
       if (dx * dx + dy * dy <= rr * rr && !this.lineBlocked(proj.x, proj.y, w.x, w.y)) return true;
     }
     for (let i = 0; i < this.viruses.length; i++) {
@@ -12955,11 +12977,25 @@ export class World {
       for (let i = 0; i < this.worms.length; i++) {
         const w = this.worms[i];
         if (!w.active) continue;
-        const dx = w.x - x;
-        const dy = w.y - y;
+        // A boss body can be thousands of units long, so a blast that lands on the chain
+        // counts, not only one that lands on the head circle.
+        let hitX = w.x;
+        let hitY = w.y;
+        let touching = Math.hypot(w.x - x, w.y - y) <= radius + w.hitR;
+        for (let s = 0; s < w.segCount && !touching; s++) {
+          if (Math.hypot(w.segX[s] - x, w.segY[s] - y) <= radius + w.segR) {
+            touching = true;
+            hitX = w.segX[s];
+            hitY = w.segY[s];
+          }
+        }
+        if (!touching) continue;
+        // Mini-bosses fly over cover and past the lip. A floor line-of-sight test fails
+        // on every off-map pass, so explosions never reached the Mega Worm at all.
+        if (w.bossKind < 0 && this.lineBlocked(x, y, hitX, hitY)) continue;
+        const dx = hitX - x;
+        const dy = hitY - y;
         const dist = Math.hypot(dx, dy);
-        if (dist > radius + WORM.headRadius) continue;
-        if (this.lineBlocked(x, y, w.x, w.y)) continue;
         const nx = dist > 0.001 ? dx / dist : 1;
         const ny = dist > 0.001 ? dy / dist : 0;
         this.damageWorm(w, damage, sourceSlot, nx, ny);
@@ -13105,12 +13141,12 @@ export class World {
       if (!w.active) continue;
       const hdx = proj.x - w.x;
       const hdy = proj.y - w.y;
-      const hr = proj.radius + WORM.headRadius;
+      const hr = proj.radius + w.hitR;
       if (hdx * hdx + hdy * hdy <= hr * hr) return true;
       for (let s = 0; s < w.segCount; s++) {
         const sdx = proj.x - w.segX[s];
         const sdy = proj.y - w.segY[s];
-        const sr = proj.radius + WORM.segmentRadius;
+        const sr = proj.radius + w.segR;
         if (sdx * sdx + sdy * sdy <= sr * sr) return true;
       }
     }
@@ -14306,17 +14342,11 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      // Floating boss bodies are not standing on the plate. Idle Hands hover over
-      // the USB HUB's gaps, and the Storm Cloud may now hang past the lip, so the floor
-      // cull would delete a whole boss the moment its entrance ends.
-      if (
-        w.mega ||
-        w.bossKind === MINIBOSS.IDLE_HANDS ||
-        w.bossKind === MINIBOSS.STORM_CLOUD ||
-        w.bossKind === MINIBOSS.BLOB
-      ) {
-        continue;
-      }
+      // Mini-boss bodies are not floor threats: they hover, fly over holes and past the
+      // lip, and the floor cull would delete a whole boss mid-fight (Starfish over a
+      // QUARANTINE void was the latest case). Environmental hazards still damage them
+      // through their own paths; only the floor rule is skipped.
+      if (w.bossKind >= 0) continue;
       if (this.offFloor(w.x, w.y)) this.damageWorm(w, 9999, 0, 0, 0);
     }
     for (let i = 0; i < this.viruses.length; i++) {
@@ -15575,8 +15605,10 @@ export class World {
     w.armState = null;
     w.blob = null;
     w.held = held;
-    w.hitR = w.hitR;
-    w.segR = w.segR;
+    // A pooled slot may have carried a boss. Reset the radii with the body, or a normal
+    // worm inherits a 138-unit hit circle from the Mega Worm that last used the slot.
+    w.hitR = WORM.headRadius;
+    w.segR = WORM.segmentRadius;
     w.legs = false;
     w.eyeT = 0;
     w.whipT = 0;
@@ -17939,7 +17971,8 @@ export class World {
     // happens to be closer. The biases still apply exactly as in the solo sandbox.
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
-      if (!w.active || w.infected) continue;
+      // Mini-bosses are not hosts: infecting one used to reset its health to full mid-fight.
+      if (!w.active || w.infected || w.bossKind >= 0) continue;
       const dx = w.x - v.x;
       const dy = w.y - v.y;
       const d2 = dx * dx + dy * dy;
@@ -18133,9 +18166,11 @@ export class World {
 
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
-      if (!w.active || w.infected) continue;
+      // A converted worm is a thrall, so `infectWorm` refills health. Never route a boss
+      // there: it healed the Mega Worm to full and made the fight unwinnable.
+      if (!w.active || w.infected || w.bossKind >= 0) continue;
       let hit = false;
-      const hr = v.radius + WORM.headRadius;
+      const hr = v.radius + w.hitR;
       const hdx = w.x - v.x;
       const hdy = w.y - v.y;
       if (hdx * hdx + hdy * hdy <= hr * hr) hit = true;
@@ -18143,7 +18178,7 @@ export class World {
         for (let s = 0; s < w.segCount; s++) {
           const sdx = w.segX[s] - v.x;
           const sdy = w.segY[s] - v.y;
-          const sr = v.radius + WORM.segmentRadius;
+          const sr = v.radius + w.segR;
           if (sdx * sdx + sdy * sdy <= sr * sr) {
             hit = true;
             break;
@@ -18444,7 +18479,14 @@ export class World {
       const hdx = proj.x - w.x;
       const hdy = proj.y - w.y;
       const hr = proj.radius + w.hitR;
-      if (hdx * hdx + hdy * hdy > hr * hr) continue;
+      let touching = hdx * hdx + hdy * hdy <= hr * hr;
+      for (let s = 0; s < w.segCount && !touching; s++) {
+        const sr = proj.radius + w.segR;
+        const sdx = proj.x - w.segX[s];
+        const sdy = proj.y - w.segY[s];
+        touching = sdx * sdx + sdy * sdy <= sr * sr;
+      }
+      if (!touching) continue;
       // A worm swallows the shell instead of being pierced by it. A boss plate takes the hit.
       if (w.mega) {
         this.damageWorm(w, proj.damage, proj.owner, ux, uy, 0, proj.x, proj.y);
@@ -18511,8 +18553,15 @@ export class World {
       if ((proj.hitWorms & bit) !== 0) continue;
       const hdx = proj.x - w.x;
       const hdy = proj.y - w.y;
-      const hr = proj.radius + WORM.headRadius;
-      if (hdx * hdx + hdy * hdy > hr * hr) continue;
+      const hr = proj.radius + w.hitR;
+      let touching = hdx * hdx + hdy * hdy <= hr * hr;
+      for (let s = 0; s < w.segCount && !touching; s++) {
+        const sr = proj.radius + w.segR;
+        const sdx = proj.x - w.segX[s];
+        const sdy = proj.y - w.segY[s];
+        touching = sdx * sdx + sdy * sdy <= sr * sr;
+      }
+      if (!touching) continue;
       proj.hitWorms |= bit;
       this.damageWorm(w, proj.damage, proj.owner, ux, uy, PINBALL.shotKnockback);
       if (this.pinballStruck(proj)) return true;
@@ -18572,8 +18621,15 @@ export class World {
       if ((proj.hitWorms & bit) !== 0) continue;
       const hdx = proj.x - w.x;
       const hdy = proj.y - w.y;
-      const hr = proj.radius + WORM.headRadius;
-      if (hdx * hdx + hdy * hdy > hr * hr) continue;
+      const hr = proj.radius + w.hitR;
+      let touching = hdx * hdx + hdy * hdy <= hr * hr;
+      for (let s = 0; s < w.segCount && !touching; s++) {
+        const sr = proj.radius + w.segR;
+        const sdx = proj.x - w.segX[s];
+        const sdy = proj.y - w.segY[s];
+        touching = sdx * sdx + sdy * sdy <= sr * sr;
+      }
+      if (!touching) continue;
       proj.hitWorms |= bit;
       this.damageWorm(w, proj.damage, proj.owner, ux, uy, PINBALL.powerKnockback);
     }
@@ -18765,12 +18821,12 @@ export class World {
       let hitX = w.x;
       let hitY = w.y;
       let touching = false;
-      const hr = proj.radius + WORM.headRadius;
+      const hr = proj.radius + w.hitR;
       if ((proj.x - w.x) * (proj.x - w.x) + (proj.y - w.y) * (proj.y - w.y) <= hr * hr) {
         touching = true;
       } else {
         for (let s = 0; s < w.segCount; s++) {
-          const sr = proj.radius + WORM.segmentRadius;
+          const sr = proj.radius + w.segR;
           const dx = proj.x - w.segX[s];
           const dy = proj.y - w.segY[s];
           if (dx * dx + dy * dy > sr * sr) continue;
@@ -18925,7 +18981,7 @@ export class World {
       const dx = w.x - p.x;
       const dy = w.y - p.y;
       const d = Math.hypot(dx, dy);
-      if (d > reach + WORM.headRadius || d < 0.001) continue;
+      if (d > reach + w.hitR || d < 0.001) continue;
       if ((dx / d) * cos + (dy / d) * sin < arcCos) continue;
       this.damageWorm(w, damage, p.slot, shoveX, shoveY, force);
       this.markSwingHit(p);
@@ -19006,10 +19062,10 @@ export class World {
       if (!w.active) continue;
       const bit = 1 << i;
       if ((p.dashHitWorms & bit) !== 0) continue;
-      const rr = hitR + WORM.headRadius;
+      const rr = hitR + w.hitR;
       let touching = (w.x - p.x) * (w.x - p.x) + (w.y - p.y) * (w.y - p.y) <= rr * rr;
       if (!touching) {
-        const sr = hitR + WORM.segmentRadius;
+        const sr = hitR + w.segR;
         for (let s = 0; s < w.segCount; s++) {
           const dx = w.segX[s] - p.x;
           const dy = w.segY[s] - p.y;

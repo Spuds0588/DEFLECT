@@ -16,7 +16,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **VS BOTS:** normal round matches against one to three local bot opponents, first to 3.
 - **GAUNTLET:** a scored, one-life local run against worms, viruses, cascading errors, sentries and
   infected thralls, with a local top-eight table.
-- **CAMPAIGN:** `BUILD ROOT`, the first playable story level, with three local save slots. More levels are coming soon.
+- **CAMPAIGN:** `BUILD ROOT` and `REBOOT`, the first two story levels, with three local save slots. A cleared level carries the run to the next one.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
 - Thirteen programs, thirty-two arenas.
@@ -188,9 +188,11 @@ The clear reports
 kills, time, damage taken, data crates preserved and a score; losing no crates is a clean sweep and pays a
 bonus, and the best score and sweep count stay in the slot.
 
-Clearing writes the slot, marks it COMPLETE and shows `MORE LEVELS COMING SOON`. `REBOOT` on `GRID ZERO`
-is authored but parked until the next route segment ships; it is not in the live level list. A run is
-never saved mid-level. The layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
+Clearing writes the slot and advances the run. `BUILD ROOT` hands over to `REBOOT` on `GRID ZERO`: the cat
+gets you out of quarantine, four infected bodies are the run-up, and the **Mega Worm** arrives as the
+level's final encounter. That node does not end on a kill count or a port sweep; it ends when the boss is
+dead. A completed `REBOOT` slot reports `MORE LEVELS COMING SOON`. A run is never saved mid-level. The
+layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
 
 ### Online status
 
