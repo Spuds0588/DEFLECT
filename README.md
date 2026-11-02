@@ -384,3 +384,7 @@ other. Both arrive through the gauntlet ingress and live in the worm body pool.
 `src/game/memory.ts` holds the PvE comeback rule: a downed player leaves a shard that grants +1 health
 segment, +20% walking speed and +25% damage for the rest of the run, stacking to three. It drops in every
 mode except the versus match, once per body per run, and campaign carries the stacks between nodes.
+
+`STARFISH` is the third mini-boss: one center and five separate arm bodies. Arms detach when stripped and
+hatch a new Starfish if not destroyed, and the center's mouth opens once an arm is gone. It shares the worm
+body pool and the same registry as the others.

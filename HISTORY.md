@@ -5508,3 +5508,29 @@ gauntlet max 0.119 ms avg / 0.403 ms p99.
 
 **Next:** decide whether a saved campaign slot should persist stacks; today resuming a slot starts that
 session empty.
+
+## 2026-11-02 — Starfish, the third mini-boss (v0.1.138)
+
+**Goal:** a boss whose arms are the fight: strip one, then chase it down before it grows a new boss.
+
+- New registry body `starfish` (`MINIBOSS.STARFISH = 2`), scheduled at gauntlet wave 20 and every 40 waves.
+  One center plus five arm bodies, all in the worm pool; arms carry `armState` so every weapon and bot can
+  target a specific arm without a second hit path.
+- The center is plated (`armorMult` 0.15) while any arm is attached. An attached arm at zero hp detaches
+  with a fresh pool and a seven-second hatch ring; destroying it in time is the mechanic, and ignoring it
+  spawns another full Starfish. `maxLive` 2 caps the hatchery.
+- Detaching clears the center's arm mask, so it draws a stump. At least one missing arm opens the mouth:
+  suck, then a chomp AOE, with the dash as the escape. All five gone speeds the spin and sprays an
+  eight-spine ring every 1.5 s.
+- Attached arms throw three-spine fans; spines are hostile type-3 shots that can be guarded or lashed back.
+- Killing the center clears every surviving arm body. `?starfish=1` QA hook added.
+
+**Verification:** `.tmp/starfish-check.ts` passes: five arms with a full mask, armored center taking 1.5
+from a 10-damage hit, detach to four arms with the bit cleared, destroy credit, an unkilled arm hatching a
+second center with five arms, the cap holding at two, the suck pulling 139 units before a 2-damage chomp,
+eight spines in the armless phase, and a center kill clearing the floor. Build clean; memory, idlehands,
+megaworm, assault, jet, flipboard, radar, islands-ports, laptop-variants and capcom probes still pass.
+`npm run bench`: gauntlet max 0.118 ms avg / 0.399 ms p99.
+
+**Next:** a visual pass on the arm whip and the hatch ring, and decide whether arm kills should count
+toward the campaign clear count (they do today, one per arm).

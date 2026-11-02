@@ -1,5 +1,5 @@
 import type { AssaultPortal, Fragment } from './types';
-import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, STARFISH, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { AimMark, CopyMark, InvaderShot } from './types';
 import {
   discArmAngle,
@@ -8487,6 +8487,14 @@ export class Renderer {
         this.drawIdleHand(w, alpha, t);
         continue;
       }
+      if (w.bossKind === MINIBOSS.STARFISH) {
+        if (w.armState) {
+          if (!w.armState.attached) this.drawStarfishArm(w, alpha, t);
+        } else {
+          this.drawStarfish(w, alpha, t);
+        }
+        continue;
+      }
       if (w.mega) {
         this.drawMegaWorm(w, alpha, t);
         continue;
@@ -8816,6 +8824,183 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
     }
+  }
+
+
+  /**
+   * Starfish center. Five curved arms writhe on the rim, each drawn only while its
+   * mask bit is set; a missing arm leaves a stump. The mouth is a ring of teeth that
+   * opens for the suck and snaps shut on the chomp.
+   */
+  private drawStarfish(center: Worm, alpha: number, t: number): void {
+    const st = center.starfish;
+    if (!st) return;
+    const ctx = this.ctx;
+    const cfg = STARFISH;
+    const x = lerp(center.prevX, center.x, alpha);
+    const y = lerp(center.prevY, center.y, alpha);
+    const r = center.hitR;
+    const hurt = 1 - Math.max(0, center.hp) / Math.max(1, center.maxHp);
+    const body = hurt > 0.6 ? '#d9588f' : cfg.color;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = 0.9 * alpha;
+
+    // Arms. Each is a tapering curve that curls back toward the rim.
+    for (let i = 0; i < cfg.arms; i++) {
+      const a = st.spin + i * (Math.PI * 2 / cfg.arms);
+      const alive = (st.armMask & (1 << i)) !== 0;
+      if (!alive) {
+        ctx.save();
+        ctx.rotate(a);
+        ctx.globalAlpha = 0.5 * alpha;
+        ctx.fillStyle = '#5b2340';
+        ctx.fillRect(r * 0.8, -7, r * 0.3, 14);
+        ctx.strokeStyle = '#39142a';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(r * 0.8, -7, r * 0.3, 14);
+        ctx.restore();
+        continue;
+      }
+      const whip = Math.sin(st.clock * 2.1 + i * 1.7) * 0.28;
+      const curl = Math.sin(st.clock * 1.4 + i) * 0.5;
+      ctx.save();
+      ctx.rotate(a);
+      ctx.beginPath();
+      const steps = 8;
+      for (let s = 0; s <= steps; s++) {
+        const u = s / steps;
+        const along = r * 0.7 + u * (cfg.armReach * 0.78);
+        const side = Math.sin(u * Math.PI) * (cfg.armRadius * 1.6 * curl) + u * u * cfg.armRadius * whip;
+        if (s === 0) ctx.moveTo(along, side);
+        else ctx.lineTo(along, side);
+      }
+      for (let s = steps; s >= 0; s--) {
+        const u = s / steps;
+        const along = r * 0.7 + u * (cfg.armReach * 0.78);
+        const side = Math.sin(u * Math.PI) * (cfg.armRadius * 1.6 * curl) + u * u * cfg.armRadius * whip;
+        const width = (1 - u) * cfg.armRadius * 0.72 + 2.5;
+        ctx.lineTo(along, side + width);
+      }
+      ctx.closePath();
+      ctx.fillStyle = body;
+      ctx.globalAlpha = 0.32 * alpha;
+      ctx.fill();
+      ctx.globalAlpha = 0.95 * alpha;
+      ctx.strokeStyle = cfg.color;
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+      // Suckers: a short row of pale dots down each arm.
+      ctx.fillStyle = cfg.core;
+      for (let s = 1; s < 5; s++) {
+        const u = s / 5;
+        const along = r * 0.7 + u * (cfg.armReach * 0.78);
+        const side = Math.sin(u * Math.PI) * (cfg.armRadius * 1.6 * curl) + u * u * cfg.armRadius * whip;
+        ctx.globalAlpha = 0.5 * alpha;
+        ctx.fillRect(along - 1.5, side + 2, 3, 3);
+      }
+      ctx.restore();
+    }
+
+    // Center disc.
+    ctx.globalAlpha = (center.hitFlash > 0 ? 1 : 0.92) * alpha;
+    ctx.fillStyle = center.hitFlash > 0 ? '#ffffff' : '#3a1024';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TWO_PI);
+    ctx.fill();
+    ctx.globalAlpha = 0.95 * alpha;
+    ctx.strokeStyle = body;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TWO_PI);
+    ctx.stroke();
+
+    // Mouth: opens for the suck, snaps on the chomp.
+    let open = 0;
+    if (st.state === 1) open = Math.min(1, st.t / STARFISH.mouth.open);
+    else if (st.state === 2) open = 1;
+    else if (st.state === 3) open = Math.max(0, 1 - st.t / STARFISH.mouth.recover);
+    const maw = r * (0.32 + 0.28 * open);
+    ctx.globalAlpha = 0.95 * alpha;
+    ctx.fillStyle = '#120309';
+    ctx.beginPath();
+    ctx.arc(0, 0, maw, 0, TWO_PI);
+    ctx.fill();
+    if (st.armCount === 0) {
+      // Spinning phase: a hot rim and a rotation tick so the spin reads.
+      ctx.globalAlpha = 0.5 * alpha;
+      ctx.strokeStyle = cfg.core;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 7 + Math.sin(t * 8) * 2, 0, TWO_PI);
+      ctx.stroke();
+    }
+    const teeth = 10;
+    ctx.fillStyle = cfg.core;
+    for (let i = 0; i < teeth; i++) {
+      const a = st.spin * 1.4 + (i / teeth) * Math.PI * 2;
+      const inner = maw + (open > 0 ? 2 : maw * 0.35);
+      const outer = maw - r * 0.16;
+      ctx.globalAlpha = 0.9 * alpha;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+      ctx.lineTo(Math.cos(a + 0.16) * outer, Math.sin(a + 0.16) * outer);
+      ctx.lineTo(Math.cos(a - 0.16) * outer, Math.sin(a - 0.16) * outer);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** A detached arm: a crawling curl with a hatch ring counting down to a new boss. */
+  private drawStarfishArm(arm: Worm, alpha: number, t: number): void {
+    const as = arm.armState;
+    if (!as) return;
+    const ctx = this.ctx;
+    const cfg = STARFISH;
+    const x = lerp(arm.prevX, arm.x, alpha);
+    const y = lerp(arm.prevY, arm.y, alpha);
+    const r = arm.hitR;
+    const wiggle = Math.sin(t * 6 + as.phase) * 0.5;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(arm.angle + wiggle * 0.6);
+    ctx.globalAlpha = 0.9 * alpha;
+    ctx.fillStyle = arm.hitFlash > 0 ? '#ffffff' : cfg.color;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.6, -r * 0.55);
+    ctx.quadraticCurveTo(r * 1.4, -r * 0.9, r * 2.0, -r * 0.1);
+    ctx.quadraticCurveTo(r * 1.2, r * 0.9, -r * 0.6, r * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 0.8;
+    ctx.strokeStyle = cfg.core;
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    // Ragged stump at the base.
+    ctx.fillStyle = '#3a1024';
+    ctx.fillRect(-r * 0.85, -r * 0.4, r * 0.4, r * 0.8);
+    ctx.restore();
+
+    // Hatch ring: fills back up as the arm grows a new Starfish.
+    const prog = Math.max(0, Math.min(1, 1 - as.hatchT / cfg.hatchTime));
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = 0.85 * alpha;
+    ctx.strokeStyle = cfg.core;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 13, -Math.PI * 0.5, -Math.PI * 0.5 + prog * Math.PI * 2);
+    ctx.stroke();
+    if (as.hatchT < 2 && Math.sin(t * 18) > 0) {
+      ctx.globalAlpha = 0.5 * alpha;
+      ctx.fillStyle = cfg.core;
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 13, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   /**

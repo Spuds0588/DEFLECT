@@ -48,6 +48,7 @@ import {
   WORM,
   MEGA_WORM,
   IDLE_HANDS,
+  STARFISH,
   type Rect,
 } from './config';
 import {
@@ -412,6 +413,8 @@ export class World {
   private bossGateWave: number[] = new Array(GAUNTLET.bossSchedule.length).fill(-1);
   /** Idle Hands spawn group counter, so a trio reads as one boss. */
   private handGroup = 0;
+  /** Starfish group counter: one center plus its five arm bodies. */
+  private starfishGroup = 0;
   private virusSpawnT: number = GAUNTLET.virusSpawnDelay;
   private firewallSpawnT: number = GAUNTLET.firewallSpawnDelay;
   /** Shared clock for arena emitters. `offset` per emitter staggers the beams. */
@@ -852,7 +855,7 @@ export class World {
     for (let i = 0; i < MAX_PLAYERS; i++) this.players[i] = createPlayer(i);
     this.projectiles = createProjectilePool();
     this.drone = createDrone();
-    this.worms = new Array(GAUNTLET.maxWorms + MEGA_WORM.slots + IDLE_HANDS.hands);
+    this.worms = new Array(GAUNTLET.maxWorms + MEGA_WORM.slots + IDLE_HANDS.hands + STARFISH.slots);
     for (let i = 0; i < this.worms.length; i++) this.worms[i] = createWorm();
     // INFECTION floods the floor, so that run owns a larger pool. Every other local mode
     // and every hosted match keep the gauntlet-sized pool.
@@ -15339,6 +15342,8 @@ export class World {
     w.mega = false;
     w.bossKind = -1;
     w.hand = null;
+    w.starfish = null;
+    w.armState = null;
     w.held = held;
     w.hitR = w.hitR;
     w.segR = w.segR;
@@ -15741,6 +15746,374 @@ export class World {
     }
   }
 
+
+  // --- Starfish ------------------------------------------------------------
+  //
+  // One center plus five arm bodies. Arms are separate pool entries so every weapon
+  // can hit them directly; detaching one opens the mouth, and an arm left alive for
+  // `hatchTime` grows a whole new Starfish.
+
+  private starfishCenter(group: number): Worm | null {
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (w.active && !w.armState && w.starfish && w.starfish.group === group) return w;
+    }
+    return null;
+  }
+
+  private starfishLiveCenters(): number {
+    let n = 0;
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (w.active && w.bossKind === MINIBOSS.STARFISH && w.starfish) n++;
+    }
+    return n;
+  }
+
+  private spawnStarfish(x: number, y: number): Worm | null {
+    const cfg = STARFISH;
+    const center = this.spawnWorm(x, y);
+    if (!center) return null;
+    const group = ++this.starfishGroup;
+    center.bossKind = MINIBOSS.STARFISH;
+    center.mega = false;
+    center.segCount = 0;
+    center.hand = null;
+    center.armState = null;
+    center.hitR = cfg.radius;
+    center.segR = cfg.radius * 0.6;
+    center.hp = center.maxHp = cfg.hp;
+    center.spawnT = cfg.spawnTime;
+    center.starfish = {
+      group,
+      clock: 0,
+      state: 0,
+      t: 0,
+      cd: cfg.mouth.cooldown,
+      armCount: 0,
+      armMask: 0,
+      spin: this.rng.range(0, Math.PI * 2),
+      spineCd: cfg.angry.spineInterval,
+    };
+    let made = 0;
+    for (let k = 0; k < cfg.arms; k++) {
+      const a = (k / cfg.arms) * Math.PI * 2;
+      const arm = this.spawnWorm(center.x + Math.cos(a) * cfg.armReach, center.y + Math.sin(a) * cfg.armReach);
+      if (!arm) break;
+      arm.bossKind = MINIBOSS.STARFISH;
+      arm.mega = false;
+      arm.segCount = 0;
+      arm.hand = null;
+      arm.starfish = null;
+      arm.hitR = cfg.armRadius;
+      arm.segR = cfg.armRadius * 0.7;
+      arm.hp = arm.maxHp = cfg.armHp;
+      arm.spawnT = cfg.spawnTime * 0.55;
+      arm.angle = a + Math.PI * 0.5;
+      arm.armState = {
+        group,
+        index: k,
+        attached: true,
+        hatchT: cfg.hatchTime,
+        spineCd: cfg.spineInterval * (0.6 + k * 0.12),
+        phase: this.rng.range(0, Math.PI * 2),
+      };
+      made++;
+    }
+    center.starfish.armCount = made;
+    center.starfish.armMask = (1 << made) - 1;
+    this.emit(EV.PROP_BREAK, 0, center.x, center.y, 70);
+    return center;
+  }
+
+  private updateStarfish(center: Worm, dt: number): void {
+    const cfg = STARFISH;
+    const st = center.starfish;
+    if (!st) return;
+    center.prevX = center.x;
+    center.prevY = center.y;
+    center.phase += dt;
+    st.clock += dt;
+    if (center.hitFlash > 0) center.hitFlash = Math.max(0, center.hitFlash - dt);
+    if (center.spawnT > 0) {
+      center.spawnT = Math.max(0, center.spawnT - dt);
+      return;
+    }
+    const angry = st.armCount === 0;
+    st.spin += dt * (angry ? cfg.angry.spin : cfg.armOrbit);
+    const p = this.threatTarget(center.x, center.y);
+    center.angle = Math.atan2(p.y - center.y, p.x - center.x);
+    const dx = p.x - center.x;
+    const dy = p.y - center.y;
+    const d = Math.hypot(dx, dy) || 1;
+    if (d > 260) {
+      center.x += (dx / d) * 42 * dt;
+      center.y += (dy / d) * 42 * dt;
+    }
+    center.x += Math.cos(st.clock * 0.9) * 10 * dt;
+    center.y += Math.sin(st.clock * 1.1) * 10 * dt;
+    const pad = center.hitR;
+    center.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, center.x));
+    center.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, center.y));
+
+    // Attached arms ride the spin; the center owns their pose.
+    for (let i = 0; i < this.worms.length; i++) {
+      const arm = this.worms[i];
+      const as = arm.armState;
+      if (!arm.active || !as || as.group !== st.group || !as.attached) continue;
+      const a = st.spin + as.index * (Math.PI * 2 / cfg.arms) + Math.sin(st.clock * 1.5 + as.index) * 0.15;
+      arm.prevX = arm.x;
+      arm.prevY = arm.y;
+      arm.x = center.x + Math.cos(a) * cfg.armReach;
+      arm.y = center.y + Math.sin(a) * cfg.armReach;
+      arm.angle = a + Math.PI * 0.5;
+      if (arm.hitFlash > 0) arm.hitFlash = Math.max(0, arm.hitFlash - dt);
+    }
+
+    // Mouth: opens once an arm is gone. Suck first, then chomp.
+    if (st.armCount < cfg.arms) {
+      st.cd = Math.max(0, st.cd - dt);
+      if (st.state === 0) {
+        if (st.cd <= 0) {
+          st.state = 1;
+          st.t = 0;
+          this.emit(EV.WORM_HIT, -1, center.x, center.y, 3, 0, 0);
+        }
+      } else if (st.state === 1) {
+        st.t += dt;
+        const pull = angry ? cfg.angry.pull : cfg.mouth.pull;
+        const reach = (angry ? cfg.angry.chompRadius : cfg.mouth.radius) * 2.6;
+        for (let i = 0; i < this.players.length; i++) {
+          const body = this.players[i];
+          if (!body.active || !body.alive || body.dashT > 0 || body.thrall) continue;
+          const bx = center.x - body.x;
+          const by = center.y - body.y;
+          const bd = Math.hypot(bx, by) || 1;
+          if (bd > reach || bd < 34) continue;
+          body.x += (bx / bd) * pull * dt;
+          body.y += (by / bd) * pull * dt;
+        }
+        if (st.t >= cfg.mouth.open + (angry ? cfg.mouth.suck * 0.7 : cfg.mouth.suck)) {
+          st.state = 2;
+          st.t = 0;
+          this.starfishChomp(center);
+        }
+      } else if (st.state === 2) {
+        st.t += dt;
+        if (st.t >= cfg.mouth.chomp) {
+          st.state = 3;
+          st.t = 0;
+        }
+      } else {
+        st.t += dt;
+        if (st.t >= cfg.mouth.recover) {
+          st.state = 0;
+          st.t = 0;
+          st.cd = angry ? cfg.angry.cooldown : cfg.mouth.cooldown;
+        }
+      }
+    }
+
+    // No arms left: the center spins and sprays spines in every direction.
+    if (angry) {
+      st.spineCd -= dt;
+      if (st.spineCd <= 0) {
+        st.spineCd = cfg.angry.spineInterval;
+        const n = cfg.angry.spineCount;
+        const base = st.spin;
+        for (let i = 0; i < n; i++) {
+          this.spawnSpine(center.x, center.y, base + (i / n) * Math.PI * 2);
+        }
+      }
+    }
+  }
+
+  private starfishChomp(center: Worm): void {
+    const st = center.starfish;
+    if (!st) return;
+    const cfg = STARFISH;
+    const angry = st.armCount === 0;
+    const radius = angry ? cfg.angry.chompRadius : cfg.mouth.radius;
+    const damage = angry ? cfg.angry.chompDamage : cfg.mouth.damage;
+    this.emit(EV.EXPLODE, -1, center.x, center.y, radius * 0.8);
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.thrall) continue;
+      const dx = p.x - center.x;
+      const dy = p.y - center.y;
+      if (dx * dx + dy * dy > radius * radius) continue;
+      const d = Math.hypot(dx, dy) || 1;
+      this.damagePlayer(p, damage, -1, dx / d, dy / d, cfg.mouth.knockback, SRC.WORM, this.worms.indexOf(center));
+    }
+  }
+
+  private updateStarfishArm(arm: Worm, dt: number): void {
+    const cfg = STARFISH;
+    const as = arm.armState;
+    if (!as) return;
+    if (arm.hitFlash > 0) arm.hitFlash = Math.max(0, arm.hitFlash - dt);
+    as.phase += dt;
+    if (arm.spawnT > 0) {
+      arm.spawnT = Math.max(0, arm.spawnT - dt);
+      return;
+    }
+    if (as.attached) {
+      as.spineCd -= dt;
+      if (as.spineCd <= 0) {
+        as.spineCd = cfg.spineInterval * (0.8 + this.rng.next() * 0.4);
+        const p = this.threatTarget(arm.x, arm.y);
+        if (p.alive && p.cloakT <= 0) {
+          const base = Math.atan2(p.y - arm.y, p.x - arm.x);
+          const half = (cfg.spineCount - 1) * 0.5;
+          for (let i = 0; i < cfg.spineCount; i++) {
+            this.spawnSpine(arm.x, arm.y, base + (i - half) * cfg.spineSpread);
+          }
+        }
+      }
+      return;
+    }
+    // Detached: crawl away from the nearest body while the hatch timer runs.
+    arm.prevX = arm.x;
+    arm.prevY = arm.y;
+    const p = this.threatTarget(arm.x, arm.y);
+    const dx = arm.x - p.x;
+    const dy = arm.y - p.y;
+    const d = Math.hypot(dx, dy) || 1;
+    arm.x += (dx / d) * cfg.crawlSpeed * dt;
+    arm.y += (dy / d) * cfg.crawlSpeed * dt;
+    arm.angle += Math.sin(as.phase * 3) * 0.9 * dt;
+    const pad = arm.hitR;
+    arm.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, arm.x));
+    arm.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, arm.y));
+    as.hatchT -= dt;
+    if (as.hatchT > 0) return;
+    if (this.starfishLiveCenters() >= cfg.maxLive) {
+      as.hatchT = cfg.hatchTime * 0.5;
+      return;
+    }
+    const nx = arm.x;
+    const ny = arm.y;
+    if (this.spawnStarfish(nx, ny)) {
+      arm.active = false;
+      arm.armState = null;
+      this.emit(EV.EXPLODE, -1, nx, ny, 90);
+    } else {
+      as.hatchT = 1;
+    }
+  }
+
+  private spawnSpine(x: number, y: number, angle: number): void {
+    const cfg = STARFISH;
+    let proj: Projectile | null = null;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      if (!this.projectiles[i].active) {
+        proj = this.projectiles[i];
+        break;
+      }
+    }
+    if (!proj) return;
+    proj.active = true;
+    proj.serial = ++this.serial;
+    proj.type = 3;
+    proj.owner = -1;
+    proj.srcKind = SRC.WORM;
+    proj.srcId = -1;
+    proj.x = proj.prevX = x;
+    proj.y = proj.prevY = y;
+    proj.vx = Math.cos(angle) * cfg.spineSpeed;
+    proj.vy = Math.sin(angle) * cfg.spineSpeed;
+    proj.radius = cfg.spineRadius;
+    proj.damage = cfg.spineDamage;
+    proj.deflects = 0;
+    proj.bounces = 0;
+    proj.fuse = cfg.spineLife;
+    proj.grace = 0;
+    proj.armed = true;
+    proj.blastRadius = 0;
+    proj.blastKnockback = 0;
+    proj.arcDur = 0;
+    proj.homing = false;
+    proj.pathAxis = 0;
+    proj.hits = 0;
+    proj.spin = this.rng.range(0, Math.PI * 2);
+    proj.spinDir = 1;
+    proj.variant = 0;
+    proj.orbOwner = -1;
+    proj.orbA = 0;
+    proj.orbR = 0;
+    proj.orbDir = 1;
+    proj.hitPlayers = 0;
+    proj.hitWorms = 0;
+    proj.hitViruses = 0;
+    proj.hitErrors = 0;
+    proj.hitSentries = 0;
+    proj.hitDrone = false;
+    this.emit(EV.SENTRY_SHOOT, -1, x, y, angle);
+  }
+
+  /** Attached arm: strip it off. Detached arm: it has to be destroyed or it hatches. */
+  private damageStarfishArm(arm: Worm, amount: number, sourceSlot: number, dirX: number, dirY: number, force: number): void {
+    const cfg = STARFISH;
+    const as = arm.armState;
+    if (!as || !arm.active) return;
+    arm.hp -= amount;
+    arm.hitFlash = 0.2;
+    if (force > 0) {
+      arm.kx += dirX * force * 0.2;
+      arm.ky += dirY * force * 0.2;
+    }
+    this.emit(EV.WORM_HIT, sourceSlot, arm.x, arm.y, amount, dirX, dirY);
+    if (arm.hp > 0) return;
+    if (as.attached) {
+      as.attached = false;
+      arm.hp = arm.maxHp = cfg.armDetachedHp;
+      as.hatchT = cfg.hatchTime;
+      as.spineCd = 999;
+      arm.kx += dirX * 140;
+      arm.ky += dirY * 140;
+      const center = this.starfishCenter(as.group);
+      const st = center ? center.starfish : null;
+      if (st) {
+        st.armCount = Math.max(0, st.armCount - 1);
+        st.armMask &= ~(1 << as.index);
+      }
+      this.emit(EV.WORM_HIT, sourceSlot, arm.x, arm.y, 5, dirX, dirY);
+      return;
+    }
+    arm.active = false;
+    arm.armState = null;
+    this.emit(EV.WORM_KILL, sourceSlot, arm.x, arm.y, 80, dirX, dirY);
+    if (sourceSlot === 0) {
+      this.gauntletKills++;
+      this.dropPickupFromKill(arm.x, arm.y, true);
+    }
+  }
+
+  private damageStarfish(center: Worm, amount: number, sourceSlot: number, dirX: number, dirY: number, force: number): void {
+    const cfg = STARFISH;
+    const st = center.starfish;
+    if (!st || !center.active) return;
+    // Plated while any arm holds on: the arms are the fight.
+    if (st.armCount > 0) amount *= cfg.armorMult;
+    center.hp -= amount;
+    center.hitFlash = 0.2;
+    this.emit(EV.WORM_HIT, sourceSlot, center.x, center.y, amount, dirX, dirY);
+    if (center.hp > 0) return;
+    center.active = false;
+    center.starfish = null;
+    for (let i = 0; i < this.worms.length; i++) {
+      const arm = this.worms[i];
+      if (!arm.active || !arm.armState || arm.armState.group !== st.group) continue;
+      arm.active = false;
+      arm.armState = null;
+    }
+    this.emit(EV.WORM_KILL, sourceSlot, center.x, center.y, 260, dirX, dirY);
+    if (sourceSlot === 0) {
+      this.gauntletKills++;
+      this.dropPickupFromKill(center.x, center.y, true);
+    }
+  }
+
   // --- Mega Worm -----------------------------------------------------------
   //
   // The boss is still a Worm: it lives in the same pool, so bots, projectiles,
@@ -15762,6 +16135,8 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active || w.bossKind < 0) continue;
+      // Starfish arms are part of one boss, not extra bosses on the floor.
+      if (w.armState) continue;
       if (kind >= 0 && w.bossKind !== kind) continue;
       live++;
     }
@@ -15777,6 +16152,7 @@ export class World {
     if (!def) return null;
     if (def.body === 'segmented-worm') return this.spawnMegaWorm(x, y, kind);
     if (def.body === 'idle-hands') return this.spawnIdleHands(x ?? this.centerX, y ?? this.centerY);
+    if (def.body === 'starfish') return this.spawnStarfish(x ?? this.centerX, y ?? this.centerY);
     return null;
   }
 
@@ -16396,6 +16772,11 @@ export class World {
       this.updateIdleHand(w, dt);
       return;
     }
+    if (w.bossKind === MINIBOSS.STARFISH) {
+      if (w.armState) this.updateStarfishArm(w, dt);
+      else this.updateStarfish(w, dt);
+      return;
+    }
     if (w.mega) {
       this.updateMegaWorm(w, dt);
       return;
@@ -16660,6 +17041,11 @@ export class World {
     if (!w.active || w.held) return;
     if (w.bossKind === MINIBOSS.IDLE_HANDS) {
       this.damageHand(w, amount, sourceSlot, dirX, dirY, force);
+      return;
+    }
+    if (w.bossKind === MINIBOSS.STARFISH) {
+      if (w.armState) this.damageStarfishArm(w, amount, sourceSlot, dirX, dirY, force);
+      else this.damageStarfish(w, amount, sourceSlot, dirX, dirY, force);
       return;
     }
     if (w.mega) {

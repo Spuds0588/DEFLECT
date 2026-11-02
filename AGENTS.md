@@ -2696,3 +2696,42 @@ bot makes the survivor stronger for the rest of the run.
 - **Do not** turn this into a powerup, a snapshot field, or a match rule. It is local run progression,
   like gauntlet records. `.tmp/memory-check.ts` covers the drop, collection, cap, once-per-run latch,
   damage scale (1.75 at three stacks, enemies still 1), respawn carry, campaign carry and match exclusion.
+
+
+### D69 — Starfish: five detachable arms and a hatchery (built 2026-11-02)
+
+The third mini-boss is **STARFISH** (`MINIBOSS.STARFISH = 2`, body `starfish`, gauntlet wave 20, repeat
+every 40). One center and five arms, and the arms are the boss: stripping them opens the mouth, and an arm
+left alive grows a whole new Starfish.
+
+- **Arms are bodies, not segments.** The center and all five arms are separate `Worm` pool entries tagged
+  with `bossKind = STARFISH`; arms also carry `armState` (group, index, attached, hatch timer). That is
+  what lets every existing weapon, beam, blast and bot scan hit a specific arm without new collision
+  plumbing. `minibossLiveCount` must skip `armState` bodies or one boss reads as six on the wave gate.
+- **Armor while armed.** The center takes `armorMult` (0.15) damage while any arm is attached. The fight is
+  the arms; shooting the middle first is meant to be a waste.
+- **Detach, then destroy.** An attached arm at 0 hp does not die: it detaches with a fresh pool of
+  `armDetachedHp`, crawls away and starts `hatchTime` (7 s) on its hatch ring. Destroy it before the ring
+  completes or it spawns another full Starfish at that spot. Detaching decrements the center's `armCount`
+  and clears that arm's bit in `armMask`, which is what the center draws stumps from.
+- **Hatchery cap.** `STARFISH.maxLive` (2) bounds how many centers can exist at once, so a player who
+  ignores every arm cannot spiral the arena. An arm at the cap keeps its timer and retries rather than
+  dying. Do not remove this cap without a pool/performance pass.
+- **Mouth.** Once `armCount < 5`, the center cycles open → suck → chomp → recover on
+  `mouth.cooldown` (4.5 s). The suck drags bodies toward the middle but never while they are dashing, so
+  the dash is the escape; the chomp is a 100-unit AOE for 2. With all five arms gone the same cycle is
+  faster and wider (`angry` block).
+- **Armless phase.** `armCount === 0` speeds the spin to `angry.spin`, and the center sprays
+  `angry.spineCount` (8) spines in a ring every `angry.spineInterval` (1.5 s). Attached arms also throw a
+  three-spine fan every `spineInterval`; spines are hostile type-3 shots with `srcKind = SRC.WORM`, so they
+  are dodgeable, deflectable and can hurt other threat factions.
+- **Center death** clears every remaining arm body, so killing the middle ends the fight even with
+  detached arms crawling. Do not leave orphaned arms with a dead group.
+- **Rendering.** Arms are tapering curves with a whip and a curl-back, suckers down the length, and a stump
+  when the bit is clear. The mouth is a ring of teeth whose opening tracks the suck state; the armless rim
+  gets a hot rotating ring. A detached arm draws its hatch ring as an arc that fills toward a new boss.
+  Palette: `#ff7ab8`, core `#ffd6e8`.
+- **Tuning** is `STARFISH` in `tuning/threats.json`. `?starfish=1` is the QA boot hook beside `?mega=1`
+  and `?hands=1`. `.tmp/starfish-check.ts` covers shape, armor, detach, destroy credit, hatchery, the live
+  cap, the suck/chomp, and the armless spine ring. Re-run `.tmp/memory-check.ts` after touching the damage
+  entry points, since arm and center damage both scale through `memoryDamage`.

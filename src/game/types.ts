@@ -754,6 +754,35 @@ export interface HandState {
   group: number;
 }
 
+/** The center of a Starfish boss. Arms are separate bodies, not segments. */
+export interface StarfishState {
+  /** Ties the center to its arm bodies across the worm pool. */
+  group: number;
+  /** Seconds since spawn: drives the spin and the arm whip. */
+  clock: number;
+  /** 0 idle, 1 mouth opening / suck, 2 chomp, 3 recover. */
+  state: number;
+  t: number;
+  cd: number;
+  /** Arms still attached. Detaching one opens the mouth. */
+  armCount: number;
+  /** Bit per arm index still attached, so the center can draw its stumps. */
+  armMask: number;
+  spin: number;
+  spineCd: number;
+}
+
+/** One detached-or-attached Starfish arm. An undestroyed detached arm hatches a new boss. */
+export interface StarfishArmState {
+  group: number;
+  index: number;
+  attached: boolean;
+  /** Seconds until this arm grows a whole new Starfish. */
+  hatchT: number;
+  spineCd: number;
+  phase: number;
+}
+
 export interface Worm {
   active: boolean;
   /** Campaign holding cell: present, frozen and invulnerable until the power-down. */
@@ -803,6 +832,9 @@ export interface Worm {
   bossKind: number;
   /** Idle Hands bodies only; null on every other worm or boss. */
   hand: HandState | null;
+  /** Starfish center state, and Starfish arm state. Never both on one body. */
+  starfish: StarfishState | null;
+  armState: StarfishArmState | null;
   /** Mega Worm: a boss chain whose nodes carry their own health. */
   mega: boolean;
   /** Per-node health. Index 0 is the head, index k is segment k-1. */

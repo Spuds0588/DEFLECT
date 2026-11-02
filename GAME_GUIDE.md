@@ -637,3 +637,22 @@ enemy, the environment or another player put them there. Walk over it to collect
   squad wipes meaningful in campaign, gauntlet, infection co-op and training.
 - In campaign, your stacks carry into the next node. Starting from a saved slot begins that session with
   none.
+
+## STARFISH (mini-boss)
+
+A five-armed starfish with a mouth in the middle. The arms whip and curl, and each one throws a fan of
+spines every few seconds. The middle is plated while any arm is attached: shooting it early barely
+scratches it.
+
+- **Strip an arm.** Enough shots to one arm tears it off. The stump stays on the body, and the mouth
+  opens. A detached arm is *not* dead: it crawls away with a ring around it.
+- **Destroy the arm before the ring fills.** If the ring completes, the arm grows into a whole new
+  starfish with five fresh arms. The pattern is: tear one off, then chase it down before it hatches.
+  At most two starfish can be alive at once, so a run of ignored arms will stall rather than flood.
+- **Mouth.** With at least one arm gone the middle opens, sucks you toward it, then chomps everything
+  inside the inner ring. Dashing breaks the pull, and stepping out of the chomp ring avoids the bite.
+- **No arms left.** The middle spins fast, sprays spines in every direction, and its suck and chomp get
+  wider and more frequent. That is the window to finish it, and also the most dangerous part of the
+  fight.
+- Destroying the middle clears any arms still crawling, so a clean center kill ends the encounter.
+- Spines are ordinary hostile shots: they can be guarded, lashed back or dodged.
