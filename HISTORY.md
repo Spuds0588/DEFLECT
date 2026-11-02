@@ -5102,3 +5102,47 @@ paths, the campaign still clears on a kill count, and no white entry/exit ports 
 
 **Next:** author `ports` on `ArenaDef` and route `spawnSentryPack`, `spawnVirusCluster` and the infection
 flood through them, then make the clear gate require both the ports and the live threats.
+
+## 2026-11-02 — QUARANTINE as four real plates, retractable bridges, live ports (v0.1.125)
+
+**Goal:** BUILD ROOT read as one big rectangle with room outlines painted on it, the islands were
+small, and the assault started nearly empty. Rebuild the level as separate plates with earned
+crossings, then ship the ports from D58 as the thing that actually feeds the floor.
+
+- **Four plates, no shared floor.** `ArenaDef.islands` is the floor now: when a plate is present the
+  plates are the only footing and the gap is a real drop (`inVoid` is true off a plate unless an
+  extended deck is under the body). Intake, holding, mainboard and router became four rectangular
+  plates, roughly twice the area each; the cell block takes 46% of its plate now
+  (`holdingCellLayout`), so a body fits inside a cell.
+- **Bridges are earned.** `ArenaBridgeDef.closed` starts a deck retracted: it is a body barrier and a
+  dash blocker in the solver until `World.openBridge` extends it. A is open, B extends when the cell
+  block is cleared (`beginDrill`), C when both mainboard ports close. Every gap is wider than a dash,
+  so a shut deck cannot be skipped.
+- **Ports are real.** `ArenaDef.ingress` authors position, size, health, emitted family, cadence and the
+  bridge it releases. Ports join the prop pool as fixed records, so the existing shot, lash and blast
+  paths close them with no second damage system; they emit on a staggered clock, respect the live
+  caps, and collapse over 0.9 s. Two mainboard ports release bridge C; the router port is last, and
+  closing all three opens the white party port on the uplink and hands the story box to script_kitty
+  (`KITTY_UPLINK_TUTORIAL`).
+- **The level opens populated.** `seedAssaultFloor` posts a squad on every plate beyond intake, capped
+  by the same sentry and virus limits a pack drop respects, and the ports keep adding to it.
+- **Office dressing.** Intake gets a booking counter with three terminals and chain runs down both
+  sides and along the front lip, alongside the four desk blocks that give cover.
+- `render.ts`: plate shadow and a heavier rim over the void, deck orientation for vertical and
+  horizontal spans, retracted stubs labelled `LINK x // SHUT`, and `drawPorts` for the red source and
+  the white exit.
+
+**Verification:** `.tmp/islands-ports-check.ts` passes — four non-overlapping plates, every spawn and
+cover block on a plate, the gaps read as void, only bridge A started open, both shut decks are in the
+solver, three ports exist, one board port does not release the bridge, both do, all three open the
+exit, the exit is damage-proof, kitty takes the story box, the assault opens populated inside the caps,
+an open port emits, a closed one does not, and standing in the party port clears the node.
+`npm run build` passes (918.55 kB / 253.53 kB gzip). `npm run bench` is clean: 8P max-projectile
+0.068 ms avg / 0.156 ms p99, gauntlet max 0.144 ms avg.
+
+**Limitations:** INFECTION's opening flood and `spawnVirusCluster` still seed directly, so a portless
+arena behaves as before. Bots do not target ports yet, the white *entry* port is not drawn, sub-agent
+mini-bosses are not built, and falling off a plate is a death rather than a reset.
+
+**Next:** route the infection flood through authored ports, teach `BotBrain` to shoot a port when the
+floor is clear, then add the sub-agent schedule.

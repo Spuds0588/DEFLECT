@@ -69,17 +69,45 @@ export interface HoldingCellLayout {
 }
 
 export function holdingCellLayout(room: ArenaRoomDef): HoldingCellLayout {
+  // The block takes a little under half the plate, so a scaled-up holding island gets
+  // cells a body can move in instead of a shallow painted shelf.
   return {
     left: room.x + 18,
     cellW: (room.w - 36) / 3,
     top: room.y + 16,
-    bottom: room.y + 124,
+    bottom: room.y + Math.round(room.h * 0.46),
   };
 }
 
 /** A bridge deck spanning a tutorial chasm. The `traverse` record owns its collision. */
 export interface ArenaBridgeDef extends Rect {
   label?: string;
+  /**
+   * Retracted at the start: the deck is a solid barrier until the level extends it.
+   * A bridge without this flag is walkable from the first frame. A retracted deck is
+   * still a dash blocker, so it cannot be crossed until it is earned.
+   */
+  closed?: boolean;
+}
+
+/**
+ * One enemy ingress port. A red square that leaks square particles and emits threats
+ * until it is damaged enough to close. Ports are authored per arena (never rolled), and
+ * they are local content: campaign and infection only, never in a snapshot.
+ */
+export interface ArenaIngressDef {
+  x: number;
+  y: number;
+  /** Side length of the square. */
+  size: number;
+  /** Hits the port survives before it closes. */
+  hp: number;
+  /** Threat family it emits: 0 sentry, 1 virus, 2 worm. */
+  family: number;
+  /** Seconds between emissions while open. */
+  interval: number;
+  /** Bridge index extended once every port sharing this index has closed. */
+  bridge?: number;
 }
 
 /** One floating ordinary-program monitor in an arena. Decoration only; no body or collision. */
@@ -1123,6 +1151,14 @@ export interface ArenaDef {
   flip?: ArenaFlipDef;
   /** SPACE INVADERS simulated cannon and invader formation. Local-only. */
   invaders?: ArenaInvadersDef;
+  /**
+   * Separate floor plates. When present the plates are the only walkable floor: the space
+   * between them is a real drop, so a body carried over an edge falls and de-rezzes.
+   * Bridges are the crossings, and a `closed` bridge is a barrier until it extends.
+   */
+  islands?: readonly Rect[];
+  /** Enemy ingress ports for campaign and infection. Local content; out of Snapshot. */
+  ingress?: readonly ArenaIngressDef[];
   /** Multi-deck floor content. Absent means a flat arena. */
   traverse?: ArenaTraversalDef;
   /** Tutorial room floors and labels. Presentation only; never collision. */
@@ -1811,112 +1847,112 @@ export const ARENAS: readonly ArenaDef[] = [
   {
     id: 14,
     name: 'QUARANTINE',
-    tagline: 'Intake, holding, mainboard, uplink. One way out.',
+    tagline: 'Intake, holding, mainboard, uplink. Four islands. One way out.',
     hudLabel: 'ARENA // QUARANTINE',
     accent: '#ffcf6a',
     accentSoft: 'rgba(255, 207, 106, 0.32)',
     accentFaint: 'rgba(255, 207, 106, 0.032)',
     signature: 0,
     bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
-    // Four rooms, opening at the circle and ending at the uplink. The holding office is
-    // deliberately clear in the middle: the calibration class wakes there. Pillars are
-    // furniture first: desks in intake, chips on the board, ports in the router.
+    // Four separate plates, one room each. Cover is furniture first: intake desks, the
+    // holding desk pair either side of the bridge aisle, board component banks and the
+    // router's port banks. Nothing crosses a gap except the three bridge decks.
     pillars: [
-      { x: 140, y: 380, w: 96, h: 46 },
-      { x: 384, y: 380, w: 96, h: 46 },
-      { x: 140, y: 670, w: 96, h: 46 },
-      { x: 384, y: 670, w: 96, h: 46 },
-      { x: 1080, y: 340, w: 100, h: 70 },
-      { x: 1260, y: 330, w: 90, h: 96 },
-      { x: 1100, y: 650, w: 120, h: 70 },
-      { x: 1330, y: 640, w: 90, h: 80 },
-      { x: 1600, y: 270, w: 100, h: 64 },
-      { x: 1780, y: 240, w: 80, h: 80 },
-      { x: 1600, y: 690, w: 100, h: 70 },
-      { x: 1780, y: 710, w: 80, h: 60 },
+      { x: 130, y: 130, w: 150, h: 56 },
+      { x: 430, y: 130, w: 150, h: 56 },
+      { x: 130, y: 320, w: 150, h: 56 },
+      { x: 430, y: 320, w: 150, h: 56 },
+      { x: 120, y: 900, w: 150, h: 54 },
+      { x: 590, y: 900, w: 150, h: 54 },
+      { x: 1160, y: 720, w: 110, h: 76 },
+      { x: 1420, y: 780, w: 100, h: 70 },
+      { x: 1700, y: 710, w: 120, h: 80 },
+      { x: 1400, y: 930, w: 120, h: 60 },
+      { x: 1160, y: 120, w: 110, h: 70 },
+      { x: 1460, y: 130, w: 110, h: 66 },
+      { x: 1160, y: 330, w: 120, h: 60 },
+      { x: 1720, y: 320, w: 100, h: 60 },
     ],
-    // Spawn 6 is the campaign's opening slot: centre of the holding office. The rest
-    // ring the room for local play, so nobody opens on a desk.
+    // All eight sit on the intake plate, clear of the desks. Spawn 6 is the campaign's
+    // opening slot: the Warden lesson runs here before the first bridge crossing.
     spawns: [
-      { x: 310, y: 360 },
-      { x: 445, y: 440 },
-      { x: 445, y: 640 },
-      { x: 310, y: 735 },
-      { x: 175, y: 640 },
-      { x: 175, y: 440 },
-      { x: 310, y: 547 },
-      { x: 310, y: 455 },
+      { x: 300, y: 240 },
+      { x: 180, y: 200 },
+      { x: 420, y: 200 },
+      { x: 240, y: 250 },
+      { x: 360, y: 250 },
+      { x: 180, y: 400 },
+      { x: 300, y: 400 },
+      { x: 420, y: 400 },
     ],
     rooms: [
       {
-        shape: 'circle',
-        x: 75,
-        y: 312,
-        w: 470,
-        h: 470,
+        shape: 'rect',
+        x: 48,
+        y: 48,
+        w: 810,
+        h: 396,
         theme: 'office',
-        label: 'INTAKE',
-        sub: 'ORIENTATION // NO EXIT',
+        label: 'INTAKE 01',
+        sub: 'BOOKING // ORIENTATION',
       },
       {
         shape: 'rect',
-        x: 600,
-        y: 330,
-        w: 360,
-        h: 360,
+        x: 48,
+        y: 664,
+        w: 810,
+        h: 382,
         theme: 'holding',
-        label: 'HOLDING',
+        label: 'HOLDING 02',
         sub: 'CELL BLOCK // CONTAINMENT',
       },
       {
         shape: 'rect',
-        x: 1020,
-        y: 260,
-        w: 460,
-        h: 580,
+        x: 1084,
+        y: 664,
+        w: 858,
+        h: 382,
         theme: 'board',
-        label: 'MAINBOARD',
+        label: 'MAINBOARD 03',
         sub: 'BUS 02 // DATA PLANE',
       },
       {
         shape: 'rect',
-        x: 1540,
-        y: 150,
-        w: 370,
-        h: 800,
+        x: 1084,
+        y: 48,
+        w: 858,
+        h: 396,
         theme: 'router',
-        label: 'ROUTER',
+        label: 'ROUTER 04',
         sub: 'PORT 03 // UPLINK',
       },
     ],
+    // A is the way in from intake. B starts retracted until the cell block is cleared,
+    // and C stays shut until every port on the mainboard is closed.
     bridges: [
-      { x: 535, y: 492, w: 65, h: 110, label: 'A' },
-      { x: 960, y: 492, w: 60, h: 110, label: 'B' },
-      { x: 1480, y: 492, w: 60, h: 110, label: 'C' },
+      { x: 330, y: 444, w: 150, h: 220, label: 'A' },
+      { x: 858, y: 800, w: 226, h: 140, label: 'B', closed: true },
+      { x: 1720, y: 444, w: 150, h: 220, label: 'C', closed: true },
     ],
-    // The chasms remove the floor between rooms. Split top and bottom, they leave the
-    // bridge spans walkable while shots and beams still cross the gap.
-    traverse: {
-      chasms: [
-        { x: 545, y: 48, w: 55, h: 444 },
-        { x: 545, y: 602, w: 55, h: 444 },
-        { x: 960, y: 48, w: 60, h: 444 },
-        { x: 960, y: 602, w: 60, h: 444 },
-        { x: 1480, y: 48, w: 60, h: 444 },
-        { x: 1480, y: 602, w: 60, h: 444 },
-      ],
-      bridges: [
-        { x: 535, y: 492, w: 65, h: 110 },
-        { x: 960, y: 492, w: 60, h: 110 },
-        { x: 1480, y: 492, w: 60, h: 110 },
-      ],
-      upperDecks: [],
-      pads: [],
-      lifts: [],
-    },
+    // Four plates over open void. There is no shared floor underneath: walking off an
+    // island is a drop, and the bridge decks are the only crossings. The gaps are wider
+    // than a dash, so a retracted deck cannot be skipped.
+    islands: [
+      { x: 48, y: 48, w: 810, h: 396 },
+      { x: 48, y: 664, w: 810, h: 382 },
+      { x: 1084, y: 664, w: 858, h: 382 },
+      { x: 1084, y: 48, w: 858, h: 396 },
+    ],
+    // Two open ports on the mainboard and one on the router. The mainboard pair extends
+    // bridge C; closing all three opens the white exit port on the router uplink.
+    ingress: [
+      { x: 1240, y: 780, size: 78, hp: 12, family: 0, interval: 5.5, bridge: 2 },
+      { x: 1780, y: 940, size: 78, hp: 12, family: 1, interval: 6.5, bridge: 2 },
+      { x: 1250, y: 160, size: 78, hp: 12, family: 0, interval: 5 },
+    ],
     port: {
-      x: 1872,
-      y: 547,
+      x: 1886,
+      y: 210,
       radius: 38,
       label: 'NETWORK PORT',
       sub: 'WWW // OUTBOUND',
@@ -1924,32 +1960,32 @@ export const ARENAS: readonly ArenaDef[] = [
     // Three civilians work the holding office. They are painted in the arena pass; the
     // campaign script hides them after the calibration class wakes. No bodies, no hits.
     regulars: [
-      { id: 'ticket', x: 650, y: 600, scale: 0.82, phase: 0.4, carry: 1 },
-      { id: 'patch', x: 910, y: 600, scale: 0.82, phase: 2.1 },
-      { id: 'cache', x: 780, y: 648, scale: 0.78, phase: 4.2, carry: 2 },
+      { id: 'ticket', x: 200, y: 820, scale: 0.82, phase: 0.4, carry: 1 },
+      { id: 'patch', x: 660, y: 820, scale: 0.82, phase: 2.1 },
+      { id: 'cache', x: 430, y: 880, scale: 0.78, phase: 4.2, carry: 2 },
     ],
     // The office gets breakable intake files. The board adds data packets; the router's
     // lit ports and two wall emitters are the last, busiest room before the exit.
     props: [
-      { x: 118, y: 442, w: 38, h: 28, kind: PROP.DOC },
-      { x: 414, y: 442, w: 38, h: 28, kind: PROP.ZIP },
-      { x: 118, y: 620, w: 38, h: 28, kind: PROP.AUDIO },
-      { x: 414, y: 620, w: 38, h: 28, kind: PROP.VIDEO },
-      { x: 930, y: 470, w: 38, h: 28, kind: PROP.ZIP },
-      { x: 1180, y: 470, w: 38, h: 28, kind: PROP.DOC },
-      { x: 1100, y: 720, w: 42, h: 30, kind: PROP.AUDIO },
-      { x: 1450, y: 520, w: 36, h: 26, kind: PROP.VIDEO },
-      { x: 1620, y: 200, w: 42, h: 30, kind: PROP.DOC },
-      { x: 1620, y: 820, w: 42, h: 30, kind: PROP.ZIP },
+      { x: 200, y: 200, w: 38, h: 28, kind: PROP.DOC },
+      { x: 560, y: 200, w: 38, h: 28, kind: PROP.ZIP },
+      { x: 200, y: 400, w: 38, h: 28, kind: PROP.AUDIO },
+      { x: 560, y: 400, w: 38, h: 28, kind: PROP.VIDEO },
+      { x: 700, y: 950, w: 38, h: 28, kind: PROP.ZIP },
+      { x: 1300, y: 850, w: 38, h: 28, kind: PROP.DOC },
+      { x: 1650, y: 880, w: 42, h: 30, kind: PROP.AUDIO },
+      { x: 1250, y: 1000, w: 36, h: 26, kind: PROP.VIDEO },
+      { x: 1300, y: 220, w: 42, h: 30, kind: PROP.DOC },
+      { x: 1800, y: 140, w: 42, h: 30, kind: PROP.ZIP },
     ],
     emitters: [
-      { x: 1552, y: 360, angle: 0, offset: 0.2 },
-      { x: 1552, y: 760, angle: 0, offset: 0.65 },
+      { x: 1104, y: 250, angle: 0, offset: 0.2 },
+      { x: 1104, y: 330, angle: 0, offset: 0.65 },
     ],
     bumpers: [
-      { x: 1570, y: 580, radius: 32, kind: 1 },
-      { x: 1800, y: 430, radius: 28, kind: 1 },
-      { x: 1800, y: 700, radius: 28, kind: 0 },
+      { x: 1200, y: 900, radius: 28, kind: 0 },
+      { x: 1620, y: 760, radius: 32, kind: 1 },
+      { x: 1880, y: 1000, radius: 28, kind: 0 },
     ],
   },
   {

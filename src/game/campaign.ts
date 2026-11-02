@@ -53,13 +53,14 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     clearKills: 10,
     // Spread through the tutorial rooms: the intake files, the board's packets and the
     // router's uplink crates. The clean-sweep pay is lost when any one is broken.
+    // One plate each: the intake desks, the holding office and the two far islands.
     dataCrates: [
-      { x: 310, y: 340, kind: PROP.DOC },
-      { x: 310, y: 754, kind: PROP.ZIP },
-      { x: 930, y: 470, kind: PROP.AUDIO },
-      { x: 1180, y: 470, kind: PROP.VIDEO },
-      { x: 1100, y: 720, kind: PROP.DOC },
-      { x: 1620, y: 200, kind: PROP.ZIP },
+      { x: 560, y: 130, kind: PROP.DOC },
+      { x: 310, y: 400, kind: PROP.ZIP },
+      { x: 700, y: 720, kind: PROP.AUDIO },
+      { x: 1500, y: 900, kind: PROP.VIDEO },
+      { x: 1750, y: 760, kind: PROP.DOC },
+      { x: 1350, y: 180, kind: PROP.ZIP },
     ],
   },
   {

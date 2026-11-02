@@ -186,6 +186,20 @@ charges, energy and cooldowns, and it keeps AI cost out of the physics loop.
 | Tuning | `src/game/tuning/*.json` |
 | Build tooling | `scripts/bench.ts`, `scripts/gen-icons.mjs` |
 
+### Campaign levels: plates and ports
+
+A campaign arena can declare separate floor plates (`ArenaDef.islands`). When it does, the plates are the
+only footing: the space between them is a real drop, `World.inVoid` reports a body there as falling, and
+`bridges` are the only crossings. A deck with `closed: true` is a solid barrier and a dash blocker until
+`World.openBridge` extends it on a milestone the player caused, so progression is spatial rather than a
+menu row. `QUARANTINE` is the first level built this way: four plates, two retracted decks.
+
+Threats in these levels arrive through authored **ports** (`ArenaDef.ingress`): fixed, damageable squares
+that emit a threat family on a clock and stop when shot shut. Ports reuse the file-box damage path rather
+than a second entity type, respect the same live caps as a sentry pack, and release a bridge once the last
+one sharing it closes. Closing every port opens the white party port that ends the level. Ports are local
+content — campaign and infection only, never in a snapshot.
+
 ## Performance on low-powered hardware
 
 The design targets are a **4 ms average 60 Hz sim tick** with 8 players and 48 live projectiles, and

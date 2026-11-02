@@ -117,6 +117,11 @@ export interface RenderState {
   campaignBannerDur?: number;
   /** 0 drill, 1 breach/inbound, 2 cleared, 3 failed, 4 calibration, 5 awake, 6 cell release. */
   campaignBannerKind?: number;
+  /** Extended bridge decks as a bitmask, one bit per `arena.bridges` entry. */
+  bridgeMask?: number;
+  /** Enemy ingress ports closed, and how many the arena authored. */
+  portsClosed?: number;
+  portTotal?: number;
   /** Campaign-only presentation state for the holding room. */
   campaignCiviliansLost?: boolean;
   campaignBarsFlashT?: number;
@@ -453,6 +458,7 @@ export class Renderer {
   private campaignBarsFlashT = 0;
   private campaignBarsOpen = false;
   private campaignActive = false;
+  private bridgeMask = 0;
   /** Local civilian monitors and their presentation-only flight/drop state. */
   private civilians: CivilianActor[] = [];
   private civilianArenaId = -1;
@@ -591,6 +597,7 @@ export class Renderer {
     this.campaignBarsFlashT = state.campaignBarsFlashT ?? 0;
     this.campaignBarsOpen = state.campaignBarsOpen === true;
     this.campaignActive = state.campaign === true;
+    this.bridgeMask = state.bridgeMask ?? 0;
     if (this.introActive) {
       this.introT += dt;
       if (this.introT >= INTRO_LEN) this.introActive = false;
@@ -654,6 +661,7 @@ export class Renderer {
       if (state.arena.browser) this.drawBrowser(state);
       if (introDone) {
         if (state.props) this.drawProps(state.props);
+        if (state.props) this.drawPorts(state.props, t);
         if (state.pipes) this.drawPipes(state.pipes, state.arena, t);
         if (state.arena.firewallSwitch) this.drawFirewallSwitch(state, t);
         if (state.arena.pushers) this.drawPusher(state);
@@ -6320,6 +6328,12 @@ export class Renderer {
       this.drawSatelliteArena(satelliteState, groundA, frameA);
       return;
     }
+    // A plate arena has no floor rectangle: the plates are the floor and the gap between
+    // them is open void, so the ordinary ground/grid/border pass is skipped entirely.
+    if (arena.islands) {
+      this.drawIslandArena(arena, t, groundA, frameA, pillarA);
+      return;
+    }
     if (this.dustArena !== arena.id) {
       for (let i = 0; i < this.dustX.length; i++) {
         this.dustX[i] = b.left + Math.random() * (b.right - b.left);
@@ -6592,6 +6606,125 @@ export class Renderer {
   }
 
   /**
+   * Ingress ports: a red square leaking square particles, plus the white party port that
+   * opens once every enemy port is closed. Health reads as a lit bar on the top edge, and
+   * the closing beat collapses the frame into its own centre.
+   */
+  private drawPorts(props: readonly Prop[], t: number): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < props.length; i++) {
+      const b = props[i];
+      if (!b.portal) continue;
+      const closing = (b.portalCloseT ?? 0) > 0;
+      if (!b.active && !closing) continue;
+      const exit = b.portalExit === true;
+      const close = closing ? Math.max(0, Math.min(1, (b.portalCloseT ?? 0) / 0.9)) : 1;
+      const cx = b.x + b.w * 0.5;
+      const cy = b.y + b.h * 0.5;
+      const half = b.w * 0.5 * close;
+      const color = exit ? '#eafcff' : '#ff4d4d';
+      const soft = exit ? 'rgba(234, 252, 255, 0.36)' : 'rgba(255, 77, 77, 0.34)';
+      const r = b.w * 0.5;
+      ctx.save();
+      // Halo: the port lights the floor around its own frame.
+      ctx.globalAlpha = (exit ? 0.18 : 0.24) * close;
+      ctx.fillStyle = soft;
+      ctx.fillRect(cx - r - 18, cy - r - 18, (r + 18) * 2, (r + 18) * 2);
+      // Square particles leak out of the mouth and drift back toward the rim.
+      ctx.globalAlpha = (exit ? 0.55 : 0.85) * close;
+      ctx.fillStyle = color;
+      for (let k = 0; k < 10; k++) {
+        const phase = (t * (0.45 + k * 0.09) + k * 0.37) % 1;
+        const a = (k / 10) * Math.PI * 2 + t * 0.3;
+        const dist = half * (0.45 + phase * 1.15);
+        const size = 2 + (1 - phase) * 4;
+        ctx.fillRect(cx + Math.cos(a) * dist - size * 0.5, cy + Math.sin(a) * dist - size * 0.5, size, size);
+      }
+      // Frame: thick bright square, dark mouth, rotating inner brackets.
+      ctx.globalAlpha = close;
+      ctx.fillStyle = '#0a0305';
+      ctx.fillRect(cx - half, cy - half, half * 2, half * 2);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(2, 5 * close);
+      ctx.strokeRect(cx - half + 1.5, cy - half + 1.5, half * 2 - 3, half * 2 - 3);
+      ctx.globalAlpha = 0.5 * close;
+      ctx.lineWidth = 1.5;
+      const spin = t * 0.8;
+      ctx.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const a0 = spin + (k * Math.PI) / 2;
+        const a1 = a0 + 0.45;
+        ctx.moveTo(cx + Math.cos(a0) * half * 0.62, cy + Math.sin(a0) * half * 0.62);
+        ctx.lineTo(cx + Math.cos(a1) * half * 0.62, cy + Math.sin(a1) * half * 0.62);
+      }
+      ctx.stroke();
+      // Health: a lit bar across the top edge. The party port needs none.
+      if (!exit && !closing) {
+        const max = Math.max(1, b.portalMaxHp ?? b.hp);
+        const hp = Math.max(0, Math.min(1, b.hp / max));
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = 'rgba(20, 6, 8, 0.9)';
+        ctx.fillRect(cx - half, cy - half - 13, half * 2, 5);
+        ctx.fillStyle = color;
+        ctx.fillRect(cx - half, cy - half - 13, half * 2 * hp, 5);
+      }
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Four plates over open void. Nothing is drawn between them, because there is nothing
+   * between them: walking off a plate is a drop, and the three decks are the crossings.
+   * Cover drops in on its own beat, as it does in every arena.
+   */
+  private drawIslandArena(arena: ArenaDef, t: number, groundA: number, frameA: number, pillarA: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#02050a';
+    const m = 420;
+    ctx.fillRect(
+      arena.bounds.left - m,
+      arena.bounds.top - m,
+      arena.bounds.right - arena.bounds.left + m * 2,
+      arena.bounds.bottom - arena.bounds.top + m * 2,
+    );
+    ctx.restore();
+
+    const pillarDrop = (1 - pillarA) * 26;
+    this.drawTutorialRooms(arena, t, frameA);
+    this.drawRegularPrograms(arena, t, frameA);
+
+    ctx.save();
+    ctx.translate(0, -pillarDrop);
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      ctx.globalAlpha = pillarA;
+      ctx.fillStyle = COLORS.pillarFill;
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = COLORS.pillarPanel;
+      ctx.fillRect(r.x + 4, r.y + 4, Math.max(0, r.w - 8), Math.max(0, r.h - 8));
+      ctx.globalAlpha = 0.2 * pillarA;
+      ctx.strokeStyle = '#d9f8ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let hx = r.x + 10; hx < r.x + r.w - 8; hx += 14) {
+        ctx.moveTo(hx, r.y + 8);
+        ctx.lineTo(hx + 8, r.y + 8);
+      }
+      ctx.stroke();
+      // Cover is a blocker, so its rim is one of the brightest lines on a plate.
+      ctx.globalAlpha = 0.85 * pillarA;
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    }
+    ctx.restore();
+
+    if (arena.port) this.drawArenaPort(arena, t, frameA);
+  }
+
+  /**
    * The connected tutorial rooms. These are inset floor plates and place labels over the
    * arena's own floor; collision stays in `traverse` (the gaps) and `pillars`. The bridge
    * decks are drawn over the traversal deck so the crossing reads as one authored route.
@@ -6613,6 +6746,12 @@ export class Renderer {
       else ctx.rect(room.x, room.y, room.w, room.h);
       ctx.clip();
 
+      // A plate floats: cast its shadow first so the rim reads as a thick edge over the void.
+      if (arena.islands) {
+        ctx.globalAlpha = 0.55 * alpha;
+        ctx.fillStyle = '#01030a';
+        ctx.fillRect(room.x + 10, room.y + 18, room.w, room.h);
+      }
       ctx.globalAlpha = alpha;
       ctx.fillStyle = theme.floor;
       ctx.fillRect(room.x, room.y, room.w, room.h);
@@ -6643,7 +6782,7 @@ export class Renderer {
       // dash keeps it from reading as another solid wall.
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = theme.accent;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = arena.islands ? 5 : 3;
       ctx.beginPath();
       if (room.shape === 'circle') ctx.arc(cx, cy, radius - 2, 0, TWO_PI);
       else ctx.rect(room.x + 2, room.y + 2, room.w - 4, room.h - 4);
@@ -6674,10 +6813,58 @@ export class Renderer {
     if (bridges) {
       for (let i = 0; i < bridges.length; i++) {
         const bridge = bridges[i];
+        const open = (this.bridgeMask & (1 << i)) !== 0;
+        const vertical = bridge.h > bridge.w;
         const x = bridge.x;
         const y = bridge.y;
         const w = bridge.w;
         const h = bridge.h;
+        const label = bridge.label ? `LINK ${bridge.label}` : 'LINK';
+        if (!open) {
+          // Retracted: two short stubs off the plate edges and open dark between them.
+          // The deck is solid to the sim, so this must read as "not a way across yet".
+          const stub = 26;
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = '#0c131b';
+          if (vertical) {
+            ctx.fillRect(x, y, w, stub);
+            ctx.fillRect(x, y + h - stub, w, stub);
+          } else {
+            ctx.fillRect(x, y, stub, h);
+            ctx.fillRect(x + w - stub, y, stub, h);
+          }
+          ctx.globalAlpha = 0.8 * alpha;
+          ctx.strokeStyle = arena.accent;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          if (vertical) {
+            ctx.moveTo(x, y + stub);
+            ctx.lineTo(x + w, y + stub);
+            ctx.moveTo(x, y + h - stub);
+            ctx.lineTo(x + w, y + h - stub);
+          } else {
+            ctx.moveTo(x + stub, y);
+            ctx.lineTo(x + stub, y + h);
+            ctx.moveTo(x + w - stub, y);
+            ctx.lineTo(x + w - stub, y + h);
+          }
+          ctx.stroke();
+          ctx.globalAlpha = 0.4 * alpha;
+          ctx.strokeStyle = 'rgba(150, 210, 235, 0.4)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([7, 9]);
+          ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 0.6 * alpha;
+          ctx.fillStyle = arena.accent;
+          ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'alphabetic';
+          ctx.fillText(`${label} // SHUT`, x + w * 0.5, y - 7);
+          ctx.restore();
+          continue;
+        }
         ctx.save();
         ctx.beginPath();
         ctx.rect(x, y, w, h);
@@ -6689,19 +6876,34 @@ export class Renderer {
         ctx.strokeStyle = 'rgba(150, 210, 235, 0.22)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        for (let bx = x + 12; bx < x + w; bx += 20) {
-          ctx.moveTo(bx + 0.5, y + 10);
-          ctx.lineTo(bx + 0.5, y + h - 10);
+        if (vertical) {
+          for (let by = y + 12; by < y + h; by += 20) {
+            ctx.moveTo(x + 10, by + 0.5);
+            ctx.lineTo(x + w - 10, by + 0.5);
+          }
+        } else {
+          for (let bx = x + 12; bx < x + w; bx += 20) {
+            ctx.moveTo(bx + 0.5, y + 10);
+            ctx.lineTo(bx + 0.5, y + h - 10);
+          }
         }
         ctx.stroke();
+        // Rails run along the long edges, so a vertical deck still reads as a walkway.
         ctx.globalAlpha = 0.9 * alpha;
         ctx.strokeStyle = arena.accent;
         ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.moveTo(x, y + 8);
-        ctx.lineTo(x + w, y + 8);
-        ctx.moveTo(x, y + h - 8);
-        ctx.lineTo(x + w, y + h - 8);
+        if (vertical) {
+          ctx.moveTo(x + 8, y);
+          ctx.lineTo(x + 8, y + h);
+          ctx.moveTo(x + w - 8, y);
+          ctx.lineTo(x + w - 8, y + h);
+        } else {
+          ctx.moveTo(x, y + 8);
+          ctx.lineTo(x + w, y + 8);
+          ctx.moveTo(x, y + h - 8);
+          ctx.lineTo(x + w, y + h - 8);
+        }
         ctx.stroke();
         // A data thread runs toward the port, so the bridge has a direction.
         ctx.globalAlpha = 0.72 * alpha;
@@ -6710,8 +6912,13 @@ export class Renderer {
         ctx.setLineDash([16, 18]);
         ctx.lineDashOffset = -t * 54;
         ctx.beginPath();
-        ctx.moveTo(x + 2, y + h * 0.5);
-        ctx.lineTo(x + w - 2, y + h * 0.5);
+        if (vertical) {
+          ctx.moveTo(x + w * 0.5, y + 2);
+          ctx.lineTo(x + w * 0.5, y + h - 2);
+        } else {
+          ctx.moveTo(x + 2, y + h * 0.5);
+          ctx.lineTo(x + w - 2, y + h * 0.5);
+        }
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.restore();
@@ -6720,14 +6927,12 @@ export class Renderer {
         ctx.strokeStyle = arena.accentSoft;
         ctx.lineWidth = 1.5;
         ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-        if (bridge.label) {
-          ctx.globalAlpha = 0.65 * alpha;
-          ctx.fillStyle = arena.accent;
-          ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'alphabetic';
-          ctx.fillText(`LINK ${bridge.label}`, x + w * 0.5, y - 7);
-        }
+        ctx.globalAlpha = 0.65 * alpha;
+        ctx.fillStyle = arena.accent;
+        ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(label, x + w * 0.5, y - 7);
       }
     }
     ctx.restore();
@@ -6764,6 +6969,34 @@ export class Renderer {
       ctx.fill();
     }
 
+    // Booking counter along the back wall: three terminals, a rail and the shift file.
+    // It is the precinct's signature, so the intake reads as a charge desk, not a room.
+    const counterX = Math.round(cx - 150);
+    const counterY = room.y + 22;
+    ctx.globalAlpha = 0.55 * alpha;
+    ctx.fillStyle = 'rgba(9, 13, 18, 0.82)';
+    ctx.strokeStyle = theme.line;
+    ctx.lineWidth = 1.2;
+    ctx.fillRect(counterX, counterY, 300, 26);
+    ctx.strokeRect(counterX + 0.5, counterY + 0.5, 299, 25);
+    for (let i = 0; i < 3; i++) {
+      const mx = counterX + 40 + i * 90;
+      ctx.globalAlpha = 0.5 * alpha;
+      ctx.fillStyle = '#0d1a20';
+      ctx.fillRect(mx, counterY - 16, 26, 14);
+      ctx.globalAlpha = 0.55 * alpha;
+      ctx.strokeStyle = theme.accent;
+      ctx.strokeRect(mx + 0.5, counterY - 15.5, 25, 13);
+    }
+
+    // Chains: the intake is a holding pen, so the plate is chained off at both sides and
+    // along the front lip. They are floor dressing, never collision.
+    this.drawChainRun(room.x + 24, room.y + 52, room.x + 24, room.y + room.h - 52, 0.34 * alpha);
+    this.drawChainRun(room.x + room.w - 24, room.y + 52, room.x + room.w - 24, room.y + room.h - 52, 0.34 * alpha);
+    this.drawChainRun(room.x + 52, room.y + room.h - 28, room.x + room.w - 52, room.y + room.h - 28, 0.26 * alpha);
+    this.drawChainRun(cx - 150, room.y + 12, cx - 150, room.y + 118, 0.28 * alpha);
+    this.drawChainRun(cx + 150, room.y + 12, cx + 150, room.y + 118, 0.28 * alpha);
+
     ctx.globalAlpha = 0.17 * alpha;
     ctx.fillStyle = theme.accent;
     ctx.textAlign = 'center';
@@ -6779,6 +7012,32 @@ export class Renderer {
       const py = room.y + 132 + ((i * 61) % 210);
       ctx.fillRect(px, py, 10, 7);
     }
+  }
+
+  /** A run of chain links. Alternating link orientation reads as chain at any angle. */
+  private drawChainRun(x1: number, y1: number, x2: number, y2: number, alpha: number): void {
+    const ctx = this.ctx;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    const ux = dx / len;
+    const uy = dy / len;
+    const step = 13;
+    const count = Math.floor(len / step);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#c2d2d8';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < count; i++) {
+      const px = x1 + ux * (i * step + step * 0.5);
+      const py = y1 + uy * (i * step + step * 0.5);
+      const wide = i % 2 === 0;
+      ctx.beginPath();
+      ctx.ellipse(px, py, wide ? step * 0.3 : step * 0.46, wide ? step * 0.46 : step * 0.3, 0, 0, TWO_PI);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /**
@@ -13240,18 +13499,23 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Campaign objective: one pip per threat delete, no label.
+    // Campaign objective: one pip per ingress port when the arena authors them, so the
+    // strip reads "sources closed" instead of a kill tally. A portless node keeps kills.
     if (state.campaign && state.campaignPhase === 'assault') {
-      const target = CAMPAIGN.killsToClear;
-      const kills = Math.max(0, Math.min(target, state.gauntletKills ?? 0));
-      const pw = 5;
+      const ports = state.portTotal ?? 0;
+      const target = ports > 0 ? ports : CAMPAIGN.killsToClear;
+      const done =
+        ports > 0
+          ? Math.max(0, Math.min(target, state.portsClosed ?? 0))
+          : Math.max(0, Math.min(target, state.gauntletKills ?? 0));
+      const pw = ports > 0 ? 9 : 5;
       const gap = 4;
       const total = target * pw + (target - 1) * gap;
       const startX = (VIEW_W - total) * 0.5;
       const y = VIEW_H - 16;
       for (let i = 0; i < target; i++) {
-        ctx.fillStyle = i < kills ? THREAT_COLORS.firewall : 'rgba(120, 170, 190, 0.16)';
-        ctx.fillRect(startX + i * (pw + gap), y, pw, 2);
+        ctx.fillStyle = i < done ? THREAT_COLORS.firewall : 'rgba(120, 170, 190, 0.16)';
+        ctx.fillRect(startX + i * (pw + gap), y, pw, ports > 0 ? 3 : 2);
       }
     }
 

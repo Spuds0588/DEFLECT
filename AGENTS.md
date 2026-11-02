@@ -2329,7 +2329,7 @@ notes recorded, and both extend `ArenaLaptopDef` rather than adding a second scr
 - Both variants stay local-only through `isOnlineArena` (`!a.laptop` already covers them). Their clocks,
   cell health, cursor and bubble positions never enter `SnapshotHazards`.
 
-### D58 — Ports are the threat ingress in campaign and infection (decided 2026-11-02, not built)
+### D58 — Ports are the threat ingress in campaign and infection (decided 2026-11-02, built v0.1.125)
 
 Campaign and INFECTION levels must not materialize threats at arbitrary floor points. Threats arrive through
 **ports**: red glowing squares that leak small square particles, emit the level's threat families, and close
@@ -2337,6 +2337,17 @@ permanently when damaged. A level is cleared by destroying the threats already i
 port; threats delivered before a port died stay alive, so closing a port never ends a fight by itself. The
 party also gets **white** ports at each level's entry and exit for arriving and leaving — traversal dressing
 that is never solid and never damageable.
+
+**Built (v0.1.125) for BUILD ROOT.** `ArenaDef.ingress` authors each port; `World.spawnCampaignPorts` adds
+them to the prop pool as `fixed` records, so the existing `damageProp` shot, lash and blast paths close
+them — do not add a second damage system or a second entity type. `updatePortals` runs the emission clock
+and the 0.9 s collapse, the families reuse `spawnSentry`/`spawnVirus`/`spawnWorm` and respect the live
+caps, and a port's `bridge` index releases that deck only once every port sharing it is closed. Closing
+all of them pushes the white exit port onto the uplink and hands the story box to
+`KITTY_UPLINK_TUTORIAL`; walking into the exit clears the node, so live threats never hold a finished
+level open. The level still opens populated: `seedAssaultFloor` posts a capped squad on every plate and
+the ports add to it. INFECTION still seeds through `setupInfection` and `spawnVirusCluster`; routing that
+flood through ports is open work behind the same data.
 
 - The clear condition replaces the bare kill count. `CAMPAIGN.killsToClear` (`tuning/campaign.json`, 10) and
 the one-pip-per-delete objective strip in `render.ts` are today's gate; they become **ports remaining plus
@@ -2358,6 +2369,23 @@ stays inside the narration rules (bottom box, live and non-blocking, skippable, 
 never becomes a menu, an HUD dump or a gameplay gate.
 - Keep a port's footprint readable at play size, like the SMART WATCH hand and the laptop cards; a source the
 nav grid cannot represent lets bots stand inside it and turns the objective into a hidden trap.
+
+### D59 — Plate floors and earned bridges (decided 2026-11-02, built v0.1.125)
+
+An arena can declare `islands: Rect[]`. When it does, the plates are the **only** floor: there is no
+arena-wide rectangle underneath, the gap is a real drop, and a body carried over an edge falls and
+de-rezzes exactly as it would off an open-lip arena. Do not paint plates on top of a shared floor again —
+that was the first BUILD ROOT, and it read as one big rectangle with room outlines drawn on it.
+
+- Every plate needs a `rooms` entry with the same rect, so its theme, label and dressing follow it. Spawns,
+  cover, props and ports must sit on a plate; `.tmp/islands-ports-check.ts` asserts it and fails the probe
+  otherwise.
+- Crossings are `bridges`. A deck with `closed: true` is a body barrier **and** a dash blocker until
+  `World.openBridge(i)` extends it; `bridgeMask` is what the renderer reads. Author gaps wider than a dash
+  so a shut deck cannot be skipped, and release a deck on a milestone the player caused (a cleared block,
+  a closed port), never on a timer alone.
+- Off a plate is a death, not a reset. That is the price of real islands: keep spawns and tutorial beats
+  away from the rims instead of adding safety rails the level does not earn.
 
 ## 8. Performance guardrails
 

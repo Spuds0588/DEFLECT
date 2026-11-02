@@ -186,6 +186,25 @@ export interface Prop {
   capacitor?: boolean;
   /** Mounted hardware: not loose debris, so it never moves or gets launched. */
   fixed?: boolean;
+  /**
+   * A campaign or infection ingress port. It is damageable, never moves, and emits a
+   * threat family until it closes. Ports are local content: never in Snapshot.
+   */
+  portal?: boolean;
+  /** Port family: 0 sentry, 1 virus, 2 worm. */
+  portalFamily?: number;
+  /** Seconds until the next emission. */
+  portalT?: number;
+  /** Seconds between emissions while the port is open. */
+  portalInterval?: number;
+  /** Bridge index this port releases once every port sharing it is closed (-1 = none). */
+  portalBridge?: number;
+  /** The white party port: the level exit. It is not a target and takes no damage. */
+  portalExit?: boolean;
+  /** Closing animation countdown. Above zero the port is dying and emits nothing. */
+  portalCloseT?: number;
+  /** Health the port was authored with, for the damage ring. */
+  portalMaxHp?: number;
 }
 
 /** One expanding alarm ring. Masks keep a body to one hit per ring. */

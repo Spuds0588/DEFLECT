@@ -117,7 +117,14 @@ import {
   type DiscDef,
 } from './arenas';
 import type { CampaignDataCrate, CampaignIntro } from './campaign';
-import { CALIBRATION_POWER_TUTORIAL, CALIBRATION_SKILL_TUTORIAL, KITTY_TUTORIAL, TutorialRunner, WARDEN_TUTORIAL } from './tutorial';
+import {
+  CALIBRATION_POWER_TUTORIAL,
+  CALIBRATION_SKILL_TUTORIAL,
+  KITTY_TUTORIAL,
+  KITTY_UPLINK_TUTORIAL,
+  TutorialRunner,
+  WARDEN_TUTORIAL,
+} from './tutorial';
 import { beamReach, circleRect, hitScratch } from './collision';
 import {
   clearPlayerForSpawn,
@@ -209,9 +216,9 @@ export class World {
   readonly online = false;
   readonly arena: ArenaDef;
   /** Cover plus floor gaps. Bodies collide with this; shots only respect cover. */
-  private solids: readonly Rect[];
+  private solids: readonly Rect[] = [];
   /** Cover only: a dash clears floor gaps, but these still stop the body. */
-  private dashSolids: Rect[];
+  private dashSolids: Rect[] = [];
   /** Campaign cell-block collision while the block is sealed. Removed on release. */
   private campaignBarSolids: Rect[] = [];
   /** Breakable file boxes. Live boxes travel in Snapshot; physics stays host-side. */
@@ -303,6 +310,19 @@ export class World {
   campaignBannerDur = 0;
   /** 0 drill, 1 breach/inbound, 2 cleared, 3 failed, 4 calibration, 5 awake, 6 cell release. */
   campaignBannerKind = 0;
+  /**
+   * Extended bridge decks, indexed like `arena.bridges`. A retracted deck is a solid
+   * barrier; the level extends it on a milestone. Local geometry state, never in a snapshot.
+   */
+  private bridgeOpen: boolean[] = [];
+  /** Solver inputs kept apart from the removable gates and cell bars. */
+  private baseSolids: readonly Rect[] = [];
+  private baseDashSolids: readonly Rect[] = [];
+  /** Enemy ingress ports closed this run, and how many the arena authored. */
+  portsClosed = 0;
+  portTotal = 0;
+  /** Every enemy port is closed, so the white exit port is open on the uplink. */
+  campaignExitReady = false;
   /** Escalation wave in gauntlet mode. Purely local presentation + spawn pacing. */
   wave = 1;
   waveBannerT = 0;
@@ -734,10 +754,15 @@ export class World {
     const routeBarrierRects = [...this.rocketBarrierRects, ...this.carBarrierRects];
     const staticSolids =
       routeBarrierRects.length > 0 ? [...arenaSolids(arena), ...routeBarrierRects] : arenaSolids(arena);
+    this.baseSolids = staticSolids;
+    this.baseDashSolids = [...arena.pillars, ...routeBarrierRects];
     this.campaignBarSolids = campaign ? campaignCellBarRects(arena) : [];
-    this.solids =
-      this.campaignBarSolids.length > 0 ? [...staticSolids, ...this.campaignBarSolids] : staticSolids;
-    this.dashSolids = [...arena.pillars, ...routeBarrierRects, ...this.campaignBarSolids];
+    // A retracted deck is a barrier, not a route: it blocks a body and stops a dash until
+    // the level extends it. A deck without `closed` is walkable from the first frame.
+    const bridges = this.arena.bridges ?? [];
+    this.bridgeOpen = [];
+    for (let i = 0; i < bridges.length; i++) this.bridgeOpen.push(bridges[i].closed !== true);
+    this.rebuildSolids();
     this.keypad = arena.keypad ?? null;
     this.keypadStates = new Uint8Array(this.keypad?.keys.length ?? 0);
     this.keypadPrevStates = new Uint8Array(this.keypadStates.length);
@@ -1196,6 +1221,7 @@ export class World {
    */
   private setupCampaign(): void {
     this.setupGauntlet();
+    this.spawnCampaignPorts();
     this.calibrationAwake = false;
     this.campaignT = 0;
     this.wave = CAMPAIGN.waveStart;
@@ -1225,6 +1251,202 @@ export class World {
     // Wave 2 is already alive in the cells. These are the same bodies release wakes;
     // nothing is spawned on the power-down beat.
     this.spawnHeldCellThreats();
+  }
+
+  /**
+   * The level's ingress ports. Ports join the same prop pool the file boxes use, so a
+   * shot or a lash that already damages a box damages a port; they are fixed, so they
+   * never slide. Every port is live from the first frame: the level opens populated and
+   * the ports keep feeding it until they are closed. Local content, never a snapshot.
+   */
+  private spawnCampaignPorts(): void {
+    this.portsClosed = 0;
+    this.campaignExitReady = false;
+    const ingress = this.arena.ingress;
+    this.portTotal = ingress?.length ?? 0;
+    if (!ingress) return;
+    for (let i = 0; i < ingress.length; i++) {
+      const p = ingress[i];
+      this.props.push({
+        active: true,
+        kind: 0,
+        x: p.x - p.size * 0.5,
+        y: p.y - p.size * 0.5,
+        w: p.size,
+        h: p.size,
+        hp: p.hp,
+        hitFlash: 0,
+        dropT: 0,
+        vx: 0,
+        vy: 0,
+        tx: 0,
+        ty: 0,
+        fixed: true,
+        portal: true,
+        portalFamily: p.family,
+        portalInterval: p.interval,
+        // Stagger the first emission so two ports never fire on the same frame.
+        portalT: 1.4 + i * 0.9,
+        portalBridge: p.bridge ?? -1,
+        portalExit: false,
+        portalCloseT: 0,
+        portalMaxHp: p.hp,
+      });
+    }
+  }
+
+  /** Port clock: emits its family, runs the close anim, then de-rezzes. */
+  private updatePortals(dt: number): void {
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.portal || b.portalExit) continue;
+      if (b.portalCloseT !== undefined && b.portalCloseT > 0) {
+        b.portalCloseT -= dt;
+        if (b.portalCloseT <= 0) {
+          b.portalCloseT = 0;
+          b.active = false;
+        }
+        continue;
+      }
+      if (!b.active) continue;
+      if (b.hitFlash > 0) b.hitFlash = Math.max(0, b.hitFlash - dt);
+      b.portalT = (b.portalT ?? 0) - dt;
+      if (b.portalT > 0) continue;
+      b.portalT = b.portalInterval ?? 6;
+      this.emitPortThreat(b);
+    }
+  }
+
+  /** One threat steps out of a port. A full family cap just skips the beat. */
+  private emitPortThreat(b: Prop): void {
+    const r = Math.max(b.w, b.h) * 0.5;
+    const angle = this.rng.range(0, Math.PI * 2);
+    const x = b.x + b.w * 0.5 + Math.cos(angle) * (r + 30);
+    const y = b.y + b.h * 0.5 + Math.sin(angle) * (r + 30);
+    if (!this.sentryClear(x, y, SENTRY.pulse.radius)) return;
+    const fam = b.portalFamily ?? 0;
+    if (fam === 1) {
+      let live = 0;
+      for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) live++;
+      if (live < this.virusLimit()) this.spawnVirus(x, y);
+    } else if (fam === 2) {
+      let live = 0;
+      for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) live++;
+      if (live < this.wormLimit()) this.spawnWorm(x, y);
+    } else {
+      let live = 0;
+      for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) live++;
+      if (live < this.sentryLimit()) this.spawnSentry(0, x, y);
+    }
+    // A short emissive blip so the port reads as the source even from across a gap.
+    this.emit(EV.PROP_HIT, 0, x, y, 1);
+  }
+
+  /** A port reaches zero: close it, release its bridge, and open the exit when all are down. */
+  private closePort(b: Prop, x: number, y: number): void {
+    // 0.9 s of collapse, drawn by the renderer as the square sinking into its own frame.
+    b.portalCloseT = 0.9;
+    b.hp = 0;
+    b.hazard = false;
+    this.portsClosed++;
+    this.emit(EV.PROP_BREAK, 0, x, y, Math.max(b.w, b.h));
+    const bridge = b.portalBridge ?? -1;
+    if (bridge >= 0) {
+      // Only the last port sharing the bridge releases it, so a pair cannot open it early.
+      let pending = false;
+      for (let i = 0; i < this.props.length; i++) {
+        const other = this.props[i];
+        if (other === b || !other.portal || other.portalExit) continue;
+        // A port on the far side of the network must not hold this bridge shut.
+        if ((other.portalBridge ?? -1) !== bridge) continue;
+        if (other.active && (other.portalCloseT ?? 0) <= 0) pending = true;
+      }
+      if (!pending) this.openBridge(bridge);
+    }
+    if (this.portsClosed >= this.portTotal) this.openCampaignExit();
+  }
+
+  /** The white party port: the run's way out of this network. */
+  private openCampaignExit(): void {
+    if (this.campaignExitReady) return;
+    this.campaignExitReady = true;
+    const port = this.arena.port;
+    const x = port ? port.x : this.centerX;
+    const y = port ? port.y : this.centerY;
+    const size = 76;
+    this.props.push({
+      active: true,
+      kind: 0,
+      x: x - size * 0.5,
+      y: y - size * 0.5,
+      w: size,
+      h: size,
+      hp: 1,
+      hitFlash: 0,
+      dropT: 0,
+      vx: 0,
+      vy: 0,
+      tx: 0,
+      ty: 0,
+      fixed: true,
+      portal: true,
+      portalExit: true,
+      portalCloseT: 0,
+    });
+    // Kitty takes the story box: the infection was routed in, so the hop continues.
+    this.tutorial = new TutorialRunner(KITTY_UPLINK_TUTORIAL);
+    this.tutorialFinished = false;
+    this.tutorialGrace = 0;
+    this.emit(EV.PROP_BREAK, 0, x, y, 120);
+  }
+
+  /** The local player is standing in the open party port. */
+  private playerAtCampaignExit(): boolean {
+    const p = this.players[0];
+    if (!p.active || !p.alive) return false;
+    for (let i = 0; i < this.props.length; i++) {
+      const b = this.props[i];
+      if (!b.active || !b.portalExit) continue;
+      const cx = b.x + b.w * 0.5;
+      const cy = b.y + b.h * 0.5;
+      return Math.hypot(p.x - cx, p.y - cy) <= b.w * 0.5 + PLAYER.radius;
+    }
+    return false;
+  }
+
+  /**
+   * The assault opens on a populated floor, not an empty one. A squad is already posted
+   * on every plate beyond intake, and the ports keep adding to it until they close.
+   */
+  private seedAssaultFloor(): void {
+    const islands = this.arena.islands;
+    if (!islands) return;
+    for (let i = 1; i < islands.length; i++) {
+      const isle = islands[i];
+      const cx = isle.x + isle.w * 0.42;
+      const cy = isle.y + isle.h * 0.5;
+      // The live caps are the ceiling here too: the pre-placed squad may not push the
+      // shooter count past the wave's limit, exactly like a pack drop.
+      const sentries = this.sentryLiveCount();
+      if (sentries < this.sentryLimit()) this.spawnSentry(0, cx, cy - 60);
+      if (sentries + 1 < this.sentryLimit()) this.spawnSentry(0, cx + 120, cy + 70);
+      const viruses = this.virusLiveCount();
+      if (viruses < this.virusLimit()) this.spawnVirus(cx + 40, cy + 120);
+      if (viruses + 1 < this.virusLimit()) this.spawnVirus(cx - 70, cy + 40);
+    }
+    this.spawnWorm();
+  }
+
+  private sentryLiveCount(): number {
+    let live = 0;
+    for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) live++;
+    return live;
+  }
+
+  private virusLiveCount(): number {
+    let live = 0;
+    for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) live++;
+    return live;
   }
 
   /** Starts the sparring drill once the calibration subjects are gone. */
@@ -1377,10 +1599,42 @@ export class World {
   /** Removes the sealed cell-block solid on the power-down beat. */
   private openCampaignCellBars(): void {
     if (this.campaignBarSolids.length === 0) return;
-    const bars = this.campaignBarSolids;
     this.campaignBarSolids = [];
-    this.solids = this.solids.filter((solid) => !bars.includes(solid));
-    this.dashSolids = this.dashSolids.filter((solid) => !bars.includes(solid));
+    this.rebuildSolids();
+  }
+
+  /**
+   * Rebuilds the body solver after a gate or the cell bars change. This runs on a
+   * milestone, not per tick, so the movement loop still reads one flat array.
+   */
+  private rebuildSolids(): void {
+    const gates: Rect[] = [];
+    const bridges = this.arena.bridges ?? [];
+    for (let i = 0; i < bridges.length; i++) {
+      const b = bridges[i];
+      if (b.closed !== true || this.bridgeOpen[i]) continue;
+      gates.push({ x: b.x, y: b.y, w: b.w, h: b.h });
+    }
+    this.solids = [...this.baseSolids, ...this.campaignBarSolids, ...gates];
+    this.dashSolids = [...this.baseDashSolids, ...this.campaignBarSolids, ...gates];
+  }
+
+  /** Extends a bridge deck. Returns false when it is already open or the index is bad. */
+  openBridge(index: number): boolean {
+    if (index < 0 || index >= this.bridgeOpen.length) return false;
+    if (this.bridgeOpen[index]) return false;
+    this.bridgeOpen[index] = true;
+    this.rebuildSolids();
+    const b = this.arena.bridges?.[index];
+    if (b) this.emit(EV.PROP_BREAK, 0, b.x + b.w * 0.5, b.y + b.h * 0.5, 70);
+    return true;
+  }
+
+  /** Extended bridge decks as a bitmask for the renderer. */
+  get bridgeMask(): number {
+    let mask = 0;
+    for (let i = 0; i < this.bridgeOpen.length; i++) if (this.bridgeOpen[i]) mask |= 1 << i;
+    return mask;
   }
 
   /** Six calibration subjects, two of each primary, laid out in front of the player. */
@@ -2182,6 +2436,8 @@ export class World {
         !this.campaignThreatsActive() &&
         (!this.tutorial || this.tutorial.done)
       ) {
+        // The cell block is down: the holding bridge extends and the board is next.
+        this.openBridge(1);
         this.beginDrill();
       }
       return;
@@ -2208,7 +2464,14 @@ export class World {
     }
     if (this.campaignPhase === 'assault') {
       this.campaignT += dt;
-      if (this.gauntletKills >= this.campaignKillsToClear) this.clearCampaign();
+      if (this.portTotal > 0) {
+        // Ports own the win: close every one, then leave through the white party port.
+        // Enemies still in play do not block the exit, which is why a port cannot end a
+        // fight by itself just by dying.
+        if (this.campaignExitReady && this.playerAtCampaignExit()) this.clearCampaign();
+      } else if (this.gauntletKills >= this.campaignKillsToClear) {
+        this.clearCampaign();
+      }
     }
   }
 
@@ -2424,9 +2687,11 @@ export class World {
     this.wave = CAMPAIGN.waveStart;
     this.waveBannerT = 2.4;
     this.wormSpawnT = CAMPAIGN.openingWormDelay;
-    // Land the opening pack on the breach beat instead of waiting out the timer.
+    // Land the opening pack on the breach beat instead of waiting out the timer, and
+    // open on a floor that already has a squad on it.
     this.spawnSentryPack();
     this.sentrySpawnT = CAMPAIGN.sentryInterval;
+    this.seedAssaultFloor();
   }
 
   private clearCampaign(): void {
@@ -3410,7 +3675,7 @@ export class World {
       if (this.keypad) this.resolveKeypadPlayer(p);
       if (this.browser) this.resolveBrowserPlayer(p);
       if (this.laptop) this.resolveLaptopPlayer(p);
-      if (this.openWalls || this.arena.voids || this.arena.disc || this.satellite) {
+      if (this.openWalls || this.arena.voids || this.arena.islands || this.arena.disc || this.satellite) {
         this.checkFall(p);
         if (!p.alive) continue;
       }
@@ -9795,7 +10060,24 @@ export class World {
   }
 
   private inVoid(x: number, y: number): boolean {
-    return this.voidAt(x, y) !== null;
+    if (this.voidAt(x, y) !== null) return true;
+    const islands = this.arena.islands;
+    if (!islands) return false;
+    // A plate arena has no floor between the plates. Off a plate a body is falling, and
+    // an extended bridge deck is the only other footing.
+    for (let i = 0; i < islands.length; i++) {
+      const r = islands[i];
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return false;
+    }
+    const bridges = this.arena.bridges;
+    if (bridges) {
+      for (let i = 0; i < bridges.length; i++) {
+        if (!this.bridgeOpen[i]) continue;
+        const b = bridges[i];
+        if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return false;
+      }
+    }
+    return true;
   }
 
   /** The hole under a point, or null. Returns an arena rect or the disc scratch. */
@@ -9850,6 +10132,17 @@ export class World {
    */
   private damageProp(b: Prop, amount: number, x: number, y: number): void {
     if (!b.active) return;
+    // A party port is scenery: never a target, never takes a hit.
+    if (b.portalExit) return;
+    // A port closes instead of shattering, and stops counting damage once it is dying.
+    if (b.portal) {
+      if ((b.portalCloseT ?? 0) > 0 || b.hp <= 0) return;
+      b.hp -= amount;
+      b.hitFlash = FILE_PROP.hitFlash;
+      this.emit(EV.PROP_HIT, 0, x, y, amount);
+      if (b.hp <= 0) this.closePort(b, x, y);
+      return;
+    }
     b.hp -= amount;
     b.hitFlash = FILE_PROP.hitFlash;
     this.emit(EV.PROP_HIT, 0, x, y, amount);
@@ -10242,7 +10535,8 @@ export class World {
       const b = this.props[i];
       if (!b.active || b.dropT > 0) continue;
       if (!circleRect(proj.x, proj.y, proj.radius, b, hitScratch)) continue;
-      this.launchProp(b, proj.vx, proj.vy, FILE_PROP.shotPush);
+      // A mounted port is not debris: the shot stops on it instead of shoving it.
+      if (!b.fixed) this.launchProp(b, proj.vx, proj.vy, FILE_PROP.shotPush);
       this.damageProp(b, Math.max(1, proj.damage), proj.x, proj.y);
       proj.active = false;
       return true;
@@ -12095,7 +12389,7 @@ export class World {
       if (dist > radius + Math.max(b.w, b.h) * 0.5) continue;
       const nx = dist > 0.001 ? dx / dist : 1;
       const ny = dist > 0.001 ? dy / dist : 0;
-      this.launchProp(b, nx, ny, FILE_PROP.launchSpeed * 0.8);
+      if (!b.fixed) this.launchProp(b, nx, ny, FILE_PROP.launchSpeed * 0.8);
       this.damageProp(b, 1, bx, by);
     }
   }
@@ -13163,7 +13457,9 @@ export class World {
       if (this.viruses[i].active) this.updateVirus(this.viruses[i], dt);
     }
     if (this.usb) this.applyUsbThreats(dt);
-    if (this.openWalls || this.arena.voids || this.arena.disc || this.satellite) this.cullVoidThreats();
+    if (this.openWalls || this.arena.voids || this.arena.islands || this.arena.disc || this.satellite) {
+      this.cullVoidThreats();
+    }
   }
 
   private updateGauntlet(dt: number): void {
@@ -13171,6 +13467,7 @@ export class World {
     // Pipes feed both the normal sandbox and infection; the firewall starter is a
     // gauntlet-only set piece because infection has no firewall update pass.
     this.updateNetwork(dt);
+    if (this.portTotal > 0) this.updatePortals(dt);
     if (this.infectionMode) {
       this.updateInfection(dt);
       return;
@@ -13273,7 +13570,9 @@ export class World {
     for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) this.updateFirewall(this.firewalls[i], dt);
     this.updateErrors(dt);
     if (this.usb) this.applyUsbThreats(dt);
-    if (this.openWalls || this.arena.voids || this.arena.disc || this.satellite) this.cullVoidThreats();
+    if (this.openWalls || this.arena.voids || this.arena.islands || this.arena.disc || this.satellite) {
+      this.cullVoidThreats();
+    }
   }
 
   /**
@@ -13537,7 +13836,7 @@ export class World {
     }
     const cx = b.x + b.w * 0.5;
     const cy = b.y + b.h * 0.5;
-    if ((this.openWalls || this.arena.voids || this.arena.slant || this.arena.disc || this.satellite) && this.offFloor(cx, cy)) {
+    if ((this.openWalls || this.arena.voids || this.arena.islands || this.arena.slant || this.arena.disc || this.satellite) && this.offFloor(cx, cy)) {
       b.active = false;
       this.emit(EV.PROP_BREAK, 0, cx, cy, b.w + b.h);
       return;

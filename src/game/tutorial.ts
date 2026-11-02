@@ -144,6 +144,32 @@ export class TutorialRunner {
 }
 
 /**
+ * Every enemy port is closed. script_kitty takes over the story box for the first time:
+ * the infection was routed in from somewhere else, so the hop continues. Narration only,
+ * so it never blocks play and never gates a round.
+ */
+export const KITTY_UPLINK_TUTORIAL: readonly TutorialStep[] = [
+  {
+    id: 'uplink-ports',
+    speaker: 'SCRIPT_KITTY',
+    line: 'ALL PORTS DARK. YOU ACTUALLY DID IT, INMATE.',
+    readTime: 3.2,
+  },
+  {
+    id: 'uplink-origin',
+    speaker: 'SCRIPT_KITTY',
+    line: 'THIS INFECTION WAS NOT BORN HERE. IT WAS ROUTED IN FROM ANOTHER NETWORK.',
+    readTime: 3.6,
+  },
+  {
+    id: 'uplink-follow',
+    speaker: 'SCRIPT_KITTY',
+    line: 'THE WHITE PORT IS OPEN ON THE ROUTER. FOLLOW THE TRAIL BACK AND WE CLEAR IT AT THE SOURCE.',
+    readTime: 4.2,
+  },
+];
+
+/**
  * The quarantine orientation. The Warden keeps the subjects dormant until the player has
  * actually moved, dashed, fired, locked, cycled, swung and caught a shot. Keyboard
  * lock is toggled with `Q`; cycling is `R` / `F` while it is active.

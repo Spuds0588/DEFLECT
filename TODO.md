@@ -2,7 +2,8 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-02 (PORTS)
+Last updated: 2026-11-02 (PLATES + PORTS)
+Formerly: 2026-11-02 (PORTS)
 
 ---
 
@@ -35,14 +36,25 @@ Last updated: 2026-11-02 (PORTS)
 
 - [x] Record the portal design: red damageable enemy ports, white player entry/exit ports, clear-the-system as the win state
 - [x] Note the spawn paths it replaces (`spawnSentryPack` ring, `spawnVirusCluster` far spawn, `setupInfection` opening flood)
-- [ ] Author `ports` on `ArenaDef` and draw the red square with its square-particle leak
-- [ ] Emit the existing threat families through ports, reusing pools, caps, stagger and wave gates
-- [ ] Port health, a damaged state and a close beat; decide which action jobs can close one
-- [ ] Replace the campaign kill pips with ports remaining plus live threats, and gate the exit on both
-- [ ] White player ports at level entry and exit, with the walk-in / walk-out transition
+- [x] Author `ingress` on `ArenaDef` and draw the red square with its square-particle leak
+- [x] Emit the existing threat families through ports, reusing pools, caps and wave gates
+- [x] Port health, a damaged state and a close beat; every action job that damages a file box closes one
+- [x] Replace the campaign kill pips with port pips, and gate the exit on closing every port then walking out
+- [x] White exit port on the uplink, with the walk-in clear
+- [x] Headless probe: emission comes only from open ports, a closed port stops emitting, the exit needs every port, no `Snapshot` fields
+- [x] script_kitty mission-control beats when the last port closes
+- [ ] Route the INFECTION opening flood and `spawnVirusCluster` through authored ports (BUILD ROOT is done; a portless arena still seeds directly)
+- [ ] Draw the white *entry* port at the start of a level
 - [ ] Bots target a port when no player is in range
-- [ ] Headless probe: emission comes only from ports, a closed port stops emitting, the clear needs both conditions, no `Snapshot` fields
-- [ ] script_kitty mission-control beats for the network map, open ports and the next island
+- [ ] Author ports for the rest of the campaign route, not only the mainboard and router plates
+
+---
+
+## Sub-agents (mini-bosses) (2026-11-02)
+
+- [ ] Author a sub-agent schedule for campaign and gauntlet: a named mini-boss arrives every N seconds or per wave, announced by a banner
+- [ ] Give a sub-agent its own silhouette, a health pool and one readable attack; reuse the sentry family rather than adding a second AI controller
+- [ ] Keep sub-agent state local-only per D9: nothing in `Snapshot`, `SnapshotHazards` or the objective strip
 
 ---
 

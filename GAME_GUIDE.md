@@ -165,7 +165,7 @@ bot count (none to three), then your program. A filled slot shows the level and 
 the run, skipping both steps. Bots take the programs you leave unused.
 
 `BUILD ROOT` opens in quarantine. The Warden talks you through move, dash, ranged attack, lock and target
-cycling, melee, and reflection in the bare intake circle while six shapes sit dormant in the holding
+cycling, melee, and reflection on the bare intake plate while six shapes sit dormant in the holding
 office. Finish the lesson (or skip it), cross to holding, and the shapes wake as **wave 1**: a bouncing
 blue circle, a floating red mother with a shard cloud, and a yellow row of clones that charges together.
 The cell block stays solid while it is sealed, so the held wave cannot leave early and you cannot walk
@@ -175,8 +175,14 @@ while wave 1 is live. Clear all six and finish that lesson to make the cell bloc
 retract unexpectedly and release **wave 2**, two viruses and a worm, while the Warden teaches your
 **power attack**. They are already in the cells behind the bars; the power-down releases them instead of
 spawning replacements. Clear wave 2 and finish the heavy lesson, then spar against the bot squad (a `NO BOTS`
-run still drills against one instructor), survive a `SYSTEM BREACH` warning, then delete 10 threats to
-clear the node. The clear reports
+run still drills against one instructor), survive a `SYSTEM BREACH` warning, then the floor is already
+full when the assault starts: a squad is posted on every plate beyond intake, and two red **open ports**
+leak more onto the mainboard while a third feeds the router. Damage a port until it shuts and it stops
+feeding that plate for good. Closing both mainboard ports extends the bridge to the router; closing all
+three opens a **white party port** on the router uplink while script_kitty explains the infection was
+routed in from another network and the hop continues. Walk into the white port to clear the node. Enemies
+still alive do not block that exit, because closing the sources is the win.
+The clear reports
 kills, time, damage taken, data crates preserved and a score; losing no crates is a clean sweep and pays a
 bonus, and the best score and sweep count stay in the slot.
 
@@ -319,7 +325,7 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `KEYPAD` | The entire arena is a ten-key phone pad. There is no outside floor: spawns stand on the bezel. Each 680×528 key warns for 4 s, sinks for 1.2 s, holds as solid cover for 8 s, then rises for 1.6 s. A slam crushes threats instantly; a player caught under one loses three segments. Online: the key clock is synced and the host resolves the crush. |
 | `DOCUMENT SCANNER` | A large glass platen where documents load from a floor slot, a read line scans top to bottom, snaps back, and the sheet is replaced. Hop the line or dash over it. Online: the scan clock/page is synced and the host resolves the line. |
 | `BROWSER` | A browser window showing a forum. A giant cursor travels to the page link, hovers, and click-slams the floor before the forum navigates deeper and the cover layout changes. Online: the page/clock is synced and the host resolves the click. |
-| `QUARANTINE` | The campaign tutorial route: a round intake office, a square holding office with three jail cells, a mainboard rectangle and a larger router rectangle linked by three bridge decks. The six calibration subjects wait in holding; the router ends at a network port. Local-only tutorial staging. |
+| `QUARANTINE` | The campaign tutorial route: four separate floor plates over open void — intake (booking counter, desk cover, chains), holding (three jail cells), mainboard and router — linked by three bridge decks. Walking off a plate is a fall, and the gaps are wider than a dash. Two decks start retracted: the holding deck extends when the cell block is cleared and the router deck when both mainboard ports close. Red ingress ports sit on the mainboard and router; the router ends at a white party port. Local-only tutorial staging. |
 | `USB HUB` | A round hub with four thumb-drive islands pushing out on a shared cycle. Only the hub and drives are floor; the gap grows to 230 units, so a dash can cross while the drives are travelling but not at full extension. While a drive extends, its current pushes outward; while it retracts, the current pulls inward, carrying players and threats off or onto the islands. Online: the drive clock is synced and the host resolves the ride. |
 | `SWIPE RIGHT` | A tall phone touchscreen showing a dating deck. Every 4.6 s the card swipes left or right and the whole floor slides 108 units that way, carrying every fighter and live shot toward the wall. A `YOU GOT A MATCH` popup rises from the center of the screen for a few seconds as real cover: it blocks bodies and shots, displaces anyone caught under it, then drops back into the floor. Online: the swipe and popup clocks are synced and the host owns the carry and collision. |
 | `ROCKET NAVIGATION` | A launch-control floor under a nav display. The rocket lifts from below the bottom lip while speed, altitude and trajectory count up. Its growing arc is a real barrier: a 24 s launch lays a continuous curved wall across the arena that bodies, dashes and shots cannot cross. The finished line splits the room for the rest of the round. Booster and fairing separation marks drift off the arc as presentation only. Local-only: the launch clock and barrier are not in the snapshot. |
@@ -351,13 +357,16 @@ cat face and sits in the middle holding cell.
 
 ### Bridges, pads and lifts
 
-`QUARANTINE` is the tutorial route built from four linked rooms rather than a single open floor. The
-round `INTAKE` office is the Warden's lesson room; the square `HOLDING` office holds the six dormant
-calibration subjects and three jail cells; the `MAINBOARD` follows; the larger `ROUTER` room is the
-visual approach to the network port.
-The gaps between the rooms are real chasms for bodies, and each bridge deck is the only walking route; a dash can clear a narrow gap.
-The level still clears on the assault kill count, so the port is a destination and future exit hook rather
-than a gate yet. Room arenas are local-only and do not appear in online map rotation.
+`QUARANTINE` is the tutorial route built from four separate plates rather than a single open floor. The
+`INTAKE` plate is the Warden's lesson room, with a booking counter, desk blocks and chains; the `HOLDING`
+plate holds the six dormant calibration subjects and three jail cells; the `MAINBOARD` plate follows; the
+`ROUTER` plate is the approach to the network port.
+There is no floor between the plates: walking off an edge is a fall, and each bridge deck is the only
+walking route. Every gap is wider than a dash, so a shut deck cannot be skipped. Two decks start retracted
+and extend on a milestone — the holding deck when the cell block is cleared, the router deck when both
+mainboard ports close. The level clears when every red port is shut and you walk into the white party
+port, and enemies still alive do not block that exit. Room arenas are local-only and do not appear in
+online map rotation.
 
 Traversal is arena geometry, not a separate mode. A floor gap is solid to bodies, bots and gauntlet
 threats, while shots fly over it. The bridge is the only walking route across. Pads and lifts arm on a
