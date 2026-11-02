@@ -581,3 +581,11 @@ This build is a test rig as much as a game. A useful pass:
 - Tap `B` three times. The lash should sweep left, right, left with no shield fill and no forward wave.
   Hold `B` instead and the 180° shield should appear. Take a max-range own bolt, let it bounce, and confirm
   it cannot damage you.
+
+### Gauntlet ingress
+
+New threats arrive through red square portals that open on the arena edge, spit out a whole group in about a
+second, and slam shut. The mouth is always an edge lane and always well away from your body, so you get a
+readable side to watch instead of a squad appearing on top of you. Sentries, worms and virus clusters all
+use the same ingress. If every edge point is blocked or too close, the burst waits rather than spawning
+next to you.

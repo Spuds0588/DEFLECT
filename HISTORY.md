@@ -5329,3 +5329,37 @@ F-19 caption rather than per-program livery.
 
 **Next:** animate the stabilisers and fin during the console's heavy readout, then give the aircraft
 per-program tail markings.
+
+## 2026-11-02 — Gauntlet ingress: bursts from the edges (v0.1.132)
+
+**Goal:** stop gauntlet enemies appearing on top of the player. Arrivals should be readable: a portal opens
+on an edge, dumps a group, and shuts.
+
+- `World.queueAssault` now collects every pending arrival (sentry packs, worms, virus clusters) and
+  `tickAssault` delivers them through transient edge portals — open, emit the batch, close. Nothing spawns
+  in the middle of the floor any more.
+- `assaultPoint()` samples all four edges at `GAUNTLET.assault.edgeInset`, rejects anything in cover, and
+  requires `playerClear` (430) from the body, taking the farthest qualifying point. When no edge point
+  qualifies the burst waits rather than falling back to a spawn near the player.
+- Sentry packs had their own ring-around-the-player spawn plus a queue drain; both are gone. Packs, worms
+  and viruses share the one queue, and the pack timer waits for a pending burst so a wave cannot fill the
+  cap twice.
+- `spawnSentry(..., burst)` uses tight scatter (±24) and a 110-unit player clearance, because the portal
+  already holds the distance.
+- The portal is drawn by `drawAssaultPortals`: dark mouth, red frame, inward chevrons and flashing corner
+  brackets, sharing the visual language of campaign ingress. `AssaultPortal` is local-only and never enters
+  `SnapshotHazards`.
+- Tuning lives in `tuning/threats.json` under `GAUNTLET.assault`: 0.32 s open, 0.13 s between arrivals,
+  0.55 s close, 1.1 s cooldown, two portals, nine per burst, 24-unit scatter.
+
+**Verification:** `.tmp/assault-check.ts` passes (a queued burst opens a portal on an edge lane, never
+inside `playerClear` of the player, delivers all four sentries within 150 units of the mouth and no closer
+than 200 to the body, then closes; a sentry pack request only queues and spawns nothing directly; a worm
+arrives through the same ingress). `.tmp/jet-check.ts`, `.tmp/flipboard-check.ts`, `.tmp/radar-check.ts` and
+`.tmp/islands-ports-check.ts` still pass. `npm run build` passes. `npm run bench` is clean: gauntlet max
+0.125 ms avg / 0.388 ms p99.
+
+**Limitations:** cascading error blocks still seed from the existing spread path rather than a portal, and
+a portal that opens off-screen has no camera cue yet.
+
+**Next:** route the first error block through the queue, then add an edge cue for off-screen portals.

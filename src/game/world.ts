@@ -1,3 +1,4 @@
+import type { AssaultPortal } from './types';
 import {
   AIMBOT,
   ATTRACT,
@@ -212,6 +213,18 @@ function campaignCellBarRects(arena: ArenaDef): Rect[] {
  * No allocations inside step(); see AGENTS.md §3.
  */
 export class World {
+  /** Gauntlet ingress bursts. Local-only and transient: edge portals, not campaign ports. */
+  readonly assaultPortals: AssaultPortal[] = [
+    { active: false, x: 0, y: 0, half: 44, t: 0, openDur: 0.32, emitDur: 0, closeDur: 0.55, count: 0, emitted: 0, emitT: 0, emitInterval: 0.13 },
+    { active: false, x: 0, y: 0, half: 44, t: 0, openDur: 0.32, emitDur: 0, closeDur: 0.55, count: 0, emitted: 0, emitT: 0, emitInterval: 0.13 },
+    { active: false, x: 0, y: 0, half: 44, t: 0, openDur: 0.32, emitDur: 0, closeDur: 0.55, count: 0, emitted: 0, emitT: 0, emitInterval: 0.13 },
+  ];
+  /** Pending gauntlet arrivals: family (0 sentry, 1 worm, 2 virus) and kind. */
+  private assaultFamily: number[] = new Array(32).fill(0);
+  private assaultKind: number[] = new Array(32).fill(0);
+  private assaultQueueCount = 0;
+  private assaultQueueIndex = 0;
+  private assaultCooldown = 0;
   /** Air traffic control scope. Local-only: it never enters a snapshot. */
   radar: NonNullable<ArenaDef['radar']> | null = null;
   radarT = 0;
@@ -13796,7 +13809,7 @@ export class World {
       if (wormCount < this.wormLimit()) {
         this.wormSpawnT -= dt;
         if (this.wormSpawnT <= 0) {
-          this.spawnWorm();
+          this.queueAssault(1, 0, 1);
           this.wormSpawnT = this.campaign
             ? CAMPAIGN.wormInterval
             : this.gauntletInterval(GAUNTLET.wormInterval, GAUNTLET.wormMinInterval);
@@ -13814,7 +13827,7 @@ export class World {
         }
         this.virusSpawnT -= dt;
         if (this.virusSpawnT <= 0) {
-          this.spawnVirusCluster();
+          this.queueAssault(2, 0, this.virusClusterCount());
           this.virusSeeded = true;
           this.virusSpawnT = this.gauntletInterval(GAUNTLET.virusInterval, GAUNTLET.virusMinInterval);
           virusCount = this.virusClusterCount();
@@ -13828,10 +13841,10 @@ export class World {
       }
     }
 
-    this.drainSentryQueue(dt);
+    this.tickAssault(dt);
     let sentryCount = 0;
     for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) sentryCount++;
-    if (sentryCount < this.sentryLimit() && this.sentryQueueCount === 0) {
+    if (sentryCount < this.sentryLimit() && this.assaultQueueCount === 0) {
       this.sentrySpawnT -= dt;
       if (this.sentrySpawnT <= 0) {
         this.spawnSentryPack();
@@ -14336,54 +14349,160 @@ export class World {
    * Queue one pack. The silhouettes land one at a time over the next few seconds so a
    * new wave never dumps a full firing squad into the room on the same frame.
    */
-  private spawnSentryPack(): void {
-    // Touch down in a ring around the player, not at the far spawn. The enlarged
-    // arenas are wider than a screen; spawning at the far edge delayed all shooting.
-    const p = this.players[0];
-    const angle = this.rng.range(0, Math.PI * 2);
-    // Use the camera window, not a fixed radius: a vertical 480-unit offset is
-    // off-screen even though it is "close" on a wide arena.
-    const spreadX = (VIEW_W / CAMERA_ZOOM) * SENTRY.spawnViewX;
-    const spreadY = (VIEW_H / CAMERA_ZOOM) * SENTRY.spawnViewY;
-    const margin = SENTRY.spawnMargin;
-    this.sentryQueueX = Math.max(
-      this.arena.bounds.left + margin,
-      Math.min(this.arena.bounds.right - margin, p.x + Math.cos(angle) * spreadX),
-    );
-    this.sentryQueueY = Math.max(
-      this.arena.bounds.top + margin,
-      Math.min(this.arena.bounds.bottom - margin, p.y + Math.sin(angle) * spreadY),
-    );
-    if (this.usb) {
-      // Keep the opening pack on the hub. A view-sized spawn offset on this map lands
-      // in the drop and the whole queue would cull before it fired once.
-      const radius = this.usb.hubRadius * 0.72;
-      this.sentryQueueX = this.centerX + Math.cos(angle) * radius;
-      this.sentryQueueY = this.centerY + Math.sin(angle) * radius;
+  /** Queue one family member for the next edge burst. */
+  private queueAssault(family: number, kind: number, count: number): void {
+    for (let i = 0; i < count && this.assaultQueueCount < this.assaultFamily.length; i++) {
+      this.assaultFamily[this.assaultQueueCount] = family;
+      this.assaultKind[this.assaultQueueCount] = kind;
+      this.assaultQueueCount++;
     }
+  }
+
+  /**
+   * Pick an ingress point on an arena edge, as far from the player as the floor allows.
+   * Edge arrivals are the point: a body can read which side is live instead of being
+   * handed a squad in its own footprint. Returns null when no edge point is clear enough.
+   */
+  private assaultPoint(): { x: number; y: number } | null {
+    const cfg = GAUNTLET.assault;
+    const b = this.arena.bounds;
+    const p = this.players[0];
+    const inset = cfg.edgeInset;
+    let bestX = 0;
+    let bestY = 0;
+    let bestD = -1;
+    for (let edge = 0; edge < 4; edge++) {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        let x = 0;
+        let y = 0;
+        if (edge === 0) {
+          x = this.rng.range(b.left + inset, b.right - inset);
+          y = b.top + inset;
+        } else if (edge === 1) {
+          x = this.rng.range(b.left + inset, b.right - inset);
+          y = b.bottom - inset;
+        } else if (edge === 2) {
+          x = b.left + inset;
+          y = this.rng.range(b.top + inset, b.bottom - inset);
+        } else {
+          x = b.right - inset;
+          y = this.rng.range(b.top + inset, b.bottom - inset);
+        }
+        if (!this.pointClearOfCover(x, y, cfg.half + 14)) continue;
+        const d = p.alive ? Math.hypot(x - p.x, y - p.y) : Infinity;
+        if (d < cfg.playerClear) continue;
+        if (d > bestD) {
+          bestD = d;
+          bestX = x;
+          bestY = y;
+        }
+      }
+    }
+    return bestD < 0 ? null : { x: bestX, y: bestY };
+  }
+
+  /** Spawn one queued request at a portal mouth with a little scatter. */
+  private emitAssault(portal: AssaultPortal): void {
+    if (this.assaultQueueIndex >= this.assaultQueueCount) return;
+    const family = this.assaultFamily[this.assaultQueueIndex];
+    const kind = this.assaultKind[this.assaultQueueIndex];
+    this.assaultQueueIndex++;
+    portal.emitted++;
+    const spread = GAUNTLET.assault.spread;
+    const x = portal.x + this.rng.range(-spread, spread);
+    const y = portal.y + this.rng.range(-spread, spread);
+    if (family === 0) this.spawnSentry(kind as 0 | 1 | 2 | 3, x, y, true);
+    else if (family === 1) this.spawnWorm(x, y);
+    else if (family === 2) this.spawnVirus(x, y);
+    this.emit(EV.PROP_HIT, 0, portal.x, portal.y, 1);
+  }
+
+  /** Advance open portals and open one when the queue has arrivals waiting. */
+  private tickAssault(dt: number): void {
+    let live = 0;
+    for (let i = 0; i < this.assaultPortals.length; i++) {
+      const portal = this.assaultPortals[i];
+      if (!portal.active) continue;
+      live++;
+      portal.t += dt;
+      const emitStart = portal.openDur;
+      const emitEnd = emitStart + portal.emitDur;
+      if (
+        portal.t >= emitStart &&
+        portal.t < emitEnd &&
+        portal.emitted < portal.count &&
+        this.assaultQueueIndex < this.assaultQueueCount
+      ) {
+        portal.emitT -= dt;
+        if (portal.emitT <= 0) {
+          portal.emitT = portal.emitInterval;
+          this.emitAssault(portal);
+        }
+      }
+      if (portal.t >= emitEnd + portal.closeDur) {
+        portal.active = false;
+        live--;
+      }
+    }
+
+    if (this.assaultQueueIndex >= this.assaultQueueCount) {
+      this.assaultQueueCount = 0;
+      this.assaultQueueIndex = 0;
+      return;
+    }
+    if (this.assaultCooldown > 0) {
+      this.assaultCooldown = Math.max(0, this.assaultCooldown - dt);
+      return;
+    }
+    const cfg = GAUNTLET.assault;
+    if (live >= cfg.maxPortals) return;
+    let slot: AssaultPortal | null = null;
+    for (let i = 0; i < this.assaultPortals.length; i++) {
+      if (!this.assaultPortals[i].active) {
+        slot = this.assaultPortals[i];
+        break;
+      }
+    }
+    if (!slot) return;
+    const point = this.assaultPoint();
+    if (!point) return;
+    const batch = Math.min(cfg.burstMax, this.assaultQueueCount - this.assaultQueueIndex);
+    slot.active = true;
+    slot.x = point.x;
+    slot.y = point.y;
+    slot.half = cfg.half;
+    slot.t = 0;
+    slot.openDur = cfg.openTime;
+    slot.closeDur = cfg.closeTime;
+    slot.count = batch;
+    slot.emitted = 0;
+    slot.emitInterval = cfg.emitInterval;
+    slot.emitT = cfg.firstDelay;
+    slot.emitDur = cfg.firstDelay + cfg.emitInterval * Math.max(1, batch);
+    this.assaultCooldown = cfg.cooldown;
+  }
+
+  /**
+   * Queue one pack for an edge ingress burst. The silhouettes arrive together at the
+   * portal mouth, so a new wave never dumps a firing squad around the player.
+   */
+  private spawnSentryPack(): void {
     const pack = this.sentryPack++;
-    let n = 0;
     if (!this.gauntletPractice && this.wave <= SENTRY.openingWaves) {
-      // Two pulse squares open the run and then hold the same small firing line.
-      // One lone square on a wide arena read as an empty level.
-      n = this.pushQueue(0, 2, n);
+      // Two pulse squares open the run, so a wide arena does not read as empty.
+      this.queueAssault(0, 0, 2);
     } else if (!this.gauntletPractice && this.wave < GAUNTLET.triplexWave) {
-      n = this.pushQueue(0, 1, n);
+      this.queueAssault(0, 0, 1);
     } else if (!this.gauntletPractice && this.wave < GAUNTLET.homingWave) {
-      n = this.pushQueue((pack & 1) === 0 ? 0 : 1, 1, n);
+      this.queueAssault(0, (pack & 1) === 0 ? 0 : 1, 1);
     } else if (!this.gauntletPractice && this.wave < GAUNTLET.flockWave) {
       const lane = pack % 3;
-      n = this.pushQueue(lane === 0 ? 0 : lane === 1 ? 1 : 2, 1, n);
+      this.queueAssault(0, lane === 0 ? 0 : lane === 1 ? 1 : 2, 1);
     } else {
       const lane = pack & 3;
-      if (lane === 0) n = this.pushQueue(0, 1, n);
-      else if (lane === 1) n = this.pushQueue(1, 1, n);
-      else if (lane === 2) n = this.pushQueue(2, 1, n);
-      else n = this.pushQueue(3, SENTRY.flockSize, n);
+      if (lane === 3) this.queueAssault(0, 3, SENTRY.flockSize);
+      else this.queueAssault(0, lane, 1);
     }
-    this.sentryQueueCount = n;
-    this.sentryQueueIndex = 0;
-    this.sentryQueueT = 0;
   }
 
   private pushQueue(kind: number, count: number, at: number): number {
@@ -14392,30 +14511,7 @@ export class World {
     return n;
   }
 
-  /** Drops one queued silhouette every packStagger seconds. */
-  private drainSentryQueue(dt: number): void {
-    if (this.sentryQueueIndex >= this.sentryQueueCount) return;
-    let active = 0;
-    for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) active++;
-    if (active >= this.sentryLimit()) {
-      // A pack can be larger than the remaining slots. Land what fits, then stop;
-      // otherwise a four-silhouette pack pushes the live count past the wave cap.
-      this.sentryQueueCount = 0;
-      this.sentryQueueIndex = 0;
-      return;
-    }
-    this.sentryQueueT -= dt;
-    if (this.sentryQueueT > 0) return;
-    this.sentryQueueT = SENTRY.packStagger;
-    const kind = this.sentryQueue[this.sentryQueueIndex++] as 0 | 1 | 2 | 3;
-    this.spawnSentry(kind, this.sentryQueueX, this.sentryQueueY);
-    if (this.sentryQueueIndex >= this.sentryQueueCount) {
-      this.sentryQueueIndex = 0;
-      this.sentryQueueCount = 0;
-    }
-  }
-
-  private spawnSentry(kind: 0 | 1 | 2 | 3, anchorX: number, anchorY: number): boolean {
+  private spawnSentry(kind: 0 | 1 | 2 | 3, anchorX: number, anchorY: number, burst = false): boolean {
     let s: Sentry | null = null;
     for (let i = 0; i < this.sentries.length; i++) {
       if (!this.sentries[i].active) {
@@ -14446,9 +14542,9 @@ export class World {
     let y = anchorY;
     let clear = false;
     for (let attempt = 0; attempt < 14; attempt++) {
-      x = anchorX + this.rng.range(-150, 150);
-      y = anchorY + this.rng.range(-110, 110);
-      if (this.sentryClear(x, y, radius)) {
+      x = anchorX + this.rng.range(burst ? -24 : -150, burst ? 24 : 150);
+      y = anchorY + this.rng.range(burst ? -24 : -110, burst ? 24 : 110);
+      if (this.sentryClear(x, y, radius, burst ? 110 : 240)) {
         clear = true;
         break;
       }
@@ -14491,10 +14587,10 @@ export class World {
     return true;
   }
 
-  private sentryClear(x: number, y: number, radius: number): boolean {
+  private sentryClear(x: number, y: number, radius: number, playerClear = 240): boolean {
     if (!this.pointClearOfCover(x, y, radius)) return false;
     const p = this.players[0];
-    return !p.alive || Math.hypot(x - p.x, y - p.y) > 240;
+    return !p.alive || Math.hypot(x - p.x, y - p.y) > playerClear;
   }
 
   private pointClearOfCover(x: number, y: number, radius: number): boolean {

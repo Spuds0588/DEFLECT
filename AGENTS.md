@@ -2486,6 +2486,28 @@ aircraft: no canopy bump, no tail fin, no intake, and a nose the reticle was not
 - The reticle sits on the nose (about 0.1 of the box length), not mid-fuselage, and the engine streaks run
   off the tail. Keep new features on the profile's own axes so the drawing stays one aircraft.
 
+### D65 — Gauntlet arrivals come in bursts from map edges (decided 2026-11-02, built v0.1.132)
+
+Gauntlet threats used to appear on individual timers, with sentry packs landing in a ring around the
+player. On a wide arena that read as enemies materialising in your footprint, and it produced the "survive
+one second, then get surrounded" run the demos kept showing.
+
+- Arrivals are now **edge ingress bursts**. `World.queueAssault(family, kind, count)` fills a pending queue
+  (family 0 sentry, 1 worm, 2 virus) and `tickAssault` opens a red square portal on an arena edge, emits the
+  batch at the mouth over roughly a second, then closes. Nothing spawns in the middle of the floor.
+- Placement is chosen in `assaultPoint()`: sample all four edges at `GAUNTLET.assault.edgeInset`, keep only
+  points clear of cover and at least `playerClear` (430) from the player, then take the farthest. If no edge
+  point qualifies the burst waits; it never falls back to a spawn near the body.
+- The beat is: open 0.32 s, one arrival every 0.13 s with a small scatter, close 0.55 s, 1.1 s between
+  portals, at most two portals at once. All of it lives under `GAUNTLET.assault` in `tuning/threats.json`.
+- Sentry packs, worms and virus clusters all feed the same queue. A pack request now waits for the pending
+  burst (`assaultQueueCount === 0`) before queueing again, so a wave cannot stack two bursts on top of the
+  cap. Caps are still checked when the request is made.
+- `spawnSentry` takes a `burst` flag: tight jitter (±24) and a 110-unit player clearance instead of the old
+  150/110 ring and 240 clearance, because the portal itself already keeps distance.
+- Portals are local-only (`AssaultPortal`, never in `SnapshotHazards`) and drawn by `drawAssaultPortals`,
+  which shares the red-square language of campaign ingress. Do not reintroduce a direct gauntlet spawn.
+
 ## 8. Performance guardrails
 
 - Sim target: **< 4 ms** per 60 Hz tick with 8 players and 48 live projectiles on a mid-range laptop.

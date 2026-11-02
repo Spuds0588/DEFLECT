@@ -1018,3 +1018,25 @@ export interface SessionPlayer {
   slot: number;
   name: string;
 }
+
+/**
+ * A transient gauntlet ingress. It opens on an arena edge, emits a burst of queued
+ * threats at its mouth, then closes. Local-only: never in SnapshotHazards.
+ */
+export interface AssaultPortal {
+  active: boolean;
+  x: number;
+  y: number;
+  half: number;
+  /** Seconds since it opened. */
+  t: number;
+  openDur: number;
+  emitDur: number;
+  closeDur: number;
+  /** Requests assigned to this burst, and how many it has emitted. */
+  count: number;
+  emitted: number;
+  emitT: number;
+  emitInterval: number;
+}
+

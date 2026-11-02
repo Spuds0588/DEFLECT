@@ -1,3 +1,4 @@
+import type { AssaultPortal } from './types';
 import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, GHOST, KABOOM, KEYPAD, MINE, CASCADING_ERROR, COLORS, FIREWALL, FISHER, MAX_PLAYERS, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { AimMark, CopyMark, InvaderShot } from './types';
 import {
@@ -75,6 +76,8 @@ const laptopCellDraw = { x: 0, y: 0, w: 0, h: 0 };
 export interface RenderState {
   /** Radar arena sweep clock, seconds since the level began. */
   radarT?: number;
+  /** Gauntlet ingress bursts. Local-only, never snapshotted. */
+  assaultPortals?: readonly AssaultPortal[];
   mode: GameMode;
   /** True only for a networked session; local modes always identify by program. */
   online: boolean;
@@ -667,6 +670,7 @@ export class Renderer {
       if (introDone) {
         if (state.props) this.drawProps(state.props);
         if (state.props) this.drawPorts(state.props, t);
+        if (state.assaultPortals) this.drawAssaultPortals(state.assaultPortals, t);
         if (state.pipes) this.drawPipes(state.pipes, state.arena, t);
         if (state.arena.firewallSwitch) this.drawFirewallSwitch(state, t);
         if (state.arena.pushers) this.drawPusher(state);
@@ -6789,6 +6793,63 @@ export class Renderer {
    * opens once every enemy port is closed. Health reads as a lit bar on the top edge, and
    * the closing beat collapses the frame into its own centre.
    */
+  /** Gauntlet ingress bursts: a red square that opens on an edge, spews, and slams shut. */
+  private drawAssaultPortals(portals: readonly AssaultPortal[], t: number): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < portals.length; i++) {
+      const portal = portals[i];
+      if (!portal.active) continue;
+      const open = Math.min(1, portal.t / Math.max(0.001, portal.openDur));
+      const emitEnd = portal.openDur + portal.emitDur;
+      const closing = portal.t > emitEnd ? Math.min(1, (portal.t - emitEnd) / Math.max(0.001, portal.closeDur)) : 0;
+      const scale = Math.max(0, Math.min(open, 1 - closing));
+      const half = portal.half * (0.35 + scale * 0.65);
+      const cx = portal.x;
+      const cy = portal.y;
+      const pulse = 0.6 + Math.sin(t * 14) * 0.3;
+
+      ctx.save();
+      ctx.globalAlpha = 0.22 * scale;
+      ctx.fillStyle = 'rgba(255, 77, 77, 0.5)';
+      ctx.fillRect(cx - half - 22, cy - half - 22, (half + 22) * 2, (half + 22) * 2);
+      ctx.globalAlpha = scale;
+      ctx.fillStyle = '#0a0305';
+      ctx.fillRect(cx - half, cy - half, half * 2, half * 2);
+      // Inward chevrons: the mouth is pulling, not pushing.
+      ctx.strokeStyle = `rgba(255, 120, 90, ${0.85 * scale})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let side = 0; side < 4; side++) {
+        const a = (side * Math.PI) / 2 + Math.PI / 4;
+        const r0 = half * 0.95;
+        const r1 = half * 0.55;
+        ctx.moveTo(cx + Math.cos(a - 0.22) * r0, cy + Math.sin(a - 0.22) * r0);
+        ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+        ctx.lineTo(cx + Math.cos(a + 0.22) * r0, cy + Math.sin(a + 0.22) * r0);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = scale;
+      ctx.strokeStyle = '#ff4d4d';
+      ctx.lineWidth = Math.max(2, 5 * scale);
+      ctx.strokeRect(cx - half + 1.5, cy - half + 1.5, half * 2 - 3, half * 2 - 3);
+      // Corner brackets flash while the mouth is live.
+      ctx.globalAlpha = 0.55 + pulse * 0.45;
+      ctx.strokeStyle = '#ffd0b8';
+      ctx.lineWidth = 3;
+      const arm = Math.max(6, half * 0.34);
+      ctx.beginPath();
+      for (let side = 0; side < 4; side++) {
+        const sx = side === 1 || side === 2 ? 1 : -1;
+        const sy = side === 0 || side === 1 ? -1 : 1;
+        ctx.moveTo(cx + sx * half - sx * arm, cy + sy * half);
+        ctx.lineTo(cx + sx * half, cy + sy * half);
+        ctx.lineTo(cx + sx * half, cy + sy * half - sy * arm);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   private drawPorts(props: readonly Prop[], t: number): void {
     const ctx = this.ctx;
     for (let i = 0; i < props.length; i++) {

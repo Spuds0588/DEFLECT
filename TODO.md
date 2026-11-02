@@ -60,6 +60,19 @@ Formerly: 2026-11-02 (PORTS)
 
 ---
 
+## Gauntlet ingress (2026-11-02)
+
+- [x] Edge portals: open, spew a batch, close immediately; no mid-floor spawns
+- [x] Placement keeps 430 units from the player and stays on the arena bounds edge
+- [x] Sentry packs, worms and virus clusters all queue through the portals
+- [x] Pack timer waits for a pending burst, so caps cannot be double-filled
+- [x] Probe: edge lane placement, player clearance, full burst delivered, portal closes, no direct pack spawn
+- [ ] Cascading error blocks still seed from the existing path; route the first block through a portal too
+- [ ] Camera cue when a portal opens off-screen (edge chevron) so the burst is never a surprise
+- [ ] A late-wave second portal that announces itself with a louder opening beat
+
+---
+
 ## Weapon systems jet (2026-11-02)
 
 - [x] Replace the polygon with `FIGHTER_SIDE`: nose, canopy, swept wing, tail plane, fin, intake, nozzle
