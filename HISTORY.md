@@ -5579,7 +5579,11 @@ total wipe, or until a level clear saves them.
 minutes still waits, a total wipe clears the floor, `saveShards` reports normalized positions, and a
 restored shard lands in the next arena. Build clean; blob, starfish, idlehands, megaworm, assault, jet,
 flipboard, radar, islands-ports, laptop-variants and capcom probes still pass. `npm run bench`: gauntlet
-max 0.123 ms avg / 0.455 ms p99.
+max avg 0.124 ms / p99 0.452 ms / max 1.489 ms.
+
+The first commit used a blanket stage and picked up local screenshots, conversation attachments and probe
+dumps. A follow-up commit untracked exactly those additions (they stay on disk) and added ignore rules for
+them, so the tree carries only sources and the reusable probes.
 
 **Next:** a visual pass on a floor with several shards, since they now accumulate instead of clearing
 themselves.
