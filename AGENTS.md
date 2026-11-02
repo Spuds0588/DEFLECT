@@ -2528,7 +2528,7 @@ counts normal worms excludes `mega`.
   plates; a single detached plate is shredded rather than left as a headless body. Splits take free pool
   slots, so a cut with no room is shredded too. Never kill the worm outright when only the head breaks.
 - **Whip.** The main attack is a committed arc, not a chase: windup curls the head back, the active beat
-  drags it through `whip.sweepArc` (3.55 rad) around a pivot two plates behind it, and a player in the
+  drags it through `whip.sweepArc` (3.55 rad) around a pivot four plates behind it, and a player in the
   path takes `whip.damage` plus a tangential throw. Hits are once per player per swing (`whipHit` mask);
   it does not rely on iframes. Body contact is a separate, slower touch clock.
 - **Legs.** The last plate grows legs: 3.1x speed, a fast latched lunge bite and pairs of acid on the

@@ -5322,7 +5322,7 @@ canopy, fin or intake, and the reticle was aimed at the middle of it rather than
 nose at the front and tail at the back, canopy high and forward, fin tall and aft, wing swept back and
 clear of the fuselage, nozzle at the tail, and both draw paths referencing `FIGHTER_SIDE` with the old blob
 gone). `.tmp/flipboard-check.ts`, `.tmp/radar-check.ts` and `.tmp/laptop-variants-check.ts` still pass.
-`npm run build` passes. `npm run bench` is clean: gauntlet max 0.155 ms avg / 0.488 ms p99.
+`npm run build` passes. `npm run bench` is clean: gauntlet max 0.128 ms avg / 0.431 ms p99.
 
 **Limitations:** the outline is static — no animated control surfaces — and the tail marking is a generic
 F-19 caption rather than per-program livery.
@@ -5381,7 +5381,7 @@ one changes the shape of the fight.
   promotes the plate behind it (new eyes flare), a tail loss shortens the chain, and an interior loss
   splits the chain. The detached back half becomes its own boss with the far tip as its head, provided it
   still holds two plates; anything shorter, or a split with no free pool slot, is shredded.
-- Whip: a committed arc around a pivot two plates behind the head. The windup curls back, the active beat
+- Whip: a committed arc around a pivot four plates behind the head. The windup curls back, the active beat
   drags the chain through 3.55 rad, and a player in the path takes a hit and a tangential throw. Hits use
   the `whipHit` mask (one per player per swing); contact damage is its own slower clock.
 - Last plate: legs, 3.1x speed, a fast latched lunge and paired acid on the existing hostile projectile
@@ -5396,7 +5396,7 @@ moves the body onto it, the whip crosses a player placed in the committed arc an
 chewing the chain down to one plate sets `legs`, the legs phase moves at the 3.1x speed multiplier, throws a
 pair of acid balls and the final plate credits the kill. `npm run build` passes; `.tmp/assault-check.ts`,
 `.tmp/jet-check.ts`, `.tmp/flipboard-check.ts`, `.tmp/radar-check.ts`, `.tmp/islands-ports-check.ts` and
-`.tmp/laptop-variants-check.ts` still pass. `npm run bench` is clean: gauntlet max 0.128 ms avg / 0.440 ms p99.
+`.tmp/laptop-variants-check.ts` still pass. `npm run bench` is clean: gauntlet max 0.128 ms avg / 0.431 ms p99.
 
 **Limitations:** acid reuses the hostile bolt art, so it reads orange rather than green, and an off-screen
 split has no minimap marker yet.

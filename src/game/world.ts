@@ -15795,14 +15795,14 @@ export class World {
   /** Start a committed swing: the head curls back, then drags the chain through an arc. */
   private beginMegaWhip(w: Worm, dx: number, dy: number): void {
     const cfg = MEGA_WORM.whip;
-    const pivot = Math.min(2, w.segCount);
+    const pivot = Math.min(4, w.segCount);
     w.whipT = cfg.windup + cfg.active + cfg.recovery;
     w.whipCd = cfg.cooldown;
     w.whipHit = 0;
     w.whipPivotX = this.megaNodeX(w, pivot);
     w.whipPivotY = this.megaNodeY(w, pivot);
     w.whipA = Math.atan2(w.y - w.whipPivotY, w.x - w.whipPivotX);
-    w.whipR = Math.max(120, Math.hypot(w.x - w.whipPivotX, w.y - w.whipPivotY));
+    w.whipR = Math.max(240, Math.hypot(w.x - w.whipPivotX, w.y - w.whipPivotY));
     const cross = Math.cos(w.angle) * dy - Math.sin(w.angle) * dx;
     w.whipDir = cross >= 0 ? -1 : 1;
   }
