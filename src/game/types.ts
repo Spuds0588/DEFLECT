@@ -512,6 +512,9 @@ export interface Player {
   memory: number;
   /** One shard per player per run; a respawn does not earn another. */
   memoryDropped: boolean;
+  /** File blob glue: root timer and attack presses needed to tear free. */
+  glueT: number;
+  glueHits: number;
   /** Active pickup effect, -1 when none. See powerups.ts. */
   powerupKind: number;
   powerupT: number;
@@ -783,6 +786,32 @@ export interface StarfishArmState {
   phase: number;
 }
 
+/**
+ * The file blob's render and attack state. Icons are not simulated: `hp` is the live
+ * icon count, and the renderer derives every icon position from the node springs.
+ */
+export interface BlobState {
+  /** 0 idle, 1 toss windup, 2 glob in flight, 3 recovery. */
+  state: number;
+  t: number;
+  cd: number;
+  /** Glob arc endpoints and progress. */
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  globT: number;
+  /** Shed burst: icons falling off after a hit, and the seed that spreads them. */
+  shed: number;
+  shedT: number;
+  shedSeed: number;
+  /** Skeleton: radial springs around the rim, one per node. */
+  nodeR: Float32Array;
+  nodeV: Float32Array;
+  clock: number;
+  contactCd: number;
+}
+
 export interface Worm {
   active: boolean;
   /** Campaign holding cell: present, frozen and invulnerable until the power-down. */
@@ -835,6 +864,8 @@ export interface Worm {
   /** Starfish center state, and Starfish arm state. Never both on one body. */
   starfish: StarfishState | null;
   armState: StarfishArmState | null;
+  /** File blob state; null on every other body. */
+  blob: BlobState | null;
   /** Mega Worm: a boss chain whose nodes carry their own health. */
   mega: boolean;
   /** Per-node health. Index 0 is the head, index k is segment k-1. */

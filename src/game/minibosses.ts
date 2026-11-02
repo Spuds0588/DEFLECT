@@ -1,4 +1,4 @@
-import { IDLE_HANDS, MEGA_WORM, STARFISH } from './config';
+import { BLOB, IDLE_HANDS, MEGA_WORM, STARFISH } from './config';
 
 /**
  * Mini-boss registry. A mini-boss is an ordinary gauntlet arrival with boss-scale
@@ -10,16 +10,17 @@ export const MINIBOSS = {
   MEGA_WORM: 0,
   IDLE_HANDS: 1,
   STARFISH: 2,
+  BLOB: 3,
 } as const;
 
-export type MinibossBody = 'segmented-worm' | 'idle-hands' | 'starfish';
+export type MinibossBody = 'segmented-worm' | 'idle-hands' | 'starfish' | 'blob';
 
 export interface MinibossDef {
   id: number;
   key: string;
   label: string;
   /** Tuning block the body reads. */
-  tuning: typeof MEGA_WORM | typeof IDLE_HANDS | typeof STARFISH;
+  tuning: typeof MEGA_WORM | typeof IDLE_HANDS | typeof STARFISH | typeof BLOB;
   /** Which body builder and renderer this boss uses. */
   body: MinibossBody;
 }
@@ -45,6 +46,13 @@ export const MINIBOSSES: readonly MinibossDef[] = [
     label: 'STARFISH',
     tuning: STARFISH,
     body: 'starfish',
+  },
+  {
+    id: MINIBOSS.BLOB,
+    key: 'blob',
+    label: 'FILE BLOB',
+    tuning: BLOB,
+    body: 'blob',
   },
 ];
 

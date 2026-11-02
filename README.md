@@ -388,3 +388,7 @@ mode except the versus match, once per body per run, and campaign carries the st
 `STARFISH` is the third mini-boss: one center and five separate arm bodies. Arms detach when stripped and
 hatch a new Starfish if not destroyed, and the center's mouth opens once an arm is gone. It shares the worm
 body pool and the same registry as the others.
+
+`FILE BLOB` is the fourth mini-boss: 96 file icons as health, drawn in three reused depth layers over a
+ten-node spring rim, so the pile looks like hundreds of files while simulating none. Its lobbed glob glues
+a player into a file cage that has to be shot or swung off.

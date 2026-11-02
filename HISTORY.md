@@ -5534,3 +5534,29 @@ megaworm, assault, jet, flipboard, radar, islands-ports, laptop-variants and cap
 
 **Next:** a visual pass on the arm whip and the hatch ring, and decide whether arm kills should count
 toward the campaign clear count (they do today, one per arm).
+
+## 2026-11-02 — File Blob, the fourth mini-boss (v0.1.139)
+
+**Goal:** a huge enemy made of file icons that visibly chips away, with a glob that glues the player.
+
+- New registry body `blob` (`MINIBOSS.BLOB = 3`), gauntlet wave 24 then every 48. `hp` is the icon count
+  (96), so one damage removes exactly one file and the silhouette shrinks with health.
+- Icons are pure render: 96 logical icons drawn in 3 reused depth layers (288 glyphs at full health),
+  positioned from a sine hash of the index each frame. No icon entities, no allocation, no per-icon state.
+  The rim is 10 radial springs; hits kick node velocities for the squash.
+- Attack: slow drift, contact damage, and a lobbed glob whose landing point is latched at windup. Landing
+  does 1 plus a glue cage.
+- Glue roots movement and is not dashable: it cancels an in-flight dash and blocks the dash check. Three
+  attack presses tear it off through `spawnProjectile` and `trySwing` (so every program's shoot and melee
+  counts), and Ghost's cloak clears it instantly. Respawn clears it.
+- `?blob=1` QA hook added.
+
+**Verification:** `.tmp/blob-check.ts` passes: 96 icons with radius 92, a 1-damage hit removing exactly one
+icon and queuing a shed burst of 5, shrink from 92 to 74 at half health and death at zero, a landing glob
+dealing damage and applying the 3-hit cage, shooting and swinging each tearing a file off, the third press
+freeing the body, and Ghost's cloak clearing glue. Build clean; starfish, memory, idlehands, megaworm,
+assault, jet, flipboard, radar, islands-ports, laptop-variants and capcom probes still pass.
+`npm run bench`: gauntlet max 0.123 ms avg / 0.455 ms p99.
+
+**Next:** a visual check of the 288-glyph blob at full health on a low-end frame, and a decision on whether
+the shed burst should scale with the weapon's damage (it caps at 10 icons today).

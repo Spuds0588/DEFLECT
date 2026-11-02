@@ -47,7 +47,7 @@ export function stepPlayerMotion(
           : 1;
     const trapFactor = p.slowT > 0 ? BUG.trapSlow : 1;
     // A caught body can still turn and look around, but its feet are webbed.
-    const held = p.netPinT > 0 ? 0 : 1;
+    const held = p.netPinT > 0 || p.glueT > 0 ? 0 : 1;
     // Time effects scale walking only. Dashes and plows are committed shapes with
     // their own distance, so fast-forward does not turn one into a cross-arena leap.
     // Ghost's bite daze is a heavy-footed wobble, not a root: the victim can still

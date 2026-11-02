@@ -49,6 +49,7 @@ import {
   MEGA_WORM,
   IDLE_HANDS,
   STARFISH,
+  BLOB,
   type Rect,
 } from './config';
 import {
@@ -855,7 +856,9 @@ export class World {
     for (let i = 0; i < MAX_PLAYERS; i++) this.players[i] = createPlayer(i);
     this.projectiles = createProjectilePool();
     this.drone = createDrone();
-    this.worms = new Array(GAUNTLET.maxWorms + MEGA_WORM.slots + IDLE_HANDS.hands + STARFISH.slots);
+    this.worms = new Array(
+      GAUNTLET.maxWorms + MEGA_WORM.slots + IDLE_HANDS.hands + STARFISH.slots + BLOB.slots,
+    );
     for (let i = 0; i < this.worms.length; i++) this.worms[i] = createWorm();
     // INFECTION floods the floor, so that run owns a larger pool. Every other local mode
     // and every hosted match keep the gauntlet-sized pool.
@@ -4137,6 +4140,10 @@ export class World {
   }
 
   private trySwing(p: Player, dir: number, kind = 0): boolean {
+    if (p.glueT > 0) {
+      this.chipGlue(p);
+      return false;
+    }
     if (p.swingPhase !== 0 || p.dashT > 0 || p.waveT > 0) return false;
     p.swingPhase = 1;
     p.swingT = PLAYER.swingStartup;
@@ -8283,6 +8290,10 @@ export class World {
     launchDelay = 0,
     handOffset = 0,
   ): boolean {
+    if (p.glueT > 0) {
+      this.chipGlue(p);
+      return false;
+    }
     let proj: Projectile | null = null;
     for (let i = 0; i < this.projectiles.length; i++) {
       if (!this.projectiles[i].active) {
@@ -11125,6 +11136,8 @@ export class World {
     }
     clearPlayerForSpawn(p, sx, sy, Math.atan2(this.centerY - sy, this.centerX - sx));
     this.applyMemoryHealth(p, true);
+    p.glueT = 0;
+    p.glueHits = 0;
     p.thrall = false;
     if (this.mode === 'gauntlet') p.iframes = 0.9;
     this.emit(EV.RESPAWN, p.slot, sx, sy, 0);
@@ -15344,6 +15357,7 @@ export class World {
     w.hand = null;
     w.starfish = null;
     w.armState = null;
+    w.blob = null;
     w.held = held;
     w.hitR = w.hitR;
     w.segR = w.segR;
@@ -16114,6 +16128,201 @@ export class World {
     }
   }
 
+
+  // --- File blob -----------------------------------------------------------
+  //
+  // One big body whose health is a count of file icons. Icons are never simulated:
+  // `hp` is the live count, the rim is ten spring nodes, and the renderer derives
+  // every icon position from those nodes plus a hash of the icon index.
+
+  private blobRadius(w: Worm): number {
+    const frac = Math.max(0, Math.min(1, w.hp / Math.max(1, w.maxHp)));
+    return BLOB.rMin + (BLOB.rMax - BLOB.rMin) * Math.pow(frac, 0.55);
+  }
+
+  private spawnBlob(x: number, y: number): Worm | null {
+    const w = this.spawnWorm(x, y);
+    if (!w) return null;
+    const n = BLOB.nodes;
+    const nodeR = new Float32Array(n);
+    const nodeV = new Float32Array(n);
+    for (let i = 0; i < n; i++) nodeR[i] = BLOB.rMax;
+    w.bossKind = MINIBOSS.BLOB;
+    w.mega = false;
+    w.segCount = 0;
+    w.hand = null;
+    w.starfish = null;
+    w.armState = null;
+    w.hitR = BLOB.rMax;
+    w.segR = BLOB.rMax * 0.8;
+    w.hp = w.maxHp = BLOB.icons;
+    w.spawnT = 1;
+    w.blob = {
+      state: 0,
+      t: 0,
+      cd: 1.2,
+      fromX: x,
+      fromY: y,
+      toX: x,
+      toY: y,
+      globT: 0,
+      shed: 0,
+      shedT: 0,
+      shedSeed: this.rng.range(0, 1000),
+      nodeR,
+      nodeV,
+      clock: 0,
+      contactCd: 0,
+    };
+    this.emit(EV.PROP_BREAK, 0, x, y, 90);
+    return w;
+  }
+
+  private updateBlob(w: Worm, dt: number): void {
+    const st = w.blob;
+    if (!st) return;
+    w.prevX = w.x;
+    w.prevY = w.y;
+    st.clock += dt;
+    if (w.spawnT > 0) {
+      w.spawnT = Math.max(0, w.spawnT - dt);
+      return;
+    }
+    if (w.hitFlash > 0) w.hitFlash = Math.max(0, w.hitFlash - dt);
+    if (st.shedT > 0) st.shedT = Math.max(0, st.shedT - dt);
+    const r = this.blobRadius(w);
+    w.hitR = r;
+    w.segR = r * 0.8;
+
+    // Rim springs: each node sags toward the current radius, then settles.
+    for (let i = 0; i < st.nodeR.length; i++) {
+      const rest = r * (1 + Math.sin(st.clock * 2.3 + i * 1.7) * 0.05);
+      st.nodeV[i] += (rest - st.nodeR[i]) * BLOB.spring * dt;
+      st.nodeV[i] *= Math.exp(-BLOB.damp * dt);
+      st.nodeR[i] += st.nodeV[i] * dt;
+    }
+
+    const p = this.threatTarget(w.x, w.y);
+    const dx = p.x - w.x;
+    const dy = p.y - w.y;
+    const dist = Math.hypot(dx, dy) || 1;
+
+    if (st.contactCd > 0) st.contactCd = Math.max(0, st.contactCd - dt);
+    if (st.state === 0) {
+      if (dist > r + 8) {
+        w.x += (dx / dist) * BLOB.speed * dt;
+        w.y += (dy / dist) * BLOB.speed * dt;
+      }
+      if (st.contactCd <= 0 && dist < r + PLAYER.radius && p.alive) {
+        st.contactCd = BLOB.contactCooldown;
+        this.damagePlayer(p, BLOB.contactDamage, -1, dx / dist, dy / dist, BLOB.contactKnockback, SRC.WORM, this.worms.indexOf(w));
+      }
+      st.cd -= dt;
+      if (st.cd <= 0 && dist <= BLOB.tossRange && p.alive) {
+        st.state = 1;
+        st.t = 0;
+        st.toX = p.x;
+        st.toY = p.y;
+        st.fromX = w.x;
+        st.fromY = w.y;
+      }
+    } else if (st.state === 1) {
+      st.t += dt;
+      if (st.t >= BLOB.windup) {
+        st.state = 2;
+        st.t = 0;
+        st.globT = 0;
+      }
+    } else if (st.state === 2) {
+      st.globT += dt;
+      if (st.globT >= BLOB.flight) {
+        st.state = 3;
+        st.t = 0;
+        this.blobLand(w, st.toX, st.toY);
+      }
+    } else {
+      st.t += dt;
+      if (st.t >= BLOB.recover) {
+        st.state = 0;
+        st.t = 0;
+        st.cd = BLOB.cooldown;
+      }
+    }
+
+    // Ghost's cloak phases a glued body out; nothing else clears it early.
+    for (let i = 0; i < this.players.length; i++) {
+      const body = this.players[i];
+      if (body.glueT > 0 && body.cloakT > 0) {
+        body.glueT = 0;
+        body.glueHits = 0;
+      }
+      if (body.glueT > 0) body.glueT = Math.max(0, body.glueT - dt);
+    }
+
+    const pad = r;
+    w.x = Math.max(this.arena.bounds.left + pad, Math.min(this.arena.bounds.right - pad, w.x));
+    w.y = Math.max(this.arena.bounds.top + pad, Math.min(this.arena.bounds.bottom - pad, w.y));
+  }
+
+  /** The tossed glob lands: damage plus a file cage that has to be shot or swung off. */
+  private blobLand(w: Worm, x: number, y: number): void {
+    const st = w.blob;
+    if (!st) return;
+    this.emit(EV.PROP_BREAK, -1, x, y, 90);
+    this.emit(EV.EXPLODE, -1, x, y, 60);
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.thrall || p.travelT > 0) continue;
+      const dx = p.x - x;
+      const dy = p.y - y;
+      if (dx * dx + dy * dy > BLOB.aoe * BLOB.aoe) continue;
+      const d = Math.hypot(dx, dy) || 1;
+      this.damagePlayer(p, BLOB.tossDamage, -1, dx / d, dy / d, BLOB.glueKnockback, SRC.WORM, this.worms.indexOf(w));
+      if (!p.alive) continue;
+      p.glueT = BLOB.glueTime;
+      p.glueHits = BLOB.glueHits;
+      p.dashT = 0;
+      p.dashKind = 0;
+      this.emit(EV.WORM_HIT, -1, p.x, p.y, 2, 0, 0);
+    }
+  }
+
+  /** One attack press tears a file off the cage. Three presses and the body is free. */
+  private chipGlue(p: Player): void {
+    if (p.glueT <= 0) return;
+    p.glueHits--;
+    this.emit(EV.PROP_BREAK, p.slot, p.x, p.y, 26);
+    if (p.glueHits <= 0) {
+      p.glueT = 0;
+      p.glueHits = 0;
+    }
+  }
+
+  private damageBlob(w: Worm, amount: number, sourceSlot: number, dirX: number, dirY: number): void {
+    const st = w.blob;
+    if (!st || !w.active) return;
+    // One icon per point of health: a hit sheds exactly what it takes off.
+    w.hp -= amount;
+    w.hitFlash = 0.18;
+    st.shed = Math.max(1, Math.min(10, Math.round(amount)));
+    st.shedT = BLOB.shedTime;
+    st.shedSeed = this.rng.range(0, 1000);
+    for (let i = 0; i < st.nodeV.length; i++) {
+      const a = (i / st.nodeV.length) * Math.PI * 2;
+      st.nodeV[i] += Math.cos(a) * (dirX || 0) * 90 + this.rng.range(-40, 40);
+    }
+    this.emit(EV.WORM_HIT, sourceSlot, w.x, w.y, amount, dirX, dirY);
+    if (w.hp > 0) return;
+    w.hp = 0;
+    w.active = false;
+    w.blob = null;
+    this.emit(EV.WORM_KILL, sourceSlot, w.x, w.y, 240, dirX, dirY);
+    if (sourceSlot === 0) {
+      this.gauntletKills++;
+      this.dropPickupFromKill(w.x, w.y, true);
+    }
+  }
+
   // --- Mega Worm -----------------------------------------------------------
   //
   // The boss is still a Worm: it lives in the same pool, so bots, projectiles,
@@ -16153,6 +16362,7 @@ export class World {
     if (def.body === 'segmented-worm') return this.spawnMegaWorm(x, y, kind);
     if (def.body === 'idle-hands') return this.spawnIdleHands(x ?? this.centerX, y ?? this.centerY);
     if (def.body === 'starfish') return this.spawnStarfish(x ?? this.centerX, y ?? this.centerY);
+    if (def.body === 'blob') return this.spawnBlob(x ?? this.centerX, y ?? this.centerY);
     return null;
   }
 
@@ -16777,6 +16987,10 @@ export class World {
       else this.updateStarfish(w, dt);
       return;
     }
+    if (w.bossKind === MINIBOSS.BLOB) {
+      this.updateBlob(w, dt);
+      return;
+    }
     if (w.mega) {
       this.updateMegaWorm(w, dt);
       return;
@@ -17046,6 +17260,10 @@ export class World {
     if (w.bossKind === MINIBOSS.STARFISH) {
       if (w.armState) this.damageStarfishArm(w, amount, sourceSlot, dirX, dirY, force);
       else this.damageStarfish(w, amount, sourceSlot, dirX, dirY, force);
+      return;
+    }
+    if (w.bossKind === MINIBOSS.BLOB) {
+      this.damageBlob(w, amount, sourceSlot, dirX, dirY);
       return;
     }
     if (w.mega) {

@@ -1,5 +1,5 @@
 import type { AssaultPortal, Fragment } from './types';
-import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, STARFISH, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, STARFISH, BLOB, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { AimMark, CopyMark, InvaderShot } from './types';
 import {
   discArmAngle,
@@ -690,6 +690,7 @@ export class Renderer {
         if (state.errors) this.drawErrors(state.errors, alpha, t);
         if (state.pickups) this.drawPickups(state.pickups, alpha, t);
         if (state.fragments) this.drawFragments(state.fragments, alpha, t);
+        this.drawGlueCages(state.players, alpha, t);
         if (state.nets) this.drawNets(state, alpha, t);
         if (state.barriers) this.drawBarriers(state.barriers, t);
         this.drawPinballArms(state, alpha, t);
@@ -8495,6 +8496,10 @@ export class Renderer {
         }
         continue;
       }
+      if (w.bossKind === MINIBOSS.BLOB) {
+        this.drawBlob(w, alpha, t);
+        continue;
+      }
       if (w.mega) {
         this.drawMegaWorm(w, alpha, t);
         continue;
@@ -9001,6 +9006,179 @@ export class Renderer {
       ctx.fill();
     }
     ctx.restore();
+  }
+
+
+
+  /** The file cage around a glued body. Seven files that must be torn off. */
+  private drawGlueCages(players: readonly Player[], alpha: number, t: number): void {
+    const ctx = this.ctx;
+    for (let k = 0; k < players.length; k++) {
+      const p = players[k];
+      if (!p.active || !p.alive || p.glueT <= 0) continue;
+      const px = lerp(p.prevX, p.x, alpha);
+      const py = lerp(p.prevY, p.y, alpha);
+      for (let i = 0; i < 7; i++) {
+        const a = t * 1.4 + (i / 7) * Math.PI * 2;
+        this.drawFileIcon(px + Math.cos(a) * 26, py + Math.sin(a) * 26, 6, a, 0.85 * alpha);
+      }
+      ctx.save();
+      ctx.globalAlpha = 0.3 * alpha;
+      ctx.strokeStyle = BLOB.tint;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(px, py, 28, 0, TWO_PI);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /** One file icon. Kept to rectangles and a folded corner so it stays cheap at scale. */
+  private drawFileIcon(x: number, y: number, size: number, rot: number, alpha: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.globalAlpha = alpha;
+    const w = size;
+    const h = size * 1.28;
+    const fold = size * 0.3;
+    ctx.fillStyle = BLOB.paper;
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.5, -h * 0.5);
+    ctx.lineTo(w * 0.5 - fold, -h * 0.5);
+    ctx.lineTo(w * 0.5, -h * 0.5 + fold);
+    ctx.lineTo(w * 0.5, h * 0.5);
+    ctx.lineTo(-w * 0.5, h * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = BLOB.ink;
+    ctx.globalAlpha = alpha * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.5 - fold, -h * 0.5);
+    ctx.lineTo(w * 0.5, -h * 0.5 + fold);
+    ctx.lineTo(w * 0.5 - fold, -h * 0.5 + fold);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.fillRect(-w * 0.32, -h * 0.12, w * 0.64, Math.max(1, size * 0.07));
+    ctx.fillRect(-w * 0.32, h * 0.02, w * 0.64, Math.max(1, size * 0.07));
+    ctx.fillRect(-w * 0.32, h * 0.16, w * 0.4, Math.max(1, size * 0.07));
+    ctx.globalAlpha = alpha * 0.35;
+    ctx.strokeStyle = BLOB.tint;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-w * 0.5, -h * 0.5, w, h);
+    ctx.restore();
+  }
+
+  /**
+   * File blob. The rim is a curve through ten spring nodes, and icons sit inside it at
+   * hashed angles and radii. Three reused depth layers draw the same icon index, so 96
+   * logical files read as nearly 300 while only one icon list is ever walked.
+   */
+  private drawBlob(w: Worm, alpha: number, t: number): void {
+    const st = w.blob;
+    if (!st) return;
+    const ctx = this.ctx;
+    const cfg = BLOB;
+    const x = lerp(w.prevX, w.x, alpha);
+    const y = lerp(w.prevY, w.y, alpha);
+    const frac = Math.max(0, Math.min(1, w.hp / Math.max(1, w.maxHp)));
+    const baseR = BLOB.rMin + (BLOB.rMax - BLOB.rMin) * Math.pow(frac, 0.55);
+    const nodes = st.nodeR.length;
+
+    const radiusAt = (angle: number): number => {
+      const span = Math.PI * 2;
+      const u = ((angle % span) + span) % span / (span / nodes);
+      const i0 = Math.floor(u) % nodes;
+      const i1 = (i0 + 1) % nodes;
+      const f = u - Math.floor(u);
+      const r0 = st.nodeR[i0];
+      const r1 = st.nodeR[i1];
+      const ease = f * f * (3 - 2 * f);
+      return r0 + (r1 - r0) * ease;
+    };
+
+    // Body hull: a closed curve through the spring rim.
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = 0.16 * alpha;
+    ctx.fillStyle = cfg.tint;
+    ctx.beginPath();
+    for (let i = 0; i <= nodes; i++) {
+      const a = (i / nodes) * Math.PI * 2;
+      const r = radiusAt(a);
+      if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 0.4 * alpha;
+    ctx.strokeStyle = cfg.tint;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    // Icons: one logical list, drawn once per depth layer.
+    const live = Math.max(0, Math.min(cfg.icons, Math.ceil(w.hp)));
+    const layers = cfg.layers;
+    for (let layer = 0; layer < layers; layer++) {
+      const depth = layer / Math.max(1, layers - 1);
+      for (let i = 0; i < live; i++) {
+        // Deterministic hash: no per-icon storage, no allocation.
+        const h1 = Math.sin((i + 1) * 12.9898 + st.shedSeed * 0.013) * 43758.5453;
+        const h2 = Math.sin((i + 1) * 78.233 + 3.1) * 43758.5453;
+        const h3 = Math.sin((i + 1) * 39.425 + 7.7) * 43758.5453;
+        const fa = h1 - Math.floor(h1);
+        const fr = h2 - Math.floor(h2);
+        const fs = h3 - Math.floor(h3);
+        const a = fa * Math.PI * 2 + st.clock * 0.06 + layer * 0.13;
+        const r = radiusAt(a) * (0.2 + 0.72 * Math.sqrt(fr)) * (0.9 + depth * 0.1);
+        const ix = Math.cos(a) * r + (depth - 0.5) * 5;
+        const iy = Math.sin(a) * r * 0.94 + (depth - 0.5) * 4;
+        const size = (6 + fs * 3) * (0.82 + depth * 0.22);
+        const fade = (0.32 + depth * 0.6) * alpha;
+        this.drawFileIcon(ix, iy, size, a * 0.5 + fs, fade);
+      }
+    }
+
+    // Shed burst: icons knocked off by the last hit, falling out of the rim.
+    if (st.shedT > 0) {
+      const u = 1 - st.shedT / cfg.shedTime;
+      for (let i = 0; i < st.shed; i++) {
+        const h = Math.sin((i + 1) * 21.71 + st.shedSeed) * 43758.5453;
+        const fa = h - Math.floor(h);
+        const a = fa * Math.PI * 2;
+        const speed = baseR * (0.9 + fa);
+        const px = x + Math.cos(a) * (speed * u);
+        const py = y + Math.sin(a) * (speed * u) + 120 * u * u;
+        this.drawFileIcon(px, py, 7, a + u * 4, (1 - u) * 0.9 * alpha);
+      }
+    }
+
+    // Toss: the glob is a small cluster of files in the air.
+    if (st.state === 1 || st.state === 2) {
+      const u = st.state === 1 ? 0 : Math.min(1, st.globT / cfg.flight);
+      const gx = st.state === 1 ? x : lerp(st.fromX, st.toX, u);
+      const gy = st.state === 1 ? y - baseR * 0.3 : lerp(st.fromY, st.toY, u) - Math.sin(u * Math.PI) * 170;
+      const spin = t * 3;
+      for (let i = 0; i < 9; i++) {
+        const a = spin + (i / 9) * Math.PI * 2;
+        const rr = 14 + (i % 3) * 6;
+        this.drawFileIcon(gx + Math.cos(a) * rr, gy + Math.sin(a) * rr, 7, a, 0.9 * alpha);
+      }
+      if (st.state === 2) {
+        ctx.save();
+        ctx.globalAlpha = 0.25 * alpha;
+        ctx.strokeStyle = cfg.tint;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(st.toX, st.toY, cfg.aoe, 0, TWO_PI);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
   }
 
   /**

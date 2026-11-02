@@ -2735,3 +2735,40 @@ left alive grows a whole new Starfish.
   and `?hands=1`. `.tmp/starfish-check.ts` covers shape, armor, detach, destroy credit, hatchery, the live
   cap, the suck/chomp, and the armless spine ring. Re-run `.tmp/memory-check.ts` after touching the damage
   entry points, since arm and center damage both scale through `memoryDamage`.
+
+
+### D70 — File Blob: icon count is the health bar (built 2026-11-02)
+
+The fourth mini-boss is **FILE BLOB** (`MINIBOSS.BLOB = 3`, body `blob`, gauntlet wave 24, repeat every
+48). A stack of file icons that chips away as you shoot it, then tosses a glob that glues you in place.
+
+- **Icons are render-only.** `hp` *is* the live icon count (`BLOB.icons` 96); every point of damage removes
+  one icon. Nothing per-icon is simulated or allocated: each icon's angle, radius and size come from a
+  deterministic sine hash of its index, re-derived every frame. Do not add an icon entity array.
+- **Budget.** 96 logical icons × `BLOB.layers` (3) = 288 glyphs at full health, dropping with hp. Each
+  glyph is one filled paper path, one fold triangle and three bars — about ten canvas ops, so ~2.9k ops a
+  frame, in the same range as a busy particle frame. If a low-end target struggles, lower `layers` to 2
+  (192 glyphs) before touching `icons`; the layer count is the cheap dial because the same index list is
+  reused per layer with a small angle, radius and alpha offset. That reuse is the answer to "how do we
+  look like hundreds of files without simulating hundreds": the silhouette shrinks with hp, so density
+  and icon count fall together and the blob never looks like a full stack at low health.
+- **Skeleton.** The rim is `BLOB.nodes` (10) radial springs (`nodeR`, `nodeV`), each settling toward
+  `blobRadius(w) ± 5%` wobble. The renderer draws a closed curve through them and clamps every icon inside
+  the local radius, so icons ride the deformation instead of an abstract circle. Damage kicks the node
+  velocities along the hit direction, which is the whole "squash" response.
+- **Attack.** A slow drift toward the player, contact damage on a cooldown, and a lobbed glob: windup,
+  a 0.9 s arc, then a 122-unit AOE that deals 1 and applies the glue cage. The landing point is latched at
+  the windup, so moving is the answer.
+- **Glue is a root, not a web.** `Player.glueT` roots movement in `movement.ts`; it is deliberately not
+  freed by a dash (unlike Fisher's web), and a landing cancels any dash the body was in. `glueHits` (3)
+  is chipped by the single player projectile path (`spawnProjectile`) and `trySwing`, so shooting or
+  swinging tears files off the cage instead of firing. Ghost's cloak (`cloakT`) clears it instantly;
+  respawn clears it. Do not move the chip into a button handler — both entry points already cover every
+  program's ranged and melee.
+- **Rendering.** File glyph is a folded-corner paper rectangle with three ink bars, tinted
+  `#dfe9ef`/`#202a34` with a `#7fd4ff` edge. A hit spawns a shed burst of up to ten icons falling out of
+  the rim. The glob in flight is nine files in a cluster, and the duct AOE is drawn as a ring at the
+  latched landing point. A glued body shows seven files orbiting it, drawn from state in `drawGlueCages`.
+- **Tuning** is `BLOB` in `tuning/threats.json`. `?blob=1` is the QA boot hook.
+  `.tmp/blob-check.ts` covers icon health, shed, shrink, the toss glue, the three-press escape, the Ghost
+  phase and kill credit.

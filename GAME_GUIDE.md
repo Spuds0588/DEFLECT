@@ -656,3 +656,16 @@ scratches it.
   fight.
 - Destroying the middle clears any arms still crawling, so a clean center kill ends the encounter.
 - Spines are ordinary hostile shots: they can be guarded, lashed back or dodged.
+
+## FILE BLOB (mini-boss)
+
+A massive pile of file icons with no health bar: the pile *is* the health bar. Every point of damage knocks
+files off, and the blob visibly shrinks as the stack comes apart.
+
+- **Shoot the pile.** One damage removes one file. It starts wide and slow and gets smaller, so the last
+  quarter of the fight is a small, fast target rather than a second phase.
+- **Toss.** It lobs a clump of files into the air and the landing ring is fixed when the throw starts. The
+  landing hurts and glues you in place with a cage of files.
+- **Break out.** Shoot or swing three times to tear the cage off. A dash will not free you, and neither will
+  waiting quietly: the cage times out after a few seconds. Ghost's cloak phases straight out of it.
+- **Contact.** The body itself hurts on touch, so do not stand inside it while shooting.

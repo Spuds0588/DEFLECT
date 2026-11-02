@@ -72,6 +72,8 @@ Formerly: 2026-11-02 (PORTS)
 - [x] Probe: `.tmp/megaworm-check.ts`; `?mega=1` QA boot hook
 - [x] Memory fragments: downed players drop a stacking +1 HP / +20% speed / +25% damage shard, PvE only
 - [x] Campaign carry-over for stacks across nodes, with one drop per body per run
+- [x] File Blob: 96 icon health, 3-layer icon reuse, 10-node spring rim, shrink with damage
+- [x] Glue cage from the lobbed glob: dash-proof root, three attack presses to escape, Ghost cloak phases out
 - [x] Starfish: five detachable arms, hatch-into-a-new-boss rule, mouth suck/chomp, armless spine ring
 - [x] Arms as separate pool bodies so every weapon can target a specific arm; live-cap prevents boss floods
 - [x] Idle Hands: three floating palms, slam telegraph, finger charge, dash redirect
