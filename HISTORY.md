@@ -7031,3 +7031,30 @@ before the void, which means the body can be knocked over the lip inside its own
 plus whether `spawnCampaignData`/breach dressing covers the holding office floor. The drop is impulse or placement,
 not a steering choice. Kill quotas, port counts, enemy counts, boss values, arena, clear rule, snapshot and the
 twelve-second warning are untouched. Version stays v0.1.173; no game code changed.
+
+## 2026-11-03 — Void drop is steering; the old guard walked toward the hole (no ship)
+
+A per-frame fall trace was added to the chain probe (120-frame ring: `x/y`, `offFloor(x,y)` from the game's own
+predicate, `kx/ky`, `fallT`, hp, phase, bridge open mask, dash timer), dumped on every `killer 8` death. The first
+recorded fall:
+
+```
+t=0.77..0.92 phase=calibration x=330..332 y=471..474 off=true kx=0 ky=0
+fallT 0.15 -> 0.00 hp 3 -> 0 bridges open=100
+```
+
+Three conclusions, all from that record:
+
+1. **It is steering, not knockback.** `kx`/`ky` stay exactly 0 for the whole fall and the body moves steadily
+   outward under its own input, while `fallT` counts down from 0.15 s. The friendly-fire precede seen in some runs
+   is not what moves the body over the edge.
+2. **The previous guard's failure is explained.** On a plate arena the arena centre is the gap *between* plates, so
+   when that guard found `offFloor` already true it steered toward the centre and pushed the body further out. That
+   is why it changed death positions but prevented nothing; the lookahead was not the flaw, the recovery target was.
+3. **The fall is a short, recoverable window.** `fallT` starts at 0.15 s, and the world already pulls a body back if
+   it crosses over floor before the timer expires, so a correct recovery (steer to the nearest plate centre, not the
+   arena centre) has real time to act.
+
+Nothing shipped: the trace is QA-only and game code is untouched. Version stays v0.1.173. Next fix is floor-aware
+movement whose recovery target is the nearest island/deck rectangle the body is actually standing on, validated by a
+full-chain batch before it stays in.

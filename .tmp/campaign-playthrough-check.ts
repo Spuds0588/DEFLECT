@@ -207,7 +207,22 @@ function playLevel(level: CampaignLevel, run: number) {
   const maxTicks = Math.round(420 / SIM_DT);
   const portsAtStart = world.portsClosed;
 
+  // Per-frame fall forensics: what the body was doing on the frames that ended it.
+  const ring: any[] = [];
+  const traceFall = () => {
+    const off = (world as any).offFloor(p.x, p.y);
+    ring.push({
+      t: +(ticks * SIM_DT).toFixed(2), x: Math.round(p.x), y: Math.round(p.y),
+      off, kx: Math.round(p.kx), ky: Math.round(p.ky), ft: +(p.fallT ?? 0).toFixed(2),
+      hp: p.hp, phase: world.campaignPhase,
+      open: world.bridgeOpen.map((b) => (b ? 1 : 0)).join(''),
+      dash: p.dashT ?? 0,
+    });
+    if (ring.length > 120) ring.shift();
+  };
+
   while (ticks++ < maxTicks && world.campaignPhase !== 'cleared') {
+    traceFall();
     if (world.campaignPhase === 'failed') {
       console.log('DIAG ' + JSON.stringify({
         run, level: level.name, at: Math.round(ticks * SIM_DT), killer: p.killerKind,
@@ -219,6 +234,9 @@ function playLevel(level: CampaignLevel, run: number) {
         kills: world.gauntletKills, need: world.campaignKillsToClear,
       }));
       throw new Error(`run ${run} ${level.name}: run failed at ${Math.round(ticks * SIM_DT)}s by killer ${p.killerKind} at ${Math.round(p.x)},${Math.round(p.y)} (${log.slice(-3).join(' | ')})`);
+    }
+    if (!p.alive && (p.killerKind === 8) && ring.length) {
+      console.log('FALL ' + JSON.stringify({ run, level: level.name, at: Math.round(ticks * SIM_DT), killer: p.killerKind, tail: ring.slice(-10) }));
     }
     if (wasAlive && !p.alive) { deaths++; log.push(`${Math.round(ticks * SIM_DT)}s DEATH killer ${p.killerKind}`); }
     wasAlive = p.alive;
