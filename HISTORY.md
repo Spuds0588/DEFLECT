@@ -6493,3 +6493,20 @@ a stronger pilot or a person at the keyboard.
 OK, `campaign2-check` 3/3 boss clears, `tsc --noEmit`/`build` clean.
 
 **Next:** one headed BUILD ROOT clear, then the four `REBOOT` runs.
+
+### Follow-up: the sweep is clearable (same day)
+
+`.tmp/port-sweep-check.ts` now drives the ports the way a player does: pick a clear lane, stand still,
+hold ranged fire, re-aim while the port's own squad shoves the body, step back onto the lane when
+displaced. Result: **all three ports closed in 17.4 s of firing** (20 / 20 / 26 hp), `campaignExitReady`
+true, standing in the exit gave `phase cleared`. The older probe failed because it pinned the body to one
+spot every frame without re-aiming, which folded the shot and measured nothing.
+
+Headed confirmation in Chromium (`?debug=1`, three bots, `npm run dev`): BUILD ROOT advanced through
+calibration -> drill -> breach -> assault on its own and the pilot closed **2 of 3 ports by real play**
+before the session budget ran out. Port damage in the shipped build is therefore confirmed, and the third
+port is a pilot-routing gap rather than a game bug.
+
+**Still open:** four complete headed start-to-finish runs (level 1 through level 2 and the Mega Worm) were
+not completed. The Mega Worm's own clear path is covered by `campaign2-check` (three consecutive boss-node
+clears) but not by a headed run.

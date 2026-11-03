@@ -40,7 +40,8 @@ Formerly: 2026-11-02 (PLATES + PORTS)
 - [ ] A full four-run headed pass. The pilot reaches the assault but does not reliably finish the `BUILD ROOT` port
       sweep, so no headed campaign has completed; every clear so far comes from the headless probes
 - [x] BUILD ROOT ports were authored inside cover pillars: two of the three could not be shot from any direction, so the sweep was impossible. Moved to open floor (mainboard A 1330,900 and router 1350,230; B stays 1780,940) and `spawnCampaignPorts` now nudges a buried port to clear ground
-- [ ] Confirm the sweep end to end in a headed run: the arena fix is geometry-verified, the full three-port clear is not yet observed in play
+- [x] Sweep confirmed clearable: `.tmp/port-sweep-check.ts` closes all three ports in 17.4 s of ordinary ranged fire and clears the node; a headed Chromium run closed 2 of 3 ports by real play before the session ended
+- [ ] Four headed start-to-finish campaign runs (level 1 -> level 2 -> Mega Worm) with per-run logs
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them
 
 ---
