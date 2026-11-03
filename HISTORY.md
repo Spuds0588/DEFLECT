@@ -7169,3 +7169,21 @@ into the party port rather than shooting it from range.
 **Validated run (seed 5391916):** BUILD ROOT `phase=cleared` at **415.1 s**, ports **3/3**, 2 heals taken,
 `assault -> holding cell -> next node`. Five distinct void-fall events still occur during the scripted phases; each
 one respawns under the campaign's practice rule, so the run survives them, but the zero-fall target is not met yet.
+
+## 2026-11-03 — Party port restored to the uplink plate; 3/3 ports but no exit approach (v0.1.177)
+
+v0.1.176 shipped with the party port moved onto the intake plate so a bot could stand in it. That cleared BUILD ROOT
+(415.1 s, ports 3/3) but **broke `plate-flow-check`**: the exit plate must be right of the entry plate, and the intake
+plate is the entry. That was a red check on main and is corrected here.
+
+The party port is back on its authored uplink plate (scaled). All four validators are green again: `plate-flow-check`,
+`port-sweep-check`, `holding-layout-check`, `campaign-rules-check`. The ingress relocation is kept and still proves
+reachable with bridge 2 shut (0/0/0 from spawn), so the port objective itself is now solvable: the run below closes
+**3 of 3 ports**.
+
+Remaining blocker, from the same run: the pilot walks straight at the party port, which sits across bridge 2 on the
+uplink plate, and never arrives inside the 420 s budget (`phase assault, kills 16/10, ports 3/3`). The brain has an A*
+nav grid but `objectiveFrame` does not use it; it drives a straight heading, and the deck/cover between the intake and
+the uplink stalls it. Fix is either an A* route to the exit inside the objective frame, or an authored walkable
+corridor from the intake to the uplink that does not collapse the bridge puzzle. Five void-fall events also remain in
+the scripted phases (respawn-covered, not zero).

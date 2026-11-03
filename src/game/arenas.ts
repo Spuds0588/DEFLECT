@@ -4956,7 +4956,7 @@ const BUILD_ROOT_PORTS: readonly ArenaIngressDef[] = [
 export const ARENAS: readonly ArenaDef[] = ARENAS_BASE.map((a) => {
   if (a.id !== 14) return a;
   const scaled = scaleArena(a, 1.5);
-  // The party port must stand on floor the body can walk onto; the scaled uplink corner is
-  // off the router plate, so it moves to the reachable floor beside the intake.
-  return { ...scaled, ingress: BUILD_ROOT_PORTS, port: { ...scaled.port!, x: 529, y: 839 } };
+  // The party port stays on the uplink plate right of the entry, per plate flow. It only has
+  // to be reachable once the exit opens, which is after bridge 2 releases.
+  return { ...scaled, ingress: BUILD_ROOT_PORTS };
 });
