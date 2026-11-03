@@ -7132,3 +7132,20 @@ Validators: `plate-flow-check`, `port-sweep-check`, `holding-layout-check` all e
 `tsc --noEmit` / `npm run build` are green. Bot proof is NOT met: an instrumented level-1 run reached `assault`, held
 35 kills against the 10 quota, closed 2 of 3 ports and hit the 420 s cap. Void falls also persist under the swept
 floor contact, which is why that pilot change was reverted rather than shipped with the scale.
+
+## 2026-11-03 — Objective frame + swept floor still do not finish BUILD ROOT (no ship)
+
+On the 1.5x arena, a single instrumented level-1 run with both a port objective and a swept floor contact wired through
+`think()` died at 144 s to `killer 8` (`SRC.VOID`) at 661,512, in `breach`, at 4/4 hp, with ports 0/3, and the assault
+opened with the pilot already gone. 355 fall frames were logged (one death repeated in the ring), so the seam walks
+are not fixed by the sweep either.
+
+**Working hypothesis from the geometry:** the scaled map keeps the original bridge topology. The two lower ingress
+ports sit on the mainboard/router side and share `bridge: 2`, which `closePort` only opens when every port sharing it
+is already closed. If the closed deck is the only body route to those ports, the objective is deadlocked by
+construction: a body cannot reach the port that opens the bridge because the bridge is shut. The pilot's attempt to
+walk at the port then crosses the seam and falls, which matches the VOID deaths and the permanent 0-2/3 port count.
+
+Both pilot changes were reverted unshipped. The shipped state stays v0.1.175: 1.5x authored floor (2841 x 1497,
+2.25x area), worms-only assault at 3 worms, validators green. The next fix is layout, not pilot: give the lower
+ingress ports a walkable approach that does not depend on the bridge they release, then re-run the chain probe.
