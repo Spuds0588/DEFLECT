@@ -7187,3 +7187,22 @@ nav grid but `objectiveFrame` does not use it; it drives a straight heading, and
 the uplink stalls it. Fix is either an A* route to the exit inside the objective frame, or an authored walkable
 corridor from the intake to the uplink that does not collapse the bridge puzzle. Five void-fall events also remain in
 the scripted phases (respawn-covered, not zero).
+
+## 2026-11-03 — A* objective leg clears one of three seeds (v0.1.178)
+
+`objectiveFrame` now walks its target through the existing `followPath` A* route (which bakes voids) instead of a
+straight heading, for both the ingress ports and the party port; the exit is walked as a place to stand, not shot.
+Three seeded BUILD ROOT runs on the 2.25x arena:
+
+| seed | outcome | kills | ports | elapsed |
+| --- | --- | --- | --- | --- |
+| 5391916 | not cleared, `assault` | 16/10 | 3/3 | 420 s cap |
+| 5399835 | **cleared** | quota met | 3/3 | **299.2 s** |
+| 5407754 | not cleared, `assault` | 14/10 | 3/3 | 420 s cap |
+
+All three close every port, so the deadlock fix holds and the objective is reachable. The remaining stall is the
+final walk: on the two failures the pilot is still crossing toward the uplink when the cap hits. Void falls are also
+not fixed: 10 distinct fall times across the batch (57, 58, 84, 85, 86, 127, ...), all respawn-covered by the
+campaign's practice rule, none fatal to the run. The three-seed-clear and zero-fall bar is therefore **not met**.
+Validators plus tsc/build are green; this ships the A* leg because it is the first configuration to clear at all
+(299 s, comfortably inside the cap) rather than because the bar is met.
