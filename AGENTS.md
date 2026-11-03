@@ -3167,3 +3167,11 @@ The campaign playthrough probe called `brain.think(...)` and then overwrote the 
 steering. Three separate pilot rewrites produced identical death times because of it. A QA harness may observe and may
 drive bots, but it must never write movement after the brain has decided: any affordance it grants is a harness special
 case and makes the measured pass rate meaningless. With the override removed the same five runs went from 1 to 2 clears.
+
+### The demo shows standalone arenas only (2026-11-03)
+
+Attract and `?demo=1` are product surfaces, not QA. They never stage a mini-boss and never pick a campaign node or
+a tutorial room arena: the demo pool excludes `qa` arenas, anything with `ingress` or `rooms`, and every arena id
+named by `PLAYABLE_CAMPAIGN_LEVELS`. Boss showcases read as unfinished next to ordinary arena play, and campaign
+geometry only makes sense inside a level. `?boss=1` is the explicit QA fast-forward that still spawns one boss;
+keep it working, and do not re-add boss sessions to the rotation until the campaign itself plays well.

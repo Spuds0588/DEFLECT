@@ -6948,3 +6948,17 @@ evidence the Mega Worm dying and level 2 completing, not a level-1 clear in the 
 
 Boss damage, speed ramp, pass pattern, fodder pressure, kill quota, arena, clear rule, snapshot, the twelve-second
 warning, Kitty's line and the title card are unchanged.
+
+## 2026-11-03 — Demo cut: plain arena runs only (v0.1.173)
+
+Boss showcases and campaign arenas are out of the attract demo and the `?demo=1` kiosk. An unfinished boss
+arrives with a portal, a title card and a silhouette that do not yet read at demo polish, and the campaign
+arenas carry scripted ingress and room dressing that only makes sense inside a level, so the loop looked broken
+rather than impressive. The demo now picks only standalone arenas that are not campaign nodes and carry no
+`ingress`/`rooms`, and it never stages a boss. `?boss=1` is unchanged and remains the explicit QA fast-forward
+for judging a single boss; boss play returns to the demo once the campaign plays well.
+
+The campaign pilot work is parked, not lost: the continuous-chain batch reached 1 of 5 clears (run 1 cleared
+BUILD ROOT at 161.3 s and REBOOT at 233.4 s), with the remaining runs stalling in the BUILD ROOT assault at
+ports 2/3 past a 10-kill quota. The unproven pilot edits were reverted rather than shipped; the measured
+obstacle stays recorded in TODO.md.

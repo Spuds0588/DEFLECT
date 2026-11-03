@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.172';
+const BUILD = '0.1.173';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -3168,13 +3168,21 @@ function startAttract(): void {
   const sizes = ATTRACT.squadSizes.length > 0 ? ATTRACT.squadSizes : [1];
   const squad = Math.max(1, Math.min(3, sizes[attractSquadIndex % sizes.length]));
   attractSquadIndex++;
-  // Alternate ordinary wave runs and boss showcases. Both the idle attract loop and the
-  // permanent `?demo=1` kiosk boot come through here, so they share the same rotation.
-  const bossSession = bossDemo || attractSessionIndex % 2 === 1;
+  // Ordinary attract and the `?demo=1` kiosk show plain bot-vs-bot arena runs. Bosses are
+  // deliberately out of the demo: an unfinished boss showcase reads worse than clean arena
+  // play, and boss review comes back once the campaign is playing well. `?boss=1` remains
+  // the explicit QA fast-forward for judging one boss on its own.
+  const bossSession = bossDemo;
   attractSessionIndex++;
   const bossKind = bossSession ? ATTRACT_BOSSES[attractBossIndex++ % ATTRACT_BOSSES.length] : null;
+  // Campaign arenas and tutorial room layouts are out of the demo too. They carry scripted
+  // ingress, rooms and per-level dressing that only reads correctly inside a level, so the
+  // kiosk stays on the standalone arenas and their independent versions.
+  const campaignArenas = new Set(PLAYABLE_CAMPAIGN_LEVELS.map((l) => String(l.arenaId)));
   const arenaPool = ARENAS.filter((a) => {
     if (a.qa) return false;
+    if (a.ingress || a.rooms) return false;
+    if (campaignArenas.has(String(a.id)) || campaignArenas.has(a.name)) return false;
     const width = a.bounds.right - a.bounds.left;
     // Three local pilots need one camera pane, and a boss needs room for its silhouette.
     if (squad >= 3 && (a.walls === 'open' || width > ATTRACT.wideSquadArenaMax)) return false;
