@@ -7227,3 +7227,23 @@ A patch to hop the released deck by direct heading was written but failed its ow
 the batch that followed ran the unchanged brain (1 of 3 cleared at 299.2 s, 10 distinct VOID falls). Nothing shipped
 this turn; v0.1.178 remains live. The fix is bridge-aware pathing for the exit leg: either rebuild the nav grid when
 `bridgeOpen` changes, or route the exit as deck waypoints rather than through the stale grid.
+
+## 2026-11-03 — Exit-leg variants all fail to clear consecutively (no ship)
+
+Three exit-leg implementations were built, type-checked, and batch-run on the 2.25x arena; none reached consecutive
+clears, so none was kept:
+
+| exit leg | batch result | falls |
+| --- | --- | --- |
+| A* `followPath` (v0.1.178, shipped) | 1/3 cleared (299.2 s) | 10 distinct |
+| live released-deck waypoint + sealed 6-unit deck overlap | 1/3 cleared (259.9 s) | 8 distinct |
+| same + deck/port hysteresis | 0/3 cleared (one seed died at 130 s, killer 9 emitter) | 8 distinct |
+
+Every seed still closes **3/3 ingress ports**; the failure is always the final walk. The single precise mechanism: on
+the 2.25x floor the party port sits ~1500 units from the last ingress port, the assault keeps spawning waves while the
+body walks, and the exit leg suppresses fire to commit into the portal (`standIn`), so two of three seeds either run
+out of the 420 s budget or get intercepted mid-walk (killer 9 emitter, killer 1 friendly fire). A deck-waypoint route
+does shorten the successful seed (299 -> 260 s) but does not change the ratio.
+
+All three variants were reverted. Shipped state stays v0.1.178 with green validators; the deadlock fix and the port
+reachability fix remain in place.

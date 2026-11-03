@@ -84,8 +84,9 @@ Formerly: 2026-11-02 (PLATES + PORTS)
 - [x] Port deadlock fixed by layout: all three ingress ports now sit on floor reachable with bridge 2 shut (713/1388/743 -> 0/0/0); party port moved onto walkable floor
 - [x] BUILD ROOT clears end to end under the shipped brain: 415.1 s, ports 3/3, phase cleared (seed 5391916)
 - [x] Exit leg routed through A* (`followPath`): 1 of 3 seeds clears at 299.2 s with 3/3 ports
-- [ ] Exit leg is runtime-bridge pathing: party port is 1547 away with decks shut and 6 with them open, but the A* grid keeps authored bridge state. Make pathing bridge-aware (rebuild nav on bridge change, or deck waypoints)
-- [ ] 10 distinct VOID falls remain; seams still unsealed
+- [x] Three exit-leg variants measured and reverted (A* 1/3 @299 s, deck waypoint 1/3 @260 s, +hysteresis 0/3); every seed closes 3/3 ports
+- [ ] Single blocker: the ~1500-unit party-port walk through a live assault. Shorten the walk inside the uplink plate (authored) or let the exit leg fight while advancing
+- [ ] 8-10 distinct VOID falls remain; seam overlap alone did not remove them
 - [ ] Five void-fall events remain during scripted phases (respawn-covered, not zero) (measured with an inert slot 0, so re-baseline); BUILD ROOT assault stalls at ports 2/3 after a 10-kill quota, so the chain rarely reaches REBOOT. Port-objective branch in the pilot did not move the stall. Continuous REBOOT is 2/5; remaining deaths are a fodder worm trading at 55 units and head contact at ~153 during the punish window. Punish station moved off-axis and a 260 clearance added, yet head contact still lands at ~152, which is impossible for a flown pass. Trace `w.x/y`, `anchorX/Y`, `spawnT`, `entryT` for the two frames before contact: suspected staging teleport, not pilot tuning. Level 1 not re-measured (root cause: `fightBoss` was unreachable from `think()`'s early returns; now hoisted). Remaining: head contact at ~155 during the punish station; trace the 0.2 s before contact. Remaining: boss-head contact at ~155 when the launch catches the
   punish approach, and sentry fire at ~220 from beyond the 470 ring. Sampling is still not five distinct runs:
   runs 1 and 5 repeat because `fightBoss` ignores the per-run style. Boss must not be weakened
