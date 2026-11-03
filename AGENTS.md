@@ -3152,3 +3152,11 @@ produced identical death times because the model never ran. `bossFrame()` now ca
 exits before the lane safety net. Any future boss behavior belongs there, not inside a branch. With it live the Mega Worm
 dies (201.7 s, 33 kills) but only 1 of 5 runs clears; the remaining window is head contact at ~155 while the punish
 station is inside the latched pass.
+
+### Punish station is off-axis, and the ~152 contact looks like staging (2026-11-03)
+
+`stageMegaPass` latches the pilot's position and parks the head `entryDistance` away on that line, then flies back through
+it. A punish station behind the body therefore required walking through the head. The station is now beside the drawn
+facing (off the launch axis) and a 260-unit hard clearance outranks all branches. Head contact still lands at ~152, which
+is impossible for a 1300 u/s body in one tick against a 260 hold: treat it as a suspected staging/teleport bug in
+`stageMegaPass`/`beginMegaPass`, not as pilot tuning, until a frame trace says otherwise.

@@ -6898,3 +6898,22 @@ investigation is a frame-by-frame trace of the 0.2 s before contact to see wheth
 
 Nothing about the fight was weakened: boss damage, speed ramp and pass pattern, fodder pressure, quota, arena, clear
 rule, snapshot, the twelve-second warning, Kitty's line and the title card are unchanged.
+
+## 2026-11-03 — Off-axis punish station and a hard head clearance (v0.1.171)
+
+`stageMegaPass` parks the head 900 units out on the latched station and aims it back through that spot, and the pilot's
+old punish station sat *behind* the body — so reaching it meant walking straight through the head. That transit is the
+~155 contact, not the flown pass. The punish station now sits **beside the drawn facing** (off the launch axis, chosen on
+the side the pilot already occupies), and a hard 260-unit clearance outranks every other branch, dashing out below 200.
+
+**Measured: 1 of 5 cleared** (213 s, 34 kills, pilot kit 1). Deaths: 102 s `killer 2` worm d=152; 83 s `killer 2` worm
+d=151; 84 s `killer 2` worm d=155; 75 s `killer 4` sentry d=296.
+
+**The bar is not met, and one result is now suspicious in a specific, useful way:** the pilot is contracting head contact
+at ~152 while a 260-unit clearance rule should make that impossible for a body flying at ~1300 u/s (22 units per tick).
+That points at the staging teleport landing the head on the pilot's station for a frame rather than at a flying approach,
+i.e. a possible game bug in `stageMegaPass`/`beginMegaPass` ordering rather than pilot tuning. It needs a per-frame trace
+of `w.x/y`, `anchorX/Y`, `spawnT` and `entryT` across the two frames before a hit; that trace was not completed here.
+
+Boss damage, speed ramp, pass pattern, fodder pressure, quota, arena, clear rule, snapshot, the warning, Kitty's line and
+the title card are unchanged. Level 1 was not re-measured this turn.

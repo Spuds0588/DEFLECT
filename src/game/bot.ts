@@ -1179,6 +1179,20 @@ export class BotBrain {
       return true;
     }
 
+    // Hard clearance outranks the plan: a pass is staged through the pilot's latched station,
+    // so being close to the body when it launches is a contact no reaction can beat.
+    const crx = me.x - boss.x;
+    const cry = me.y - boss.y;
+    const cbd = Math.hypot(crx, cry) || 1;
+    if (cbd < 260) {
+      out.mx = crx / cbd;
+      out.my = cry / cbd;
+      out.held |= ACTION.LOCK | ACTION.BOLT;
+      if (cbd < 200 && ((me as any).dashCharges ?? 0) > 0) out.pressed |= ACTION.DASH;
+      this.steerBranch = 'clear';
+      return true;
+    }
+
     // A drawn RESTORE drop before a window the current pool would not survive.
     if (me.hp <= 2) {
       let gx = 0;
@@ -1256,10 +1270,16 @@ export class BotBrain {
       // Punish the park from behind the side the body will leave toward: the latched pass
       // runs away from that bearing, so standing there cannot be run through. Its facing is
       // drawn, which is what a player reads to pick the safe side.
+      // The pass flies along the drawn facing, so the safe station is beside that axis, not on
+      // it: standing "behind" the head meant walking through the head to get there, which is
+      // exactly where the ~155 contacts came from.
       const fx = Math.cos(boss.angle ?? 0);
       const fy = Math.sin(boss.angle ?? 0);
-      const tx = boss.x - fx * this.punishR;
-      const ty = boss.y - fy * this.punishR;
+      const prx0 = me.x - boss.x;
+      const pry0 = me.y - boss.y;
+      const side = prx0 * -fy + pry0 * fx >= 0 ? 1 : -1;
+      const tx = boss.x + -fy * side * this.punishR;
+      const ty = boss.y + fx * side * this.punishR;
       const dx = tx - me.x;
       const dy = ty - me.y;
       const d = Math.hypot(dx, dy) || 1;
