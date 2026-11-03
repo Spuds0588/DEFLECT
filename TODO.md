@@ -59,9 +59,10 @@ Formerly: 2026-11-02 (PLATES + PORTS)
 - [x] Diffed the harnesses: `campaign2-check` runs the pilot at `iframes = 999` with the phase and kill quota
   written directly, so it proves boss mechanics, not survival. The continuous run enters the assault at 3/3 and
   spawns the boss at 200 hp with 4/4 fodder kills
-- [ ] Continuous REBOOT is 0/6: the fatal hit is `killerKind 2` while the only live worm is 1237 units away, so
-  the attacker is not yet attributed. Add projectile-level attribution (spawn kind, owner, travel range) before
-  touching boss pacing; the lane-dodge response did not change the outcome
+- [x] Boss pattern is fixed and announced: offscreen staging plus a straight latched pass, a 5 s Kitty warning and
+  title card before the spawn, and a speed ramp with missing health (`boss-warning-check.ts`)
+- [ ] Continuous REBOOT is still 0: the shipped BotBrain dies to flyby contact before it engages the boss (5 fodder
+  kills). The next measurement is why the dodge does not clear the lane during the assembled pass, not boss pacing
 - Harness limitation, stated for the record: the probe routes on `islands`/open `bridges` with plain input frames;
   it is not a game rule that stops it, since `port-sweep-check` closes all three ports in 17.4 s
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them

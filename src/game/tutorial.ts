@@ -310,3 +310,18 @@ export const KITTY_TUTORIAL: readonly TutorialStep[] = [
     line: 'GOOD. WHEN THE DOOR OPENS, DO NOT STOP MOVING.',
   },
 ];
+
+/**
+ * The mini-boss announcement. It plays before the body arrives, so the card and the
+ * entrance arc are a preparation window rather than a surprise: the line warns, the card
+ * names it, then the entrance takes its time crossing the room.
+ */
+export const BOSS_INBOUND: readonly TutorialStep[] = [
+  {
+    id: 'boss-inbound',
+    speaker: 'SCRIPT_KITTY',
+    line: 'WATCH OUT — SOMETHING BIG IS COMING THROUGH. CLEAR THE LANE AND GET READY.',
+    prompt: 'MEGA WORM // INBOUND',
+    readTime: 3.2,
+  },
+];

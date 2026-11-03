@@ -6710,3 +6710,26 @@ measurably better without changing the game: the death moves from **43 s to 68 s
 still `killer 2`, still with the Mega Worm alive. Surviving to actually engage the boss is still unsolved, so the
 continuous REBOOT pass rate is **0/7** and the mission's 4-of-5 criterion remains **not met**. BUILD ROOT stays 3/3
 continuous clears. Do not tune the boss down on this evidence: the run has never reached the boss with a body left.
+
+## 2026-11-03 — Mega Worm: fixed pass cycle, warning beat, death-rage speed (v0.1.164)
+
+The flyby is now a fixed pattern instead of a wide outside turn. After each straight pass the body runs clear of
+the floor, parks offscreen on the next line, assembles there, then makes one straight run through the last position
+it detected; approaches fan by golden angle so the lane changes but the rule does not. Passing speed now scales with
+missing health (`flyby.rageSpeed`, +75% at empty), so the last third arrives much faster without any new attack.
+
+Because the arrival is now a scheduled event, it is announced instead of sprung. When the run-up kills are met,
+Script Kitty says "WATCH OUT — SOMETHING BIG IS COMING THROUGH", the new `SOMETHING BIG / MEGA WORM // INBOUND`
+title card plays, and the body waits out `CAMPAIGN.bossWarnTime` (5 s) before spawning. Combined with the existing
+6.8 s entrance arc, a player has roughly twelve seconds of notice to clear the lane. The warning is presentation
+only: it never touches the quota, the arena, the clear rule, or `Snapshot`, and the line is local DOM like every
+other story box.
+
+Verified: `.tmp/boss-warning-check.ts` asserts Kitty's line, card kind 7, a 5 s window, the line clearing only when
+the body arrives, and the boss live after it (`warned t=1.00, spawned t=6.01, card 7`). `campaign2-check` still kills
+the Mega Worm with three bots (66.3 s). `tsc --noEmit` and `npm run build` pass.
+
+Still open, unchanged: a continuous level-1 run still does not reach a Mega Worm kill. The pilot (shipped BotBrain)
+dies to the flyby's contact damage before it engages, at 5 fodder kills. The warning window gives a human the
+preparation the boss needed; it does not make the automated pilot dodge, so the 4-of-5 continuous criterion is still
+not met and must not be claimed.

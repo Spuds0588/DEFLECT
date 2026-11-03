@@ -290,6 +290,7 @@ function playLevel(level: CampaignLevel, run: number) {
         console.log(JSON.stringify({
           at: Math.round(ticks * SIM_DT), ph: world.campaignPhase, pilot: 'brain',
           kills: world.gauntletKills, hp: p.hp, boss: liveBoss ? Math.round(liveBoss.hp) : -1,
+          warn: (world as any).campaignWarnStep ? 1 : 0,
         }));
       }
       continue;

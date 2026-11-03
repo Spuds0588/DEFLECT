@@ -135,8 +135,7 @@ import {
   KITTY_TUTORIAL,
   KITTY_UPLINK_TUTORIAL,
   TutorialRunner,
-  WARDEN_TUTORIAL,
-} from './tutorial';
+  WARDEN_TUTORIAL, BOSS_INBOUND, type TutorialStep } from './tutorial';
 import { beamReach, circleRect, hitScratch } from './collision';
 import {
   clearPlayerForSpawn,
@@ -345,6 +344,14 @@ export class World {
   /** Mini-boss that ends the node, or -1 for a port/kill clear. */
   campaignBoss: number;
   private campaignBossSpawned = false;
+  /** True once the mini-boss has been announced; the spawn waits out the warning. */
+  private campaignBossWarned = false;
+  /** Seconds left before the announced mini-boss arrives. */
+  private campaignBossWarnT = 0;
+  /** Kitty's warning line, shown over play until the body arrives. Local presentation. */
+  campaignWarnStep: TutorialStep | null = null;
+  /** Bumped on each announcement so the DOM box refreshes even for the same line. */
+  campaignWarnSerial = 0;
   /** The node's onboarding lesson. Null when the node opens straight into play. */
   tutorial: TutorialRunner | null = null;
   campaignPhase: CampaignPhase = 'none';
@@ -1332,6 +1339,9 @@ export class World {
     this.campaignCivilianLossT = 0;
     this.campaignHoldingWait = 0;
     this.campaignBossSpawned = false;
+    this.campaignBossWarned = false;
+    this.campaignBossWarnT = 0;
+    this.campaignWarnStep = null;
     // The kitty node is a quiet briefing room: no subjects, no threats, just the lesson.
     if (this.campaignIntro === 'kitty') {
       this.campaignPhase = 'briefing';
@@ -2666,8 +2676,26 @@ export class World {
         // Boss node: the assault kills are the run-up, then the mini-boss arrives and its
         // death is the clear. Ports and the bare kill count do not end this node.
         if (!this.campaignBossSpawned && this.gauntletKills >= this.campaignKillsToClear) {
-          this.campaignBossSpawned = true;
-          this.spawnMiniboss(this.campaignBoss, this.centerX + 260, this.centerY - 80);
+          if (!this.campaignBossWarned) {
+            // The run-up is done: Kitty calls it, the card names it, and the body takes its
+            // time crossing the room. The warning is presentation only; it never touches
+            // the arena, the quota or the clear rule.
+            this.campaignBossWarned = true;
+            this.campaignBossWarnT = CAMPAIGN.bossWarnTime;
+            this.campaignBannerKind = 7;
+            this.campaignBannerT = CAMPAIGN.bossWarnBannerTime;
+            this.campaignBannerDur = CAMPAIGN.bossWarnBannerTime;
+            this.campaignWarnStep = BOSS_INBOUND[0] ?? null;
+            this.campaignWarnSerial++;
+            this.emit(EV.MEGA_CRY, -1, this.centerX, this.centerY, 1);
+          } else {
+            this.campaignBossWarnT = Math.max(0, this.campaignBossWarnT - dt);
+            if (this.campaignBossWarnT <= 0) {
+              this.campaignBossSpawned = true;
+              this.campaignWarnStep = null;
+              this.spawnMiniboss(this.campaignBoss, this.centerX + 260, this.centerY - 80);
+            }
+          }
         }
         if (
           this.campaignBossSpawned &&
@@ -17268,6 +17296,7 @@ export class World {
       this.followMegaChain(w, dt);
       return;
     }
+    if (w.spawnT <= 0 && w.flyPhase === 2) this.beginMegaPass(w);
     if (w.pinT > 0) {
       w.pinT = Math.max(0, w.pinT - dt);
       w.vx = 0;
@@ -17294,8 +17323,12 @@ export class World {
     // instead of swinging a rigid stick through it.
     if (w.flyPhase === 0) {
       w.flyT += dt;
-      w.vx = Math.cos(w.angle) * fly.speed;
-      w.vy = Math.sin(w.angle) * fly.speed;
+      // One straight pass along the latched line. The pattern never changes; only the speed
+      // does, ramping with the segments already lost so the last third arrives much faster.
+      const missing = 1 - Math.max(0, Math.min(1, w.hp / Math.max(1, w.maxHp)));
+      const speed = fly.speed * (1 + missing * fly.rageSpeed);
+      w.vx = Math.cos(w.angle) * speed;
+      w.vy = Math.sin(w.angle) * speed;
       w.x += (w.vx + w.kx) * dt;
       w.y += (w.vy + w.ky) * dt;
       w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
@@ -17305,35 +17338,54 @@ export class World {
       this.megaTouch(w, p);
       const past = (w.x - w.anchorX) * Math.cos(w.angle) + (w.y - w.anchorY) * Math.sin(w.angle);
       if (past > fly.exitRange) {
-        // Start the turn on the current player position. This is the only re-aim; once
-        // the next straight run begins the heading is locked again.
-        this.latchMegaTarget(w, p);
         w.flyPhase = 1;
         w.flyT = 0;
       }
       return;
     }
-    // Wide outside turn. The radius is turnSpeed / turnRate, deliberately larger than
-    // the body so the head cannot double back through its own tail.
-    w.flyT += dt;
-    const goal = Math.atan2(w.anchorY - w.y, w.anchorX - w.x);
-    let diff = goal - w.angle;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    const turn = fly.turnRate * dt;
-    w.angle += Math.max(-turn, Math.min(turn, diff));
-    w.vx = Math.cos(w.angle) * fly.turnSpeed;
-    w.vy = Math.sin(w.angle) * fly.turnSpeed;
-    w.x += (w.vx + w.kx) * dt;
-    w.y += (w.vy + w.ky) * dt;
-    w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
-    w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
-    this.followMegaChain(w, dt);
-    this.megaTouch(w, p);
-    if (Math.abs(diff) < 0.07) {
-      w.flyPhase = 0;
-      w.flyT = 0;
-      w.touchCd = Math.min(w.touchCd, 0.2);
+    if (w.flyPhase === 1) {
+      // Run clear of the floor, then leave. The body is parked beyond the lip and comes back
+      // on a fresh line, which is what lines the next pass up instead of a wide turn.
+      w.flyT += dt;
+      w.vx = Math.cos(w.angle) * fly.speed;
+      w.vy = Math.sin(w.angle) * fly.speed;
+      w.x += (w.vx + w.kx) * dt;
+      w.y += (w.vy + w.ky) * dt;
+      w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
+      w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
+      this.followMegaChain(w, dt);
+      if (w.flyT >= fly.leaveTime) this.stageMegaPass(w, p);
+      return;
+    }
+  }
+
+  /**
+   * Park the head offscreen on the next pass line and let it assemble there. The line is
+   * aimed at the last position the body detected, so every pass is a fixed, readable
+   * straight run through that spot; the golden-angle fan alternates the approach side.
+   */
+  private stageMegaPass(w: Worm, p: Player): void {
+    const cfg = MEGA_WORM.flyby;
+    this.latchMegaTarget(w, p);
+    const ang = (w.phase * 2.399963229728653) % (Math.PI * 2);
+    w.x = w.anchorX - Math.cos(ang) * cfg.entryDistance;
+    w.y = w.anchorY - Math.sin(ang) * cfg.entryDistance;
+    w.vx = 0;
+    w.vy = 0;
+    w.kx = 0;
+    w.ky = 0;
+    w.angle = Math.atan2(w.anchorY - w.y, w.anchorX - w.x);
+    w.aggroT = MEGA_WORM.aggroTime;
+    w.spawnT = cfg.repeatDelay;
+    w.flyPhase = 2;
+    w.flyT = 0;
+    w.touchCd = cfg.repeatDelay;
+    for (let i = 0; i < w.segCount; i++) {
+      w.segX[i] = w.x - Math.cos(w.angle) * MEGA_WORM.spacing * (i + 1);
+      w.segY[i] = w.y - Math.sin(w.angle) * MEGA_WORM.spacing * (i + 1);
+      w.segPrevX[i] = w.segX[i];
+      w.segPrevY[i] = w.segY[i];
+      w.segAngle[i] = w.angle;
     }
   }
 

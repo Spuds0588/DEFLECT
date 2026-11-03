@@ -15370,6 +15370,12 @@ export class Renderer {
         ctx.font = FONT_TINY;
         ctx.fillStyle = 'rgba(255, 190, 190, 0.78)';
         ctx.fillText('WAVE 01 // SKILL CHECK', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
+      } else if (kind === 7) {
+        ctx.fillStyle = THREAT_COLORS.worm;
+        ctx.fillText('SOMETHING BIG', VIEW_W * 0.5, VIEW_H * 0.34);
+        ctx.font = FONT_TINY;
+        ctx.fillStyle = 'rgba(255, 200, 150, 0.85)';
+        ctx.fillText('MEGA WORM // INBOUND', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
       } else if (kind === 6) {
         ctx.fillStyle = '#ffd27a';
         ctx.fillText('CELL BLOCK POWER FAILURE', VIEW_W * 0.5, VIEW_H * 0.34);

@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.163';
+const BUILD = '0.1.164';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -4252,15 +4252,17 @@ let tutorialUiKey = '';
 
 /** Draws the live story box. Hidden by the pause/result overlay, never paused itself. */
 function syncTutorialUi(): void {
+  const warn = mode === 'campaign' && world ? world.campaignWarnStep : null;
   const runner = mode === 'campaign' && world ? world.tutorial : null;
-  const show = !!runner && !runner.done && screen === 'game' && overlayKind === 'none' && !loading;
-  const step = runner?.current ?? null;
+  const step = warn ?? runner?.current ?? null;
+  const show = !!step && screen === 'game' && overlayKind === 'none' && !loading
+    && (!!warn || (!!runner && !runner.done));
   if (!show || !step) {
     if (!tutorialEl.hidden) tutorialEl.hidden = true;
     tutorialUiKey = '';
     return;
   }
-  const key = `${runner!.index}:${step.id}`;
+  const key = warn ? `warn:${world!.campaignWarnSerial}` : `${runner!.index}:${step.id}`;
   if (key === tutorialUiKey) return;
   tutorialUiKey = key;
   tutorialEl.hidden = false;
@@ -4269,7 +4271,9 @@ function syncTutorialUi(): void {
   tutorialLine.textContent = step.line;
   tutorialPrompt.textContent = step.prompt ?? '';
   tutorialPrompt.hidden = !step.prompt;
-  tutorialStep.textContent = `${Math.min(runner!.index + 1, runner!.steps.length)}/${runner!.steps.length}`;
+  tutorialStep.textContent = warn
+    ? '1/1'
+    : `${Math.min(runner!.index + 1, runner!.steps.length)}/${runner!.steps.length}`;
 }
 
 function syncPhaseUi(state: RenderState): void {

@@ -3084,3 +3084,19 @@ than a player-only fight. Do not reuse the entrance zoom as the combat floor; th
 the fight needs the squad readable.
 While the entrance rig is the winning rig, the fit clamp must use the entrance floor instead of the combat
 floor, or the reveal's pull-back is cancelled on wide arenas.
+
+### Mega Worm pass cycle and announcement (decided 2026-11-03)
+
+The Mega Worm's flyby is a **fixed pattern**, not an orbit: one straight run along the line latched through the last
+detected position, a short run clear of the floor, then the body parks offscreen, assembles, and comes back on a
+fresh line. Approaches fan by golden angle, so the lane alternates but the rule never changes. Passing speed ramps
+with missing health (`MEGA_WORM.flyby.rageSpeed`), which is the only escalation: do not add new attacks to make the
+last third harder. Keep the return offscreen (`stageMegaPass`) rather than restoring the wide outside turn; the turn
+was what made the pass unreadable.
+
+The arrival is **announced before it spawns**. When the run-up kills are met, Script Kitty warns, the
+`SOMETHING BIG / MEGA WORM // INBOUND` card plays, and the body waits out `CAMPAIGN.bossWarnTime` before spawning on
+top of its own entrance arc. That window is presentation only: it must never gate the quota, the arena, the clear
+rule or `Snapshot`, and the line is the same local DOM story box as every other beat. `.tmp/boss-warning-check.ts`
+owns this contract; `.tmp/campaign2-check.ts` owns boss mechanics but runs the pilot at `iframes = 999`, so it is not
+evidence that the fight is survivable.
