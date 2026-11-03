@@ -7058,3 +7058,22 @@ Three conclusions, all from that record:
 Nothing shipped: the trace is QA-only and game code is untouched. Version stays v0.1.173. Next fix is floor-aware
 movement whose recovery target is the nearest island/deck rectangle the body is actually standing on, validated by a
 full-chain batch before it stays in.
+
+## 2026-11-03 — Floor clamp tested once, did not prevent the drop (no ship)
+
+A floor-contact clamp was installed at all four `think()` exits: a heading is accepted only when the step it
+produces lands on floor (`offFloor`, the fall machine's own predicate), and an off-floor body is steered to the
+nearest sampled on-floor point rather than the arena centre. One instrumented run, BUILD ROOT:
+
+```
+t=66.9..67.05 phase=drill x=574..570 y=471..482 off=true kx=0 ky=0 fallT 0.15 -> 0 hp 4 -> 0 open=110
+```
+
+The clamp did not prevent the fall, so it was reverted unshipped. Two facts from the ring matter for the next pass:
+the body is already off-floor on the first recorded frame (the ring shows the fall resolving, not the approach), and
+the drift while falling is about 11 units in 0.15 s (~73 u/s), which is the fall machine's own pull-back, not player
+movement. The ring still needs the frame's intended `mx/my`, the dash timer, and the clamp's accept/reject decision
+logged, or the step that leaves the plate is invisible.
+
+Deaths are no longer clustered only at the breach handoff: this one is in `drill` at 67 s. Version stays v0.1.173;
+no game code shipped.
