@@ -3144,3 +3144,11 @@ hand: the pass is latched along that facing, so the shortest approach is the lau
 target regardless of distance (answered from a 395 band with guard raised on incoming). The travel ring is
 `max(ringR, speed * 0.9)` because the rage ramp reaches 1645 u/s and a fixed radius is only safe early. Current measured
 state is 0/5; sentry fire remains the dominant killer and the punish window is where it lands.
+
+### The boss assault must be on every frame, and it was not (2026-11-03)
+
+`fightBoss` lived inside `engageHostiles`, which `think()` skips on its early-return branches. Three batches of five
+produced identical death times because the model never ran. `bossFrame()` now calls the assault on all four `think()`
+exits before the lane safety net. Any future boss behavior belongs there, not inside a branch. With it live the Mega Worm
+dies (201.7 s, 33 kills) but only 1 of 5 runs clears; the remaining window is head contact at ~155 while the punish
+station is inside the latched pass.

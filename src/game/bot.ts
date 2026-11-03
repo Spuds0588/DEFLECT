@@ -275,7 +275,7 @@ export class BotBrain {
       const cm = Math.hypot(cx, cy) || 1;
       out.mx = cx / cm;
       out.my = cy / cm;
-      this.bossEscape(world, me, out);
+      this.bossFrame(world, me, out);
       return;
     }
 
@@ -290,18 +290,18 @@ export class BotBrain {
         out.mx = (gx / gd) * 0.45;
         out.my = (gy / gd) * 0.45;
       }
-      this.bossEscape(world, me, out);
+      this.bossFrame(world, me, out);
       return;
     }
 
     // Reflex layer: deflect the closest bolt, or dash out of its line.
     if (this.threatSerial >= 0 && this.reactT <= 0) {
-      if (this.handleThreat(me, out, world.arena, world.usbT)) { this.bossEscape(world, me, out); return; }
+      if (this.handleThreat(me, out, world.arena, world.usbT)) { this.bossFrame(world, me, out); return; }
     }
 
     const target = this.target >= 0 ? world.players[this.target] : null;
     if (!target || !target.active || !target.alive) {
-      if (this.engageHostiles(world, me, out)) { this.bossEscape(world, me, out); return; }
+      if (this.engageHostiles(world, me, out)) { this.bossFrame(world, me, out); return; }
       return;
     }
 
@@ -1126,6 +1126,12 @@ export class BotBrain {
    * happened — which is never the frame the body arrives. Leaving the lane outranks the
    * plan the pilot just made.
    */
+  /** Boss model on every exit: the assault must not be skipped by an early return. */
+  private bossFrame(world: World, me: Player, out: InputFrame): void {
+    if (this.fightBoss(world, me, out)) return;
+    this.bossEscape(world, me, out);
+  }
+
   private bossEscape(world: World, me: Player, out: InputFrame): void {
     if (this.closeBodyDash(world, me, out)) return;
     this.megaLaneRead(world, me, out);
@@ -1148,6 +1154,24 @@ export class BotBrain {
       }
     }
     if (!boss) return false;
+
+    // Every shooter family, whichever array it lives in: packs, pods and flocks all fire the
+    // same hostile bolts, and a pack can drop in the pilot's face mid-punish.
+    const shooters: any[] = [];
+    for (const arr of [(world as any).sentries, (world as any).pods, (world as any).flocks, (world as any).homingPods]) {
+      if (!Array.isArray(arr)) continue;
+      for (const e of arr) {
+        if (e && e.active && (e.hp === undefined || e.hp > 0)) shooters.push(e);
+      }
+    }
+    // Bolts already in the air are guarded through traversal, not only inside a reflex window.
+    let nearBolts = 0;
+    for (const pr of ((world as any).projectiles ?? [])) {
+      if (!pr || !pr.active) continue;
+      if (!(pr.hostile || pr.src >= 1 || pr.type >= 3)) continue;
+      if (Math.hypot(pr.x - me.x, pr.y - me.y) < 340) nearBolts++;
+    }
+    const guardUp = nearBolts > 0;
 
     // Anything already inside its own reach outranks the plan.
     if (this.closeBodyDash(world, me, out)) {
@@ -1188,9 +1212,7 @@ export class BotBrain {
     // it is left alone, and it can be answered from outside its own firing band.
     let gun: any = null;
     let gunD = Infinity;
-    for (let i = 0; i < world.sentries.length; i++) {
-      const sh = world.sentries[i] as any;
-      if (!sh.active || (sh.hp !== undefined && sh.hp <= 0)) continue;
+    for (const sh of shooters) {
       const d = Math.hypot(sh.x - me.x, sh.y - me.y);
       if (d < gunD) {
         gunD = d;
@@ -1213,7 +1235,14 @@ export class BotBrain {
         out.my = (dx / d) * this.strafeDir;
       }
       out.held |= ACTION.LOCK | ACTION.BOLT;
-      if (this.threatSerial >= 0 && this.threatTime < 0.9) out.held |= ACTION.SWING;
+      // Face the gunner and keep the shield up while traversing: this is the chip that was
+      // killing it between punish windows.
+      out.held |= ACTION.SWING;
+      if (d < 220 && ((me as any).dashCharges ?? 0) > 0) {
+        out.mx = -dx / d;
+        out.my = -dy / d;
+        out.pressed |= ACTION.DASH;
+      }
       this.steerBranch = 'sentry';
       return true;
     }
@@ -1234,10 +1263,20 @@ export class BotBrain {
       const dx = tx - me.x;
       const dy = ty - me.y;
       const d = Math.hypot(dx, dy) || 1;
-      out.mx = dx / d;
-      out.my = dy / d;
+      const prx = me.x - boss.x;
+      const pry = me.y - boss.y;
+      const pbd = Math.hypot(prx, pry) || 1;
+      if (pbd < this.punishR + 80) {
+        // Getting behind the body must not mean walking through it: orbit at radius while
+        // sliding around the head, never let the straight line to the punish spot cross it.
+        out.mx = (-pry / pbd) * this.strafeDir + (prx / pbd) * 0.7;
+        out.my = (prx / pbd) * this.strafeDir + (pry / pbd) * 0.7;
+      } else {
+        out.mx = dx / d;
+        out.my = dy / d;
+      }
       out.held |= ACTION.LOCK | ACTION.BOLT;
-      if (this.threatSerial >= 0 && this.threatTime < 0.9) out.held |= ACTION.SWING;
+      if (guardUp || (this.threatSerial >= 0 && this.threatTime < 0.9)) out.held |= ACTION.SWING;
       this.steerBranch = 'punish';
       return true;
     }
@@ -1267,7 +1306,7 @@ export class BotBrain {
     }
     out.held |= ACTION.LOCK;
     if (bd < 380 && !this.lineBlocked(me, boss.x, boss.y, world.arena.pillars)) out.held |= ACTION.BOLT;
-    if (this.threatSerial >= 0 && this.threatTime < 0.9) out.held |= ACTION.SWING;
+    if (guardUp || (this.threatSerial >= 0 && this.threatTime < 0.9)) out.held |= ACTION.SWING;
     this.steerBranch = 'ring';
     return true;
   }

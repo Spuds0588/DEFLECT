@@ -6870,3 +6870,31 @@ finishing the window, and to hold the guard through the whole engagement instead
 
 Nothing about the fight was weakened: boss damage, speed ramp and pass pattern, fodder pressure, quota, arena, clear
 rule, snapshot, the twelve-second warning, Kitty's line and the title card are unchanged.
+
+## 2026-11-03 — The boss model was dead code; hoisted to every frame (v0.1.170)
+
+Three batches in a row produced **byte-identical death times** (112/326/151/346 s) no matter what changed inside
+`fightBoss`. That was the tell: the model was only reachable from `engageHostiles`, which `think()` bypasses on its
+near-wall, guard-hold and reflex branches, so the entire assault never ran. Everything measured since v0.1.168 was the
+older lane safety net, not the ring model. `bossFrame()` now runs the assault on all four `think()` exits, ahead of the
+lane safety net.
+
+With the model actually live, the Mega Worm **dies**:
+
+- CLEARED in 201.7 s with 33 kills (pilot kit 1)
+
+Remaining deaths in the same batch, all boss head contact:
+
+- 92 s, `killer 2` — worm d=159 v=1186
+- 132 s, `killer 2` — worm d=154 v=1347
+- 93 s, `killer 2` — worm d=156 v=1118
+- 161 s, `killer 2` — worm d=158 v=1354
+
+**Measured: 1 of 5 cleared.** Not a majority, so not a pass. The remaining failure is one window: head contact at
+~154–159 units, which is inside the 138+12 contact radius, even though the ring holds 620 (or `speed*0.9`). The punish
+branch deliberately closes to `punishR` (330–410), and the pass can be re-latched through that station, so the next
+investigation is a frame-by-frame trace of the 0.2 s before contact to see whether the body is swapped onto the pilot by
+`stageMegaPass` rather than flown into it.
+
+Nothing about the fight was weakened: boss damage, speed ramp and pass pattern, fodder pressure, quota, arena, clear
+rule, snapshot, the twelve-second warning, Kitty's line and the title card are unchanged.

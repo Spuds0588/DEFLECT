@@ -70,7 +70,7 @@ Formerly: 2026-11-02 (PLATES + PORTS)
 - [x] Close-hold engagement replaced by `fightBoss`: 620 ring, chain-corridor avoidance, park-only approach,
   shooter clearance inside 470, dash escape, RESTORE at two segments. Two batches of five each produced one
   clear (181.5 s / 246.6 s, boss 206 -> dead)
-- [ ] Continuous REBOOT regressed to 0/5 after the bearing-aware punish rebuild (longer fights, sentry chip). Remaining: boss-head contact at ~155 when the launch catches the
+- [ ] Continuous REBOOT is 1/5 with the assault actually running (root cause: `fightBoss` was unreachable from `think()`'s early returns; now hoisted). Remaining: head contact at ~155 during the punish station; trace the 0.2 s before contact. Remaining: boss-head contact at ~155 when the launch catches the
   punish approach, and sentry fire at ~220 from beyond the 470 ring. Sampling is still not five distinct runs:
   runs 1 and 5 repeat because `fightBoss` ignores the per-run style. Boss must not be weakened
 - Harness limitation, stated for the record: the probe routes on `islands`/open `bridges` with plain input frames;
