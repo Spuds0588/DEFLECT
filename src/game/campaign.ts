@@ -31,6 +31,8 @@ export interface CampaignLevel {
   intro: CampaignIntro;
   /** Threats deleted to clear the assault. 0 uses `CAMPAIGN.killsToClear`. */
   clearKills: number;
+  /** Keep the floor to the primitive family (worms) for this level. */
+  primitivesOnly?: boolean;
   /** False keeps an authored level out of the live campaign route until it ships. */
   playable?: boolean;
   /**
@@ -58,6 +60,8 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     arenaId: 14,
     intro: 'warden',
     clearKills: 10,
+    // Holding-cell rules: worms only until the block opens. Viruses arrive in later nodes.
+    primitivesOnly: true,
     // Spread through the tutorial rooms: the intake files, the board's packets and the
     // router's uplink crates. The clean-sweep pay is lost when any one is broken.
     // One plate each: the intake desks, the holding office and the two far islands.

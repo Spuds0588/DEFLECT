@@ -775,6 +775,9 @@ export class World {
     return (this.arena.bounds.top + this.arena.bounds.bottom) * 0.5;
   }
 
+  /** Level rule: only the primitive family may spawn until the holding cell opens. */
+  campaignPrimitivesOnly = false;
+
   constructor(
     mode: GameMode,
     names: string[],
@@ -791,6 +794,7 @@ export class World {
     campaignClearKills = 0,
     bossRush = false,
     campaignBoss = -1,
+    primitivesOnly = false,
   ) {
     this.mode = mode;
     this.campaignIntro = campaignIntro;
@@ -799,6 +803,7 @@ export class World {
     this.infectionMode = infectionMode;
     this.bossRush = bossRush;
     this.campaignBoss = campaignBoss;
+    this.campaignPrimitivesOnly = primitivesOnly;
     this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
@@ -1533,7 +1538,7 @@ export class World {
     if (fam === 1) {
       let live = 0;
       for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) live++;
-      if (live < this.virusLimit()) this.spawnVirus(x, y);
+      if (!this.campaignPrimitivesOnly && live < this.virusLimit()) this.spawnVirus(x, y);
     } else if (fam === 2) {
       let live = 0;
       for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active && this.worms[i].bossKind < 0) live++;
@@ -1638,9 +1643,11 @@ export class World {
       const sentries = this.sentryLiveCount();
       if (sentries < this.sentryLimit()) this.spawnSentry(0, cx, cy - 60);
       if (sentries + 1 < this.sentryLimit()) this.spawnSentry(0, cx + 120, cy + 70);
-      const viruses = this.virusLiveCount();
-      if (viruses < this.virusLimit()) this.spawnVirus(cx + 40, cy + 120);
-      if (viruses + 1 < this.virusLimit()) this.spawnVirus(cx - 70, cy + 40);
+      if (!this.campaignPrimitivesOnly) {
+        const viruses = this.virusLiveCount();
+        if (viruses < this.virusLimit()) this.spawnVirus(cx + 40, cy + 120);
+        if (viruses + 1 < this.virusLimit()) this.spawnVirus(cx - 70, cy + 40);
+      }
     }
     this.spawnWorm();
   }
@@ -17869,6 +17876,8 @@ export class World {
   }
 
   private spawnVirus(x: number, y: number, held = false, edge = true): Virus | null {
+    // Holding-cell rule: a primitives-only node never seeds a virus, from any path.
+    if (this.campaignPrimitivesOnly) return null;
     let v: Virus | null = null;
     for (let i = 0; i < this.viruses.length; i++) {
       if (!this.viruses[i].active) {

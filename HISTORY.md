@@ -7100,3 +7100,21 @@ repeated deaths to a single fall window at 70-72 s, and the run then continued a
 Remaining cause candidates, in order: during `calibration`/`drill` the pilot steers itself (`branch: idle`) while the
 scripted beat expects it to hold, which walks it at seams it does not need to cross; and the fall state's pull-back
 may fight the clamp's recovery heading. Version stays v0.1.173; no game code shipped.
+
+## 2026-11-03 — Playtest prep: lesson gating proven, level 1 held to primitives (v0.1.174)
+
+**Tutorial gating verified, not just present.** `.tmp/campaign-rules-check.ts` drives `WARDEN_TUTORIAL` through the
+runner with an idle frame for 40 s: it stops on `move` (`done=false`) and never advances, then advances to `dash`
+only after the movement goal is actually met. Every action step (`move`, `dash`, `bolt`, `lock`, `cycle`, `melee`,
+`reflect`, plus the skill and power lessons fired during calibration) waits for the real input; narration alone is
+timed. The campaign also gates on it: `calibration`, `release` and `briefing` all return while `tutorial.done` is
+false, so the Warden's subjects stay dormant until orientation is finished.
+
+**Level 1 is primitives-only.** `CampaignLevel.primitivesOnly` is set on BUILD ROOT and carried into `World` as
+`campaignPrimitivesOnly`. The rule is enforced inside `spawnVirus` itself, so no path (assault seeding, port
+emissions, opening flood) can put a virus on the floor before the holding cell opens. Probe: level 1 assault seeds
+`viruses=0`, `worms=2`. Viruses remain untouched for later nodes.
+
+**Open: arena scale.** BUILD ROOT still uses QUARANTINE's authored bounds (48,48-1942,1046). Scaling the plates and
+adding enemies is an authoring pass that needs its own layout check (`plate-flow-check`, `port-sweep-check`) rather
+than a blind bounds edit; it was not done here.
