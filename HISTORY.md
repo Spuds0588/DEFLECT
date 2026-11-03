@@ -7247,3 +7247,18 @@ does shorten the successful seed (299 -> 260 s) but does not change the ratio.
 
 All three variants were reverted. Shipped state stays v0.1.178 with green validators; the deadlock fix and the port
 reachability fix remain in place.
+
+## 2026-11-03 — Party-port relocation measured and reverted (no ship)
+
+Fourth exit-leg attempt: party port moved to the uplink plate's deck-side landing (within the plate footprint),
+exit leg firing while advancing across the released deck, and 24-unit deck overlaps. `tsc` 0, then
+`LEVEL=0 RUNS=3`: **0/3 cleared, 2 distinct VOID falls**, and port closure regressed (0/3, 3/3, 1/3 closed vs
+3/3 on every seed before).
+
+**That regression is the finding, not noise.** Moving the party port changed how many ingress ports close, which
+means the exit objective and the ingress-sweep objective are coupled: the pilot's exit branch scans `world.props`
+for `portalExit` and can latch the exit objective before the ports are finished, so a shorter exit walk makes it
+abandon the sweep earlier. Walk length was never the whole mechanism; the exit branch competing with the sweep is.
+
+Reverted to v0.1.178 state; all validators green. The next attempt must decouple the two objectives (sweep until
+`portsClosed` reports 3/3 and only then enter the exit branch) before shortening the crossing again.
