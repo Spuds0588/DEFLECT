@@ -219,6 +219,15 @@ export class BotBrain {
   }
 
   think(world: World, out: InputFrame, dt: number): void {
+    this.thinkCore(world, out, dt);
+    const body = world.players[this.slot];
+    if (!body || !body.active || !body.alive) return;
+    if (world.phase !== 'live' && world.phase !== 'practice') return;
+    this.objectiveFrame(world, body, out);
+    this.floorSweep(world, body, out);
+  }
+
+  private thinkCore(world: World, out: InputFrame, dt: number): void {
     out.mx = 0;
     out.my = 0;
     out.held = 0;
@@ -1157,6 +1166,79 @@ export class BotBrain {
    * plan the pilot just made.
    */
   /** Boss model on every exit: the assault must not be skipped by an early return. */
+  /** Swept floor contact: a narrow seam is invisible to an endpoint lookahead. */
+  private floorSweep(world: World, me: Player, out: InputFrame): void {
+    const on = (x: number, y: number) => !world.offFloor(x, y);
+    const travel = PLAYER.speed * 0.25;
+    const clear = (mx: number, my: number): boolean => {
+      for (let i = 1; i <= 10; i++) { const k = (travel * i) / 10; if (!on(me.x + mx * k, me.y + my * k)) return false; }
+      return true;
+    };
+    if (out.mx !== 0 || out.my !== 0) {
+      const len = Math.hypot(out.mx, out.my) || 1; const mx = out.mx / len; const my = out.my / len;
+      if (clear(mx, my)) return;
+      for (const a of [0.5, -0.5, 1, -1, 1.6, -1.6, 2.2, -2.2]) {
+        const c = Math.cos(a); const s2 = Math.sin(a);
+        const rx = mx * c - my * s2; const ry = mx * s2 + my * c;
+        if (!clear(rx, ry)) continue;
+        out.mx = rx; out.my = ry; return;
+      }
+      out.mx = -mx; out.my = -my; return;
+    }
+    let bx = 0; let by = 0; let bd = Infinity;
+    for (let r = 6; r <= 140; r += 6) {
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2; const px = me.x + Math.cos(a) * r; const py = me.y + Math.sin(a) * r;
+        if (!on(px, py)) continue; if (r < bd) { bd = r; bx = px; by = py; }
+      }
+      if (bd < Infinity) break;
+    }
+    if (bd < Infinity) { out.mx = (bx - me.x) / (bd || 1); out.my = (by - me.y) / (bd || 1); }
+  }
+
+  /** Assault objective: close every live ingress port, then stand in the party port. */
+  private objectiveFrame(world: World, me: Player, out: InputFrame): void {
+    if (world.campaignPhase !== 'assault' || world.portTotal <= 0) return;
+    let threatD = Infinity;
+    for (const w of world.worms as any[]) if (w.active && w.hp > 0) threatD = Math.min(threatD, Math.hypot(w.x - me.x, w.y - me.y));
+    for (const s2 of world.sentries as any[]) if (s2.active) threatD = Math.min(threatD, Math.hypot(s2.x - me.x, s2.y - me.y));
+    const target = (b: any) => {
+      const cx = b.x + b.w * 0.5; const cy = b.y + b.h * 0.5;
+      const dx = cx - me.x; const dy = cy - me.y; const d = Math.hypot(dx, dy) || 1;
+      if (d > 190) { out.mx = dx / d; out.my = dy / d; } else { out.mx = 0; out.my = 0; }
+      out.held |= ACTION.BOLT;
+      if (threatD < 340) out.held |= ACTION.SWING;
+      this.steerBranch = 'port';
+    };
+    if (world.campaignExitReady) {
+      // The exit ends the level the moment a body stands in it: commit, guard up, no fight.
+      // The exit is a place to stand in, not a thing to shoot from range: walk all the way in.
+      for (const b of world.props as any[]) {
+        if (!b.active || !b.portalExit) continue;
+        const cx = b.x + b.w * 0.5;
+        const cy = b.y + b.h * 0.5;
+        const dx = cx - me.x;
+        const dy = cy - me.y;
+        const d = Math.hypot(dx, dy) || 1;
+        out.mx = dx / d;
+        out.my = dy / d;
+        if (threatD < 260) out.held |= ACTION.SWING;
+        this.steerBranch = 'exit';
+        return;
+      }
+      return;
+    }
+    if (threatD < 210) return;
+    let port: any = null; let pd = Infinity;
+    for (const b of world.props as any[]) {
+      if (!b.active || !b.portal || b.portalExit) continue;
+      if ((b.portalCloseT ?? 0) > 0 || (b.hp ?? 0) <= 0) continue;
+      const d = Math.hypot(b.x + b.w * 0.5 - me.x, b.y + b.h * 0.5 - me.y);
+      if (d < pd) { pd = d; port = b; }
+    }
+    if (port) target(port);
+  }
+
   private bossFrame(world: World, me: Player, out: InputFrame): void {
     if (this.fightBoss(world, me, out)) return;
     this.bossEscape(world, me, out);

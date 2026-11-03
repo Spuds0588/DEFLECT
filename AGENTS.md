@@ -3183,3 +3183,10 @@ keep it working, and do not re-add boss sessions to the rotation until the campa
 the pilot. Any campaign batch must drive slot 0 on every level, and a harness change that alters who is flying is a
 measurement reset: re-baseline before quoting a pass rate. `.tmp/port-stall-check.ts` is the instrumented probe for the
 port objective (per-port hp, collapse timer, distance, tally, exit readiness, steering branch).
+
+### Campaign objectives must stand on reachable floor (2026-11-03)
+
+BUILD ROOT's ingress ports were authored on the far side of the deck they release, so the objective was unwinnable and
+the pilot walked into the seam trying. Any campaign port, party port or objective fixture must be reachable from the
+player spawn with the arena's **initial** bridge state, and `.tmp/port-route-check.ts` proves it by flood-filling
+`offFloor` from spawn and measuring the nearest reachable cell to every ingress and party port. Current level 1: 0/0/0.

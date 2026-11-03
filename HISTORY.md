@@ -7149,3 +7149,23 @@ walk at the port then crosses the seam and falls, which matches the VOID deaths 
 Both pilot changes were reverted unshipped. The shipped state stays v0.1.175: 1.5x authored floor (2841 x 1497,
 2.25x area), worms-only assault at 3 worms, validators green. The next fix is layout, not pilot: give the lower
 ingress ports a walkable approach that does not depend on the bridge they release, then re-run the chain probe.
+
+## 2026-11-03 — BUILD ROOT is completable: reachable ports, party port on floor, cleared in 415 s (v0.1.176)
+
+**The deadlock was real and is now authored out.** A reachability probe over the scaled floor with bridge 2 shut
+measured the nearest walkable cell to each ingress port at **713 / 1388 / 743 units** - all three ports sat across the
+shut deck, and two of them were the ports that open it. The level was unwinnable by construction.
+
+Fix, as layout: both bridged ports and the unbridged one now stand on floor reachable from spawn with bridge 2 shut
+(probe now reports **0 / 0 / 0**), keeping their authored hp (20/20/26), families (0/1/0), intervals (2.6/3/2.8) and
+bridge assignment (ports 0-1 release bridge 2, port 2 releases none). The white party port moved from the scaled
+uplink corner - off the router plate, so a body could never stand in it - to reachable floor beside the intake at
+529,839. `plate-flow-check`, `port-sweep-check`, `holding-layout-check` and `campaign-rules-check` all stay green.
+
+Pilot: `objectiveFrame` and a swept floor contact are wired through the `think()` wrapper, so no early return can skip
+them. The pilot walks at the nearest live port, stops inside 190 to keep one-stick facing on it and fires, then commits
+into the party port rather than shooting it from range.
+
+**Validated run (seed 5391916):** BUILD ROOT `phase=cleared` at **415.1 s**, ports **3/3**, 2 heals taken,
+`assault -> holding cell -> next node`. Five distinct void-fall events still occur during the scripted phases; each
+one respawns under the campaign's practice rule, so the run survives them, but the zero-fall target is not met yet.

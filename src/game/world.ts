@@ -10617,7 +10617,7 @@ export class World {
   }
 
   /** Off the plate: past the lip, outside a trapezoid slant, a disc rim, or a floor hole. */
-  private offFloor(x: number, y: number): boolean {
+  offFloor(x: number, y: number): boolean {
     const b = this.arena.bounds;
     if (x < b.left || x > b.right || y < b.top || y > b.bottom) return true;
     const disc = this.arena.disc;

@@ -4946,4 +4946,17 @@ function scaleArena(base: ArenaDef, k: number): ArenaDef {
 }
 
 /** Level 1's floor is authored at 1.5x: the plates were reading as small rooms. */
-export const ARENAS: readonly ArenaDef[] = ARENAS_BASE.map((a) => (a.id === 14 ? scaleArena(a, 1.5) : a));
+/** Build Root's ingress ports stand on floor a body can reach while bridge 2 is shut. */
+const BUILD_ROOT_PORTS: readonly ArenaIngressDef[] = [
+  { x: 49, y: 1031, size: 117, hp: 20, family: 0, interval: 2.6, bridge: 2 },
+  { x: 529, y: 839, size: 117, hp: 20, family: 1, interval: 3, bridge: 2 },
+  { x: -303, y: 999, size: 117, hp: 26, family: 0, interval: 2.8, bridge: -1 },
+];
+
+export const ARENAS: readonly ArenaDef[] = ARENAS_BASE.map((a) => {
+  if (a.id !== 14) return a;
+  const scaled = scaleArena(a, 1.5);
+  // The party port must stand on floor the body can walk onto; the scaled uplink corner is
+  // off the router plate, so it moves to the reachable floor beside the intake.
+  return { ...scaled, ingress: BUILD_ROOT_PORTS, port: { ...scaled.port!, x: 529, y: 839 } };
+});
