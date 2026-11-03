@@ -6670,3 +6670,34 @@ Result in this configuration: **BUILD ROOT clears continuously, unattended, with
 of the Mega Worm spawning, always at 4/4 fodder kills. `campaign2-check` continues to kill the Mega Worm in all three
 of its 3-bot runs, so the boss is defeatable with a healthy body; what is not yet proven is that a body which arrives
 at the boss with three segments survives its arrival.
+
+## 2026-11-03 — The two harnesses were not comparable; REBOOT remains unproven (v0.1.162)
+
+Diffed `campaign2-check` against the continuous probe line by line. The result changes how much its green tick is
+worth:
+
+- `campaign2-check` sets **`p.iframes = 999` on every tick** and writes the phase and the kill quota directly
+  (`campaignPhase = 'assault'`, `beginAssault()`, `gauntletKills = clearKills`). Its pilot is a hand-written
+  aim-and-hold controller, and its bot slots 1–3 send empty frames. It therefore proves the Mega Worm can be damaged
+  and killed and that the level clears when it dies; it has **never** tested whether a real body survives the fight.
+  That is why "the same brain beats the worm there but dies here" was never a contradiction.
+- The continuous probe enters the assault at **full 3/3 health** with no carried damage, reaches **4/4 fodder kills**,
+  and the Mega Worm **does spawn** (logged at 12 s, offscreen entrance, 1603 units out, 200 hp once assembled). So
+  there is no missing-recovery or chip-damage pacing fault before the fight.
+- The death is the pilot's: three segments lost on three consecutive seconds (42 s, 43 s, 44 s) while every other
+  body had already been cleared. `MEGA_WORM.touchCooldown` is 1.2 s and the flyby body travels at 940 u/s, so a body
+  standing in its lane is hit once per cooldown. A dodge-the-lane response was added to the pilot (leave the lane,
+  dash under 240 units) and it did not change the outcome in the run measured, so the evasion is still not landing
+  at the right moment.
+
+Measured status, this configuration:
+
+- **BUILD ROOT: 3/3 continuous clears observed** (163.9 s / 286 s / 205.8 s, 21–44 kills, 3/3 ports, heals taken).
+- **REBOOT: 0/6 continuous clears.** Every failure is between 43 s and 94 s, all at 4/4 fodder kills, all to a worm
+  (`killer 2`), none from void, none from a phase or navigation stall. The Mega Worm never took damage in a
+  continuous run, because the pilot dies before it engages.
+
+So the mission's closing criterion — a continuous level-1 run that kills the Mega Worm in 4 of 5 attempts — is
+**not met**, and I am not going to dress the boss-mechanics check up as survival proof. The next measurement that
+matters is the fatal hit's actual attacker: `killerKind 2` with the only live worm 1237 units away means the damage
+source is not yet identified, and that log needs projectile-level attribution before anyone changes the boss.

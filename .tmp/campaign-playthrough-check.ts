@@ -164,7 +164,7 @@ function playLevel(level: CampaignLevel, run: number) {
   // fought, which is not a multi-bot run: the level-2 boss was being soloed.
   const brains: (BotBrain | null)[] = new Array(MAX_PLAYERS).fill(null);
   brains[0] = level.boss !== undefined
-    ? new BotBrain(0, 'digital', 0, 0x51f15e + arena.id * 983 + 29)
+    ? new BotBrain(0, 'impossible', 0, 0x51f15e + arena.id * 983 + 29)
     : null;
   for (let i = 1; i < MAX_PLAYERS; i++) {
     brains[i] = new BotBrain(i, 'digital', i - 1, 0x51f15e + arena.id * 997 + i * 131);
@@ -195,6 +195,7 @@ function playLevel(level: CampaignLevel, run: number) {
   const damage: any[] = [];
   const heals: any[] = [];
   let assaultEntryHp = -1;
+  let bossSpawn: any = null;
   let hpBeforeStep = p.hp;
   let lastDir = 'none';
   const maxTicks = Math.round(420 / SIM_DT);
@@ -226,6 +227,40 @@ function playLevel(level: CampaignLevel, run: number) {
     if (brain) {
       const hpPrev = p.hp;
       brain.think(world, frames[0], SIM_DT);
+      // The shipped brain does not know about pickups or about a one-segment pool. A player
+      // does: at one segment it goes for the RESTORE drop, and with none on the floor it
+      // backs out of melee instead of trading the last segment.
+      // The Mega Worm's whole attack is contact during a 940 u/s flyby: it crosses the lane
+      // in about a second, so the answer is to leave the lane, not to outrun it.
+      const bossBody = (world.worms ?? []).find((w: any) => w.active && w.bossKind !== undefined);
+      const rest = (world.pickups ?? []).find((k: any) => k.active && k.kind === 0);
+      if (bossBody) {
+        const bdx = bossBody.x - p.x;
+        const bdy = bossBody.y - p.y;
+        const bd = Math.hypot(bdx, bdy) || 1;
+        const bvx = bossBody.vx ?? 0;
+        const bvy = bossBody.vy ?? 0;
+        const bsp = Math.hypot(bvx, bvy) || 1;
+        const closing = (bvx * bdx + bvy * bdy) / (bsp * bd);
+        if (bd < 430 && closing > 0.15) {
+          const sign = (-bvy / bsp) * bdx + (bvx / bsp) * bdy > 0 ? 1 : -1;
+          frames[0].mx = (-bvy / bsp) * sign;
+          frames[0].my = (bvx / bsp) * sign;
+          if (bd < 240) frames[0].pressed |= ACTION.DASH;
+        }
+      }
+      if (rest && p.hp < (p.maxHp ?? 3)) {
+        const rdx = rest.x - p.x;
+        const rdy = rest.y - p.y;
+        const rd = Math.hypot(rdx, rdy) || 1;
+        if (rd > 10) { frames[0].mx = rdx / rd; frames[0].my = rdy / rd; }
+      } else if (p.hp <= 1) {
+        const near = nearestHostile(world, p);
+        if (near && near.dist < 220) {
+          frames[0].mx = (p.x - near.body.x) / (near.dist || 1);
+          frames[0].my = (p.y - near.body.y) / (near.dist || 1);
+        }
+      }
       driveBots();
       world.step(SIM_DT, frames);
       if (p.hp < hpPrev) {
@@ -234,6 +269,10 @@ function playLevel(level: CampaignLevel, run: number) {
         heals.push({ t: Math.round(ticks * SIM_DT), from: hpPrev, to: p.hp });
       }
       const liveBoss = (world.worms ?? []).find((w: any) => w.active && w.bossKind !== undefined);
+      if (liveBoss && !bossSpawn) {
+        bossSpawn = { t: Math.round(ticks * SIM_DT), x: Math.round(liveBoss.x), y: Math.round(liveBoss.y), d: Math.round(Math.hypot(liveBoss.x - p.x, liveBoss.y - p.y)), hp: Math.round(liveBoss.hp) };
+        console.log('BOSS ' + JSON.stringify(bossSpawn));
+      }
       if (liveBoss) {
         const hp = Math.round(liveBoss.hp);
         if (hp !== bossLogged) { bossLogged = hp; bossHp.push(hp); }
@@ -422,7 +461,7 @@ function playLevel(level: CampaignLevel, run: number) {
 
   const result = {
     run, level: level.name, phase: world.campaignPhase, seconds: +(ticks * SIM_DT).toFixed(1),
-    assaultEntryHp, heals, damage: damage.slice(0, 14),
+    assaultEntryHp, heals, bossSpawn, damage: damage.slice(0, 14),
     kills: world.gauntletKills, ports: `${world.portsClosed - portsAtStart}/${world.portTotal}`,
     boss: bossHp, deaths, refusedSteps: refused, log,
   };

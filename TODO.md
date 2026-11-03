@@ -56,9 +56,12 @@ Formerly: 2026-11-02 (PLATES + PORTS)
   travels along the vector it checked, and melee gets a lash-and-dash answer
 - [x] Diagnosis: REBOOT's assault is entered at full 3/3 health and the Mega Worm does spawn (200 hp, 4/4 fodder
   kills). Two probe faults fixed: bots 1-3 were never driven by a brain, and the pilot ignored RESTORE pickups
-- [ ] Continuous run now dies at 48 s, three segments lost in six seconds as the Mega Worm arrives (4/4 attempts).
-  BUILD ROOT clears continuously (205.8 s, 44 kills, 3/3 ports). Next: measure the boss arrival burst against a
-  three-segment body in `campaign2-check`'s staged setup to decide whether the arrival needs a warning beat
+- [x] Diffed the harnesses: `campaign2-check` runs the pilot at `iframes = 999` with the phase and kill quota
+  written directly, so it proves boss mechanics, not survival. The continuous run enters the assault at 3/3 and
+  spawns the boss at 200 hp with 4/4 fodder kills
+- [ ] Continuous REBOOT is 0/6: the fatal hit is `killerKind 2` while the only live worm is 1237 units away, so
+  the attacker is not yet attributed. Add projectile-level attribution (spawn kind, owner, travel range) before
+  touching boss pacing; the lane-dodge response did not change the outcome
 - Harness limitation, stated for the record: the probe routes on `islands`/open `bridges` with plain input frames;
   it is not a game rule that stops it, since `port-sweep-check` closes all three ports in 17.4 s
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them
