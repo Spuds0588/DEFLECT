@@ -6992,3 +6992,18 @@ before any port sweep can start, and the shipped brain has no objective branch f
 together: a pilot that survives the breach and early assault, and objective awareness that closes each port. Boss
 damage, speed ramp, pass pattern, fodder pressure, kill quota, arena, clear rule, snapshot, twelve-second warning and
 boss health are untouched. Version stays v0.1.173; only the QA harness changed.
+
+## 2026-11-03 — All five deaths are SRC.VOID at the breach boundary (no ship)
+
+With slot 0 actually driven, five fresh full-chain runs all died the same way: `killer 8`, which is `SRC.VOID`,
+at 88-97 s, with a full pool (5/5 or 6/6) one frame and 0 the next, and varied floor positions (385,509 /
+293,585 / 473,555 / 295,605 / 395,498). Ports were 0/3 in every run; the assault never had a pilot in it.
+
+`SRC.VOID` comes from `fallPlayer()`: a body that is not on floor is dropped, ignoring iframes, shields and cloak.
+QUARANTINE defines no `traverse.chasms` at all - its floor is `rooms` plates joined by `bridges` - so the void guard
+added to the pilot (which keyed on `traverse.chasms`) was inert on this arena and the guard was reverted unshipped.
+That is the actual mechanism: the pilot walks a plate seam in the holding office during the breach beat and the body
+is dropped. A chasm guard is not enough; void avoidance has to ask the arena's own floor test.
+
+Not shipped. Version stays v0.1.173. Next step is a single floor predicate the pilot and `fallPlayer` both read, so
+the pilot cannot step where the game will kill it, then the port sweep on top of that.
