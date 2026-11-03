@@ -51,8 +51,11 @@ Formerly: 2026-11-02 (PLATES + PORTS)
   calibration-targeting bug was a probe bug and is fixed in `.tmp/campaign-playthrough-check.ts`
 - [x] Continuous run travels again: eight-direction stepping with a 26/52-unit look-ahead reaches `assault` at 83 s
   (the old straight-line steering was the stall), with the port lane now shot facing the port
-- [ ] Continuous run now dies in the assault at 95 s under the game's one-life rule: the probe needs real defensive
-  play (retreat to cover, guard timing, saving the dash) before three clean clears can be claimed
+- [x] Continuous run clears BUILD ROOT end to end with 3 bots (163.9 s, 21 kills, 3/3 ports, deaths only in the
+  respawning practice phases). Three harness faults fixed: floor model now matches `World.inVoid`, the flee dash
+  travels along the vector it checked, and melee gets a lash-and-dash answer
+- [ ] Continuous run dies in REBOOT's assault at 94 s at one segment (worm bite, 3/4 kills). Needs sustained
+  defensive play through the level-2 assault before three consecutive clears can be claimed
 - Harness limitation, stated for the record: the probe routes on `islands`/open `bridges` with plain input frames;
   it is not a game rule that stops it, since `port-sweep-check` closes all three ports in 17.4 s
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them

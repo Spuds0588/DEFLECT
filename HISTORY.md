@@ -6620,3 +6620,27 @@ one-life rule (`world.ts` sets `campaignPhase = 'failed'` when slot 0 dies durin
 real defensive play — retreat to cover, spend the guard, hold the dash for the shot that will land — before the
 closing criterion can be met. Nothing here points at a game defect: the ports still close in 17.4 s under
 `port-sweep-check` and the Mega Worm still dies in all three `campaign2-check` runs.
+
+## 2026-11-03 — Continuous probe clears BUILD ROOT; REBOOT still kills the pilot (v0.1.160)
+
+Three harness defects were found by instrumenting the pilot itself, and all three were probe faults, not game faults:
+
+1. **Floor model disagreed with the game.** The probe inset every plate by 6 units, so each plate/deck junction read
+   as a hole. It refused steps (1431 refused at the peak) and treated floor the game considers solid as void. It now
+   uses `World.inVoid`'s inclusive test, so the model and the body agree.
+2. **The dash was aimed with a different vector from the one it travelled along.** A dash follows the movement
+   vector, so a gate that checked the "flee" direction while the body still moved elsewhere drove it off the lip at
+   x≈346/y≈585 and at 1648,483 (killer 8, void). The flee step is now the movement vector and the gate looks 260
+   units ahead, which is the dash's real reach.
+3. **No melee answer.** The guard covers shots but not a bite, so a body inside reach now shoves with the lash and
+   dashes out of the arc.
+
+Result with 3 bots, mortal, unattended: **BUILD ROOT clears continuously** — 163.9 s, 21 kills, 3/3 ports closed,
+all five deaths inside calibration/drill/breach, where the campaign deliberately respawns. An earlier run cleared the
+same level in 286 s with 44 kills. The run then enters REBOOT, reaches `assault`, and **dies at 94 s** to a worm bite
+(`killer 2`) at 1 segment of health with 3 of 4 kills.
+
+So the closing criterion — three consecutive continuous clears through the Mega Worm — is **not met**. The run now
+fails one level later than the last session and no longer fails for a navigation reason: the pilot arrives, fights,
+and runs out of health. `campaign2-check` still defeats the Mega Worm in all three of its 3-bot runs, so the boss is
+defeatable; what is unproven is a single life carrying through both levels.

@@ -35,8 +35,9 @@ function buildFloor(arena: ArenaDef, isOpen: (i: number) => boolean) {
     blocks.push({ x: l.left, y: l.top, w: l.cellW * 3, h: l.bottom - l.top });
   }
   const b = arena.bounds;
-  // Plates and decks abut, so containment stays tight; the step look-ahead supplies clearance.
-  const inRect = (r: Rect, x: number, y: number) => x > r.x + 6 && x < r.x + r.w - 6 && y > r.y + 6 && y < r.y + r.h - 6;
+  // Match World.inVoid exactly (inclusive edges, no inset). An inset reads every plate/deck
+  // junction as a hole, which is how the pilot walked off the intake beside deck A.
+  const inRect = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
   const walkable = (x: number, y: number) => {
     if (x < b.left + 10 || x > b.right - 10 || y < b.top + 10 || y > b.bottom - 10) return false;
     let on = plates.length === 0;
@@ -175,7 +176,7 @@ function playLevel(level: CampaignLevel, run: number) {
 
   while (ticks++ < maxTicks && world.campaignPhase !== 'cleared') {
     if (world.campaignPhase === 'failed') {
-      throw new Error(`run ${run} ${level.name}: run failed at ${Math.round(ticks * SIM_DT)}s (${log.slice(-3).join(' | ')})`);
+      throw new Error(`run ${run} ${level.name}: run failed at ${Math.round(ticks * SIM_DT)}s by killer ${p.killerKind} at ${Math.round(p.x)},${Math.round(p.y)} (${log.slice(-3).join(' | ')})`);
     }
     if (wasAlive && !p.alive) { deaths++; log.push(`${Math.round(ticks * SIM_DT)}s DEATH killer ${p.killerKind}`); }
     wasAlive = p.alive;
@@ -206,9 +207,21 @@ function playLevel(level: CampaignLevel, run: number) {
       goal = hostile && hostile.dist < 150
         ? { x: hostile.body.x, y: hostile.body.y }
         : { x: exit.x + exit.w / 2, y: exit.y + exit.h / 2 };
-    } else if (hostile && hostile.dist < 140) {
+    } else if (hostile && p.hp <= Math.max(1, Math.ceil((p.maxHp ?? 3) * 0.34))) {
+      // One segment left in a one-life phase: break contact instead of trading.
+      kind = 'retreat';
+      const dx = p.x - hostile.body.x;
+      const dy = p.y - hostile.body.y;
+      const l = Math.hypot(dx, dy) || 1;
+      const back = pickStep(floor, p, p.x + (dx / l) * 240, p.y + (dy / l) * 240, 26);
+      goal = { x: p.x + (dx / l) * 240, y: p.y + (dy / l) * 240 };
+      if (!back) goal = { x: p.x + (dx / l) * 90, y: p.y + (dy / l) * 90 };
+    } else if (hostile && hostile.dist < 260) {
+      // Hold a firing standoff: bolts reach ~390, so 200 keeps the pack at arm's length.
       kind = 'engage';
-      goal = { x: hostile.body.x, y: hostile.body.y };
+      goal = hostile.dist < 170
+        ? { x: p.x + ((p.x - hostile.body.x) / hostile.dist) * 140, y: p.y + ((p.y - hostile.body.y) / hostile.dist) * 140 }
+        : { x: hostile.body.x, y: hostile.body.y };
     } else if (portals.length) {
       kind = 'sweep';
       const port = portals.reduce((a: any, b: any) =>
@@ -271,14 +284,37 @@ function playLevel(level: CampaignLevel, run: number) {
       const l = Math.hypot(shotX, shotY) || 1;
       const side = pickStep(floor, p, p.x - (shotY / l) * 100, p.y + (shotX / l) * 100, 26);
       if (side) step = side;
-      if (closestShot < 90) pressed |= ACTION.DASH;
+      // Dash only when the landing arc is floor: a dash is airborne, so it clears a lip
+      // straight into a void if the probe asks it to.
+      const ux = step ? step.mx : Math.cos(p.facing);
+      const uy = step ? step.my : Math.sin(p.facing);
+      if (closestShot < 90 && floor.walkable(p.x + ux * 130, p.y + uy * 130)) pressed |= ACTION.DASH;
+    }
+    // A body inside melee reach is the one threat the guard cannot answer: shove it off with
+    // the lash and dash out of its arc. Backing into a wall just feeds the bite.
+    if (hostile && hostile.dist < 95) {
+      if (ticks % 18 === 0) pressed |= ACTION.SWING;
+      const ax = p.x - hostile.body.x;
+      const ay = p.y - hostile.body.y;
+      const l = Math.hypot(ax, ay) || 1;
+      // The dash travels along the movement vector, so the flee step must *be* that vector
+      // and the gate has to look as far as the dash actually carries the body.
+      const flee = pickStep(floor, p, p.x + (ax / l) * 220, p.y + (ay / l) * 220, 26);
+      if (flee && floor.walkable(p.x + flee.mx * 260, p.y + flee.my * 260)) {
+        step = flee;
+        pressed |= ACTION.DASH;
+        lastDir = `flee ${flee.mx.toFixed(2)},${flee.my.toFixed(2)}`;
+      }
     }
     if (!step) refused++;
     lastDir = step ? `${step.mx.toFixed(2)},${step.my.toFixed(2)}` : 'refused';
     frames[0].mx = step ? step.mx : 0;
     frames[0].my = step ? step.my : 0;
     frames[0].pressed = pressed;
-    frames[0].held = incoming ? SWING : (ACTION.BOLT | (boss ? ACTION.LOCK : 0));
+    // Target lock keeps facing on the enemy while the body strafes, so bolts leave along
+    // the line to the target instead of along the dodge vector.
+    frames[0].held = ACTION.BOLT | (hostile && hostile.dist < 460 ? ACTION.LOCK : 0)
+      | (incoming && closestShot < 150 ? SWING : 0);
     world.step(SIM_DT, frames);
 
     if (ticks % Math.round(20 / SIM_DT) === 0) {
