@@ -163,9 +163,15 @@ function playLevel(level: CampaignLevel, run: number) {
   // Every slot gets the shipped brain. The bots used to stand still while only the pilot
   // fought, which is not a multi-bot run: the level-2 boss was being soloed.
   const brains: (BotBrain | null)[] = new Array(MAX_PLAYERS).fill(null);
-  brains[0] = level.boss !== undefined
-    ? new BotBrain(0, 'impossible', (run - 1) % 3, 0x51f15e + arena.id * 983 + 29 + run * 7919)
-    : null;
+  // Slot 0 is driven on every level. The harness used to leave it inert unless the level had
+  // a boss, so BUILD ROOT was played by three digital bots and a standing body: the port
+  // tally could never be finished and the level looked unwinnable.
+  brains[0] = new BotBrain(
+    0,
+    level.boss !== undefined ? 'impossible' : 'digital',
+    (run - 1) % 3,
+    0x51f15e + arena.id * 983 + 29 + run * 7919,
+  );
   for (let i = 1; i < MAX_PLAYERS; i++) {
     brains[i] = new BotBrain(i, 'digital', i - 1, 0x51f15e + arena.id * 997 + i * 131 + run * 104729);
   }

@@ -3175,3 +3175,11 @@ a tutorial room arena: the demo pool excludes `qa` arenas, anything with `ingres
 named by `PLAYABLE_CAMPAIGN_LEVELS`. Boss showcases read as unfinished next to ordinary arena play, and campaign
 geometry only makes sense inside a level. `?boss=1` is the explicit QA fast-forward that still spawns one boss;
 keep it working, and do not re-add boss sessions to the rotation until the campaign itself plays well.
+
+### The playthrough harness must drive every slot (2026-11-03)
+
+`.tmp/campaign-playthrough-check.ts` built `brains[0]` only when the level carried a boss, so BUILD ROOT ran with three
+`digital` bots and an inert local player. Every level-1 clear or stall measured that way was measuring a stand-in, not
+the pilot. Any campaign batch must drive slot 0 on every level, and a harness change that alters who is flying is a
+measurement reset: re-baseline before quoting a pass rate. `.tmp/port-stall-check.ts` is the instrumented probe for the
+port objective (per-port hp, collapse timer, distance, tally, exit readiness, steering branch).

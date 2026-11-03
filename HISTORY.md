@@ -6962,3 +6962,33 @@ The campaign pilot work is parked, not lost: the continuous-chain batch reached 
 BUILD ROOT at 161.3 s and REBOOT at 233.4 s), with the remaining runs stalling in the BUILD ROOT assault at
 ports 2/3 past a 10-kill quota. The unproven pilot edits were reverted rather than shipped; the measured
 obstacle stays recorded in TODO.md.
+
+## 2026-11-03 — Port stall root-caused as a harness + missing-objective pair (no ship)
+
+**The harness was not flying the local pilot on level 1.** `.tmp/campaign-playthrough-check.ts` only built
+`brains[0]` when the level had a boss, so BUILD ROOT was played by three `digital` bots while player 0 stood inert.
+The port tally therefore depended on incidental fire, which is why runs reached 55-70 kills and stalled at ports 2/3.
+Slot 0 is now driven on every level. That single change invalidates every earlier level-1 clear claim.
+
+**Instrumented evidence** (`.tmp/port-stall-check.ts`, 5 s cadence: each portal's hp/max, collapse timer, distance to
+the pilot, `portsClosed`/`portTotal`, exit readiness, steering branch):
+
+- Ports do take damage when something shoots them: `1780,940 hp19/20`, `1350,230 hp23/26`, `1330,900 hp20/20`.
+- The far port is never approached. At the moment of death the nearest live port was 923 units away, well past
+  bolt reach, and no portal's hp had been touched by that point in the run.
+- The shipped brain has no campaign-objective branch at all: it fights the threat pool, so a port only closes when a
+  stray bolt crosses it. Any port that is not in the fight is never swept.
+- With slot 0 correctly driven, the pilot dies at 88-93 s during `breach`, at 6 hp, killer 8, before `assault` opens
+  (`90s DEATH killer 8`, `92s assault ... hp 0/6`). Ports were 0/3 from start to death.
+
+**An objective frame was built and reverted.** `objectiveFrame`/`campaignFrame` routed every `think()` exit through
+one post-frame, phase-gated to `assault`, yielded the frame to the combat brain inside 220 units, walked at the
+nearest live port, stopped inside bolt range to keep one-stick facing on it, and walked into the exit port once the
+tally closed. It never produced a clear: the pilot died in `breach` before the assault, so every run ended before the
+sweep could be judged. It is not shipped unverified.
+
+**Blocking mechanism:** the campaign's threat pressure kills the local pilot during `breach` and the early assault
+before any port sweep can start, and the shipped brain has no objective branch for ports at all. Both must be fixed
+together: a pilot that survives the breach and early assault, and objective awareness that closes each port. Boss
+damage, speed ramp, pass pattern, fodder pressure, kill quota, arena, clear rule, snapshot, twelve-second warning and
+boss health are untouched. Version stays v0.1.173; only the QA harness changed.
