@@ -45,7 +45,10 @@ Formerly: 2026-11-02 (PLATES + PORTS)
 - [x] Holding plate entry: the intake bridge landed behind the sealed cell block, so QUARANTINE dropped a body into a
   strip it could not leave. Cell block moved back-right, intake deck lands on the open left, holding->mainboard deck
   joins in front of the cells (`holdingCellLayout`, `.tmp/holding-layout-check.ts`)
-- [ ] Apply the left-to-right entry rule to the remaining campaign and gauntlet plates as they are authored
+- [x] Plate flow audited for every authored plate arena: QUARANTINE passes entry-left/exit-right, CAPCOM and
+  TRANSIT carry documented exceptions in `.tmp/plate-flow-check.ts`; no deck lands in cover, a cell block or the void
+- [ ] Sequential level-1-then-level-2 harness: the probe drives the assault and the boss but cannot target the
+  pre-assault calibration subjects, so each level is verified by its own probe (port sweep / campaign2 boss runs)
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them
 
 ---

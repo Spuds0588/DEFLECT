@@ -6530,3 +6530,30 @@ block sat between the player and the room. Overall arena flow should read left t
 **Verification:** `holding-layout-check` OK (cells 425..834 / 680..840, landing 215,688, doorway 862..1000),
 `port-sweep-check` OK (three ports in 17.4 s, exit opens, phase cleared), `campaign2-check` OK (REBOOT boss clears),
 `campaign-death-check` OK, `tsc --noEmit`, `build`, `bench` clean.
+
+## 2026-11-03 — Left-to-right plate rule extended to every authored plate (v0.1.156)
+
+**Goal:** a plate arena must be entered on its open left side and left on its right, with any other flow being a
+documented choice, and both painted geometry and collision/ports driven from the same layout functions.
+
+- `.tmp/plate-flow-check.ts` (new) reads `islands`, `rooms`, `bridges`, `pillars`, `traverse.chasms`, `spawns`,
+  `port` and `holdingCellLayout` — the same data the renderer and body solver use — and asserts per arena: every deck
+  lands on two different plates, no landing sits in cover or in a powered cell block, no deck is swallowed by cover,
+  a deck route exists from the entry plate (spawn 0) to the exit plate (`port`), and the exit plate centre is right
+  of the entry plate centre.
+- Result: **QUARANTINE** entry 453 -> exit 1513 over three decks, OK. Two routes are deliberately not left-to-right
+  and are named with reasons in the check: **CAPCOM** (four-plate ring, every deck open by design, no single exit)
+  and **TRANSIT** (chasm arena crossed by pads west and lifts east). Nothing else in `ARENAS` is a plate arena, so
+  the rule has no silent gaps.
+- Deck landings now use a two-unit abutment tolerance: decks meet a plate edge rather than overlapping it, and the
+  earlier strict-overlap test reported every deck as touching no plate, which would have hidden a short deck.
+
+**Attempted and not finished:** a single sequential harness (`.tmp/campaign-run-check.ts`, since removed) that would
+play BUILD ROOT and then REBOOT in one session. It drove the assault, port lanes and boss correctly, but could not
+kill the pre-assault calibration subjects (trace: tutorial done, calibration awake, bodies alive, kills 0 for 240 s),
+so it never left the first beat. That is a probe-aim limitation, not a game failure: the same beats are covered by
+`campaign-death-check` (five pre-assault phases), `port-sweep-check` (level 1 sweep -> exit -> cleared) and
+`campaign2-check` (three bots, three runs, Mega Worm defeated each time).
+
+**Verification:** `plate-flow-check` OK (3 plate arenas), `holding-layout-check` OK, `port-validate` OK,
+`port-sweep-check` OK (17.4 s), `campaign2-check` OK, `campaign-death-check` OK, `tsc --noEmit`, `build`, `bench` clean.
