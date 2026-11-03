@@ -3160,3 +3160,10 @@ it. A punish station behind the body therefore required walking through the head
 facing (off the launch axis) and a 260-unit hard clearance outranks all branches. Head contact still lands at ~152, which
 is impossible for a 1300 u/s body in one tick against a 260 hold: treat it as a suspected staging/teleport bug in
 `stageMegaPass`/`beginMegaPass`, not as pilot tuning, until a frame trace says otherwise.
+
+### QA runs must let the shipped brain own the frame (2026-11-03)
+
+The campaign playthrough probe called `brain.think(...)` and then overwrote the same frame with its own RESTORE/retreat
+steering. Three separate pilot rewrites produced identical death times because of it. A QA harness may observe and may
+drive bots, but it must never write movement after the brain has decided: any affordance it grants is a harness special
+case and makes the measured pass rate meaningless. With the override removed the same five runs went from 1 to 2 clears.

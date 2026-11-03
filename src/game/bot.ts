@@ -835,6 +835,36 @@ export class BotBrain {
     // At one segment the next pass ends the run. A RESTORE drop is drawn on the floor, so a
     // player breaks off for it; the pilot should too, instead of trading for a kill.
     if (this.fightBoss(world, me, out)) return true;
+
+    // Low pool: take a drawn RESTORE before trading again. The boss branch has its own copy;
+    // this covers the fodder and sentry phases, where the pilot used to trade the last segment.
+    if (me.hp <= 2) {
+      let gx = 0;
+      let gy = 0;
+      let gd = 1400;
+      let found = false;
+      for (let i = 0; i < world.pickups.length; i++) {
+        const k = world.pickups[i];
+        if (!k.active || k.kind !== POWERUP_KIND.RESTORE) continue;
+        const d = Math.hypot(k.x - me.x, k.y - me.y);
+        if (d < gd) {
+          gd = d;
+          gx = k.x;
+          gy = k.y;
+          found = true;
+        }
+      }
+      if (found) {
+        const dx = gx - me.x;
+        const dy = gy - me.y;
+        const d = Math.hypot(dx, dy) || 1;
+        out.mx = dx / d;
+        out.my = dy / d;
+        out.held |= ACTION.LOCK;
+        return true;
+      }
+    }
+
     const bossPass = world.worms.some(
       (w) => w.active && w.bossKind >= 0 && Math.hypot(w.vx, w.vy) > 300,
     );

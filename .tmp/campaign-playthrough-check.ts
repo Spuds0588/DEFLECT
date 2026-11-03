@@ -164,7 +164,7 @@ function playLevel(level: CampaignLevel, run: number) {
   // fought, which is not a multi-bot run: the level-2 boss was being soloed.
   const brains: (BotBrain | null)[] = new Array(MAX_PLAYERS).fill(null);
   brains[0] = level.boss !== undefined
-    ? new BotBrain(0, 'impossible', 0, 0x51f15e + arena.id * 983 + 29)
+    ? new BotBrain(0, 'impossible', (run - 1) % 3, 0x51f15e + arena.id * 983 + 29 + run * 7919)
     : null;
   for (let i = 1; i < MAX_PLAYERS; i++) {
     brains[i] = new BotBrain(i, 'digital', i - 1, 0x51f15e + arena.id * 997 + i * 131 + run * 104729);
@@ -227,22 +227,9 @@ function playLevel(level: CampaignLevel, run: number) {
     if (brain) {
       const hpPrev = p.hp;
       brain.think(world, frames[0], SIM_DT);
-      // The shipped brain does not know about pickups or about a one-segment pool. A player
-      // does: at one segment it goes for the RESTORE drop, and with none on the floor it
-      // backs out of melee instead of trading the last segment.
-      const rest = (world.pickups ?? []).find((k: any) => k.active && k.kind === 0);
-      if (rest && p.hp < (p.maxHp ?? 3)) {
-        const rdx = rest.x - p.x;
-        const rdy = rest.y - p.y;
-        const rd = Math.hypot(rdx, rdy) || 1;
-        if (rd > 10) { frames[0].mx = rdx / rd; frames[0].my = rdy / rd; }
-      } else if (p.hp <= 1) {
-        const near = nearestHostile(world, p);
-        if (near && near.dist < 220) {
-          frames[0].mx = (p.x - near.body.x) / (near.dist || 1);
-          frames[0].my = (p.y - near.body.y) / (near.dist || 1);
-        }
-      }
+      // The shipped brain owns the frame. This harness used to overwrite movement with its own
+      // RESTORE/retreat steering after think(), which meant the measured deaths were the
+      // harness's flying, not the pilot's. The brain now handles heals, escapes and the boss.
       driveBots();
       world.step(SIM_DT, frames);
       if (p.hp < hpPrev) {

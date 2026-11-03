@@ -70,7 +70,8 @@ Formerly: 2026-11-02 (PLATES + PORTS)
 - [x] Close-hold engagement replaced by `fightBoss`: 620 ring, chain-corridor avoidance, park-only approach,
   shooter clearance inside 470, dash escape, RESTORE at two segments. Two batches of five each produced one
   clear (181.5 s / 246.6 s, boss 206 -> dead)
-- [ ] Continuous REBOOT is 1/5; punish station moved off-axis and a 260 clearance added, yet head contact still lands at ~152, which is impossible for a flown pass. Trace `w.x/y`, `anchorX/Y`, `spawnT`, `entryT` for the two frames before contact: suspected staging teleport, not pilot tuning. Level 1 not re-measured (root cause: `fightBoss` was unreachable from `think()`'s early returns; now hoisted). Remaining: head contact at ~155 during the punish station; trace the 0.2 s before contact. Remaining: boss-head contact at ~155 when the launch catches the
+- [x] Harness override removed: the probe no longer rewrites the brain's frame. Same five runs went 1/5 -> 2/5
+- [ ] Continuous REBOOT is 2/5; remaining deaths are a fodder worm trading at 55 units and head contact at ~153 during the punish window. Punish station moved off-axis and a 260 clearance added, yet head contact still lands at ~152, which is impossible for a flown pass. Trace `w.x/y`, `anchorX/Y`, `spawnT`, `entryT` for the two frames before contact: suspected staging teleport, not pilot tuning. Level 1 not re-measured (root cause: `fightBoss` was unreachable from `think()`'s early returns; now hoisted). Remaining: head contact at ~155 during the punish station; trace the 0.2 s before contact. Remaining: boss-head contact at ~155 when the launch catches the
   punish approach, and sentry fire at ~220 from beyond the 470 ring. Sampling is still not five distinct runs:
   runs 1 and 5 repeat because `fightBoss` ignores the per-run style. Boss must not be weakened
 - Harness limitation, stated for the record: the probe routes on `islands`/open `bridges` with plain input frames;

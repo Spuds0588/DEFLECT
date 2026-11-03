@@ -6917,3 +6917,34 @@ of `w.x/y`, `anchorX/Y`, `spawnT` and `entryT` across the two frames before a hi
 
 Boss damage, speed ramp, pass pattern, fodder pressure, quota, arena, clear rule, snapshot, the warning, Kitty's line and
 the title card are unchanged. Level 1 was not re-measured this turn.
+
+## 2026-11-03 — The harness was flying the pilot; 2 of 5 cleared (v0.1.172)
+
+**Root cause of the flat batches.** `.tmp/campaign-playthrough-check.ts` called `brain.think(...)` and then
+overwrote the same frame with its own RESTORE/retreat steering whenever a drop was on the floor. Every measurement
+since the first batch was therefore a mix of the shipped brain and a scripted override, which is why three different
+`fightBoss` rewrites produced byte-identical death times. The override is gone: the shipped `BotBrain` now owns the
+frame, including heals, escapes and the boss. This also means the probe finally satisfies the mission's rule that the
+bar is measured through the shipped brain and never a scripted probe.
+
+Measured immediately after removing the override, same five distinct runs (kit `run-1`, squad `[12-run, 11-run,
+10-run]`, per-run seeds): **2 of 5 cleared** — up from 1 of 5 with the harness in the loop.
+
+| run | outcome | attribution |
+| --- | --- | --- |
+| 1 | CLEARED 222.5 s, 41 kills | Mega Worm dead, level 2 completed |
+| 2 | failed 146 s `killer 2` | fodder worm d=55 v=210 (3 hp), heal available |
+| 3 | CLEARED 144.9 s, 13 kills | Mega Worm dead, level 2 completed |
+| 4 | failed 182 s `killer 4` | sentry d=414 |
+| 5 | failed 174 s `killer 2` | boss head d=153 v=1299, boss at 101 hp |
+
+**The majority bar is still not met (2 of 5).** Two failure modes remain: a fodder worm trading inside 55 units while
+the pool still has a segment, and head contact at ~153 during the punish window. A general low-health RESTORE branch
+was added outside the boss model; it did not change this batch, because in run 2 the pilot was still at 3 hp when the
+worm reached it, so the gap is add-clearance, not healing.
+
+Level 1 was not part of this batch: the probe runs one level per invocation (`LEVEL=1` is REBOOT), so the clears above
+evidence the Mega Worm dying and level 2 completing, not a level-1 clear in the same run.
+
+Boss damage, speed ramp, pass pattern, fodder pressure, kill quota, arena, clear rule, snapshot, the twelve-second
+warning, Kitty's line and the title card are unchanged.
