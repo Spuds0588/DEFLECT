@@ -1660,7 +1660,7 @@ function airportFlights(): ArenaFlipRowDef[] {
   }));
 }
 
-export const ARENAS: readonly ArenaDef[] = [
+const ARENAS_BASE: readonly ArenaDef[] = [
   {
     id: 0,
     name: 'CROSSROADS',
@@ -4917,3 +4917,33 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
   ctx.globalAlpha = 1;
 }
 
+
+/**
+ * Authoring scale for a playable arena: every rect and point moves about the floor centre
+ * together (bounds, plates, decks, rooms, cover, ports, spawns) so topology and the
+ * left-to-right flow are preserved while the floor area grows.
+ */
+function scaleArena(base: ArenaDef, k: number): ArenaDef {
+  const b = base.bounds;
+  const cx = (b.left + b.right) * 0.5;
+  const cy = (b.top + b.bottom) * 0.5;
+  const px = (v: number) => cx + (v - cx) * k;
+  const py = (v: number) => cy + (v - cy) * k;
+  const rect = (r: Rect): Rect => ({ ...r, x: px(r.x), y: py(r.y), w: r.w * k, h: r.h * k });
+  const out: any = {
+    ...base,
+    bounds: { left: px(b.left), top: py(b.top), right: px(b.right), bottom: py(b.bottom) },
+    spawns: base.spawns.map((s) => ({ ...s, x: px(s.x), y: py(s.y) })),
+  };
+  if (base.pillars) out.pillars = base.pillars.map(rect);
+  if (base.islands) out.islands = base.islands.map(rect);
+  if (base.voids) out.voids = base.voids.map(rect);
+  if (base.bridges) out.bridges = base.bridges.map(rect);
+  if (base.rooms) out.rooms = base.rooms.map((r: any) => ({ ...r, x: px(r.x), y: py(r.y), w: r.w * k, h: r.h * k }));
+  if (base.ingress) out.ingress = base.ingress.map((i: any) => ({ ...i, x: px(i.x), y: py(i.y), size: i.size * k }));
+  if (base.port) out.port = { ...base.port, x: px(base.port.x), y: py(base.port.y), radius: base.port.radius * k };
+  return out as ArenaDef;
+}
+
+/** Level 1's floor is authored at 1.5x: the plates were reading as small rooms. */
+export const ARENAS: readonly ArenaDef[] = ARENAS_BASE.map((a) => (a.id === 14 ? scaleArena(a, 1.5) : a));

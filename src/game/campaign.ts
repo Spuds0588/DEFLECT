@@ -66,12 +66,12 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     // router's uplink crates. The clean-sweep pay is lost when any one is broken.
     // One plate each: the intake desks, the holding office and the two far islands.
     dataCrates: [
-      { x: 560, y: 130, kind: PROP.DOC },
-      { x: 310, y: 400, kind: PROP.ZIP },
-      { x: 700, y: 720, kind: PROP.AUDIO },
-      { x: 1500, y: 900, kind: PROP.VIDEO },
-      { x: 1750, y: 760, kind: PROP.DOC },
-      { x: 1350, y: 180, kind: PROP.ZIP },
+      { x: 342, y: -78, kind: PROP.DOC },
+      { x: -32, y: 326, kind: PROP.ZIP },
+      { x: 552, y: 806, kind: PROP.AUDIO },
+      { x: 1752, y: 1076, kind: PROP.VIDEO },
+      { x: 2128, y: 866, kind: PROP.DOC },
+      { x: 1528, y: -4, kind: PROP.ZIP },
     ],
   },
   {

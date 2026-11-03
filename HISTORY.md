@@ -7118,3 +7118,17 @@ emissions, opening flood) can put a virus on the floor before the holding cell o
 **Open: arena scale.** BUILD ROOT still uses QUARANTINE's authored bounds (48,48-1942,1046). Scaling the plates and
 adding enemies is an authoring pass that needs its own layout check (`plate-flow-check`, `port-sweep-check`) rather
 than a blind bounds edit; it was not done here.
+
+## 2026-11-03 — BUILD ROOT floor authored at 1.5x with a worm-filled assault (v0.1.175)
+
+QUARANTINE is now authored through `scaleArena`: bounds, spawns, cover, plates, decks, rooms, ingress ports and the
+white party port all move about the floor centre together, so the left-to-right plate flow is preserved rather than
+re-laid from scratch. Campaign data crates were moved by the same transform. Before: bounds 48,48-1942,1046
+(1894 x 998, 1.89M sq units). After: bounds -426,-202 to 2416,1296 (2841 x 1497, 4.25M sq units) - 2.25x the floor
+area at 1.5x linear. The assault seeds two extra worms on any floor wider than 2200 (1 -> 3), and the existing
+primitives-only rule still forbids viruses until the holding cell opens. `clearKills` stays at its authored 10.
+
+Validators: `plate-flow-check`, `port-sweep-check`, `holding-layout-check` all exit 0 on the scaled geometry, and
+`tsc --noEmit` / `npm run build` are green. Bot proof is NOT met: an instrumented level-1 run reached `assault`, held
+35 kills against the 10 quota, closed 2 of 3 ports and hit the 420 s cap. Void falls also persist under the swept
+floor contact, which is why that pilot change was reverted rather than shipped with the scale.

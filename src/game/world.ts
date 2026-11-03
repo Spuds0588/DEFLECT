@@ -1650,6 +1650,12 @@ export class World {
       }
     }
     this.spawnWorm();
+    // The scaled floor is more than twice the old area, so the primitive family fills it.
+    // Worms only: a primitives-only node never seeds a virus, and the spawner enforces it.
+    if (this.arena.bounds.right - this.arena.bounds.left > 2200) {
+      this.spawnWorm();
+      this.spawnWorm();
+    }
   }
 
   private sentryLiveCount(): number {
