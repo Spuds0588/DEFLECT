@@ -3268,8 +3268,14 @@ export class World {
           this.despawnCopyClone(p);
           continue;
         }
-        // The campaign drill is practice: both the player and the squad come back.
-        if (this.campaign && this.campaignPhase === 'drill') {
+        // The campaign's run-up is practice: both the player and the squad come back.
+        // This timer ticks in every live campaign phase. Ticking it only during the drill
+        // left a body that fell into a chasm during calibration permanently dead: the
+        // lesson waited on an input it could never receive and the run had no overlay to
+        // leave from. It also keeps ticking through the assault, so a body downed during
+        // the breach is not stranded when the assault begins; a downed local player ends
+        // the run on that same frame, which stops the timer.
+        if (this.campaign && this.campaignPhase !== 'failed' && this.campaignPhase !== 'cleared') {
           p.respawnT -= dt;
           if (p.respawnT <= 0) this.respawnTrainingPlayer(p);
           continue;

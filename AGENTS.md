@@ -612,7 +612,7 @@ link is a `bridge`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   takes it as `campaignBoss` and spawns it once the assault kills are met (`campaignBossSpawned`). A boss
   node ignores the port sweep and the bare kill count: it clears only after the staged intro and when no
   body of that kind is live, so neither a port nor a fodder kill can end the fight. Mini-boss health is
-  not a level budget: do not tune a node by changing it.
+  not a level budget: do not tune a node by changing it. **A death before the assault is practice (2026-11-02):** every live campaign phase ticks the training respawn, so a body that falls into a chasm or gets caught during calibration, release, briefing, drill or breach comes back and the lesson keeps its progress; only a death in the assault ends the run. Ticking that timer during the drill alone left a body permanently dead in calibration, which stalled the lesson with no overlay to leave from.
 - The campaign route plate (`road.ts`) belongs to the between-level transition, not to the archive. Do not mount it in a menu.
 - **Narrative framing (first beat built 2026-11-01, v0.1.92)**: the run opens in the quarantine section of a dev
   system. Every roster program is a "bad" program pulled by antivirus and sent to be retrained; the pick is

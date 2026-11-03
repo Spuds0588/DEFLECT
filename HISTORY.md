@@ -6439,3 +6439,31 @@ levels 1 and 2 with the Mega Worm as level 2's final encounter, verified with bo
 
 **Next:** a human run of level 2 to judge the Mega Worm's contact pressure, and a recorded boss-rush clear
 time per boss.
+
+## 2026-11-03 — Campaign playthrough pass: the pre-assault death soft-lock (v0.1.153)
+
+**Goal:** play the shipped campaign in a real browser, four times through, and fix what breaks.
+
+- The first headed run died to a floor gap during the Warden lesson and never came back: the body sat at zero
+  health with `respawnT` frozen at 1.6 s, the tutorial waited on a movement input that could never be delivered,
+  and no result overlay appeared. `damagePlayer` sets a respawn timer for every non-assault campaign death, but
+  only the `drill` branch of the player loop ever decremented it, so calibration, release, briefing and breach
+  each turned a knockdown into a dead body that nothing could revive.
+- `world.ts` now ticks that timer in every live campaign phase (`failed` and `cleared` excluded), which also
+  carries a body downed during the breach into the assault instead of stranding it. The assault is still one
+  life: a downed local player sets the phase to `failed` on the same frame, which stops the timer.
+- `.tmp/campaign-death-check.ts` pins the rule: five phases x the player and a drill partner all respawn with
+  health and keep their tutorial progress, an assault death still fails the run, and finishing the lesson still
+  releases the calibration hold.
+- Headed QA harness (local only, never shipped): `.tmp/campaign-pilot.js` reads `__deflect.getWorld()` and
+  dispatches ordinary key events, routing over the arena floor with a BFS grid, guarding incoming fire, and
+  working the three campaign objectives (threats, port sweep, party exit). `.tmp/campaign-auto.js` clicks the
+  console the way a player would: NEXT ARENA between levels, RETRY after a loss, the next slot after a clear.
+- Known limitation: the pilot survives and fights, but it does not reliably finish the `BUILD ROOT` port sweep,
+  so no headed campaign reached `REBOOT` on its own. Beatability is still covered headlessly.
+
+**Verification:** `campaign-death-check` OK; `campaign2-check` 3/3 clears (80.2 s and 72 s on the logged runs);
+`npx tsc --noEmit`, `npm run build`, `npm run bench` clean.
+
+**Next:** a human solo pass on `BUILD ROOT` to judge the three-port sweep, then a full four-run headed pass with
+a stronger pilot or a person at the keyboard.

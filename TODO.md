@@ -2,7 +2,8 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-02 (BOSS SWEEP + CAMPAIGN LEVEL 2)
+Last updated: 2026-11-03 (CAMPAIGN PLAYTHROUGH PASS)
+Formerly: 2026-11-02 (BOSS SWEEP + CAMPAIGN LEVEL 2)
 Formerly: 2026-11-02 (PLATES + PORTS)
 
 ---
@@ -21,6 +22,23 @@ Formerly: 2026-11-02 (PLATES + PORTS)
 - [x] `.tmp/campaign2-check.ts`: three level 2 runs with three bot companions clear in 67/80/72 s
 - [ ] Headed pass: watch a full level 2 run with a human pilot and judge the Mega Worm's contact pressure and the four-kill run-up
 - [ ] A human boss-rush clear time per boss, recorded in HISTORY
+
+---
+
+## Campaign playthrough pass (2026-11-03)
+
+- [x] Headed Chromium runs of the live campaign surfaced a soft-lock: a body downed during
+      `calibration`/`release`/`briefing`/`breach` set `respawnT` but only the `drill` branch ever ticked it, so
+      the body stayed dead, the lesson waited on an input that could never arrive, and no overlay offered a way out
+- [x] Fixed in `world.ts`: the campaign respawn timer ticks in every live phase (`failed` and `cleared` excluded),
+      so a fall or a downed body before the assault always comes back and keeps its tutorial progress
+- [x] `.tmp/campaign-death-check.ts`: five pre-assault phases x player and drill partner, plus the rule that an
+      assault death still fails the run and never respawns
+- [x] `.tmp/campaign-pilot.js` + `.tmp/campaign-auto.js`: a headed QA pilot that dispatches ordinary key events and
+      a menu auto-runner that takes NEXT ARENA, RETRY and the next save slot, so a campaign can be watched end to end
+- [ ] A full four-run headed pass. The pilot reaches the assault but does not reliably finish the `BUILD ROOT` port
+      sweep, so no headed campaign has completed; every clear so far comes from the headless probes
+- [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them
 
 ---
 

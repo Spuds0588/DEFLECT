@@ -191,7 +191,11 @@ bonus, and the best score and sweep count stay in the slot.
 Clearing writes the slot and advances the run. `BUILD ROOT` hands over to `REBOOT` on `GRID ZERO`: the cat
 gets you out of quarantine, four infected bodies are the run-up, and the **Mega Worm** arrives as the
 level's final encounter. That node does not end on a kill count or a port sweep; it ends when the boss is
-dead. A completed `REBOOT` slot reports `MORE LEVELS COMING SOON`. A run is never saved mid-level. The
+dead. A completed `REBOOT` slot reports `MORE LEVELS COMING SOON`. A run is never saved mid-level.
+Everything before the assault is practice: if you fall off a plate or get caught during orientation or
+the drill, you come back on the training timer and the lesson keeps its place, so a bad start costs time
+rather than the run. **The assault is one life** — going down once the fight starts ends the node, and
+the result screen offers `RETRY` or `SLOTS`. The
 layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
 
 ### Online status
