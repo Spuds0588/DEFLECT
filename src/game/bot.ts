@@ -275,6 +275,7 @@ export class BotBrain {
       const cm = Math.hypot(cx, cy) || 1;
       out.mx = cx / cm;
       out.my = cy / cm;
+      this.bossEscape(world, me, out);
       return;
     }
 
@@ -289,17 +290,18 @@ export class BotBrain {
         out.mx = (gx / gd) * 0.45;
         out.my = (gy / gd) * 0.45;
       }
+      this.bossEscape(world, me, out);
       return;
     }
 
     // Reflex layer: deflect the closest bolt, or dash out of its line.
     if (this.threatSerial >= 0 && this.reactT <= 0) {
-      if (this.handleThreat(me, out, world.arena, world.usbT)) return;
+      if (this.handleThreat(me, out, world.arena, world.usbT)) { this.bossEscape(world, me, out); return; }
     }
 
     const target = this.target >= 0 ? world.players[this.target] : null;
     if (!target || !target.active || !target.alive) {
-      if (this.engageHostiles(world, me, out)) return;
+      if (this.engageHostiles(world, me, out)) { this.bossEscape(world, me, out); return; }
       return;
     }
 
@@ -832,7 +834,10 @@ export class BotBrain {
     if (world.mode !== 'gauntlet') return false;
     // At one segment the next pass ends the run. A RESTORE drop is drawn on the floor, so a
     // player breaks off for it; the pilot should too, instead of trading for a kill.
-    if (me.hp <= 1) {
+    const bossPass = world.worms.some(
+      (w) => w.active && w.bossKind >= 0 && Math.hypot(w.vx, w.vy) > 300,
+    );
+    if (me.hp <= 1 || (me.hp <= 2 && bossPass)) {
       let bestD = 900;
       let gx = 0;
       let gy = 0;
@@ -1092,8 +1097,11 @@ export class BotBrain {
       // and out every time it straddled the line. A mini-boss is a much larger body: its
       // head radius alone is 138, so holding 150 from its centre is standing inside it.
       const bossTarget = kind === 0 && (worms[idx]?.bossKind ?? -1) >= 0;
-      const hold = bossTarget ? 330 : 150;
-      const band = bossTarget ? 90 : 60;
+      // Hold outside what the add can actually reach: a worm's bite and a body's contact are
+      // both shorter than a bolt, so 265 keeps a clean firing band instead of trading inside
+      // the crowd at 150. Boss bodies keep their much wider 330.
+      const hold = bossTarget ? 330 : kind === 0 ? 265 : 210;
+      const band = bossTarget ? 90 : 70;
       const radial = Math.max(-1, Math.min(1, (dist - hold) / band));
       const orbit = (1 - Math.abs(radial)) * this.strafeDir;
       moveX = ux * radial - uy * orbit;
@@ -1107,8 +1115,40 @@ export class BotBrain {
       out.mx = this.steerX * speed;
       out.my = this.steerY * speed;
     }
-    this.megaLaneRead(world, me, out);
     return true;
+  }
+
+  /**
+   * The last word on any frame. Every branch inside the engagement returns early (heavy,
+   * beam, fire, melee, pathing), and so do the reflex, guard and wall branches above it, so
+   * a boss escape called from the engagement alone only ran on the frames nothing else
+   * happened — which is never the frame the body arrives. Leaving the lane outranks the
+   * plan the pilot just made.
+   */
+  private bossEscape(world: World, me: Player, out: InputFrame): void {
+    if (this.closeBodyDash(world, me, out)) return;
+    this.megaLaneRead(world, me, out);
+  }
+
+  /**
+   * A body already inside its contact radius cannot be out-walked: the answer is a dash out
+   * of it. This fires on the same visible geometry the player reads (position and size).
+   */
+  private closeBodyDash(world: World, me: Player, out: InputFrame): boolean {
+    if (((me as any).dashCharges ?? 0) <= 0) return false;
+    for (let i = 0; i < world.worms.length; i++) {
+      const w = world.worms[i];
+      if (!w.active) continue;
+      const dx = me.x - w.x;
+      const dy = me.y - w.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d > (w.bossKind >= 0 ? 210 : 130)) continue;
+      out.mx = dx / d;
+      out.my = dy / d;
+      out.pressed |= ACTION.DASH;
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -1135,16 +1175,17 @@ export class BotBrain {
       // The head is 138 across and the chain plates are 99, so a pass sweeps a corridor
       // wider than any standoff. Abandon the whole corridor, not the thin centre line — and
       // include the chain, which trails ~13 plates * 168 behind the head and hurts too.
-      const chainReach = 2400;
-      if (along > 1400 || along < -chainReach || Math.abs(perp) > 460) continue;
+      // Every pass is latched through the station the pilot holds when the line is set, so
+      // the only way out is lateral distance gained *before* the body arrives. At 1100+ u/s
+      // a 1400-unit look-ahead is barely a second at walking speed; read the whole lane and
+      // buy distance with the dash instead of trying to out-step contact.
+      const chainReach = 2600;
+      if (along > 2600 || along < -chainReach || Math.abs(perp) > 520) continue;
       const side = perp >= 0 ? 1 : -1;
       out.mx = -uy * side;
       out.my = ux * side;
-      // Spend the charge on the approach: if the latched line crosses the pilot's station in
-      // under a second, one dash now is what makes the difference between a clip and a miss.
-      const eta = along / speed;
       const charges = (me as any).dashCharges ?? (me as any).dashLeft ?? 0;
-      if (Math.abs(perp) < 380 && eta > 0 && eta < 0.95 && charges > 0 && this.laneDashT <= 0) {
+      if (Math.abs(perp) < 420 && along > -200 && charges > 0 && this.laneDashT <= 0) {
         out.pressed |= ACTION.DASH;
         this.laneDashT = 1.15;
       }

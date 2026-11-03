@@ -3118,3 +3118,12 @@ trails thirteen plates and hurts as much as the head. At one segment the pilot b
 `RESTORE_STATUS` drop instead of trading. These read only what the player sees — heading, position, health, pickups,
 cooldowns. Do not close the last gap by weakening the boss; the remaining deaths are fodder contact in the crowded
 assault.
+
+### Boss escape must run on every frame (decided 2026-11-03)
+
+`BotBrain.think()` returns early in several branches (near-wall, guard hold, projectile reflex, and a dozen branches
+inside `engageHostiles`). A boss escape called from inside `engageHostiles` therefore only ran on frames where nothing
+else happened, which is never the frame a 940+ u/s body arrives: attribution showed every fatal hit at the head's own
+contact radius with dash charges unspent. `bossEscape()` (close-body dash, then `megaLaneRead`) is now called on all
+four `think()` exits and must stay there. A latched pass always crosses the station the pilot held, so the read buys
+lateral distance early (2600 look-ahead, 520 corridor) rather than reacting to contact.

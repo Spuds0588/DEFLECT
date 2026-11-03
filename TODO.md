@@ -65,9 +65,11 @@ Formerly: 2026-11-02 (PLATES + PORTS)
   against a 138-radius head. Survival moved 43-108 s -> 140-285 s and the pilot now damages the boss to ~120 hp
 - [x] Pilot now spends the lane dash on the approach (paced one per pass), treats the trailing chain as hazard
   (2400 behind), and breaks off for a RESTORE drop at one segment. Deaths 150-212 s, all `killer 2` now
-- [ ] Continuous REBOOT is still 0/5 clears. Single remaining cause: fodder worm contact in the crowded boss
-  assault. Next: thin the fodder pressure during the boss cycle or teach the pilot to clear adds at range; the
-  boss itself must not be weakened
+- [x] Structural bug fixed: the boss escape only ran on frames with no other branch taken. `bossEscape()` now runs
+  on all four `think()` exits, and the lane read buys 2600 units of look-ahead with an early dash
+- [ ] Continuous REBOOT is still 0/5 (4 distinct seeds). Attribution: boss head contact at d~150 with dashes in
+  hand, plus sentry fire in the open. Next: hold a standoff that the head's 138 radius and the chain cannot
+  sweep at all, and fight adds from outside their contact radius; the boss itself must not be weakened
 - Harness limitation, stated for the record: the probe routes on `islands`/open `bridges` with plain input frames;
   it is not a game rule that stops it, since `port-sweep-check` closes all three ports in 17.4 s
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them

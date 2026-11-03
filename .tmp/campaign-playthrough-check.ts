@@ -248,10 +248,12 @@ function playLevel(level: CampaignLevel, run: number) {
       if (p.hp < hpPrev) {
         let near: any = null;
         let nd = Infinity;
-        for (const w of (world.worms ?? []) as any[]) {
-          if (!w.active) continue;
-          const d = Math.hypot(w.x - p.x, w.y - p.y);
-          if (d < nd) { nd = d; near = { d: Math.round(d), boss: (w.bossKind ?? -1) >= 0 ? 1 : 0, hp: Math.round(w.hp), v: Math.round(Math.hypot(w.vx ?? 0, w.vy ?? 0)) }; }
+        for (const [fam, list] of [['worm', world.worms], ['virus', world.viruses], ['sentry', world.sentries], ['error', world.errors]] as any[]) {
+          for (const w of (list ?? []) as any[]) {
+            if (!w.active) continue;
+            const d = Math.hypot(w.x - p.x, w.y - p.y);
+            if (d < nd) { nd = d; near = { fam, d: Math.round(d), boss: (w.bossKind ?? -1) >= 0 ? 1 : 0, hp: Math.round(w.hp), v: Math.round(Math.hypot(w.vx ?? 0, w.vy ?? 0)) }; }
+          }
         }
         damage.push({ t: Math.round(ticks * SIM_DT), ph: world.campaignPhase, from: hpPrev, to: p.hp, by: 'brain', extra: frames[0].held, dash: (p as any).dashCharges ?? -1, near });
       } else if (p.hp > hpPrev) {

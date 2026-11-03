@@ -6779,3 +6779,31 @@ dashes now, so the remaining gap is the crowded assault's fodder, not the boss a
 
 **The 4-of-5 bar is not met.** The boss's damage, speed ramp and pass pattern, the warning beat, Kitty's line, the
 card, quota, arena, clear rule and snapshot are all unchanged.
+
+## 2026-11-03 — Boss escape hoisted to think(); measured pass rate still 0/5 (v0.1.167)
+
+Attribution after v0.1.166 showed every fatal hit was the **boss head itself** at 140–156 units — exactly the head
+radius (138) plus the player radius (12) — with dash charges still in hand. That pointed at reachability, not
+tuning, and it was right: `megaLaneRead`/`closeBodyDash` were only called at the *end* of `engageHostiles`, while
+`think()` returns early on near-wall, guard-hold and projectile-reflex branches, and `engageHostiles` itself returns
+early from heavy, beam, fire, melee and pathing branches. The escape therefore only ran on frames where nothing else
+happened — never the frame the body arrives.
+
+Fixed:
+
+1. **Boss escape is the last word on every frame.** A `bossEscape()` call now sits on all four `think()` exits, so
+   leaving the lane outranks whatever the pilot just decided.
+2. **Lateral distance is bought before arrival, not during it.** The read covers 2600 ahead and behind with a
+   520-wide corridor, and spends the dash on the approach instead of waiting for contact; a latched pass always
+   crosses the station the pilot held, so only pre-gained distance helps.
+
+Measured, and this is the honest result: **0 of 5 continuous runs cleared**, with per-run attribution:
+109 s `killer 2` (boss head, d=159, v=993); 60 s `killer 4` (sentry, d=222); 127 s `killer 2` (fodder worm, d=324);
+148 s `killer 4` (sentry, d=221); 109 s `killer 2` (boss head again). Runs 1 and 5 are the same seed (the pilot's
+program is `run % 4`), so the batch is four distinct scenarios, which is worth knowing before anyone quotes 0/5 as
+five independent samples.
+
+**The 4-of-5 bar is not met, and I did not touch the boss, the fodder pressure or the level tuning to chase it.** The
+boss's damage, speed ramp and pass pattern, the twelve-second warning, Kitty's line, the card, quota, arena, clear
+rule and snapshot are exactly as shipped. What remains is a real fight: the pilot gains ground early now but still
+loses one segment per contact window to a 138-radius head at 940–1645 u/s, and sentry fire catches it in the open.
