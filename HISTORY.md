@@ -6701,3 +6701,12 @@ So the mission's closing criterion — a continuous level-1 run that kills the M
 **not met**, and I am not going to dress the boss-mechanics check up as survival proof. The next measurement that
 matters is the fatal hit's actual attacker: `killerKind 2` with the only live worm 1237 units away means the damage
 source is not yet identified, and that log needs projectile-level attribution before anyone changes the boss.
+
+### Addendum — lane-based evasion (v0.1.163)
+
+The proximity dodge was the wrong trigger for a 940 u/s body: 430 units is about 0.45 s of warning. The pilot now
+reads the flight *line* — perpendicular offset from the boss's heading, with a dash under 170 — and that is
+measurably better without changing the game: the death moves from **43 s to 68 s** and the fodder count from 4 to 5,
+still `killer 2`, still with the Mega Worm alive. Surviving to actually engage the boss is still unsolved, so the
+continuous REBOOT pass rate is **0/7** and the mission's 4-of-5 criterion remains **not met**. BUILD ROOT stays 3/3
+continuous clears. Do not tune the boss down on this evidence: the run has never reached the boss with a body left.

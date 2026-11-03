@@ -242,10 +242,19 @@ function playLevel(level: CampaignLevel, run: number) {
         const bvy = bossBody.vy ?? 0;
         const bsp = Math.hypot(bvx, bvy) || 1;
         const closing = (bvx * bdx + bvy * bdy) / (bsp * bd);
-        if (bd < 430 && closing > 0.15) {
-          const sign = (-bvy / bsp) * bdx + (bvx / bsp) * bdy > 0 ? 1 : -1;
-          frames[0].mx = (-bvy / bsp) * sign;
-          frames[0].my = (bvx / bsp) * sign;
+        // 940 u/s means a proximity trigger is ~0.45 s of warning. Read the flight line
+        // instead: if the player is near the lane the body is about to sweep, step off it.
+        const along = (bdx * bvx + bdy * bvy) / bsp;
+        const perp = Math.abs((-bvy / bsp) * bdx + (bvx / bsp) * bdy);
+        const side = (-bvy / bsp) * bdx + (bvx / bsp) * bdy > 0 ? 1 : -1;
+        if (along > -150 && along < 1100 && perp < 280) {
+          frames[0].mx = (-bvy / bsp) * side;
+          frames[0].my = (bvx / bsp) * side;
+          if (perp < 170) frames[0].pressed |= ACTION.DASH;
+        }
+        if (bd < 430 && closing > 0.15 && perp >= 280) {
+          frames[0].mx = (-bvy / bsp) * side;
+          frames[0].my = (bvx / bsp) * side;
           if (bd < 240) frames[0].pressed |= ACTION.DASH;
         }
       }
