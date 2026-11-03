@@ -2311,10 +2311,14 @@ export const ARENAS: readonly ArenaDef[] = [
     // bridge C; closing all three opens the white exit port on the router uplink. Every
     // damaging action closes one, so the health is set to survive a couple of engages
     // while the cadence keeps the plate busy: a port that is ignored refills the floor.
+    // Every port stands on open floor with a clear ranged line to at least three sides.
+    // Port A used to sit inside the mainboard's first pillar and the router port inside
+    // the router's first pillar: a body can never shoot what is buried in cover, so the
+    // sweep could not be completed at all. Keep new ports clear of `pillars`.
     ingress: [
-      { x: 1240, y: 780, size: 78, hp: 20, family: 0, interval: 2.6, bridge: 2 },
+      { x: 1330, y: 900, size: 78, hp: 20, family: 0, interval: 2.6, bridge: 2 },
       { x: 1780, y: 940, size: 78, hp: 20, family: 1, interval: 3, bridge: 2 },
-      { x: 1250, y: 160, size: 78, hp: 26, family: 0, interval: 2.8 },
+      { x: 1350, y: 230, size: 78, hp: 26, family: 0, interval: 2.8 },
     ],
     port: {
       x: 1886,

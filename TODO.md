@@ -2,7 +2,8 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-03 (CAMPAIGN PLAYTHROUGH PASS)
+Last updated: 2026-11-03 (PORT GEOMETRY FIX)
+Formerly: 2026-11-03 (CAMPAIGN PLAYTHROUGH PASS)
 Formerly: 2026-11-02 (BOSS SWEEP + CAMPAIGN LEVEL 2)
 Formerly: 2026-11-02 (PLATES + PORTS)
 
@@ -38,6 +39,8 @@ Formerly: 2026-11-02 (PLATES + PORTS)
       a menu auto-runner that takes NEXT ARENA, RETRY and the next save slot, so a campaign can be watched end to end
 - [ ] A full four-run headed pass. The pilot reaches the assault but does not reliably finish the `BUILD ROOT` port
       sweep, so no headed campaign has completed; every clear so far comes from the headless probes
+- [x] BUILD ROOT ports were authored inside cover pillars: two of the three could not be shot from any direction, so the sweep was impossible. Moved to open floor (mainboard A 1330,900 and router 1350,230; B stays 1780,940) and `spawnCampaignPorts` now nudges a buried port to clear ground
+- [ ] Confirm the sweep end to end in a headed run: the arena fix is geometry-verified, the full three-port clear is not yet observed in play
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them
 
 ---

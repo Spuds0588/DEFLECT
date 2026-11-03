@@ -6467,3 +6467,29 @@ time per boss.
 
 **Next:** a human solo pass on `BUILD ROOT` to judge the three-port sweep, then a full four-run headed pass with
 a stronger pilot or a person at the keyboard.
+
+## 2026-11-03 — BUILD ROOT port sweep was impossible: two ports sat inside cover (v0.1.154)
+
+**Goal:** clear the campaign's mid-point, which nothing had ever beaten, and then play four runs through `REBOOT`.
+
+- Evidence first: `.tmp/port-sweep-check.ts` drives the ports with ordinary ranged input and failed at step one,
+  "no clear firing line to port 0 at 1240,780". A geometry dump (`.tmp/port-diag.ts`) showed why: two of the three
+  `ingress` entries sat **inside `pillars` rects** (`insideSolid=1`, nearest solid 0u), so every ranged line to their
+  squares crossed cover. The remaining port had three clear sides. That is why every sweep stalled no matter who
+  drove it: the objective was unshootable, not hard.
+- Fixed in the arena data, keeping the authored intent (two ports on the mainboard, one on the router, both mainboard
+  ports still on bridge 2): mainboard A `1240,780 -> 1330,900`, router `1250,160 -> 1350,230`, mainboard B unchanged
+  at `1780,940`. A placement probe verified each new square is off cover and has 170-unit clear lines on at least
+  three sides.
+- Guard in `World.spawnCampaignPorts`: a port authored inside cover is nudged to the nearest clear square (24 rays,
+  8 rings) instead of shipping as a dead end, so bad authoring can no longer make a level unwinnable silently.
+- Open item, stated plainly: the full three-port clear has not yet been observed in play. A headed probe of the
+  staged fight had bolts anchoring ~170 units short of the port with movement frozen at that standoff, while the
+  same harness moves and fires normally elsewhere, so the remaining blocker is in the harness staging and not yet
+  separated from the game. The arena geometry bug is fixed and provable; the end-to-end sweep needs one clean
+  headed run.
+
+**Verification:** `port-sweep-check` geometry stage passes (placement, per-port clear lines), `campaign-death-check`
+OK, `campaign2-check` 3/3 boss clears, `tsc --noEmit`/`build` clean.
+
+**Next:** one headed BUILD ROOT clear, then the four `REBOOT` runs.

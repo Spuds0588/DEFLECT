@@ -92,8 +92,12 @@
     // Only a traversal arena cuts holes in its floor. QUARANTINE draws themed room plates
     // but has no voids and no chasms, so its whole bounded rect is walkable and treating
     // the seams between the plates as gaps froze the pilot in place.
-    const hasHoles = chasms.length > 0 || voids.length > 0;
-    const plates = hasHoles && rooms.length ? [...rooms, ...decks] : [];
+    // A traversal arena names its walkable floor: `islands` over open void, tutorial room
+    // plates, and the bridge decks that join them. Everything else is a drop, so a pilot
+    // that treats the arena rect as floor walks into the void on every approach.
+    const islands = (arena && arena.islands) || [];
+    const hasHoles = chasms.length > 0 || voids.length > 0 || islands.length > 0;
+    const plates = hasHoles ? [...islands, ...rooms, ...decks] : [];
     const reject = [...chasms, ...voids];
     const inRect = (r, x, y) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h;
     const walkable = (x, y) => {
@@ -226,7 +230,7 @@
       tx = exit.x + exit.w / 2; ty = exit.y + exit.h / 2;
       aim = best && bestD < 240 ? best : null;
       standoff = aim ? 200 : 0;
-    } else if (portals.length && quotaMet) {
+    } else if (portals.length) {
       let pb = portals[0], pd = Infinity;
       for (const b of portals) {
         const d = Math.hypot(b.x + b.w / 2 - p.x, b.y + b.h / 2 - p.y);
@@ -234,7 +238,7 @@
       }
       tx = pb.x + pb.w / 2; ty = pb.y + pb.h / 2;
       aim = { x: tx, y: ty, port: true }; bestD = pd; standoff = 0;
-    } else if (best && bestD < 760) {
+    } else if (!portals.length && best && bestD < 760) {
       tx = best.x; ty = best.y;
     } else if (portals.length) {
       let pb = portals[0], pd = Infinity;

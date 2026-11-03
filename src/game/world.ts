@@ -1368,11 +1368,15 @@ export class World {
     if (!ingress) return;
     for (let i = 0; i < ingress.length; i++) {
       const p = ingress[i];
+      // A port authored inside cover is unshootable: its square sits in a pillar, so no
+      // ranged line reaches it and the sweep can never be finished. Nudge it onto the
+      // nearest clear floor square rather than trusting the authored point blindly.
+      const spot = this.clearPortSpot(p.x, p.y, p.size);
       this.props.push({
         active: true,
         kind: 0,
-        x: p.x - p.size * 0.5,
-        y: p.y - p.size * 0.5,
+        x: spot.x - p.size * 0.5,
+        y: spot.y - p.size * 0.5,
         w: p.size,
         h: p.size,
         hp: p.hp,
@@ -1401,6 +1405,36 @@ export class World {
    * copies of one family instead. It shares the port clock, the damage path and the close
    * beat, but it releases no bridge and is never part of a campaign port tally.
    */
+  /**
+   * The centre of a port that is not buried in cover. A port inside a pillar can never be
+   * shot, which makes its level unwinnable; content should place them in the open, and
+   * this keeps a bad placement from shipping as a dead end. Returns the authored point
+   * when it is already clear.
+   */
+  private clearPortSpot(x: number, y: number, size: number): { x: number; y: number } {
+    const half = size * 0.5;
+    const clear = (px: number, py: number): boolean => {
+      for (let i = 0; i < this.arena.pillars.length; i++) {
+        const r = this.arena.pillars[i];
+        if (px + half > r.x && px - half < r.x + r.w && py + half > r.y && py - half < r.y + r.h) return false;
+      }
+      return true;
+    };
+    if (clear(x, y)) return { x, y };
+    const step = 40;
+    for (let ring = 1; ring <= 8; ring++) {
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const px = x + Math.cos(a) * step * ring;
+        const py = y + Math.sin(a) * step * ring;
+        if (px - half < this.arena.bounds.left || px + half > this.arena.bounds.right) continue;
+        if (py - half < this.arena.bounds.top || py + half > this.arena.bounds.bottom) continue;
+        if (clear(px, py)) return { x: px, y: py };
+      }
+    }
+    return { x, y };
+  }
+
   private spawnArenaReplicators(): void {
     // A restart rebuilds the floor: drop any replicator left from the previous run.
     for (let i = this.props.length - 1; i >= 0; i--) {

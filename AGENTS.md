@@ -255,7 +255,7 @@ same definition. The room host selects one and sends the id in `START`; snapshot
 Do not reintroduce a global `PILLARS` constant or branch collision on map names. New arenas are content
 entries, not new systems.
 
-`rooms`, `bridges` and `port` are tutorial presentation data, not a second traversal system. Rooms only
+`rooms`, `bridges` and `port` are tutorial presentation data, not a second traversal system. **Ingress ports must stand clear of cover (2026-11-03):** a port is an arena `ingress` entry and its square must not overlap a `pillars` rect, or no ranged line reaches it and the port sweep can never be completed. QUARANTINE shipped two ports inside pillars and BUILD ROOT was unwinnable because of it. `spawnCampaignPorts` nudges a buried port to the nearest clear square, but content is expected to place them in the open; keep new ports clear of cover and re-check with `.tmp/port-sweep-check.ts`. Rooms only
 draw floor plates, labels and dressing; the matching `traverse.chasms` are the body blockers and the
 `traverse.bridges` are the walkable spans. A room arena stays local-only (`isOnlineArena` skips `rooms`)
 and never enters host/guest room selection. See D41.
