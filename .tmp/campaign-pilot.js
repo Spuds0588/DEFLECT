@@ -41,6 +41,8 @@
   let lastPhase = '', lastHp = 9, stepKey = '', stepSince = 0, stuckSkips = 0;
   let lastSwing = 0, lastDash = 0, lastSkill = 0, lastHeavy = 0, lastCycle = 0, lastLock = 0;
   let lUntil = 0, guardUntil = 0;
+  let nudge = null, lastNudge = 0;        // short steps that land facing on the target
+  let portHpKey = '', portHpSince = 0, portLaneIdx = 0, portLanePoint = null;
   let field = null;            // cached floor description for the current arena
   let route = null;            // cached BFS route
   let routeAt = 0, routeGoalKey = '';
@@ -208,8 +210,9 @@
       else if (tutorial.action === 'skill' && now() - lastSkill > 700) { tap('KeyL', 90); lastSkill = now(); }
     }
 
-    const portals = w.props.filter((b) => b && b.active && b.portal && !b.portalExit && b.hp > 0);
-    const exit = w.props.find((b) => b && b.active && b.portalExit);
+    const assaultLive = w.campaignPhase === 'assault';
+    const portals = assaultLive ? w.props.filter((b) => b && b.active && b.portal && !b.portalExit && b.hp > 0) : [];
+    const exit = assaultLive ? w.props.find((b) => b && b.active && b.portalExit) : null;
 
     let best = null, bestD = Infinity;
     for (const arr of [w.worms, w.viruses, w.sentries, w.errors]) {
@@ -236,8 +239,30 @@
         const d = Math.hypot(b.x + b.w / 2 - p.x, b.y + b.h / 2 - p.y);
         if (d < pd) { pd = d; pb = b; }
       }
-      tx = pb.x + pb.w / 2; ty = pb.y + pb.h / 2;
-      aim = { x: tx, y: ty, port: true }; bestD = pd; standoff = 0;
+      const pcx = pb.x + pb.w / 2, pcy = pb.y + pb.h / 2;
+      aim = { x: pcx, y: pcy, port: true }; bestD = pd; standoff = 0;
+      // A port only closes from a clear lane. When its hp stops moving, walk to the next
+      // lane around it instead of standing in cover, the way a player repositions.
+      const hpKey = `${Math.round(pcx)},${pb.hp}`;
+      if (hpKey !== portHpKey) {
+        portHpKey = hpKey;
+        portHpSince = now();
+        portLanePoint = null;
+        portLaneIdx = 0;
+      }
+      // Swap lanes only when this one has stopped landing damage, so a working lane is kept.
+      if (!portLanePoint || now() - portHpSince > 12000) {
+        if (portLanePoint) { portLaneIdx++; portHpSince = now(); }
+        const lanes = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]];
+        for (let k = 0; k < 8; k++) {
+          const [ox, oy] = lanes[(portLaneIdx + k) % 8];
+          const lx = pcx + ox * 170, ly = pcy + oy * 170;
+          if (f.walkable(lx, ly)) { portLanePoint = { x: lx, y: ly }; break; }
+        }
+        if (portLanePoint) log(`port lane ${Math.round(portLanePoint.x)},${Math.round(portLanePoint.y)} (hp ${pb.hp})`);
+      }
+      if (portLanePoint) { tx = portLanePoint.x; ty = portLanePoint.y; }
+      else { tx = pcx; ty = pcy; }
     } else if (!portals.length && best && bestD < 760) {
       tx = best.x; ty = best.y;
     } else if (portals.length) {
@@ -325,6 +350,24 @@
         if (lineOk(ax / d2, ay / d2)) { dx = ax / d2; dy = ay / d2; }
         else { dx = 0; dy = 0; }
       } else { dx = 0; dy = 0; }
+    }
+
+    // Facing comes from movement only. A body pinned against cover or a ledge edge keeps its
+    // old facing and fires past the target forever, so take a short step at the target: that
+    // is exactly the input a player uses to turn without walking away.
+    if (!dx && !dy && aim) {
+      const ax3 = aim.x - p.x, ay3 = aim.y - p.y;
+      if (Math.hypot(ax3, ay3) > 12) {
+        if (!nudge && now() - lastNudge > 180) { nudge = { x: ax3, y: ay3, until: now() + 120 }; lastNudge = now(); }
+      }
+    }
+    if (nudge) {
+      if (now() > nudge.until) nudge = null;
+      else {
+        const nd = Math.hypot(nudge.x, nudge.y) || 1;
+        const sdx = nudge.x / nd, sdy = nudge.y / nd;
+        if (lineOk(sdx, sdy)) { dx = sdx; dy = sdy; }
+      }
     }
 
     send('KeyW', dy < -0.35);

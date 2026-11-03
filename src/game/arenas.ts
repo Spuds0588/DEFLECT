@@ -74,11 +74,14 @@ export interface HoldingCellLayout {
 }
 
 export function holdingCellLayout(room: ArenaRoomDef): HoldingCellLayout {
-  // The block takes a little under half the plate, so a scaled-up holding island gets
-  // cells a body can move in instead of a shallow painted shelf.
+  // The block sits on the back-right of the plate and leaves the left side open. The intake
+  // bridge lands on that open side, so a body walks in beside the cells and then reads the
+  // block from the front as it heads right: arriving over the top of the plate dropped the
+  // player behind the sealed bars, in a strip too thin to escape while they were powered.
+  const blockW = room.w * 0.52;
   return {
-    left: room.x + 18,
-    cellW: (room.w - 36) / 3,
+    left: room.x + room.w - blockW - 12,
+    cellW: (blockW - 12) / 3,
     top: room.y + 16,
     bottom: room.y + Math.round(room.h * 0.46),
   };
@@ -2291,11 +2294,13 @@ export const ARENAS: readonly ArenaDef[] = [
         sub: 'PORT 03 // UPLINK',
       },
     ],
-    // A is the way in from intake. B starts retracted until the cell block is cleared,
-    // and C stays shut until every port on the mainboard is closed.
+    // A is the way in from intake, and it lands on the holding plate's open left side so
+    // the approach never drops a body behind the sealed cells. B joins the holding plate in
+    // front of the cell block, past its front wall, and starts retracted until the block is
+    // cleared; C stays shut until every port on the mainboard is closed.
     bridges: [
-      { x: 330, y: 444, w: 150, h: 220, label: 'A' },
-      { x: 858, y: 800, w: 226, h: 140, label: 'B', closed: true },
+      { x: 140, y: 444, w: 150, h: 220, label: 'A' },
+      { x: 858, y: 862, w: 226, h: 138, label: 'B', closed: true },
       { x: 1720, y: 444, w: 150, h: 220, label: 'C', closed: true },
     ],
     // Four plates over open void. There is no shared floor underneath: walking off an

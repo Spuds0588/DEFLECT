@@ -42,6 +42,10 @@ Formerly: 2026-11-02 (PLATES + PORTS)
 - [x] BUILD ROOT ports were authored inside cover pillars: two of the three could not be shot from any direction, so the sweep was impossible. Moved to open floor (mainboard A 1330,900 and router 1350,230; B stays 1780,940) and `spawnCampaignPorts` now nudges a buried port to clear ground
 - [x] Sweep confirmed clearable: `.tmp/port-sweep-check.ts` closes all three ports in 17.4 s of ordinary ranged fire and clears the node; a headed Chromium run closed 2 of 3 ports by real play before the session ended
 - [ ] Four headed start-to-finish campaign runs (level 1 -> level 2 -> Mega Worm) with per-run logs
+- [x] Holding plate entry: the intake bridge landed behind the sealed cell block, so QUARANTINE dropped a body into a
+  strip it could not leave. Cell block moved back-right, intake deck lands on the open left, holding->mainboard deck
+  joins in front of the cells (`holdingCellLayout`, `.tmp/holding-layout-check.ts`)
+- [ ] Apply the left-to-right entry rule to the remaining campaign and gauntlet plates as they are authored
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them
 
 ---

@@ -6510,3 +6510,23 @@ port is a pilot-routing gap rather than a game bug.
 **Still open:** four complete headed start-to-finish runs (level 1 through level 2 and the Mega Worm) were
 not completed. The Mega Worm's own clear path is covered by `campaign2-check` (three consecutive boss-node
 clears) but not by a headed run.
+
+## 2026-11-03 — Holding plate entry moved to the open left side of the cell block (v0.1.155)
+
+**Goal (user report):** in QUARANTINE the bridge into the holding cells arrived behind the cells, so the closed
+block sat between the player and the room. Overall arena flow should read left to right.
+
+- Root cause: `holdingCellLayout` spanned nearly the whole holding plate (x 66..840) and `campaignCellBarRects`
+  makes that whole block one body solid while the bars are powered. Bridge A landed on the plate's top edge at
+  x 330..480, i.e. inside the block's footprint, leaving a 16-unit strip between the room wall and the bars: a
+  body arrived behind the sealed cells with no way out until the block powered down.
+- Fix: the block is back-right (`left = room.x + w - 0.52w - 12`, three 136-unit cells) and the intake deck moved
+  to the open left (`140..290`), so entry is beside the cells. The holding-to-mainboard deck moved to `y 862..1000`,
+  past the block's front wall (`bottom` 840), so the exit is read from the front of the cells, the way a jail does.
+  Kitty and her label follow the block instead of the plate centre (`cellMidX`), so the middle cell still holds her.
+- Flow rule recorded in AGENTS: a plate is entered on its left and left on its right where the layout allows;
+  vertical links are the exception. This plate now reads left to right: in at the left, past the cells, out right.
+
+**Verification:** `holding-layout-check` OK (cells 425..834 / 680..840, landing 215,688, doorway 862..1000),
+`port-sweep-check` OK (three ports in 17.4 s, exit opens, phase cleared), `campaign2-check` OK (REBOOT boss clears),
+`campaign-death-check` OK, `tsc --noEmit`, `build`, `bench` clean.

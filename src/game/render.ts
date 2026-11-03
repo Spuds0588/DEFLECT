@@ -7678,6 +7678,9 @@ export class Renderer {
     const cellTop = layout.top;
     const cellBottom = layout.bottom;
     const cx = room.x + room.w * 0.5;
+    // Kitty and her cell label follow the block, not the plate centre: the block sits on
+    // the back-right so the intake bridge can land on open floor at the left.
+    const cellMidX = left + cellW * 1.5;
 
     // Two office desks sit at the front of the room, clear of the cell block and the
     // central wake arc. They are visual furniture, not cover pillars.
@@ -7721,13 +7724,13 @@ export class Renderer {
     }
 
     // Kitty is inside the middle cell, drawn before the bars so the bars occlude her.
-    drawRegularProgram(this.ctx, regularProgram('script-kitty'), cx, cellBottom - 12, t, 0.66, alpha, 0.35);
+    drawRegularProgram(this.ctx, regularProgram('script-kitty'), cellMidX, cellBottom - 12, t, 0.66, alpha, 0.35);
     ctx.globalAlpha = 0.42 * alpha;
     ctx.fillStyle = theme.accent;
     ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('KITTY', cx, cellBottom + 13);
+    ctx.fillText('KITTY', cellMidX, cellBottom + 13);
 
     // Wave 2 waits behind the bars: the worm in the left cell, the virus pair in the
     // right. The real bodies exist already but are hidden from the normal threat pass;
