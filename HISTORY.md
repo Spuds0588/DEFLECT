@@ -6733,3 +6733,28 @@ Still open, unchanged: a continuous level-1 run still does not reach a Mega Worm
 dies to the flyby's contact damage before it engages, at 5 fodder kills. The warning window gives a human the
 preparation the boss needed; it does not make the automated pilot dodge, so the 4-of-5 continuous criterion is still
 not met and must not be claimed.
+
+## 2026-11-03 — Bot boss handling: lane read, boss standoff, no giant melee (v0.1.165)
+
+The continuous REBOOT failures were traced to the shipped `BotBrain`, not to the boss, and three genuine AI bugs
+came out of it:
+
+1. **The brain could not read a mini-boss pass at all.** Its threat model was projectiles only, so the Mega Worm was
+   just "the nearest worm": the pilot walked to a 150-unit standoff from a body whose head radius is 138. It now reads
+   the pass line from the visible heading and position and abandons the corridor the body sweeps.
+2. **The lane gate was a third of a second wide.** The first version only reacted when the player was within 300
+   units *ahead* of the body; at 940 u/s that is 0.3 s, so contact always landed first. Damage attribution showed
+   every boss hit at 147–159 units from the head with both dash charges unused. The gate now reads the whole approach
+   (1400 ahead) and dashes under 760 with the corridor 460 wide.
+3. **The pilot hugged boss-sized bodies.** The standoff is now 330 for `bossKind >= 0` (was 150 for everything), and it
+   no longer swings the lash or roots a heavy inside a body bigger than the swing.
+
+Measured effect of those fixes in the continuous run, all other things equal: death time moved from 43–108 s to
+140–285 s, and for the first time the pilot damages the boss (down to 120–150 hp from 206) instead of dying on arrival.
+
+**The criterion is still not met: 0 of 5 continuous multi-bot runs defeat the Mega Worm.** Remaining deaths are
+mixed — `killer 2` (worm contact, including the boss's chain) and `killer 4` (sentry fire) — in the crowded assault
+that keeps spawning fodder while the boss cycles. Nothing in the logs shows unavoidable damage: every hit is contact
+at the visible body radius, and every run has dash charges or a heal on the floor that the pilot did not use, which is
+pilot behaviour rather than level unfairness. Do not reduce the boss's damage, speed ramp or pass pattern to close
+this; the next step is the pilot spending dashes and heals under pressure.

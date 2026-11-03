@@ -3100,3 +3100,12 @@ top of its own entrance arc. That window is presentation only: it must never gat
 rule or `Snapshot`, and the line is the same local DOM story box as every other beat. `.tmp/boss-warning-check.ts`
 owns this contract; `.tmp/campaign2-check.ts` owns boss mechanics but runs the pilot at `iframes = 999`, so it is not
 evidence that the fight is survivable.
+
+### Bots must read a boss pass (decided 2026-11-03)
+
+`BotBrain.engageHostiles` now hands the last word to `megaLaneRead`: a moving mini-boss draws a straight line, so the
+pilot abandons the corridor that line sweeps (heading and position only, nothing hidden) and dashes when the body is
+close. Keep the corridor wide — the head is 138 across and the plates 99 — and keep boss standoff at 330 rather than
+the 150 used for fodder, because 150 from a 138-radius head is standing inside it. A boss body must never be lashed
+or rooted into with a heavy whose reach is smaller than the body. This is how a human plays the fight; do not replace
+it with damage reduction on the boss.

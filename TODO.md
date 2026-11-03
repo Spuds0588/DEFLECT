@@ -61,8 +61,11 @@ Formerly: 2026-11-02 (PLATES + PORTS)
   spawns the boss at 200 hp with 4/4 fodder kills
 - [x] Boss pattern is fixed and announced: offscreen staging plus a straight latched pass, a 5 s Kitty warning and
   title card before the spawn, and a speed ramp with missing health (`boss-warning-check.ts`)
-- [ ] Continuous REBOOT is still 0: the shipped BotBrain dies to flyby contact before it engages the boss (5 fodder
-  kills). The next measurement is why the dodge does not clear the lane during the assembled pass, not boss pacing
+- [x] Three real bot bugs fixed: no boss lane read, a 300-unit lane gate (0.3 s at 940 u/s), and a 150 standoff
+  against a 138-radius head. Survival moved 43-108 s -> 140-285 s and the pilot now damages the boss to ~120 hp
+- [ ] Continuous REBOOT is still 0/5 clears: deaths are worm contact (`killer 2`) and sentry fire (`killer 4`) in
+  the crowded assault, with dashes and floor heals left unused. Next: make the pilot spend dashes and take heals
+  under pressure; do not nerf the boss's damage, ramp or pattern to get there
 - Harness limitation, stated for the record: the probe routes on `islands`/open `bridges` with plain input frames;
   it is not a game rule that stops it, since `port-sweep-check` closes all three ports in 17.4 s
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them

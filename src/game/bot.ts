@@ -991,7 +991,7 @@ export class BotBrain {
       me.swingPhase === 0 &&
       me.dashT <= 0 &&
       me.energy >= 50 &&
-      dist > 110 &&
+      dist > (kind === 0 && (worms[idx]?.bossKind ?? -1) >= 0 ? 300 : 110) &&
       dist < 440
     ) {
       out.mx = ux * 0.5;
@@ -1041,7 +1041,9 @@ export class BotBrain {
         return true;
       }
     }
-    if (dist < PLAYER.swingReach * me.meleeReachMult + 6 && me.swingPhase === 0 && this.swingCd <= 0) {
+    // Never swing at a body whose radius is larger than the swing itself.
+    const giant = kind === 0 && (worms[idx]?.bossKind ?? -1) >= 0;
+    if (!giant && dist < PLAYER.swingReach * me.meleeReachMult + 6 && me.swingPhase === 0 && this.swingCd <= 0) {
       out.mx = ux;
       out.my = uy;
       out.pressed |= ACTION.SWING;
@@ -1059,8 +1061,12 @@ export class BotBrain {
     } else {
       // Continuous standoff: approach far away, orbit at the hold distance, back off
       // only when genuinely crowded. A hard `too close` switch made the pilot pump in
-      // and out every time it straddled the line.
-      const radial = Math.max(-1, Math.min(1, (dist - 150) / 60));
+      // and out every time it straddled the line. A mini-boss is a much larger body: its
+      // head radius alone is 138, so holding 150 from its centre is standing inside it.
+      const bossTarget = kind === 0 && (worms[idx]?.bossKind ?? -1) >= 0;
+      const hold = bossTarget ? 330 : 150;
+      const band = bossTarget ? 90 : 60;
+      const radial = Math.max(-1, Math.min(1, (dist - hold) / band));
       const orbit = (1 - Math.abs(radial)) * this.strafeDir;
       moveX = ux * radial - uy * orbit;
       moveY = uy * radial + ux * orbit;
@@ -1073,7 +1079,42 @@ export class BotBrain {
       out.mx = this.steerX * speed;
       out.my = this.steerY * speed;
     }
+    this.megaLaneRead(world, me, out);
     return true;
+  }
+
+  /**
+   * A mini-boss pass is drawn as a straight line, so it can be read: the pilot steps off the
+   * lane the body is about to sweep and dashes out when it is already close. Nothing hidden
+   * is read here — heading and position are exactly what the player sees.
+   */
+  private megaLaneRead(world: World, me: Player, out: InputFrame): boolean {
+    for (let i = 0; i < world.worms.length; i++) {
+      const w = world.worms[i];
+      if (!w.active || w.bossKind < 0) continue;
+      const speed = Math.hypot(w.vx, w.vy);
+      // A parked or assembling body sweeps nothing, so it is not a lane to leave.
+      if (speed < 60) continue;
+      const ux = w.vx / speed;
+      const uy = w.vy / speed;
+      const rx = me.x - w.x;
+      const ry = me.y - w.y;
+      // `along` is how far ahead of the body the player is. The old gate only reacted
+      // inside 300 units, which at 940 u/s is a third of a second: the pilot was always
+      // already in contact before it moved. Read the whole approach instead.
+      const along = rx * ux + ry * uy;
+      const perp = -rx * uy + ry * ux;
+      // The head is 138 across and the chain plates are 99, so a pass sweeps a corridor
+      // wider than any standoff. Abandon the whole corridor, not the thin centre line.
+      if (along > 1400 || along < -1500 || Math.abs(perp) > 460) continue;
+      const side = perp >= 0 ? 1 : -1;
+      out.mx = -uy * side;
+      out.my = ux * side;
+      // Step off early, then dash once the body is close and the ramp has it fast.
+      if (Math.abs(perp) < 300 && along < 760) out.pressed |= ACTION.DASH;
+      return true;
+    }
+    return false;
   }
 
   /** Reads the pilot's sticky hostile into hostileX/Y. False when it is gone. */

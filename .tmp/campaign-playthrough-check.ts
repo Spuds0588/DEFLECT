@@ -230,34 +230,7 @@ function playLevel(level: CampaignLevel, run: number) {
       // The shipped brain does not know about pickups or about a one-segment pool. A player
       // does: at one segment it goes for the RESTORE drop, and with none on the floor it
       // backs out of melee instead of trading the last segment.
-      // The Mega Worm's whole attack is contact during a 940 u/s flyby: it crosses the lane
-      // in about a second, so the answer is to leave the lane, not to outrun it.
-      const bossBody = (world.worms ?? []).find((w: any) => w.active && w.bossKind !== undefined);
       const rest = (world.pickups ?? []).find((k: any) => k.active && k.kind === 0);
-      if (bossBody) {
-        const bdx = bossBody.x - p.x;
-        const bdy = bossBody.y - p.y;
-        const bd = Math.hypot(bdx, bdy) || 1;
-        const bvx = bossBody.vx ?? 0;
-        const bvy = bossBody.vy ?? 0;
-        const bsp = Math.hypot(bvx, bvy) || 1;
-        const closing = (bvx * bdx + bvy * bdy) / (bsp * bd);
-        // 940 u/s means a proximity trigger is ~0.45 s of warning. Read the flight line
-        // instead: if the player is near the lane the body is about to sweep, step off it.
-        const along = (bdx * bvx + bdy * bvy) / bsp;
-        const perp = Math.abs((-bvy / bsp) * bdx + (bvx / bsp) * bdy);
-        const side = (-bvy / bsp) * bdx + (bvx / bsp) * bdy > 0 ? 1 : -1;
-        if (along > -150 && along < 1100 && perp < 280) {
-          frames[0].mx = (-bvy / bsp) * side;
-          frames[0].my = (bvx / bsp) * side;
-          if (perp < 170) frames[0].pressed |= ACTION.DASH;
-        }
-        if (bd < 430 && closing > 0.15 && perp >= 280) {
-          frames[0].mx = (-bvy / bsp) * side;
-          frames[0].my = (bvx / bsp) * side;
-          if (bd < 240) frames[0].pressed |= ACTION.DASH;
-        }
-      }
       if (rest && p.hp < (p.maxHp ?? 3)) {
         const rdx = rest.x - p.x;
         const rdy = rest.y - p.y;
@@ -273,7 +246,14 @@ function playLevel(level: CampaignLevel, run: number) {
       driveBots();
       world.step(SIM_DT, frames);
       if (p.hp < hpPrev) {
-        damage.push({ t: Math.round(ticks * SIM_DT), ph: world.campaignPhase, from: hpPrev, to: p.hp, by: 'brain', extra: frames[0].held });
+        let near: any = null;
+        let nd = Infinity;
+        for (const w of (world.worms ?? []) as any[]) {
+          if (!w.active) continue;
+          const d = Math.hypot(w.x - p.x, w.y - p.y);
+          if (d < nd) { nd = d; near = { d: Math.round(d), boss: (w.bossKind ?? -1) >= 0 ? 1 : 0, hp: Math.round(w.hp), v: Math.round(Math.hypot(w.vx ?? 0, w.vy ?? 0)) }; }
+        }
+        damage.push({ t: Math.round(ticks * SIM_DT), ph: world.campaignPhase, from: hpPrev, to: p.hp, by: 'brain', extra: frames[0].held, dash: (p as any).dashCharges ?? -1, near });
       } else if (p.hp > hpPrev) {
         heals.push({ t: Math.round(ticks * SIM_DT), from: hpPrev, to: p.hp });
       }
@@ -484,13 +464,20 @@ function playLevel(level: CampaignLevel, run: number) {
 // Diagnostic filters for iterating one level; the closing criterion runs the full chain.
 const ONLY = Number(process.env.LEVEL ?? -1);
 const RUNS = Number(process.env.RUNS ?? 3);
+let cleared = 0;
+let failed = 0;
 for (let run = 1; run <= RUNS; run++) {
-  for (const level of PLAYABLE_CAMPAIGN_LEVELS) {
-    if (ONLY >= 0 && level.id !== ONLY) continue;
-    playLevel(level, run);
+  try {
+    for (const level of PLAYABLE_CAMPAIGN_LEVELS) {
+      if (ONLY >= 0 && level.id !== ONLY) continue;
+      playLevel(level, run);
+    }
+    cleared++;
+  } catch (err) {
+    failed++;
+    console.log('RUNFAIL ' + (err as Error).message);
   }
   if (ONLY < 0) console.log(`run ${run}: BUILD ROOT -> REBOOT -> Mega Worm defeated`);
 }
-console.log(ONLY < 0
-  ? 'campaign-playthrough-check: OK (three continuous campaign clears)'
-  : `campaign-playthrough-check: level ${ONLY} diagnostic runs done`);
+console.log(`campaign-playthrough-check: ${cleared} cleared, ${failed} failed of ${RUNS} continuous runs`);
+if (ONLY < 0 && cleared < RUNS) throw new Error('not every continuous run cleared');
