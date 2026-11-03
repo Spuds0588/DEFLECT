@@ -6603,3 +6603,20 @@ kept with its instrumentation so the next pass can log the body's route directly
 
 Nothing here changes a game rule: `port-sweep-check` still closes all three ports in 17.4 s of ordinary fire and
 `campaign2-check` still defeats the Mega Worm on three 3-bot runs.
+
+## 2026-11-03 — Continuous probe: navigation rewritten, run now dies in the assault (v0.1.159)
+
+Replaced the probe's steering with a model that cannot silently stall: eight compass steps, each accepted only if
+both the floor model and a 26/52-unit look-ahead allow it, walking the BFS route one waypoint at a time. Every
+refused step is counted and printed with the current goal, aim point, route length and deck state.
+
+Effect, from the run log: BUILD ROOT now reaches `assault` at **83 s** (drill 61 s, breach 79 s) instead of never,
+which confirms the previous stall was the steering, not the objective. The run then ends at **95 s** with
+`phase: failed` — the local body is killed in the assault twelve seconds in, at 1 kill toward the ten-kill quota.
+
+So the continuous clear is **still not achieved** and the three-run criterion is **not met**. The stall point is now
+survival in the assault, not travel: the body reaches the fight, fights, and dies. Deaths are the game's own
+one-life rule (`world.ts` sets `campaignPhase = 'failed'` when slot 0 dies during the assault), so the probe needs
+real defensive play — retreat to cover, spend the guard, hold the dash for the shot that will land — before the
+closing criterion can be met. Nothing here points at a game defect: the ports still close in 17.4 s under
+`port-sweep-check` and the Mega Worm still dies in all three `campaign2-check` runs.
