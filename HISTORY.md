@@ -7077,3 +7077,26 @@ logged, or the step that leaves the plate is invisible.
 
 Deaths are no longer clustered only at the breach handoff: this one is in `drill` at 67 s. Version stays v0.1.173;
 no game code shipped.
+
+## 2026-11-03 — Seam walk proven; swept floor contact still leaves one fall (no ship)
+
+The extended ring settled the cause. Frames before the drop, BUILD ROOT, phase `calibration`:
+
+```
+t=0.27 x=322 y=438 off=false mx=0.43 my=0.73 held=16 dash=0 ft=0
+t=0.30 x=326 y=444 off=false mx=0.43 my=0.73 held=16 dash=0 ft=0
+t=0.32 x=327 y=447 off=true  mx=0.44 my=0.67 held=16 dash=0 ft=0.6
+```
+
+The body walks off a **narrow seam** under its own input with no dash and no knockback. That is why an endpoint
+lookahead (24 units) never saw it: the far plate reads as floor, so the gap between plates is skipped entirely.
+
+A swept version then replaced the point test: the heading is sampled at ten points across the next quarter second and
+a rejected heading is rotated to the nearest continuous floor, with recovery to the nearest on-floor point (never the
+arena centre). It was wired through a `think()` wrapper so no early return can skip it. Result: falls collapsed from
+repeated deaths to a single fall window at 70-72 s, and the run then continued and died at 143 s to `killer 4` with
+`killer 1` before it. Ports stayed 0/3. One fall remains, so the change is not validated and was reverted.
+
+Remaining cause candidates, in order: during `calibration`/`drill` the pilot steers itself (`branch: idle`) while the
+scripted beat expects it to hold, which walks it at seams it does not need to cross; and the fall state's pull-back
+may fight the clamp's recovery heading. Version stays v0.1.173; no game code shipped.

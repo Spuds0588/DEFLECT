@@ -217,6 +217,8 @@ function playLevel(level: CampaignLevel, run: number) {
       hp: p.hp, phase: world.campaignPhase,
       open: world.bridgeOpen.map((b) => (b ? 1 : 0)).join(''),
       dash: p.dashT ?? 0,
+      mx: +frames[0].mx.toFixed(2), my: +frames[0].my.toFixed(2),
+      held: frames[0].held, branch: (brain as any)?.steerBranch ?? '-',
     });
     if (ring.length > 120) ring.shift();
   };
@@ -236,7 +238,7 @@ function playLevel(level: CampaignLevel, run: number) {
       throw new Error(`run ${run} ${level.name}: run failed at ${Math.round(ticks * SIM_DT)}s by killer ${p.killerKind} at ${Math.round(p.x)},${Math.round(p.y)} (${log.slice(-3).join(' | ')})`);
     }
     if (!p.alive && (p.killerKind === 8) && ring.length) {
-      console.log('FALL ' + JSON.stringify({ run, level: level.name, at: Math.round(ticks * SIM_DT), killer: p.killerKind, tail: ring.slice(-10) }));
+      console.log('FALL ' + JSON.stringify({ run, level: level.name, at: Math.round(ticks * SIM_DT), killer: p.killerKind, tail: ring.slice(-40) }));
     }
     if (wasAlive && !p.alive) { deaths++; log.push(`${Math.round(ticks * SIM_DT)}s DEATH killer ${p.killerKind}`); }
     wasAlive = p.alive;
