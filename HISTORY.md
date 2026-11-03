@@ -7262,3 +7262,23 @@ abandon the sweep earlier. Walk length was never the whole mechanism; the exit b
 
 Reverted to v0.1.178 state; all validators green. The next attempt must decouple the two objectives (sweep until
 `portsClosed` reports 3/3 and only then enter the exit branch) before shortening the crossing again.
+
+## 2026-11-03 — Monotone exit leg: arrival works, two seeds still do not finish
+
+Replaced the deck/port re-targeting exit leg with **one goal held until arrival** (the exit prop interior),
+dropping to a released-deck waypoint only while the direct leg samples off-floor and returning to the direct
+leg the moment it is floor-connected. No port or deck geometry was changed this time.
+
+`tsc` 0, `port-sweep-check` 0 **before** the batch. `LEVEL=0 RUNS=3`:
+
+| seed | phase | elapsed | kills | ports |
+| --- | --- | --- | --- | --- |
+| 5391916 | assault | 420 s | 17/10 | 3/3 |
+| 5399835 | **cleared** | **210.3 s** | quota | 3/3 |
+| 5407754 | assault | 420 s | 12/10 | 3/3 |
+
+One distinct fall (down from ten). The clear at 210.3 s is the fastest measured and proves both the cleared
+predicate and the approach work; the two failures reach 3/3 ports and quota but never stand inside the exit
+prop, which is the plate/deck seam sampled off-floor by the direct leg.
+
+Reverted; shipped state stays v0.1.178 with all validators green.
