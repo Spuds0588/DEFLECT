@@ -6580,3 +6580,26 @@ ports** at the 420-second cap, so it never gets a shot away at a lane. The remai
 routing (it presses the sweep but the objective never wins the priority cleanly against nearby hostiles), not a game
 rule: `port-sweep-check` closes all three ports in 17.4 s of ordinary fire and `campaign2-check` still defeats the
 Mega Worm on all three of its runs. The probe is kept as the starting point for that routing fix.
+
+## 2026-11-03 — Continuous campaign probe: diagnosis narrowed, sweep still not shot (v0.1.158)
+
+Iterated the continuous probe further. Three findings, all recorded by the probe itself:
+
+1. **The sweep objective does get chosen.** With instrumentation (`goal` kind logged every 20 s) the assault shows
+   `goal: sweep`, `openPortals: 3`, and the nearest port 720-800 units away while the body stays on the intake plate
+   around x 545-630, y 215-295 and the decks read `110` (intake->holding and holding->mainboard both open). The pilot
+   is not being out-prioritised by hostiles any more; it is failing to travel the route.
+2. **The floor model had a crossing bug and it is fixed.** Containing a point with a 22-unit inset kept the body off
+   plate lips, but plates and decks only *abut*, so the inset opened a 44-unit non-walkable gap at every junction and
+   no path could ever cross. Containment is now 6 units with the step-clearance guard supplying the margin.
+3. **Aiming at the port was wrong and is fixed.** The lane behaviour strafed across the port, and because facing comes
+   from movement that pointed the body *across* the target, so no bolt could land. The lane now stands still with the
+   approach's facing held on the port.
+
+After those two fixes the sweep still reads **0/3 ports at the 420 s cap**, with 29 kills against a quota of 10 and 13
+deaths (12 to sentries during calibration, 2 void falls at the arena's left bound from knockback). So the continuous
+run does **not** reach REBOOT or the Mega Worm, and the three-consecutive-clear criterion is **not** met. The probe is
+kept with its instrumentation so the next pass can log the body's route directly instead of inferring it.
+
+Nothing here changes a game rule: `port-sweep-check` still closes all three ports in 17.4 s of ordinary fire and
+`campaign2-check` still defeats the Mega Worm on three 3-bot runs.

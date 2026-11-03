@@ -49,9 +49,11 @@ Formerly: 2026-11-02 (PLATES + PORTS)
   TRANSIT carry documented exceptions in `.tmp/plate-flow-check.ts`; no deck lands in cover, a cell block or the void
 - [x] Sequential harness reaches the assault on real kills (calibration, drill, breach all earned); the
   calibration-targeting bug was a probe bug and is fixed in `.tmp/campaign-playthrough-check.ts`
-- [ ] Continuous run still ends 0/3 ports at the cap: the probe presses the sweep but nearby hostiles keep
-  winning priority. Port damage itself is proven by `port-sweep-check` (17.4 s, all three) and the boss by
-  `campaign2-check`
+- [ ] Continuous run still ends 0/3 ports at the cap even with `goal: sweep` selected and all three portals open:
+  the body stays on the intake plate and never travels the decks. Junction crossing (inset gap) and port aiming
+  (strafe turned the body across the target) are fixed; the remaining gap is the probe's route following
+- Harness limitation, stated for the record: the probe routes on `islands`/open `bridges` with plain input frames;
+  it is not a game rule that stops it, since `port-sweep-check` closes all three ports in 17.4 s
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them
 
 ---

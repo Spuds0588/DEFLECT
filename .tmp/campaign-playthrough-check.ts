@@ -28,9 +28,10 @@ function buildFloor(arena: ArenaDef, isOpen: (i: number) => boolean) {
     blocks.push({ x: l.left, y: l.top, w: l.cellW * 3, h: l.bottom - l.top });
   }
   const b = arena.bounds;
-  // Keep the route a body-radius off every lip: a centre 8 units inside an edge still puts
-  // half the body over the drop, and a sidestep on the line is how the probe fell in the void.
-  const inRect = (r: Rect, x: number, y: number) => x > r.x + 22 && x < r.x + r.w - 22 && y > r.y + 22 && y < r.y + r.h - 22;
+  // A plate and the deck that meets it only abut, so an inset large enough to keep the body
+  // off a lip also opens a walkable gap at every junction and no route can cross. Containment
+  // stays tight (6) and the step guard below supplies the clearance instead.
+  const inRect = (r: Rect, x: number, y: number) => x > r.x + 6 && x < r.x + r.w - 6 && y > r.y + 6 && y < r.y + r.h - 6;
   const walkable = (x: number, y: number) => {
     if (x < b.left + 10 || x > b.right - 10 || y < b.top + 10 || y > b.bottom - 10) return false;
     let on = plates.length === 0;
@@ -170,6 +171,7 @@ function playLevel(level: CampaignLevel, run: number): Result {
 
     let goal: { x: number; y: number } | null = null;
     let closeIn = true;
+    let goalKind = 'none';
 
     const hurt = p.hp / p.maxHp <= 0.34;
 
@@ -178,18 +180,22 @@ function playLevel(level: CampaignLevel, run: number): Result {
       if (hp !== bossLogged) { bossLogged = hp; bossHp.push(hp); }
       const d = Math.hypot(boss.x - p.x, boss.y - p.y);
       // Keep a firing band: close when far, back off when it crowds, strafe in between.
+      goalKind = 'boss';
       if (hurt && d < 320) goal = { x: p.x + (p.x - boss.x), y: p.y + (p.y - boss.y) };
       else if (d > 300) goal = { x: boss.x, y: boss.y };
       else goal = { x: p.x + (p.y - boss.y) * 0.8, y: p.y + (boss.x - p.x) * 0.8 };
     } else if (exit) {
+      goalKind = 'exit';
       // Clear what is shooting at the body before standing in the exit lane.
       goal = hostile && hostile.dist < 230
         ? { x: hostile.body.x, y: hostile.body.y }
         : { x: exit.x + exit.w / 2, y: exit.y + exit.h / 2 };
     } else if (hostile && hostile.dist < 145) {
+      goalKind = 'engage';
       // Fight what is close, and back off while doing it when the ring is nearly gone.
       goal = { x: hostile.body.x, y: hostile.body.y };
     } else if (portals.length) {
+      goalKind = 'sweep';
       const port = portals.reduce((a: any, b: any) =>
         Math.hypot(a.x - p.x, a.y - p.y) < Math.hypot(b.x - p.x, b.y - p.y) ? a : b);
       const cx = port.x + port.w / 2;
@@ -198,8 +204,10 @@ function playLevel(level: CampaignLevel, run: number): Result {
       if (Math.hypot(lane.x - p.x, lane.y - p.y) > 30) goal = lane;
       else { goal = { x: cx, y: cy }; closeIn = false; }
     } else if (hostile) {
+      goalKind = 'chase';
       goal = { x: hostile.body.x, y: hostile.body.y };
     } else {
+      goalKind = 'wait';
       const room = arena.rooms?.find((r) => r.theme === 'holding');
       goal = room
         ? { x: room.x + room.w * 0.5, y: room.y + room.h * 0.82 }
@@ -233,9 +241,10 @@ function playLevel(level: CampaignLevel, run: number): Result {
         mx = dx / d;
         my = dy / d;
       } else {
-        // Hold the lane and strafe across it; facing still lands on the port from the aim nudge.
-        mx = (-dy / d) * 0.6 + (dx / d) * 0.3;
-        my = (dx / d) * 0.6 + (dy / d) * 0.3;
+        // Stand and fire. Facing comes from movement, so the approach already points the body
+        // at the port; strafing here turned it across the target and no shot ever landed.
+        mx = (dx / d) * 0.12;
+        my = (dy / d) * 0.12;
       }
     }
 
@@ -293,6 +302,17 @@ function playLevel(level: CampaignLevel, run: number): Result {
     frames[0].pressed = pressed;
     frames[0].held = incoming ? SWING : (ACTION.BOLT | (boss ? ACTION.LOCK : 0));
     world.step(SIM_DT, frames);
+    if (ticks % Math.round(20 / SIM_DT) === 0) {
+      const nearestPort = portals.length
+        ? Math.round(Math.min(...portals.map((b: any) => Math.hypot(b.x + b.w / 2 - p.x, b.y + b.h / 2 - p.y))))
+        : -1;
+      console.log(JSON.stringify({
+        at: Math.round(ticks * SIM_DT), ph: world.campaignPhase, goal: goalKind,
+        ports: `${world.portsClosed}/${world.portTotal}`, openPortals: portals.length, nearestPort,
+        kills: world.gauntletKills, hp: p.hp, x: Math.round(p.x), y: Math.round(p.y),
+        decks: world.bridgeOpen.map((o: boolean) => (o ? 1 : 0)).join(''),
+      }));
+    }
   }
 
   const result: Result = {
