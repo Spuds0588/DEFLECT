@@ -834,6 +834,7 @@ export class BotBrain {
     if (world.mode !== 'gauntlet') return false;
     // At one segment the next pass ends the run. A RESTORE drop is drawn on the floor, so a
     // player breaks off for it; the pilot should too, instead of trading for a kill.
+    if (this.fightBoss(world, me, out)) return true;
     const bossPass = world.worms.some(
       (w) => w.active && w.bossKind >= 0 && Math.hypot(w.vx, w.vy) > 300,
     );
@@ -1128,6 +1129,137 @@ export class BotBrain {
   private bossEscape(world: World, me: Player, out: InputFrame): void {
     if (this.closeBodyDash(world, me, out)) return;
     this.megaLaneRead(world, me, out);
+  }
+
+  /**
+   * Mini-boss movement model. A latched pass runs through wherever the pilot stands, so the
+   * standoff is defined by being outside the sweep's reach rather than by closing distance:
+   * hold a wide ring while the body travels, stay off the chain's corridor, punish the park
+   * from bolt range, heal before a contact the current pool would not survive, and dash out
+   * when anything is already inside its own reach.
+   */
+  private fightBoss(world: World, me: Player, out: InputFrame): boolean {
+    let boss: any = null;
+    for (let i = 0; i < world.worms.length; i++) {
+      const w = world.worms[i] as any;
+      if (w.active && w.bossKind >= 0) {
+        boss = w;
+        break;
+      }
+    }
+    if (!boss) return false;
+
+    if (this.closeBodyDash(world, me, out)) return true;
+
+    // A shooter inside its firing band is the bigger threat than the cycling body: clear it
+    // from outside its range instead of eating bolts while the boss comes around.
+    let gun: any = null;
+    let gunD = 520;
+    for (let i = 0; i < world.sentries.length; i++) {
+      const sh = world.sentries[i] as any;
+      if (!sh.active || (sh.hp !== undefined && sh.hp <= 0)) continue;
+      const d = Math.hypot(sh.x - me.x, sh.y - me.y);
+      if (d < gunD) {
+        gunD = d;
+        gun = sh;
+      }
+    }
+    if (gun && gunD < 470) {
+      const dx = gun.x - me.x;
+      const dy = gun.y - me.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d > 330) {
+        out.mx = dx / d;
+        out.my = dy / d;
+      } else if (d < 285) {
+        out.mx = -dx / d;
+        out.my = -dy / d;
+      } else {
+        out.mx = (-dy / d) * this.strafeDir;
+        out.my = (dx / d) * this.strafeDir;
+      }
+      out.held |= ACTION.LOCK | ACTION.BOLT;
+      if (this.threatSerial >= 0 && this.threatTime < 0.45) out.held |= ACTION.SWING;
+      return true;
+    }
+
+    if (me.hp <= 2) {
+      let gx = 0;
+      let gy = 0;
+      let gd = 1400;
+      let found = false;
+      for (let i = 0; i < world.pickups.length; i++) {
+        const k = world.pickups[i];
+        if (!k.active || k.kind !== POWERUP_KIND.RESTORE) continue;
+        const d = Math.hypot(k.x - me.x, k.y - me.y);
+        if (d < gd) {
+          gd = d;
+          gx = k.x;
+          gy = k.y;
+          found = true;
+        }
+      }
+      if (found) {
+        const dx = gx - me.x;
+        const dy = gy - me.y;
+        const d = Math.hypot(dx, dy) || 1;
+        out.mx = dx / d;
+        out.my = dy / d;
+        out.held |= ACTION.LOCK;
+        return true;
+      }
+    }
+
+    const bSpeed = Math.hypot(boss.vx, boss.vy);
+    const rx = me.x - boss.x;
+    const ry = me.y - boss.y;
+    const bd = Math.hypot(rx, ry) || 1;
+    const charges = (me as any).dashCharges ?? 0;
+    let mx = 0;
+    let my = 0;
+
+    if (bSpeed > 120) {
+      const ux = boss.vx / bSpeed;
+      const uy = boss.vy / bSpeed;
+      const along = rx * ux + ry * uy;
+      const perp = -rx * uy + ry * ux;
+      const side = perp >= 0 ? 1 : -1;
+      // Wide ring: the head's reach is 138 and the chain is 99, so 620 is never contact.
+      if (bd < 620) {
+        mx += rx / bd;
+        my += ry / bd;
+      }
+      // The chain sweeps a corridor behind the head; leave it while it is still passing.
+      if (Math.abs(perp) < 320 && along > -2400) {
+        mx += -uy * side;
+        my += ux * side;
+      }
+      // A pass is about to cross the station: ground gained now is the only thing that helps.
+      if (bd < 780 && Math.abs(perp) < 360 && charges > 0 && this.laneDashT <= 0) {
+        out.pressed |= ACTION.DASH;
+        this.laneDashT = 0.9;
+      }
+    } else if (bd > 360) {
+      mx = -rx / bd;
+      my = -ry / bd;
+    } else if (bd < 300) {
+      mx = rx / bd;
+      my = ry / bd;
+    }
+
+    const m = Math.hypot(mx, my);
+    if (m > 0.001) {
+      out.mx = mx / m;
+      out.my = my / m;
+      out.held |= ACTION.LOCK;
+    }
+    // Punish from bolt range whenever the line is clear; the park is the free window.
+    if (!this.lineBlocked(me, boss.x, boss.y, world.arena.pillars)) {
+      out.held |= ACTION.LOCK | ACTION.BOLT;
+    }
+    // Guard the face of an incoming bolt without dropping the shot.
+    if (this.threatSerial >= 0 && this.threatTime < 0.45) out.held |= ACTION.SWING;
+    return true;
   }
 
   /**

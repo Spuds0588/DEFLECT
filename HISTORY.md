@@ -6807,3 +6807,35 @@ five independent samples.
 boss's damage, speed ramp and pass pattern, the twelve-second warning, Kitty's line, the card, quota, arena, clear
 rule and snapshot are exactly as shipped. What remains is a real fight: the pilot gains ground early now but still
 loses one segment per contact window to a 138-radius head at 940–1645 u/s, and sentry fire catches it in the open.
+
+## 2026-11-03 — Boss assault rewritten as a wide-ring model (v0.1.168)
+
+`BotBrain.fightBoss` replaces the close-hold engagement for mini-boss nodes. Everything it reads is visible:
+boss heading and speed, body positions, own health, drawn pickups, cooldowns.
+
+- **Wide ring while the body travels.** The pilot keeps 620+ from the head (reach 138) and leaves the chain's
+  320-wide corridor while it passes, instead of holding a station the latched pass will run through.
+- **Punish the park.** It closes to bolt range only while the body is stationary/assembling.
+- **Clear the shooter.** A live sentry inside 470 is engaged from outside its firing band, so bolts are not eaten
+  while the boss cycles.
+- **Leave with a dash** when anything is already inside its own reach, and **take a drawn RESTORE drop at 2 or
+  fewer segments** rather than waiting for the last one.
+- Guard is raised on an incoming bolt without dropping the shot.
+
+**Measured, two independent batches of five (this is the honest result, not a pass):**
+
+- Batch A: **1 clear** — run 3, 181.5 s, 18 kills, boss health walked 206 → dead. Failures: 294 s `killer 4`
+  (sentry, d=221), 82 s `killer 2` (worm head, d=158), 158 s `killer 4` (sentry, d=219), 294 s `killer 4`
+  (sentry, d=221).
+- Batch B (after shooter clearance): **1 clear** — run 2, 246.6 s, 29 kills. Failures: 102 s `killer 2` (worm
+  head, d=155, boss 153 hp), 174 s `killer 4` (sentry, d=221), 157 s `killer 2` (worm head, d=155, boss 163 hp),
+  102 s `killer 2` (worm head).
+
+**The 4-of-5 bar is not met (2 clears across 10 runs).** Remaining failure modes, both attributable: (1) boss-head
+contact at ~155 during flight while the pilot is closing to punish, i.e. the launch catches it at bolt range; (2)
+sentry fire at ~220 from a shooter outside the 470 engagement ring. The sampling fix is also incomplete: runs 1 and
+5 still produced identical logs because `fightBoss` does not branch on the per-run style, so a batch is four
+distinct scenarios, not five — say so rather than quoting 0/5 or 1/5 as five samples.
+
+Nothing about the fight was weakened: boss damage, speed ramp and pass pattern, fodder pressure, quota, arena,
+clear rule, snapshot, the twelve-second warning and Kitty's line/card are exactly as shipped.

@@ -67,9 +67,12 @@ Formerly: 2026-11-02 (PLATES + PORTS)
   (2400 behind), and breaks off for a RESTORE drop at one segment. Deaths 150-212 s, all `killer 2` now
 - [x] Structural bug fixed: the boss escape only ran on frames with no other branch taken. `bossEscape()` now runs
   on all four `think()` exits, and the lane read buys 2600 units of look-ahead with an early dash
-- [ ] Continuous REBOOT is still 0/5 (4 distinct seeds). Attribution: boss head contact at d~150 with dashes in
-  hand, plus sentry fire in the open. Next: hold a standoff that the head's 138 radius and the chain cannot
-  sweep at all, and fight adds from outside their contact radius; the boss itself must not be weakened
+- [x] Close-hold engagement replaced by `fightBoss`: 620 ring, chain-corridor avoidance, park-only approach,
+  shooter clearance inside 470, dash escape, RESTORE at two segments. Two batches of five each produced one
+  clear (181.5 s / 246.6 s, boss 206 -> dead)
+- [ ] Continuous REBOOT is 2 clears in 10 runs. Remaining: boss-head contact at ~155 when the launch catches the
+  punish approach, and sentry fire at ~220 from beyond the 470 ring. Sampling is still not five distinct runs:
+  runs 1 and 5 repeat because `fightBoss` ignores the per-run style. Boss must not be weakened
 - Harness limitation, stated for the record: the probe routes on `islands`/open `bridges` with plain input frames;
   it is not a game rule that stops it, since `port-sweep-check` closes all three ports in 17.4 s
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them

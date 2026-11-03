@@ -3127,3 +3127,12 @@ else happened, which is never the frame a 940+ u/s body arrives: attribution sho
 contact radius with dash charges unspent. `bossEscape()` (close-body dash, then `megaLaneRead`) is now called on all
 four `think()` exits and must stay there. A latched pass always crosses the station the pilot held, so the read buys
 lateral distance early (2600 look-ahead, 520 corridor) rather than reacting to contact.
+
+### Mini-boss assault model: ring, park, shooter, escape (decided 2026-11-03)
+
+`BotBrain.fightBoss` owns boss nodes, ahead of the generic engagement. While the body travels the pilot holds a
+620 ring around the head and stays out of the chain's 320 corridor; it closes to bolt range only while the body is
+parked, engages a live sentry inside 470 from outside its firing band, dashes when anything is already inside its
+reach, and takes a drawn RESTORE at two segments. The old close-hold engagement is what lost the fight. Two failure
+modes remain and must not be papered over: the launch still catches the pilot at bolt range for ~155-unit head
+contact, and a sentry beyond 470 still lands ~220-unit fire. Do not weaken the boss to close them.
