@@ -7007,3 +7007,27 @@ is dropped. A chasm guard is not enough; void avoidance has to ask the arena's o
 
 Not shipped. Version stays v0.1.173. Next step is a single floor predicate the pilot and `fallPlayer` both read, so
 the pilot cannot step where the game will kill it, then the port sweep on top of that.
+
+## 2026-11-03 — Floor guard validated against a real batch: still SRC.VOID (no ship)
+
+The pilot was given the fall machine's own predicate: `offFloor` was exposed on `World` and a final `floorFrame`
+tested the step it was about to take against it, sliding along the lip and walking back toward the arena centre when
+already over the drop. Five fresh full-chain runs, same harness (slot 0 driven on every level, multiple bots):
+
+| run | outcome | attribution |
+| --- | --- | --- |
+| 1 | died 73 s, level 1 | `killer 8` SRC.VOID at 791,484, hp 1/1 first |
+| 2 | died 57 s (`killer 1`) then 61 s void | `killer 8` at 879,818, hp 4/4 |
+| 3 | died 45 s void | `killer 8` at 340,647, hp 4/4 |
+| 4 | died 108 s void | `killer 8` at 339,653, hp 3/3 |
+| 5 | died 66 s (`killer 1`) then 76 s void | `killer 8` at 338,452, hp 4/4 |
+
+0 of 5 cleared; ports 0/3 in every run. The guard changed nothing about the outcome, so it was reverted: a step
+guard cannot stop an impulse or a placement, and `offFloor` is already true at positions the pilot reached while
+walking on what reads as holding-office floor. Deaths also now include `killer 1` (friendly fire from another bot)
+before the void, which means the body can be knocked over the lip inside its own squad.
+
+**Remaining mechanism to prove:** per-frame `fallT`, `kx/ky`, `offFloor(x,y)` and the nearest room plate at the fall,
+plus whether `spawnCampaignData`/breach dressing covers the holding office floor. The drop is impulse or placement,
+not a steering choice. Kill quotas, port counts, enemy counts, boss values, arena, clear rule, snapshot and the
+twelve-second warning are untouched. Version stays v0.1.173; no game code changed.
