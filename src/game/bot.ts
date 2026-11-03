@@ -1149,40 +1149,13 @@ export class BotBrain {
     }
     if (!boss) return false;
 
-    if (this.closeBodyDash(world, me, out)) return true;
-
-    // A shooter inside its firing band is the bigger threat than the cycling body: clear it
-    // from outside its range instead of eating bolts while the boss comes around.
-    let gun: any = null;
-    let gunD = 520;
-    for (let i = 0; i < world.sentries.length; i++) {
-      const sh = world.sentries[i] as any;
-      if (!sh.active || (sh.hp !== undefined && sh.hp <= 0)) continue;
-      const d = Math.hypot(sh.x - me.x, sh.y - me.y);
-      if (d < gunD) {
-        gunD = d;
-        gun = sh;
-      }
-    }
-    if (gun && gunD < 470) {
-      const dx = gun.x - me.x;
-      const dy = gun.y - me.y;
-      const d = Math.hypot(dx, dy) || 1;
-      if (d > 330) {
-        out.mx = dx / d;
-        out.my = dy / d;
-      } else if (d < 285) {
-        out.mx = -dx / d;
-        out.my = -dy / d;
-      } else {
-        out.mx = (-dy / d) * this.strafeDir;
-        out.my = (dx / d) * this.strafeDir;
-      }
-      out.held |= ACTION.LOCK | ACTION.BOLT;
-      if (this.threatSerial >= 0 && this.threatTime < 0.45) out.held |= ACTION.SWING;
+    // Anything already inside its own reach outranks the plan.
+    if (this.closeBodyDash(world, me, out)) {
+      this.steerBranch = 'dash-out';
       return true;
     }
 
+    // A drawn RESTORE drop before a window the current pool would not survive.
     if (me.hp <= 2) {
       let gx = 0;
       let gy = 0;
@@ -1206,59 +1179,96 @@ export class BotBrain {
         out.mx = dx / d;
         out.my = dy / d;
         out.held |= ACTION.LOCK;
+        this.steerBranch = 'heal';
         return true;
       }
+    }
+
+    // A live shooter is the first target at any distance: it chips through a whole cycle if
+    // it is left alone, and it can be answered from outside its own firing band.
+    let gun: any = null;
+    let gunD = Infinity;
+    for (let i = 0; i < world.sentries.length; i++) {
+      const sh = world.sentries[i] as any;
+      if (!sh.active || (sh.hp !== undefined && sh.hp <= 0)) continue;
+      const d = Math.hypot(sh.x - me.x, sh.y - me.y);
+      if (d < gunD) {
+        gunD = d;
+        gun = sh;
+      }
+    }
+    if (gun) {
+      const dx = gun.x - me.x;
+      const dy = gun.y - me.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const band = 395;
+      if (d > band + 40) {
+        out.mx = dx / d;
+        out.my = dy / d;
+      } else if (d < band - 40) {
+        out.mx = -dx / d;
+        out.my = -dy / d;
+      } else {
+        out.mx = (-dy / d) * this.strafeDir;
+        out.my = (dx / d) * this.strafeDir;
+      }
+      out.held |= ACTION.LOCK | ACTION.BOLT;
+      if (this.threatSerial >= 0 && this.threatTime < 0.9) out.held |= ACTION.SWING;
+      this.steerBranch = 'sentry';
+      return true;
     }
 
     const bSpeed = Math.hypot(boss.vx, boss.vy);
     const rx = me.x - boss.x;
     const ry = me.y - boss.y;
     const bd = Math.hypot(rx, ry) || 1;
-    const charges = (me as any).dashCharges ?? 0;
-    let mx = 0;
-    let my = 0;
 
-    if (bSpeed > 120) {
-      const ux = boss.vx / bSpeed;
-      const uy = boss.vy / bSpeed;
-      const along = rx * ux + ry * uy;
-      const perp = -rx * uy + ry * ux;
-      const side = perp >= 0 ? 1 : -1;
-      // Wide ring: the head's reach is 138 and the chain is 99, so 620 is never contact.
-      if (bd < 620) {
-        mx += rx / bd;
-        my += ry / bd;
-      }
-      // The chain sweeps a corridor behind the head; leave it while it is still passing.
-      if (Math.abs(perp) < 320 && along > -2400) {
-        mx += -uy * side;
-        my += ux * side;
-      }
-      // A pass is about to cross the station: ground gained now is the only thing that helps.
-      if (bd < 780 && Math.abs(perp) < 360 && charges > 0 && this.laneDashT <= 0) {
-        out.pressed |= ACTION.DASH;
-        this.laneDashT = 0.9;
-      }
-    } else if (bd > 360) {
-      mx = -rx / bd;
-      my = -ry / bd;
-    } else if (bd < 300) {
-      mx = rx / bd;
-      my = ry / bd;
+    if (bSpeed <= 120) {
+      // Punish the park from behind the side the body will leave toward: the latched pass
+      // runs away from that bearing, so standing there cannot be run through. Its facing is
+      // drawn, which is what a player reads to pick the safe side.
+      const fx = Math.cos(boss.angle ?? 0);
+      const fy = Math.sin(boss.angle ?? 0);
+      const tx = boss.x - fx * this.punishR;
+      const ty = boss.y - fy * this.punishR;
+      const dx = tx - me.x;
+      const dy = ty - me.y;
+      const d = Math.hypot(dx, dy) || 1;
+      out.mx = dx / d;
+      out.my = dy / d;
+      out.held |= ACTION.LOCK | ACTION.BOLT;
+      if (this.threatSerial >= 0 && this.threatTime < 0.9) out.held |= ACTION.SWING;
+      this.steerBranch = 'punish';
+      return true;
     }
 
+    const ux = boss.vx / bSpeed;
+    const uy = boss.vy / bSpeed;
+    const along = rx * ux + ry * uy;
+    const perp = -rx * uy + ry * ux;
+    const side = perp >= 0 ? 1 : -1;
+    let mx = 0;
+    let my = 0;
+    // The ramp takes the body to 1645 u/s, so a fixed ring is only safe early: give a faster
+    // pass proportionally more room (its closing speed times a reaction beat, plus reach).
+    const ring = Math.max(this.ringR, bSpeed * 0.9);
+    if (bd < ring) {
+      mx += rx / bd;
+      my += ry / bd;
+    }
+    if (Math.abs(perp) < 320 && along > -2400) {
+      mx += -uy * side;
+      my += ux * side;
+    }
     const m = Math.hypot(mx, my);
     if (m > 0.001) {
       out.mx = mx / m;
       out.my = my / m;
-      out.held |= ACTION.LOCK;
     }
-    // Punish from bolt range whenever the line is clear; the park is the free window.
-    if (!this.lineBlocked(me, boss.x, boss.y, world.arena.pillars)) {
-      out.held |= ACTION.LOCK | ACTION.BOLT;
-    }
-    // Guard the face of an incoming bolt without dropping the shot.
-    if (this.threatSerial >= 0 && this.threatTime < 0.45) out.held |= ACTION.SWING;
+    out.held |= ACTION.LOCK;
+    if (bd < 380 && !this.lineBlocked(me, boss.x, boss.y, world.arena.pillars)) out.held |= ACTION.BOLT;
+    if (this.threatSerial >= 0 && this.threatTime < 0.9) out.held |= ACTION.SWING;
+    this.steerBranch = 'ring';
     return true;
   }
 
@@ -1312,6 +1322,10 @@ export class BotBrain {
       // a 1400-unit look-ahead is barely a second at walking speed; read the whole lane and
       // buy distance with the dash instead of trying to out-step contact.
       const chainReach = 2600;
+      const bd = Math.hypot(rx, ry);
+      // Only a genuine emergency overrides the ring model: inside the corridor and near
+      // enough to matter. Otherwise the pilot fights instead of strafing the line forever.
+      if (bd > 760 && Math.abs(perp) > 300) continue;
       if (along > 2600 || along < -chainReach || Math.abs(perp) > 520) continue;
       const side = perp >= 0 ? 1 : -1;
       out.mx = -uy * side;
@@ -1353,6 +1367,16 @@ export class BotBrain {
   private steerY = 0;
   /** Paces the lane dash: one charge per pass, so the pilot is not left empty. */
   private laneDashT = 0;
+  /** Which branch steered this frame. Printed by QA runs so steering is visible, not implied. */
+  steerBranch = 'idle';
+  /** Ring radius scales with the pilot's style, so a batch steers genuinely different lines. */
+  get ringR(): number {
+    return 620 + this.style * 45;
+  }
+  /** Distance it punishes a parked body from, behind the side the body will leave toward. */
+  get punishR(): number {
+    return 330 + this.style * 25;
+  }
 
   private nearWall(me: Player, arena: ArenaDef): boolean {
     // A round platter's rim is handled by the furniture steer, which knows where the

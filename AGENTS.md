@@ -3136,3 +3136,11 @@ parked, engages a live sentry inside 470 from outside its firing band, dashes wh
 reach, and takes a drawn RESTORE at two segments. The old close-hold engagement is what lost the fight. Two failure
 modes remain and must not be papered over: the launch still catches the pilot at bolt range for ~155-unit head
 contact, and a sentry beyond 470 still lands ~220-unit fire. Do not weaken the boss to close them.
+
+### Boss punish is bearing-aware (decided 2026-11-03)
+
+A parked mini-boss is punished from behind the bearing its drawn facing leaves toward, never from the shortest bearing to
+hand: the pass is latched along that facing, so the shortest approach is the launch lane. Any live sentry is the first
+target regardless of distance (answered from a 395 band with guard raised on incoming). The travel ring is
+`max(ringR, speed * 0.9)` because the rage ramp reaches 1645 u/s and a fixed radius is only safe early. Current measured
+state is 0/5; sentry fire remains the dominant killer and the punish window is where it lands.

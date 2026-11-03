@@ -6839,3 +6839,34 @@ distinct scenarios, not five — say so rather than quoting 0/5 or 1/5 as five s
 
 Nothing about the fight was weakened: boss damage, speed ramp and pass pattern, fodder pressure, quota, arena,
 clear rule, snapshot, the twelve-second warning and Kitty's line/card are exactly as shipped.
+
+## 2026-11-03 — Boss punish rebuilt: bearing, shooter priority, speed-scaled ring (v0.1.169)
+
+The ring model's two death windows were reconstructed rather than retuned:
+
+- **Punish from the safe bearing.** A parked body is hit from *behind the bearing its drawn facing leaves toward*, at
+  `punishR` (330 + 25/style), so the latched pass runs away from the pilot instead of through it. Previously it closed on
+  whatever bearing was shortest, which was the launch lane.
+- **A live sentry is the first target at any distance**, answered from a 395 band with the guard raised on any incoming
+  bolt without dropping the shot, so a shooter cannot chip through a whole cycle.
+- **The ring scales with closing speed** (`max(ringR, speed * 0.9)`). The fixed 620 was only safe early; the ramp reaches
+  1645 u/s and covered 620 in a third of a second, which is why head contact still landed at ~152 late in the fight.
+- **Sampling is now genuinely distinct**: the pilot takes kit `run - 1` (five different programs) and the squad is
+  `[12-run, 11-run, 10-run]`, so no two runs of five share a program, squad or steering geometry.
+
+**Measured, and not a pass: 0 of 5 cleared.** The punish rebuild made fights longer and moved the deaths later, but did
+not convert them:
+
+- run 1: 109 s `killer 4` — sentry d=43 v=460 boss=0 hp=2
+- run 2: 325 s `killer 2` — worm d=158 v=1458 boss=1 hp=55
+- run 3: 140 s `killer 2` — worm d=122 v=71 boss=0 hp=2
+- run 4: 153 s `killer 4` — worm d=584 v=1138 boss=1 hp=148
+- run 5: 270 s `killer 4` — sentry d=221 v=137 boss=0 hp=1
+
+Remaining failure mode: sentry fire is still the dominant killer (`killer 4`) even with the 395 band, because a pack
+spawns while the pilot is mid-cycle and its bolts arrive while the pilot is committed to a punish; head contact now only
+lands late, at 1200+ u/s closing speeds. The next lever is to break off the punish the moment a pack spawns rather than
+finishing the window, and to hold the guard through the whole engagement instead of the 0.9 s reflex window.
+
+Nothing about the fight was weakened: boss damage, speed ramp and pass pattern, fodder pressure, quota, arena, clear
+rule, snapshot, the twelve-second warning, Kitty's line and the title card are unchanged.

@@ -156,7 +156,7 @@ function playLevel(level: CampaignLevel, run: number) {
   names[0] = `PILOT${run}`;
   for (let i = 1; i <= 3; i++) names[i] = `BOT${i}`;
   const world = new World(
-    'gauntlet', names, 0, arena, false, (run - 1) % 4, 3, null, true,
+    'gauntlet', names, 0, arena, false, run - 1, 3, [12 - run, 11 - run, 10 - run], true,
     level.dataCrates, false, level.intro, level.clearKills, false, level.boss ?? -1,
   );
   const priv = world as any;
@@ -273,6 +273,8 @@ function playLevel(level: CampaignLevel, run: number) {
           at: Math.round(ticks * SIM_DT), ph: world.campaignPhase, pilot: 'brain',
           kills: world.gauntletKills, hp: p.hp, boss: liveBoss ? Math.round(liveBoss.hp) : -1,
           warn: (world as any).campaignWarnStep ? 1 : 0,
+          branch: (brains[0] as any)?.steerBranch ?? '-',
+          ring: (brains[0] as any)?.ringR ?? -1,
         }));
       }
       continue;
@@ -452,7 +454,8 @@ function playLevel(level: CampaignLevel, run: number) {
   }
 
   const result = {
-    run, seed: 0x51f15e + arena.id * 983 + 29 + run * 7919, program: p.program, style: (run - 1) % 3, level: level.name, phase: world.campaignPhase, seconds: +(ticks * SIM_DT).toFixed(1),
+    run, seed: 0x51f15e + arena.id * 983 + 29 + run * 7919, program: p.program, style: (run - 1) % 3,
+    ring: (brain as any)?.ringR ?? -1, punish: (brain as any)?.punishR ?? -1, bots: [run % 4, (run + 1) % 4, (run + 2) % 4], level: level.name, phase: world.campaignPhase, seconds: +(ticks * SIM_DT).toFixed(1),
     assaultEntryHp, heals, bossSpawn, damage: damage.slice(0, 14),
     kills: world.gauntletKills, ports: `${world.portsClosed - portsAtStart}/${world.portTotal}`,
     boss: bossHp, deaths, refusedSteps: refused, log,
