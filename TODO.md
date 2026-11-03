@@ -47,8 +47,11 @@ Formerly: 2026-11-02 (PLATES + PORTS)
   joins in front of the cells (`holdingCellLayout`, `.tmp/holding-layout-check.ts`)
 - [x] Plate flow audited for every authored plate arena: QUARANTINE passes entry-left/exit-right, CAPCOM and
   TRANSIT carry documented exceptions in `.tmp/plate-flow-check.ts`; no deck lands in cover, a cell block or the void
-- [ ] Sequential level-1-then-level-2 harness: the probe drives the assault and the boss but cannot target the
-  pre-assault calibration subjects, so each level is verified by its own probe (port sweep / campaign2 boss runs)
+- [x] Sequential harness reaches the assault on real kills (calibration, drill, breach all earned); the
+  calibration-targeting bug was a probe bug and is fixed in `.tmp/campaign-playthrough-check.ts`
+- [ ] Continuous run still ends 0/3 ports at the cap: the probe presses the sweep but nearby hostiles keep
+  winning priority. Port damage itself is proven by `port-sweep-check` (17.4 s, all three) and the boss by
+  `campaign2-check`
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them
 
 ---

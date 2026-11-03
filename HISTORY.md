@@ -6557,3 +6557,26 @@ so it never left the first beat. That is a probe-aim limitation, not a game fail
 
 **Verification:** `plate-flow-check` OK (3 plate arenas), `holding-layout-check` OK, `port-validate` OK,
 `port-sweep-check` OK (17.4 s), `campaign2-check` OK, `campaign-death-check` OK, `tsc --noEmit`, `build`, `bench` clean.
+
+## 2026-11-03 — Continuous campaign probe: beats cleared by real kills, sweep still short (v0.1.157)
+
+**Goal:** one unattended run from the start of BUILD ROOT through REBOOT and the Mega Worm, no shortcuts.
+
+`.tmp/campaign-playthrough-check.ts` plays both nodes with three bots and no injected state: no kill quota is
+written, no port or boss health is touched. The only affordance a player also has is the on-screen SKIP TUTORIAL.
+
+What it proved, on real input:
+- BUILD ROOT now advances **calibration -> release -> drill -> breach -> assault** on kills the pilot earned,
+  including the six calibration silhouettes that the previous probe never killed. That was a probe bug: when a
+  hostile was close it set "stand and fire" but left the target null, so the movement branch zeroed the input and it
+  stood still facing nothing.
+- The local body is mortal, and two real void falls showed up and were fixed in the probe's own movement, not in the
+  game: the dodge override had no floor check, and a dash carried the body past a plate lip. Movement now requires
+  26/52 units of floor ahead, dashes need a 170-unit clear lane, and routes keep a body-radius off every edge.
+- With those, the run survives the whole window instead of dying in the void.
+
+What it has not reached: the sweep. In the assault the run finishes with 23 kills against a quota of 10 and **0/3
+ports** at the 420-second cap, so it never gets a shot away at a lane. The remaining gap is the probe's assault
+routing (it presses the sweep but the objective never wins the priority cleanly against nearby hostiles), not a game
+rule: `port-sweep-check` closes all three ports in 17.4 s of ordinary fire and `campaign2-check` still defeats the
+Mega Worm on all three of its runs. The probe is kept as the starting point for that routing fix.
