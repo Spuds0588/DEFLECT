@@ -7206,3 +7206,24 @@ not fixed: 10 distinct fall times across the batch (57, 58, 84, 85, 86, 127, ...
 campaign's practice rule, none fatal to the run. The three-seed-clear and zero-fall bar is therefore **not met**.
 Validators plus tsc/build are green; this ships the A* leg because it is the first configuration to clear at all
 (299 s, comfortably inside the cap) rather than because the bar is met.
+
+## 2026-11-03 — Exit leg is a runtime-bridge pathing problem, not layout (no ship)
+
+`.tmp/exit-route-check.ts` flood-fills the scaled floor from the player spawn twice, once with authored bridge state
+and once with every bridge open, and measures the party port:
+
+```
+closed bridges: bridges 100  reachable 5848  port 2332,42  nearest reachable 1547
+open bridges:   bridges 111  reachable 12241 port 2332,42  nearest reachable 6
+```
+
+The exit is reachable **6 units** away once the decks are open, and 1547 away while they are shut. So the layout is
+sound and the objective is physically standable, but the target only becomes reachable at runtime when bridge 2 is
+released by closing ports 0 and 1. The bot's A* grid is built from the authored bridge state, so `followPath` cannot
+route across a deck that opened mid-run; the exit leg falls back to a straight heading, the uplink cover blocks it,
+and two of three seeds burn the 420 s budget after closing 3/3 ports. That matches every run in the last batch.
+
+A patch to hop the released deck by direct heading was written but failed its own anchor check and never applied, so
+the batch that followed ran the unchanged brain (1 of 3 cleared at 299.2 s, 10 distinct VOID falls). Nothing shipped
+this turn; v0.1.178 remains live. The fix is bridge-aware pathing for the exit leg: either rebuild the nav grid when
+`bridgeOpen` changes, or route the exit as deck waypoints rather than through the stale grid.
