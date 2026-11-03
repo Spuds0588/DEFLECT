@@ -241,6 +241,7 @@ export class BotBrain {
     this.beamHoldT = Math.max(0, this.beamHoldT - dt);
     this.avoidT = Math.max(0, this.avoidT - dt);
     this.routeHoldT = Math.max(0, this.routeHoldT - dt);
+    this.laneDashT = Math.max(0, this.laneDashT - dt);
     this.strafeT -= dt;
     if (this.strafeT <= 0) {
       this.strafeT = this.rng.range(3.5, 7);
@@ -829,6 +830,33 @@ export class BotBrain {
    */
   private engageHostiles(world: World, me: Player, out: InputFrame): boolean {
     if (world.mode !== 'gauntlet') return false;
+    // At one segment the next pass ends the run. A RESTORE drop is drawn on the floor, so a
+    // player breaks off for it; the pilot should too, instead of trading for a kill.
+    if (me.hp <= 1) {
+      let bestD = 900;
+      let gx = 0;
+      let gy = 0;
+      let found = false;
+      for (let i = 0; i < world.pickups.length; i++) {
+        const k = world.pickups[i];
+        if (!k.active || k.kind !== POWERUP_KIND.RESTORE) continue;
+        const d = Math.hypot(k.x - me.x, k.y - me.y);
+        if (d < bestD) {
+          bestD = d;
+          gx = k.x;
+          gy = k.y;
+          found = true;
+        }
+      }
+      if (found) {
+        const dx = gx - me.x;
+        const dy = gy - me.y;
+        const d = Math.hypot(dx, dy) || 1;
+        out.mx = dx / d;
+        out.my = dy / d;
+        return true;
+      }
+    }
     let tx = 0;
     let ty = 0;
     let best = Infinity;
@@ -1105,13 +1133,21 @@ export class BotBrain {
       const along = rx * ux + ry * uy;
       const perp = -rx * uy + ry * ux;
       // The head is 138 across and the chain plates are 99, so a pass sweeps a corridor
-      // wider than any standoff. Abandon the whole corridor, not the thin centre line.
-      if (along > 1400 || along < -1500 || Math.abs(perp) > 460) continue;
+      // wider than any standoff. Abandon the whole corridor, not the thin centre line — and
+      // include the chain, which trails ~13 plates * 168 behind the head and hurts too.
+      const chainReach = 2400;
+      if (along > 1400 || along < -chainReach || Math.abs(perp) > 460) continue;
       const side = perp >= 0 ? 1 : -1;
       out.mx = -uy * side;
       out.my = ux * side;
-      // Step off early, then dash once the body is close and the ramp has it fast.
-      if (Math.abs(perp) < 300 && along < 760) out.pressed |= ACTION.DASH;
+      // Spend the charge on the approach: if the latched line crosses the pilot's station in
+      // under a second, one dash now is what makes the difference between a clip and a miss.
+      const eta = along / speed;
+      const charges = (me as any).dashCharges ?? (me as any).dashLeft ?? 0;
+      if (Math.abs(perp) < 380 && eta > 0 && eta < 0.95 && charges > 0 && this.laneDashT <= 0) {
+        out.pressed |= ACTION.DASH;
+        this.laneDashT = 1.15;
+      }
       return true;
     }
     return false;
@@ -1142,6 +1178,8 @@ export class BotBrain {
 
   private steerX = 0;
   private steerY = 0;
+  /** Paces the lane dash: one charge per pass, so the pilot is not left empty. */
+  private laneDashT = 0;
 
   private nearWall(me: Player, arena: ArenaDef): boolean {
     // A round platter's rim is handled by the furniture steer, which knows where the

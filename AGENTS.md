@@ -3109,3 +3109,12 @@ close. Keep the corridor wide — the head is 138 across and the plates 99 — a
 the 150 used for fodder, because 150 from a 138-radius head is standing inside it. A boss body must never be lashed
 or rooted into with a heavy whose reach is smaller than the body. This is how a human plays the fight; do not replace
 it with damage reduction on the boss.
+
+### Pilot resource discipline against a mini-boss (decided 2026-11-03)
+
+`megaLaneRead` spends a dash when the latched line crosses the pilot's station in under a second, paced by
+`laneDashT` to one charge per pass, and covers the whole visible body: 1400 ahead and 2400 behind, because the chain
+trails thirteen plates and hurts as much as the head. At one segment the pilot breaks off for a drawn
+`RESTORE_STATUS` drop instead of trading. These read only what the player sees — heading, position, health, pickups,
+cooldowns. Do not close the last gap by weakening the boss; the remaining deaths are fodder contact in the crowded
+assault.

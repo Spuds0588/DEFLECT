@@ -6758,3 +6758,24 @@ that keeps spawning fodder while the boss cycles. Nothing in the logs shows unav
 at the visible body radius, and every run has dash charges or a heal on the floor that the pilot did not use, which is
 pilot behaviour rather than level unfairness. Do not reduce the boss's damage, speed ramp or pass pattern to close
 this; the next step is the pilot spending dashes and heals under pressure.
+
+## 2026-11-03 — Pilot resource discipline: paced lane dash, chain reach, heal break-off (v0.1.166)
+
+Three more changes in the shipped brain, all driven by the hit attribution rather than inference:
+
+1. **The lane dash is spent on the approach.** The pilot only dashed inside 760 units, which at 940–1645 u/s is
+   under half a second. It now dashes when the latched line crosses its station in under 0.95 s, paced to one charge
+   per 1.15 s so it is never left empty for the next pass.
+2. **The chain counts as hazard, not just the head.** The corridor read stopped 1500 units behind the head, but the
+   chain trails ~13 plates at 168 spacing, so passes were clipping the pilot with plates the head had long left. The
+   read now covers 2400 behind as well as 1400 ahead.
+3. **One segment is a heal, not a trade.** With health at 1 and a `RESTORE_STATUS` drop drawn within 900 units, the
+   pilot now breaks off and takes it instead of trading for a kill.
+
+Measured result of the three changes together: death times 150–212 s (previous attempt 140–285 s), and **0 of 5
+continuous runs still clear**. All five failures are `killer 2` — worm contact — which is now the single remaining
+cause instead of a mix with sentry fire. Every attributed hit sits at the visible body radius; the pilot is spending
+dashes now, so the remaining gap is the crowded assault's fodder, not the boss and not an unfair hitbox.
+
+**The 4-of-5 bar is not met.** The boss's damage, speed ramp and pass pattern, the warning beat, Kitty's line, the
+card, quota, arena, clear rule and snapshot are all unchanged.
