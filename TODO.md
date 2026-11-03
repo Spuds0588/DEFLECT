@@ -54,8 +54,11 @@ Formerly: 2026-11-02 (PLATES + PORTS)
 - [x] Continuous run clears BUILD ROOT end to end with 3 bots (163.9 s, 21 kills, 3/3 ports, deaths only in the
   respawning practice phases). Three harness faults fixed: floor model now matches `World.inVoid`, the flee dash
   travels along the vector it checked, and melee gets a lash-and-dash answer
-- [ ] Continuous run dies in REBOOT's assault at 94 s at one segment (worm bite, 3/4 kills). Needs sustained
-  defensive play through the level-2 assault before three consecutive clears can be claimed
+- [x] Diagnosis: REBOOT's assault is entered at full 3/3 health and the Mega Worm does spawn (200 hp, 4/4 fodder
+  kills). Two probe faults fixed: bots 1-3 were never driven by a brain, and the pilot ignored RESTORE pickups
+- [ ] Continuous run now dies at 48 s, three segments lost in six seconds as the Mega Worm arrives (4/4 attempts).
+  BUILD ROOT clears continuously (205.8 s, 44 kills, 3/3 ports). Next: measure the boss arrival burst against a
+  three-segment body in `campaign2-check`'s staged setup to decide whether the arrival needs a warning beat
 - Harness limitation, stated for the record: the probe routes on `islands`/open `bridges` with plain input frames;
   it is not a game rule that stops it, since `port-sweep-check` closes all three ports in 17.4 s
 - [ ] Port sweep pacing with a human solo pilot: three ports at 20-26 hits each, while the drill squad ignores them

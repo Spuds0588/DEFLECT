@@ -6644,3 +6644,29 @@ So the closing criterion — three consecutive continuous clears through the Meg
 fails one level later than the last session and no longer fails for a navigation reason: the pilot arrives, fights,
 and runs out of health. `campaign2-check` still defeats the Mega Worm in all three of its 3-bot runs, so the boss is
 defeatable; what is unproven is a single life carrying through both levels.
+
+## 2026-11-03 — Diagnosed the level-2 death by instrumenting it (v0.1.161)
+
+The continuous run kept dying in REBOOT's assault, so the probe now records what actually happens: every health
+segment lost (time, phase, health before/after, dash charges, whether the guard was held, distance to the nearest
+hostile), every heal, and the live threat table at failure. Two harness faults came out of that immediately.
+
+1. **The "three bots" had no brains.** Only slot 0 was driven; bots 1–3 sent empty input frames for the whole run, so
+   the level-2 boss was being soloed in what was reported as a four-player match. Every slot now runs `BotBrain` at
+   `digital`, the same brain a VS BOTS match uses.
+2. **The pilot never picked up a heal.** `updatePickups` runs in campaign, and `RESTORE_STATUS` refills the pool, so a
+   pilot that ignores pickups is not playing the game. BUILD ROOT now shows heals at 11 s, 51 s and 201 s.
+
+The measured facts about REBOOT:
+
+- The player **enters the assault at full health (3/3)**; nothing is carried in from the briefing or the breach, so
+  there is no chip-damage-before-the-fight pacing bug to fix.
+- The four fodder kills complete, and the Mega Worm **does spawn** — it was live at 200 hp.
+- The death is three segments in six seconds (hits at 42 s, 43 s and 48 s), and the fatal hit lands **within three
+  seconds of the boss arriving**, at a distance of 1177,607 from the arena centre-lane.
+
+Result in this configuration: **BUILD ROOT clears continuously, unattended, with every slot on the shipped AI** —
+205.8 s, 44 kills, 3/3 ports, 4 heal pickups taken. **REBOOT still fails**, in 4 of 4 attempts, always within seconds
+of the Mega Worm spawning, always at 4/4 fodder kills. `campaign2-check` continues to kill the Mega Worm in all three
+of its 3-bot runs, so the boss is defeatable with a healthy body; what is not yet proven is that a body which arrives
+at the boss with three segments survives its arrival.
