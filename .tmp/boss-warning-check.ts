@@ -23,6 +23,11 @@ priv.tutorial = null;
 priv.campaignPhase = 'assault';
 priv.beginAssault();
 priv.gauntletKills = world.campaignKillsToClear;
+// REBOOT's run-up is six feeds plus their delivered bodies; this probe starts at the
+// warning beat, so close the feeds here instead of waiting out a full playthrough.
+for (const portal of world.props.filter((prop) => prop.portal && !prop.portalExit)) {
+  priv.damageProp(portal, portal.hp, 0, 0);
+}
 
 const frames = new Array(MAX_PLAYERS).fill(null).map(() => ({ mx: 0, my: 0, held: 0, pressed: 0 }));
 const p = world.players[0];

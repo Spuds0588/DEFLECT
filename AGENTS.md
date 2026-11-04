@@ -881,6 +881,11 @@ The camera is part of the read, not a fixed follow. All numbers live in `tuning/
 nothing forks: the host sim, guest prediction, bot edges, the renderer and the picker preview all read the
 same flag. Walled arenas keep every old rule. Do not make it a mode flag or a room setting; the map owns it.
 
+`ArenaDef.openShots` is the separate shot-only opening on `GRID ZERO`: projectiles and beams pass the outer
+edge, while `stepPlayerMotion` still clamps bodies to the floor. The plate draws no frame in the arena or
+the picker. It exists so the REBOOT Mega Worm is hittable on its staged approach outside the lip. Do not
+treat it as a general `walls: 'open'` replacement or let a body walk through the missing shot wall.
+
 - **Open means the floor ends at the bounds.** `stepPlayerMotion` skips the wall clamp, and `World` turns a
   body whose centre crosses the lip into a fall (`SRC.VOID`). The fall runs through the ordinary death path,
   so it loses the round, counts as the local death in the gauntlet/training and fails a campaign node.
@@ -3093,14 +3098,22 @@ floor, or the reveal's pull-back is cancelled on wide arenas.
 
 The Mega Worm's flyby is a **fixed pattern**, not an orbit: one straight run along the line latched through the last
 detected position, a short run clear of the floor, then the body parks offscreen, assembles, and comes back on a
-fresh line. Approaches fan by golden angle, so the lane alternates but the rule never changes. Passing speed ramps
+fresh line. `stageMegaPass` cycles four fixed lanes, so the lane alternates but the rule never changes. Passing speed ramps
 with missing health (`MEGA_WORM.flyby.rageSpeed`), which is the only escalation: do not add new attacks to make the
 last third harder. Keep the return offscreen (`stageMegaPass`) rather than restoring the wide outside turn; the turn
 was what made the pass unreadable.
 
+**One straight physical body (2026-11-04).** `followMegaChain` writes every plate exactly behind the head on
+`w.angle`; there is no follow lag, so a pass cannot stretch the chain or open seams between plates. Damage does
+not apply knockback to the Mega Worm's flight line. Projectile, bomb, contact and spear checks use one head circle
+plus one capsule from head to tail (`megaBodyHit`), not a loop over thirteen plate circles; the remaining melee and
+beam paths still read the rigid plates. `MEGA_WORM.spacing` is 128 against a 99 plate so adjacent hexes overlap,
+and the renderer draws a dark spine under the plates to close the remaining visual seam. Do not restore the old
+168 spacing or per-plate follow interpolation.
+
 The arrival is **announced before it spawns**. When the run-up kills are met, Script Kitty warns, the
 `SOMETHING BIG / MEGA WORM // INBOUND` card plays, and the body waits out `CAMPAIGN.bossWarnTime` before spawning on
-top of its own entrance arc. That window is presentation only: it must never gate the quota, the arena, the clear
+top of its own entrance pass. That window is presentation only: it must never gate the quota, the arena, the clear
 rule or `Snapshot`, and the line is the same local DOM story box as every other beat. `.tmp/boss-warning-check.ts`
 owns this contract; `.tmp/campaign2-check.ts` owns boss mechanics but runs the pilot at `iframes = 999`, so it is not
 evidence that the fight is survivable.

@@ -18,8 +18,9 @@ export const hitScratch: CircleRectHit = { nx: 0, ny: 0, px: 0, py: 0 };
  * on the same surface.
  *
  * Pillars, deployed walls, the compactor plate and a walled arena's bounds are solid;
- * a chasm or an open lip is not (a beam flies over the drop). Barriers are thin walls,
- * so the ray-segment crossing is expanded by half the plate's thickness.
+ * a chasm, an open lip, or a shot-only open edge is not (a beam flies over the drop).
+ * Barriers are thin walls, so the ray-segment crossing is expanded by half the plate's
+ * thickness.
  * Allocation-free; returns `max` when nothing is in the way.
  */
 export function beamReach(
@@ -47,7 +48,7 @@ export function beamReach(
     const c = rx * rx + ry * ry - disc.radius * disc.radius;
     const t = -b + Math.sqrt(Math.max(0, b * b - c));
     if (t > 0) best = Math.min(best, t);
-  } else if (arena.walls !== 'open') {
+  } else if (arena.walls !== 'open' && !arena.openShots) {
     const b = arena.bounds;
     if (dx < -1e-6) best = Math.min(best, (b.left - ox) / dx);
     else if (dx > 1e-6) best = Math.min(best, (b.right - ox) / dx);

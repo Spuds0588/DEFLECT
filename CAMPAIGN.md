@@ -96,7 +96,9 @@ MAINBOARD has two ingress feeds; ROUTER has one feed and two wall emitters. A ro
 only after every feed is shut and every live threat is gone. The rooms are local-only and their state never
 enters `Snapshot` (see AGENTS D41). REBOOT is the exception to the feed counts: six corner feeds fill
 `GRID ZERO`, then the Mega Worm is announced only after all six and their delivered bodies are cleared. Its
-fight is four fixed fly-by lanes with a wide arena camera and no small-enemy spawns between passes.
+fight is four fixed fly-by lanes with a wide arena camera and no small-enemy spawns between passes. The arena
+has no outer shot wall, so fire can reach the Worm before it crosses the lip; the player's body stays on the
+floor. The Worm is one rigid straight chain with a capsule body hit test, and its plates overlap by design.
 
 **Inciting incident.** The infection breaks out of quarantine and spreads through the dev system. The
 friendly program gets the players out, and that escape carries the route through LOCALHOST and onto the

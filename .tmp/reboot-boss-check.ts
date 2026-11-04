@@ -9,7 +9,7 @@
  */
 import { getArena } from '../src/game/arenas';
 import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
-import { MAX_PLAYERS, SIM_DT } from '../src/game/config';
+import { MAX_PLAYERS, MEGA_WORM, SIM_DT } from '../src/game/config';
 import { World } from '../src/game/world';
 
 const fail = (message: string): never => {
@@ -35,6 +35,9 @@ const internal = world as unknown as {
   campaignBossWarnT: number;
   damageProp: (prop: unknown, amount: number, x: number, y: number) => void;
   campaignFloorClear: () => boolean;
+  bounceWalls: (proj: unknown) => void;
+  megaBodyHit: (w: unknown, x: number, y: number, pad: number) => boolean;
+  projectileHitsGauntlet: (proj: unknown) => boolean;
   sentries: { active: boolean }[];
   viruses: { active: boolean }[];
   errors: { active: boolean }[];
@@ -46,6 +49,11 @@ const liveErrorCount = () => internal.errors.filter((e) => e.active).length;
 
 if (world.campaignPhase !== 'assault') fail(`opened in ${world.campaignPhase}, not assault`);
 if (world.portTotal !== 6) fail(`expected six corner feeds, got ${world.portTotal}`);
+if (!arena.openShots) fail('GRID ZERO does not open its outer wall to shots');
+if (arena.walls === 'open') fail('GRID ZERO must keep its body floor bounded');
+if (MEGA_WORM.spacing >= MEGA_WORM.segmentRadius * 1.6) {
+  fail(`Mega Worm spacing ${MEGA_WORM.spacing} leaves visible seams between plates`);
+}
 if (liveSentryCount() !== 0 || liveVirusCount() !== 0 || liveErrorCount() !== 0 || liveWorms() !== 0) {
   fail('the boss node opened with pre-placed enemies');
 }
@@ -92,6 +100,56 @@ if (passMarks < 2) fail(`only ${passMarks} static pass(es) ran in 36s`);
 if (world.campaignPhase !== 'assault') fail(`worm fight ended as ${world.campaignPhase}`);
 if (world.portsClosed !== 6) fail(`ports closed ${world.portsClosed}/6`);
 
+// The fight body is one straight capsule. Every plate must sit on that line at the
+// authored spacing, and the capsule must include the full body, not just the head.
+const ux = Math.cos(boss.angle);
+const uy = Math.sin(boss.angle);
+for (let i = 0; i < boss.segCount; i++) {
+  const dx = boss.segX[i] - boss.x;
+  const dy = boss.segY[i] - boss.y;
+  if (Math.abs(dx * uy - dy * ux) > 0.25) fail(`plate ${i} drifted off the straight body`);
+  if (Math.abs(Math.hypot(dx, dy) - MEGA_WORM.spacing * (i + 1)) > 0.5) {
+    fail(`plate ${i} lost its authored overlap spacing`);
+  }
+}
+if (!internal.megaBodyHit(boss, boss.x, boss.y, 0)) fail('capsule missed its own head');
+const tail = boss.segCount - 1;
+const midX = (boss.x + boss.segX[tail]) * 0.5;
+const midY = (boss.y + boss.segY[tail]) * 0.5;
+if (!internal.megaBodyHit(boss, midX, midY, 0)) fail('capsule missed the middle of the body');
+if (!internal.megaBodyHit(boss, boss.segX[tail], boss.segY[tail], 0)) fail('capsule missed its tail');
+if (internal.megaBodyHit(boss, midX - uy * (boss.segR + 8), midY + ux * (boss.segR + 8), 0)) {
+  fail('capsule swallowed a point outside the body');
+}
+
+// A round fired at the body's middle must use the capsule, not only the head.
+const bodyShot = world.projectiles[1];
+bodyShot.active = true;
+bodyShot.type = 0;
+bodyShot.owner = 0;
+bodyShot.x = midX;
+bodyShot.y = midY;
+bodyShot.vx = 100;
+bodyShot.vy = 0;
+bodyShot.radius = 2;
+bodyShot.damage = 1;
+const hpBefore = boss.hp;
+if (!internal.projectileHitsGauntlet(bodyShot)) fail('a shot on the middle plate missed the Mega Worm body');
+if (boss.hp >= hpBefore) fail('a capsule body hit did not damage the Mega Worm');
+bodyShot.active = false;
+
+// An outside shot must survive the old arena wall long enough to reach the boss.
+const shot = world.projectiles[0];
+shot.active = true;
+shot.x = arena.bounds.right + 160;
+shot.y = arena.bounds.top + 400;
+shot.vx = 100;
+shot.vy = 0;
+shot.radius = 2;
+internal.bounceWalls(shot);
+if (!shot.active) fail('a shot died on GRID ZERO\'s missing outer wall');
+shot.active = false;
+
 console.log(
-  `reboot-boss-check: OK (six feeds, ${warnedFor.toFixed(1)}s warning, ${passMarks} static passes, no little enemies)`,
+  `reboot-boss-check: OK (six feeds, ${warnedFor.toFixed(1)}s warning, ${passMarks} static passes, one straight hittable body, open shot edge, no little enemies)`,
 );

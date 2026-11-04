@@ -202,7 +202,8 @@ a threat family on a clock and stop when shot shut. Ports reuse the file-box dam
 second entity type, respect the same live caps as a sentry pack, and gate the exit directly: the right-wall
 portal pull opens only when every port is shut **and** every live hostile from that room is gone. Ports are
 local content — campaign and infection only, never in a snapshot. REBOOT is fed by six corner ports; the
-Mega Worm is announced only after all six and their delivered bodies are cleared.
+Mega Worm is announced only after all six and their delivered bodies are cleared. GRID ZERO's outer edge is
+open to shots and beams (but not bodies), so the Worm can be hit on its staged approach before it crosses the lip.
 
 Every round-based match hops the same way. When a round ends, a white portal opens on the right wall and
 pulls every standing body in; the next round enters from the left wall. The pull writes positions directly,
@@ -418,9 +419,10 @@ full-radius clamping.
 `TEST RANGE` is a QA-only sandbox arena (3480x1920, empty floor) hidden from the arena picker. Boot it with
 `?range=1`, optionally `&bot=1&mega=1`, to read boss scale and behaviour before geometry gets a vote.
 
-The Mega Worm now arrives at roughly three times its old silhouette, doubled health and a slower turn.
-Campaign REBOOT gives it a slow harmless entrance pass and four fixed fly-by lanes with a wide arena
-camera; it never homes on the player after the entrance, and no small families spawn between passes.
+The Mega Worm now arrives at roughly three times its old silhouette, doubled health and a straight-line flight
+model. Campaign REBOOT gives it a slow harmless entrance pass and four fixed fly-by lanes with a wide arena
+camera; it never homes on the player after the entrance, and no small families spawn between passes. Its body is
+one rigid chain with a capsule hit test, so a shot that lands between two plates still connects.
 
 
 ## Demo boss rotation

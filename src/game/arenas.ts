@@ -1375,6 +1375,11 @@ export interface ArenaDef {
    */
   walls?: 'solid' | 'open';
   /**
+   * No outer wall for shots or beams. Bodies still clamp to `bounds`, so the floor stays
+   * safe while a boss can be hit before it crosses the lip. The edge is drawn bare.
+   */
+  openShots?: boolean;
+  /**
    * Interior holes in the floor. A body whose centre ends over one falls; a dash is
    * airborne, so a short gap can be jumped. Shots fly over them like a trench.
    */
@@ -1691,6 +1696,9 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     accentFaint: 'rgba(255, 59, 167, 0.032)',
     signature: 1,
     bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    // The Mega Worm arrives from beyond the plate. Removing the shot wall lets a player
+    // open fire on it before the body crosses the lip; the body floor stays intact.
+    openShots: true,
     pillars: [
       { x: 323, y: 179, w: 134, h: 134 },
       { x: 1533, y: 179, w: 134, h: 134 },
@@ -4680,7 +4688,9 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
   ctx.globalAlpha = 0.5;
   ctx.strokeStyle = arena.accent;
   ctx.lineWidth = 1;
-  if (arena.walls === 'open') {
+  if (arena.openShots) {
+    // No outer wall on GRID ZERO. The preview keeps the plate edge bare too.
+  } else if (arena.walls === 'open') {
     // A broken lip reads as "the floor ends here" even at thumbnail size.
     ctx.setLineDash([5, 4]);
     ctx.strokeRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);

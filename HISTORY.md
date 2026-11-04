@@ -7443,3 +7443,33 @@ targets. Finishing the lesson clears them before the first portal.
 
 **Next:** build/bench, push Pages, verify the live 0.1.181 stamps and load the first arena and boss in a
 browser for the portal and camera reads.
+
+## 2026-11-04 — REBOOT open firing edge and one-piece Mega Worm (v0.1.182)
+
+**Goal:** let the player shoot the Mega Worm while it is still outside GRID ZERO, make the boss's straight-line
+body simple and reliable, and close the visible gaps between its plates.
+
+**Changes.**
+- `ArenaDef.openShots` removes the outer wall for projectiles and beams only. `stepPlayerMotion` still clamps
+  bodies, so the floor stays safe. GRID ZERO sets it, hides the outer frame in the arena and picker, and
+  `beamReach` ignores the missing shot wall. This lets fire reach the boss on its staged approach outside the
+  lip.
+- The Mega Worm chain is now truly rigid: `followMegaChain` writes every plate exactly behind the head along
+  `w.angle` with no interpolation lag. Damage still sparks but no longer adds knockback to the flight line.
+- Projectile, bomb, contact and spear collision use `megaBodyHit`, one head circle plus one head-to-tail
+  capsule, instead of looping over every plate. Melee and beam paths keep reading the rigid plates.
+- `MEGA_WORM.spacing` is 128 against a 99 segment radius, so adjacent hexes overlap. The renderer adds a dark
+  spine under the plates to close the remaining seam.
+- `boss-warning-check` setup now closes REBOOT's six feeds before testing the warning; the old setup assumed
+  the pre-0.1.181 clear gate and never reached the announcement.
+- Version stamps bumped to 0.1.182.
+
+**Verification.**
+- `npx tsc --noEmit` 0; `npm run build` 0 (existing >500 kB chunk warning only); `git diff --check` 0.
+- `npm run bench` 0: 8P stress 0.044 ms avg / 0.103 ms p99; gauntlet max 0.130 ms avg / 0.462 ms p99.
+- Probes 0: `reboot-boss-check` (six feeds, 5.0 s warning, 3 static passes, straight capsule, open edge),
+  `campaign-rules-check` and `boss-warning-check` (warn 0.02 s, spawn 5.03 s, card 7).
+- Not tested: a full human boss kill or a couch-distance visual pass on the new plate overlap.
+
+**Next:** push Pages, verify the live 0.1.182 stamps, and watch a full REBOOT Mega Worm fight for the open-edge
+read, plate overlap and capsule hit surface.

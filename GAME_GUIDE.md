@@ -194,7 +194,9 @@ Clearing writes the slot and opens the portal. `BUILD ROOT` hops straight to `RE
 cat gets you out of quarantine, then six corner feeds fill the arena with sentries, viruses, worms and
 errors. Clear all six feeds and every body before the **Mega Worm** is announced. Its entrance is a slow,
 harmless fly-past with a roar; the camera stays wide for the whole fight. It then repeats four fixed
-straight lanes with a pause between passes, and no little enemies spawn between runs. That node does not
+straight lanes with a pause between passes, and no little enemies spawn between runs. GRID ZERO has no
+outer wall: your shots and beams leave the plate, so you can open fire before the Worm crosses the lip;
+your body is still held on the floor. That node does not
 end on a kill count or a port sweep; it ends when the boss is dead. A completed `REBOOT` slot reports the
 end of the authored route. A run is never saved mid-level.
 Everything before the assault is practice: if you fall off a plate or get caught during orientation or
@@ -327,7 +329,7 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | Arena | Shape / intent |
 | --- | --- |
 | `CROSSROADS` | Four gate blocks around an open center. Symmetrical lanes and clean center duels. |
-| `GRID ZERO` | Corner pillars plus central cover. The classic, readable arena. |
+| `GRID ZERO` | Corner pillars plus central cover. The classic, readable arena. No outer wall: shots and beams leave the plate, but bodies stay on the floor. |
 | `THE RING` | A hollow central box with a gate on each side. Close control fights and blind flanks. |
 | `SWITCHBACK` | Staggered bars form serpentine lanes. Long sightlines and heavy ricochets. |
 | `MAINFRAME` | A large multi-district map (four linked combat zones) with a camera that follows you. Cross lanes, pillar cover, a gate ring and a ricochet alley; fights move between districts. |
@@ -617,21 +619,24 @@ the reveal finishes.
 
 ### Mega Worm
 
-The first boss. It starts beyond the arena edge and swims a full lap, then fights as one long straight
-body: a head with a chain of heavy plates laid out behind it. It is one damage sponge, not a segmented
+The first boss. It starts beyond the arena edge, crosses the plate in one slow harmless approach, then
+fights as one long straight body: a head with a chain of heavy plates laid out behind it. It is one damage sponge, not a segmented
 creature: every hit anywhere on the body drains the same bar, and nothing breaks off.
 
 - **One health pool.** Where you hit does not matter. There is no weak plate, no head to break and no
   second worm to split off; keep shooting the body and it dies.
-- **Straight runs, wide turns.** It picks the last place it saw you and flies a straight line through
-  it, then banks in a wide arc outside the arena and comes back over. Touching any plate hurts. It only
-  re-aims at the start of a turn, so a run is fixed once it begins; step off the line and it misses.
-- **Arrival cry.** The lap ends with a bird-like call that shakes the screen. That is the handoff, not the
+- **Straight runs, offscreen reset.** It picks the last place it saw you, flies one straight line through
+  it, then clears the floor and resets offscreen for the next run. Touching any plate hurts. It only
+  re-aims between runs, so a pass is fixed once it begins; step off the line and it misses.
+- **One solid body.** The head and every plate are one continuous hit surface. A shot that lands in the
+  seam between two plates still counts, and the plate chain never stretches open in a pass.
+- **Arrival cry.** The approach ends with a bird-like call that shakes the screen. That is the handoff, not the
   end of the fight: the first pass follows right after it, so keep moving through the cry.
 - Damage reads as cracks spreading across the plates and loose code drifting off the body. All plates
   show the same damage. There is no health bar.
-- It flies above the floor: cover does not stop it, and it leaves the arena bounds on every pass. The
-  pressure is the lane and the collision, not a chase.
+- It flies above the floor: cover does not stop it, and it leaves the arena bounds on every pass. On
+  GRID ZERO, fire can follow it out; the plate has no outer wall, though your body still stops at the edge.
+  The pressure is the lane and the collision, not a chase.
 - **Scale.** It is roughly three times its old size, with twice its old health.
 - **Hex plates.** The plates are hexagons, not square tiles. Cracks spread across the hex faces, and
   loose code flakes off the body as it takes damage.

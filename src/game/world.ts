@@ -534,6 +534,11 @@ export class World {
   }));
   /** Open-wall arena: the bounds are a lip, not a wall. Anything past it de-rezzes. */
   private readonly openWalls: boolean;
+  /**
+   * No outer wall for shots and beams. The body floor still clamps, but the Mega Worm
+   * can be hit while it is staged outside the plate.
+   */
+  private readonly openShots: boolean;
   /** Compactor cycle time, in seconds since this cycle began. Public for the renderer. */
   pusherT = 0;
   /** Seconds of warning left before the arm moves; 0 outside the warning window. */
@@ -883,6 +888,7 @@ export class World {
     this.resetBrowser();
     this.bumperFlash = new Float32Array(arena.bumpers?.length ?? 0);
     this.openWalls = arena.walls === 'open';
+    this.openShots = arena.openShots === true;
     this.pusherY = arena.bounds.top;
     if (arena.disc) {
       this.armPivotX = discArmPivotX(arena);
@@ -9128,6 +9134,9 @@ export class World {
   }
 
   private bounceWalls(proj: Projectile): void {
+    // No outer wall for shots: GRID ZERO lets fire leave the plate and reach the Mega
+    // Worm while it is still outside. Bodies stay clamped by stepPlayerMotion.
+    if (this.openShots) return;
     if (this.openWalls) {
       const b = this.arena.bounds;
       const r = proj.radius;
@@ -13320,6 +13329,10 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
+      if (w.mega) {
+        if (this.megaBodyHit(w, proj.x, proj.y, proj.radius)) return true;
+        continue;
+      }
       const hdx = proj.x - w.x;
       const hdy = proj.y - w.y;
       const hr = proj.radius + w.hitR;
@@ -17133,6 +17146,30 @@ export class World {
     return node === 0 ? w.y : w.segY[node - 1];
   }
 
+  /**
+   * The Mega Worm's body is one straight capsule, not a row of independent circles.
+   * Its head keeps the larger radius; the rest is a single line to the tail plate.
+   */
+  private megaBodyHit(w: Worm, x: number, y: number, pad: number): boolean {
+    const hdx = x - w.x;
+    const hdy = y - w.y;
+    if (hdx * hdx + hdy * hdy <= (w.hitR + pad) ** 2) return true;
+    if (w.segCount <= 0) return false;
+    const tail = w.segCount - 1;
+    return this.pointSegmentDistance2(x, y, w.x, w.y, w.segX[tail], w.segY[tail]) <= (w.segR + pad) ** 2;
+  }
+
+  /** Squared distance from a point to a line segment. */
+  private pointSegmentDistance2(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+    const abx = bx - ax;
+    const aby = by - ay;
+    const len2 = abx * abx + aby * aby;
+    const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / len2)) : 0;
+    const dx = px - (ax + abx * t);
+    const dy = py - (ay + aby * t);
+    return dx * dx + dy * dy;
+  }
+
 
   /**
    * Boss bodies clamp against half their radius, not the whole body: a silhouette that
@@ -17380,7 +17417,7 @@ export class World {
     sourceSlot: number,
     dirX: number,
     dirY: number,
-    force: number,
+    _force: number,
     _hitX: number,
     _hitY: number,
   ): void {
@@ -17388,10 +17425,8 @@ export class World {
     w.hp -= amount;
     w.hitFlash = 0.22;
     if (sourceSlot >= 0) w.aggroT = MEGA_WORM.aggroTime;
-    if (force > 0) {
-      w.kx += dirX * force * 0.35;
-      w.ky += dirY * force * 0.35;
-    }
+    // A hit sparks, but it never shoves the flight line: the Worm is a straight-line
+    // body, so damage must not turn a pass into a drift.
     this.emit(EV.WORM_HIT, sourceSlot, w.x, w.y, amount, dirX, dirY);
     if (w.hp <= 0) this.killMegaWorm(w, sourceSlot);
   }
@@ -17457,10 +17492,8 @@ export class World {
       const speed = fly.speed * (1 + missing * fly.rageSpeed);
       w.vx = Math.cos(w.angle) * speed;
       w.vy = Math.sin(w.angle) * speed;
-      w.x += (w.vx + w.kx) * dt;
-      w.y += (w.vy + w.ky) * dt;
-      w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
-      w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
+      w.x += w.vx * dt;
+      w.y += w.vy * dt;
       this.followMegaChain(w, dt);
       // Contact is the whole attack: the body is a sponge that flies over the floor.
       this.megaTouch(w, p);
@@ -17477,10 +17510,8 @@ export class World {
       w.flyT += dt;
       w.vx = Math.cos(w.angle) * fly.speed;
       w.vy = Math.sin(w.angle) * fly.speed;
-      w.x += (w.vx + w.kx) * dt;
-      w.y += (w.vy + w.ky) * dt;
-      w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
-      w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
+      w.x += w.vx * dt;
+      w.y += w.vy * dt;
       this.followMegaChain(w, dt);
       if (w.flyT >= fly.leaveTime) this.stageMegaPass(w);
       return;
@@ -17620,23 +17651,17 @@ export class World {
    * crossing the room instead of a snake turning. Plates still ignore cover and the
    * arena lip, which is why the body can be staged off the map.
    */
-  private followMegaChain(w: Worm, dt: number): void {
+  private followMegaChain(w: Worm, _dt: number): void {
+    const ux = Math.cos(w.angle);
+    const uy = Math.sin(w.angle);
     for (let i = 0; i < w.segCount; i++) {
       w.segPrevX[i] = w.segX[i];
       w.segPrevY[i] = w.segY[i];
-      const ax = i === 0 ? w.x : w.segX[i - 1];
-      const ay = i === 0 ? w.y : w.segY[i - 1];
-      const dx = ax - w.segX[i];
-      const dy = ay - w.segY[i];
-      const d = Math.hypot(dx, dy);
-      if (d > 0.001) {
-        const tx = ax - (dx / d) * MEGA_WORM.spacing;
-        const ty = ay - (dy / d) * MEGA_WORM.spacing;
-        const k = Math.min(1, MEGA_WORM.followRate * dt);
-        w.segX[i] += (tx - w.segX[i]) * k;
-        w.segY[i] += (ty - w.segY[i]) * k;
-        w.segAngle[i] = Math.atan2(ay - w.segY[i], ax - w.segX[i]);
-      }
+      // Exact placement, no follow lag: the body is one rigid line, so every plate
+      // keeps its authored overlap even while the head is crossing at speed.
+      w.segX[i] = w.x - ux * MEGA_WORM.spacing * (i + 1);
+      w.segY[i] = w.y - uy * MEGA_WORM.spacing * (i + 1);
+      w.segAngle[i] = w.angle;
     }
   }
 
@@ -17662,22 +17687,24 @@ export class World {
 
   private megaTouch(w: Worm, p: Player): void {
     if (!p.alive || p.cloakT > 0 || w.touchCd > 0) return;
-    const nodes = w.segCount + 1;
+    // Contact uses the same capsule as fire: head circle plus one body line. No loop
+    // over thirteen plates, and no seam a body can slip through.
     let hit = false;
-    let hx = 0;
-    let hy = 0;
-    for (let k = 0; k < nodes; k++) {
-      const nx = this.megaNodeX(w, k);
-      const ny = this.megaNodeY(w, k);
-      const r = (k === 0 ? w.hitR : w.segR) + PLAYER.radius;
-      const dx = p.x - nx;
-      const dy = p.y - ny;
-      if (dx * dx + dy * dy <= r * r) {
-        hit = true;
-        hx = dx;
-        hy = dy;
-        break;
-      }
+    let hx = p.x - w.x;
+    let hy = p.y - w.y;
+    if (hx * hx + hy * hy <= (w.hitR + PLAYER.radius) ** 2) {
+      hit = true;
+    } else if (w.segCount > 0) {
+      const tail = w.segCount - 1;
+      const ax = w.x;
+      const ay = w.y;
+      const abx = w.segX[tail] - ax;
+      const aby = w.segY[tail] - ay;
+      const len2 = abx * abx + aby * aby;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - ax) * abx + (p.y - ay) * aby) / len2)) : 0;
+      hx = p.x - (ax + abx * t);
+      hy = p.y - (ay + aby * t);
+      if (hx * hx + hy * hy <= (w.segR + PLAYER.radius) ** 2) hit = true;
     }
     if (!hit) return;
     const d = Math.hypot(hx, hy) || 1;
@@ -18994,6 +19021,20 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
+      if (w.mega) {
+        if (!this.megaBodyHit(w, proj.x, proj.y, proj.radius)) continue;
+        if (proj.type === 1) {
+          this.explodeMine(proj, proj.owner);
+        } else {
+          const speed = Math.hypot(proj.vx, proj.vy) || 1;
+          const stormStrike = proj.lightning && proj.owner >= 0 ? STORM_CLOUD.lightning.reflectDamage : proj.damage;
+          this.damageWorm(w, stormStrike, proj.owner, proj.vx / speed, proj.vy / speed, 0, proj.x, proj.y);
+          if (proj.type === 13) this.compressWormHit(w, proj.owner);
+          if (proj.type === 16) this.splitCopyShot(proj);
+          proj.active = false;
+        }
+        return true;
+      }
       const hdx = proj.x - w.x;
       const hdy = proj.y - w.y;
       const hr = proj.radius + w.hitR;
@@ -19080,6 +19121,14 @@ export class World {
       if (!w.active) continue;
       const bit = 1 << i;
       if ((proj.hitWorms & bit) !== 0) continue;
+      if (w.mega) {
+        // The spear tests the one capsule rather than every plate. Do not pin a flying
+        // boss against the missing outer wall.
+        if (!this.megaBodyHit(w, proj.x, proj.y, proj.radius)) continue;
+        proj.hitWorms |= bit;
+        this.damageWorm(w, proj.damage, proj.owner, ux, uy, FISHER.spearKnockback);
+        continue;
+      }
       let hitX = w.x;
       let hitY = w.y;
       let touching = false;

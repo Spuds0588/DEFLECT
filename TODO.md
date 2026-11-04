@@ -3655,3 +3655,14 @@ arrive.
 - [x] Mega Worm reworked as a flying boss with committed flyby passes and no arena clamp (v0.1.145).
 - [ ] Watch a full Mega Worm fight on TEST RANGE and tune pass speed, orbit radius, snap range and camera
       margin from play.
+
+## FINAL ARENA EDGE / MEGA BODY (v0.1.182)
+
+- [x] `GRID ZERO` uses `openShots`: shots and beams leave the outer edge while bodies still clamp to
+      the floor. The arena and picker draw no outer frame on this plate.
+- [x] The Mega Worm chain is rigid every tick; damage no longer knocks it off its flight line.
+- [x] Projectile, bomb, contact and spear hits read one head circle plus one head-to-tail capsule instead
+      of looping over thirteen plate circles.
+- [x] Plate spacing is 128 against a 99 segment radius, with a dark seam spine under the hex plates.
+- [ ] Play a full REBOOT boss fight: confirm the open edge lets you hit the approach outside the plate,
+      and judge the wider plate overlap and capsule hit surface from the couch camera.

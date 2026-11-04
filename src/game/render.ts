@@ -1816,7 +1816,7 @@ export class Renderer {
     // anyone steps on it. A flying boss needs the same look-past-the-lip space, or its
     // pass leaves the pane the moment it crosses the arena edge.
     const outerPad = Math.max(
-      arena.walls === 'open' ? CAMERA.voidMargin : 0,
+      arena.walls === 'open' || arena.openShots ? CAMERA.voidMargin : 0,
       bossFramed ? CAMERA.bossVoidMargin : 0,
     );
     const camMinX = b.left - outerPad;
@@ -7102,11 +7102,15 @@ export class Renderer {
     this.drawRegularPrograms(arena, t, frameA);
 
     // Border. An open arena has no wall, so the lip is dashed and the grid outside it is
-    // swallowed by the void. Corner brackets are dropped: nothing here stops a body.
+    // swallowed by the void. A shot-only open edge has no frame at all: GRID ZERO's
+    // floor simply ends, and the boss crosses that bare edge.
     const openLip = arena.walls === 'open';
     ctx.save();
     ctx.strokeStyle = arena.accent;
-    if (openLip) {
+    if (arena.openShots) {
+      // Leave the plate edge bare. The floor fill is the only boundary; no bar, no
+      // corner brackets, no inward chevrons that would read as a wall to shoot around.
+    } else if (openLip) {
       ctx.globalAlpha = frameA;
       ctx.fillStyle = 'rgba(2, 5, 9, 0.94)';
       const voidW = CAMERA.voidMargin + 72;
@@ -10010,6 +10014,32 @@ export class Renderer {
       ctx.restore();
     }
 
+    const hx = lerp(w.prevX, w.x, alpha);
+    const hy = lerp(w.prevY, w.y, alpha);
+
+    // A dark spine fills the seams under the plates, so a fast pass reads as one solid
+    // body even where two hex frames meet at a shallow angle.
+    if (w.segCount > 0) {
+      const tail = w.segCount - 1;
+      const tx = lerp(w.segPrevX[tail], w.segX[tail], alpha);
+      const ty = lerp(w.segPrevY[tail], w.segY[tail], alpha);
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 0.72;
+      ctx.strokeStyle = '#2a0712';
+      ctx.lineWidth = w.segR * 1.7;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(hx, hy);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.globalAlpha = 0.32;
+      ctx.strokeStyle = base;
+      ctx.lineWidth = w.segR * 1.25;
+      ctx.stroke();
+      ctx.restore();
+    }
+
     for (let k = nodes - 1; k >= 1; k--) {
       if (k >= builtNodes) continue;
       const seg = k - 1;
@@ -10020,8 +10050,6 @@ export class Renderer {
       this.drawMegaPlate(x, y, w.segAngle[seg], size, frac, base, t, k);
     }
 
-    const hx = lerp(w.prevX, w.x, alpha);
-    const hy = lerp(w.prevY, w.y, alpha);
     this.drawMegaPlate(hx, hy, w.angle, w.hitR, totalFrac, base, t, -1);
 
     // Eyes are the head read.
@@ -15115,6 +15143,8 @@ export class Renderer {
       ctx.moveTo(apx, apy);
       ctx.lineTo(apx + Math.cos(aa) * alen, apy + Math.sin(aa) * alen);
       ctx.stroke();
+    } else if (arena.openShots) {
+      // An open-shot arena has no wall to draw on the map either.
     } else if (arena.walls === 'open') {
       // A broken inner rim on the map: the edge is a drop, not a wall.
       ctx.setLineDash([4, 4]);
