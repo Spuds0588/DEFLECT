@@ -7842,3 +7842,34 @@ the head spinning and exploding last.
 
 **Next:** human campaign replay on 0.1.190, specifically the REBOOT boss death. Committed and pushed with
 this entry.
+
+## 2026-11-04 — Attract demo arrivals use edge portals (v0.1.191)
+
+**Goal:** make the kiosk footage obey the same enemy-arrival rule as play: opening and refill threats
+must enter through enemy portals, not appear around the squad.
+
+**Changes.**
+- `World.seedAttractRun` no longer fills the room directly. `fillAttractRoom` counts live plus already
+  queued arrivals and queues sentries, worms and viruses through `queueAssault`; `tickAssault` opens the
+  normal edge mouths and releases the burst on one frame.
+- One cascading-error colony seed is queued with the same family-4 ingress. After it lands, the colony's
+  ordinary growth owns the rest of its cap. `updateErrors` now calls `queueErrorColony` in attract mode;
+  direct `spawnErrorColony` remains campaign-authored only.
+- The opening room is empty until the first portal opens (about 0.3 s), then the game's normal portal
+  renderer, burst hold and close animation carry the arrival. Refills queue only the deficit, so pending
+  arrivals cannot be double-counted.
+- Added `.tmp/attract-portal-check.ts`; updated AGENTS D23/D65, README, GAME_GUIDE, TODO and HISTORY;
+  bumped all version stamps to 0.1.191.
+
+**Verification.**
+- `.tmp/attract-portal-check.ts` OK on PONG: the initial room has zero threats, 20 arrival requests are
+  queued, the first burst lands on tick 18 at edge portal (1720, 214) with 12 live threats; every active
+  body is within the portal mouth; the refill queues without spawning; an attract error reseed queues.
+- `.tmp/assault-check.ts` OK: normal sentry burst, worm ingress and error colony still use edge portals.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only); `npm run bench` 0. 8P bot
+  swarm 0.108 ms avg / 0.322 ms p99; gauntlet max 0.235 ms avg / 0.674 ms p99 at 29.6 live threats.
+- `git diff --check` clean.
+- Not yet tested: a human kiosk capture at demo zoom; the portal mouths and burst timing need a couch check.
+
+**Next:** watch a published `?demo=true` capture on 0.1.191 and confirm the opening/refill portals read as
+the source of the wave. Committed and pushed with this entry.

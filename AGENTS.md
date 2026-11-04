@@ -1065,8 +1065,8 @@ facing instead of this 37° glance. See D27.
 ### D23 — Title attract demo and kiosk boot (revised 2026-10-30)
 When the hub sits idle for `ATTRACT.idle` (24 s) the title hands the screen to a **bot-run gauntlet**
 attract demo: a random program, a random arena, and a run seeded `ATTRACT.wave` (72) waves in so every
-threat family is live and every live cap is at its pool maximum. The canvas UI is forced off for the
-demo; the title DOM hides and the game canvas takes the screen. Any key, pointer click, wheel or gamepad
+threat family is represented. The canvas UI is forced off for the demo; the title DOM hides and the game
+canvas takes the screen. Any key, pointer click, wheel or gamepad
 edge ends it and returns to the hub with nothing highlighted. `?attract=1` boots it for QA; `?demo=true`
 boots the kiosk variant described below.
 
@@ -1076,11 +1076,13 @@ boots the kiosk variant described below.
   death still sets `gauntletOver` so the pilot knows to restart, but `World.step` only freezes on that flag
   outside attract mode: keep the death aftermath simulating for `ATTRACT.restart` seconds instead of
   holding the last frame. Real gauntlet, campaign and hosted runs keep the freeze.
-- `World.seedAttractRun` jumps `gauntletT` to the target wave, then `fillAttractRoom` fills sentries,
-  worms and viruses to the current caps around the player; error blocks come from the normal colony
-  growth. While `attractMode` is set, a 5 s refill keeps the room at those caps (`ATTRACT.refill`) so the
-  demo never thins out between the normal wave timers. It reuses the normal spawn paths, so assembly,
-  sound and the threat simulation are unchanged.
+- `World.seedAttractRun` jumps `gauntletT` to the target wave, then `fillAttractRoom` queues sentries,
+  worms, viruses and one error-colony seed through `queueAssault`; the ordinary `tickAssault` opens the
+  same edge portals as a played gauntlet. Nothing spawns around the squad. While `attractMode` is set, a
+  5 s refill queues only the deficit (`assaultQueued` counts arrivals already pending) so the demo never
+  thins out or overfills; the error colony grows after its portal seed. `updateErrors` also queues an
+  attract colony instead of calling `spawnErrorColony`; direct `spawnErrorColony` is campaign-authored
+  only. It reuses the normal spawn paths, so assembly, sound and the threat simulation are unchanged.
 - The pilot is an ordinary `BotBrain` at the HARD tier in slot 0, driven through the same `InputFrame` as
   a human. Do not give the demo a second control path or special-case world mutation.
 - Hover does not wake the demo: a layout change can fire a synthetic `pointermove` under a resting
@@ -2644,6 +2646,9 @@ one second, then get surrounded" run the demos kept showing.
   150/110 ring and 240 clearance, because the portal itself already keeps distance.
 - Portals are local-only (`AssaultPortal`, never in `SnapshotHazards`) and drawn by `drawAssaultPortals`,
   which shares the red-square language of campaign ingress. Do not reintroduce a direct gauntlet spawn.
+- The attract demo is not exempt: `seedAttractRun` and `fillAttractRoom` queue its opening density and
+  refills through this ingress, and an attract error reseed uses `queueErrorColony`. A demo must never
+  fall back to the direct `spawn*` fill.
 
 ### D66 — Mega Worm is the first boss: one straight sponge you out-position (decided 2026-11-02, built v0.1.133, revised v0.1.150)
 
@@ -3278,7 +3283,8 @@ case and makes the measured pass rate meaningless. With the override removed the
 Attract and `?demo=1` are product surfaces, not QA. They never stage a mini-boss and never pick a campaign node or
 a tutorial room arena: the demo pool excludes `qa` arenas, anything with `ingress` or `rooms`, and every arena id
 named by `PLAYABLE_CAMPAIGN_LEVELS`. Boss showcases read as unfinished next to ordinary arena play, and campaign
-geometry only makes sense inside a level. `?boss=1` is the explicit QA fast-forward that still spawns one boss;
+geometry only makes sense inside a level. Their threats still arrive through the same edge portals as a played
+gauntlet. `?boss=1` is the explicit QA fast-forward that still spawns one boss;
 keep it working, and do not re-add boss sessions to the rotation until the campaign itself plays well.
 
 ### The playthrough harness must drive every slot (2026-11-03)

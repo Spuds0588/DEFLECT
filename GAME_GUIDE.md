@@ -491,7 +491,8 @@ breakable cells and CHAT's rising bubbles are local-only display content and are
 Leave the title alone for 24 seconds and it starts an attract demo: a random program in a random arena,
 fighting a deep gauntlet wave with the canvas UI off. Any key, click, wheel or pad press brings the title
 back. If the pilot dies, the arena keeps simulating the death aftermath for four seconds before the next
-random run starts; it does not hold the last frame.
+random run starts; it does not hold the last frame. Every opening and refill threat enters through the same
+red edge portals as a played gauntlet; the kiosk never drops a wave around the pilots.
 
 For a showfloor or a capture, add `?demo=true`: the same run, but input cannot leave it and the centered
 `DEFLECT_` wordmark fades in, clears the screen, and returns on a 60-second cycle; the next run alternates

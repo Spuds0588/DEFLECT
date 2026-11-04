@@ -2,6 +2,17 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Attract demo portal-only arrivals (2026-11-04, v0.1.191)
+
+- [x] `seedAttractRun` and `fillAttractRoom` queue opening and refill sentries, worms and viruses through
+      `assaultQueue`; the kiosk no longer spawns silhouettes around the squad
+- [x] Attract error colonies reseed through `queueErrorColony`; `spawnErrorColony` remains campaign-only
+- [x] `.tmp/attract-portal-check.ts` proves the room opens empty, the first burst arrives at an edge portal,
+      refills only queue, and an error reseed queues instead of spawning
+- [x] `assault-check`, `npm run build`, `npm run bench` green
+- [ ] Watch a published `?demo=true` capture and confirm the portal mouths and arrival bursts read at kiosk
+      distance
+
 ## Mega Worm death choreography (2026-11-04, v0.1.190)
 
 - [x] Lethal damage starts a harmless final flyover instead of deleting the whole boss immediately

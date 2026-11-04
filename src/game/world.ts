@@ -14520,8 +14520,9 @@ export class World {
   }
 
   /**
-   * Attract-mode setup: jump the endless sandbox to a deep wave and land one of each
-   * threat family so the demo opens on a live fight instead of an empty room. This is
+   * Attract-mode setup: jump the endless sandbox to a deep wave and queue one of each
+   * threat family for the opening edge bursts. The kiosk shows the same arrival rule as
+   * a played gauntlet, so the room starts empty and the portals fill it. This is
    * presentation only; it is never used by a scored run, a campaign node or a hosted
    * match, and it does not touch the run record.
    */
@@ -14533,11 +14534,9 @@ export class World {
     this.waveBannerT = 0;
     this.attractMode = true;
     this.attractRefillT = ATTRACT.refill;
-    // Fill the room to the live caps. A single opening pack reads as an empty level on
-    // a wide arena, and the demo exists to show the fight, not the walk to it.
+    // Fill the room through the ingress queue. A single opening pack reads as an empty
+    // level on a wide arena, and the demo exists to show the fight, not the walk to it.
     this.fillAttractRoom();
-    this.spawnErrorColony();
-    for (let i = 1; i < this.errorLimit(); i++) this.growError();
     // Leave the next normal drops a beat away, so the demo does not double up on frame one.
     this.sentrySpawnT = SENTRY.interval * 0.6;
     this.wormSpawnT = GAUNTLET.wormInterval * 0.7;
@@ -14587,41 +14586,43 @@ export class World {
   }
 
   /**
-   * Demo-only top-up: fills sentries, worms and viruses to the current wave caps around
-   * the local player, in the camera window. Reuses the normal spawn paths so the demo
-   * still shows assembly, sound and the ordinary threat simulation.
+   * Demo-only top-up: queues each missing family through the same edge ingress as a
+   * played gauntlet. The kiosk must not materialize threats around the squad; every
+   * arrival has to read from a portal mouth. Error blocks are one colony arrival, then
+   * the colony's own growth owns the rest of its cap.
    */
   private fillAttractRoom(): void {
     const p = this.players[0];
     if (!p || !p.active || !p.alive) return;
 
-    let sentries = 0;
+    let sentries = this.assaultQueued(0);
     for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) sentries++;
-    let guard = 0;
-    while (sentries < this.sentryLimit() && guard++ < 20) {
-      const angle = this.rng.range(0, Math.PI * 2);
-      const dist = this.rng.range(260, 460);
-      const kind = (this.rng.next() * 3) | 0;
-      // A failed anchor is usually a chasm or a packed corner; try another angle
-      // instead of giving up on the whole pack.
-      if (this.spawnSentry(kind as 0 | 1 | 2 | 3, p.x + Math.cos(angle) * dist, p.y + Math.sin(angle) * dist * 0.62)) sentries++;
+    const sentryNeed = Math.max(0, this.sentryLimit() - sentries);
+    for (let i = 0; i < sentryNeed; i++) {
+      // A portal burst can carry every silhouette; the normal pack picker still owns
+      // pacing in a scored run, this top-up only restores the demo's density.
+      this.queueAssault(0, i % 4, 1);
     }
 
-    let worms = 0;
-    for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) worms++;
-    guard = 0;
-    while (worms < this.wormLimit() && guard++ < 4) {
-      this.spawnWorm();
-      worms++;
+    let worms = this.assaultQueued(1);
+    for (let i = 0; i < this.worms.length; i++) {
+      if (this.worms[i].active && this.worms[i].bossKind < 0) worms++;
     }
+    const wormNeed = Math.max(0, this.wormLimit() - worms);
+    for (let i = 0; i < wormNeed; i++) this.queueAssault(1, 0, 1);
 
-    let viruses = 0;
+    let viruses = this.assaultQueued(2);
     for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) viruses++;
-    guard = 0;
-    while (viruses < this.virusLimit() && guard++ < 16) {
-      const angle = this.rng.range(0, Math.PI * 2);
-      const dist = this.rng.range(230, 470);
-      if (this.spawnVirus(p.x + Math.cos(angle) * dist, p.y + Math.sin(angle) * dist)) viruses++;
+    const virusNeed = Math.max(0, this.virusLimit() - viruses);
+    for (let i = 0; i < virusNeed; i++) this.queueAssault(2, 0, 1);
+
+    // An error colony is one arrival, then it grows outward on its own clock. Queueing
+    // one block per cap slot would turn growth into a second spawner.
+    let errors = this.assaultQueued(4);
+    for (let i = 0; i < this.errors.length; i++) if (this.errors[i].active) errors++;
+    if (errors === 0) {
+      const burst = Math.min(GAUNTLET.errorBurst, this.errorLimit());
+      if (burst > 0) this.queueAssault(4, 0, burst);
     }
   }
 
@@ -15272,6 +15273,15 @@ export class World {
         this.emit(EV.PROP_BREAK, 0, b.x + b.w * 0.5, b.y + b.h * 0.5, b.w + b.h * 0.5);
       }
     }
+  }
+
+  /** Queued arrivals in one family; the kiosk top-up uses this so it never overfills. */
+  private assaultQueued(family: number): number {
+    let n = 0;
+    for (let i = this.assaultQueueIndex; i < this.assaultQueueCount; i++) {
+      if (this.assaultFamily[i] === family) n++;
+    }
+    return n;
   }
 
   /** Queue one family member for the next edge burst. */
@@ -15975,7 +15985,9 @@ export class World {
       if (!this.gauntletPractice && this.wave < GAUNTLET.errorWave) return;
       this.errorSpawnT -= dt;
       if (this.errorSpawnT <= 0) {
-        if (this.campaign || this.attractMode) this.spawnErrorColony();
+        // Campaign levels author a direct colony. Every wave arrival, including the
+        // kiosk's, comes out of an edge portal instead.
+        if (this.campaign) this.spawnErrorColony();
         else this.queueErrorColony();
       }
       return;
@@ -16027,8 +16039,8 @@ export class World {
   }
 
   /**
-   * Direct seed for the kiosk demo and authored campaign. The normal gauntlet queues
-   * `queueErrorColony`, so its first blocks come out of an edge portal instead.
+   * Direct seed for authored campaign levels. The gauntlet and kiosk queue
+   * `queueErrorColony`, so their first blocks come out of an edge portal instead.
    */
   private spawnErrorColony(): void {
     const anchor = this.arena.spawns[this.farSpawnIndex()];

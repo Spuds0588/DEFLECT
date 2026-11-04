@@ -474,8 +474,9 @@ whole segmented chain at its real footprint, not a single dot. A lethal hit play
 the plates tail-first and spins the head before the final explosion.
 
 
-## Demo boss rotation
+## Demo and boss review
 
-The attract loop and `?demo=1` alternate ordinary seeded wave runs with boss showcases. Each showcase
-cycles one of the five mini-bosses, seeded on a shallow wave so the boss is the subject, and spawns it
-across the room from the squad. The next session returns to a normal run.
+The attract loop and `?demo=1` run ordinary seeded wave sessions on the standalone arena pool, rotating
+one, two and three local pilots. Opening and refill threats use the same edge ingress portals as a played
+gauntlet, so a capture never shows enemies materializing around the squad. The public demo has no boss
+sessions. `?boss=1` is the QA-only review loop that cycles the five registry mini-bosses on TEST RANGE.
