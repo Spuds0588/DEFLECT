@@ -3685,5 +3685,7 @@ arrive.
 - [x] The Warden shock line still leads the SYSTEM objective; the wake banner holds for 4.0 s.
 - [x] Portal arrival waits 0.62 s for the hop wipe, then throws east at 1500 with entry protection.
 - [x] Hit feedback is a red edge cue; the low-health warning is clipped to an edge band.
+- [x] Production check: Pages run `41775381839` succeeded; live 0.1.184, `deflect-0.1.184` service worker,
+      `assets/index-D9rue8n9.js` 200 `application/javascript`.
 - [ ] Fresh human INTAKE -> HOLDING pass: confirm the class visibly attacks, the shock line reads, and the
       arena-2 throw is visible after the wipe.

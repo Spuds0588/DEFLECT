@@ -7548,7 +7548,9 @@ but the Warden's own fire/melee lesson was the trigger that bypassed it.
 - `campaign-rules-check` 0.
 - Not yet tested: a fresh human INTAKE -> HOLDING playthrough after the 0.1.184 deploy.
 
-**Production.** Pending the `origin/main` push and Pages run for this entry.
+**Production.** Pages run `41775381839` succeeded at `0bb7d3e`. The live page reports HTML `v0.1.184`,
+serves `sw.js` `deflect-0.1.184`, and returns 200 `application/javascript` for the
+`assets/index-D9rue8n9.js` bundle.
 
 **Next:** play the published 0.1.184 build through INTAKE and HOLDING; confirm the fight attacks, the shock
 line reads, and the throw is visible on arena 2.
