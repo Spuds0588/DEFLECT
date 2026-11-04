@@ -7282,3 +7282,33 @@ predicate and the approach work; the two failures reach 3/3 ports and quota but 
 prop, which is the plate/deck seam sampled off-floor by the direct leg.
 
 Reverted; shipped state stays v0.1.178 with all validators green.
+
+## 2026-11-04 — Exit-frame variants falsified, shipped build unchanged (no code ship)
+
+Two structural fixes for BUILD ROOT's exit leg were built, measured and reverted. Both changed the pilot's
+objective ordering; neither moved the clear ratio.
+
+1. **Exclusive exit frame.** `BotBrain.think()` bound the lead body and the threat distance once and, while
+   `campaignExitReady && campaignPhase === 'assault'`, ran a dedicated `exitFrame` that returned before
+   `thinkCore` (swinging when a threat sat inside the lash, otherwise walking the prop). `tsc` 0 and
+   `port-sweep-check` 0 before the batch. `LEVEL=0 RUNS=4`: **0 cleared, 4/4 failed.**
+2. **Exit approach without the void override.** `objectiveFrame` ran last in `think()`, so `floorSweep` could
+   overwrite its movement near the uplink seam; the sweep was skipped while `campaignExitReady`.
+   `tsc` 0 and `port-sweep-check` 0 before the batch. `LEVEL=0 RUNS=4`: **0 cleared, 4/4 failed.**
+
+**The port-count divergence is falsified, not confirmed.** The run that died at 192 s in variant 1 was already
+dead at 65 s with the harness reading 1/3 ports, so `campaignExitReady` was false at that moment
+(`world.ts:1579` opens the exit only once `portsClosed >= portTotal`) and no exit frame ran. That death was an
+ordinary assault death, not the exit opening with portals standing.
+
+**Shipped state:** v0.1.178 at `e67e605`, unchanged by this session. Best measured level-1 result is still seed
+5399835 `cleared` at 210.3 s with 3/3 ports; seeds 5391916, 5407754 and 5415673 close 3/3 ports and meet the
+quota but never arrive at the prop inside the 420 s cap. Both campaign levels (BUILD ROOT, then REBOOT with the
+Mega Worm) are playable and live for the human pass.
+
+**Verification:** `tsc --noEmit` 0, `npm run build` 0, `port-sweep-check` 0, `plate-flow-check` 0,
+`holding-layout-check` 0, `campaign-rules-check` 0, tree clean, no `dist/`.
+
+**Next:** a per-second exit trace on seed 5391916 (exit readiness, live portal count, distance to the prop,
+chosen steering branch) before any further structural change. Every ordering hypothesis tried so far is now
+measured out; the trace has to name the cause.

@@ -2,7 +2,8 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-03 (PORT GEOMETRY FIX)
+Last updated: 2026-11-04 (EXIT-FRAME VARIANTS FALSIFIED)
+Formerly: 2026-11-03 (PORT GEOMETRY FIX)
 Formerly: 2026-11-03 (CAMPAIGN PLAYTHROUGH PASS)
 Formerly: 2026-11-02 (BOSS SWEEP + CAMPAIGN LEVEL 2)
 Formerly: 2026-11-02 (PLATES + PORTS)
@@ -41,6 +42,13 @@ Formerly: 2026-11-02 (PLATES + PORTS)
       sweep, so no headed campaign has completed; every clear so far comes from the headless probes
 - [x] BUILD ROOT ports were authored inside cover pillars: two of the three could not be shot from any direction, so the sweep was impossible. Moved to open floor (mainboard A 1330,900 and router 1350,230; B stays 1780,940) and `spawnCampaignPorts` now nudges a buried port to clear ground
 - [x] Sweep confirmed clearable: `.tmp/port-sweep-check.ts` closes all three ports in 17.4 s of ordinary ranged fire and clears the node; a headed Chromium run closed 2 of 3 ports by real play before the session ended
+- [x] Exit-frame variants measured out and reverted: the exclusive `exitFrame` before target selection and
+      the `floorSweep` opt-out while exit-ready each produced 0/4 clears (worse than the 1/4 baseline). The
+      port-count divergence is falsified: the 192 s death was an ordinary assault death at 1/3 ports, so the
+      exit was never armed
+- [ ] Per-second exit trace on a failing seed (5391916): exit readiness, live portal count, distance to the
+      prop and the chosen steering branch after the quota is met. Name the cause before another structural change
+- [ ] Human prod test of campaign levels 1-2 (feedback pending)
 - [ ] Four headed start-to-finish campaign runs (level 1 -> level 2 -> Mega Worm) with per-run logs
 - [x] Holding plate entry: the intake bridge landed behind the sealed cell block, so QUARANTINE dropped a body into a
   strip it could not leave. Cell block moved back-right, intake deck lands on the open left, holding->mainboard deck
