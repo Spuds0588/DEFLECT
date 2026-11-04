@@ -13,7 +13,8 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] Square portal wipe in the renderer (`beginPortalHop`) covers the swap without gating input
 - [x] Probes: `plate-flow-check`, `holding-layout-check`, `port-sweep-check`, `port-route-check`, `exit-route-check`, `islands-ports-check`, `round-hop-check`
 - [x] Headed portal-hop pass on the dev build: `?autoplay=3` hopped CROSSROADS -> GRID ZERO -> THE RING -> SWITCHBACK across rounds 2-4
-- [ ] Headed campaign auto-hop and a published-build pass
+- [x] Production check: Pages run `41752976683` succeeded; the live page logs `Build 0.1.179`, serves `sw.js` `deflect-0.1.179`, and its bundles return 200
+- [ ] Headed campaign auto-hop and a published-build playthrough
 
 Last updated: 2026-11-04 (ISLAND HOPS)
 Formerly: 2026-11-04 (EXIT-FRAME VARIANTS FALSIFIED)

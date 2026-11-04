@@ -7352,4 +7352,6 @@ rounds. No bridge deck, no earned gate, no plate seam to path around.
   CROSSROADS -> GRID ZERO (round 2) -> THE RING (round 3) -> SWITCHBACK (round 4).
 - Not tested: a two-client online hop (host `MSG.HOP`/guest rebuild is typechecked, not exercised), and a
   headed campaign auto-hop from BUILD ROOT into REBOOT.
-- Production: pending Pages run for 0.1.179.
+- Production: Pages run `41752976683` succeeded. <https://spuds0588.github.io/DEFLECT/> serves `v0.1.179`
+  and `sw.js` reports `deflect-0.1.179`; the live page logs `[DEFLECT-INIT] Build 0.1.179 ready` with the
+  CSS and JS bundles both 200. Code commit `5033ee3`.
