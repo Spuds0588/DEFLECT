@@ -160,6 +160,7 @@ export function createPlayer(slot: number): Player {
     meleeReachMult: 1,
     meleeHalfAngle: PLAYER.swingHalfAngle,
     meleeKnock: PLAYER.punchKnockback,
+    parryT: 0,
     armT: 0,
     armMax: 0,
     armX: 0,
@@ -198,6 +199,15 @@ export function createPlayer(slot: number): Player {
     travelToX: 0,
     travelToY: 0,
     travelSwap: false,
+    pipeTransitT: 0,
+    pipeTransitDur: 0,
+    pipeFromX: 0,
+    pipeFromY: 0,
+    pipeToX: 0,
+    pipeToY: 0,
+    pipeFromIndex: -1,
+    pipeToIndex: -1,
+    pipeCooldown: 0,
     netPinT: 0,
     waveT: 0,
     waveCd: 0,
@@ -392,6 +402,13 @@ export function createWorm(): Worm {
     biteHit: false,
     biteDirX: 1,
     biteDirY: 0,
+    dashT: 0,
+    dashCd: 0,
+    dashHit: false,
+    dashDirX: 1,
+    dashDirY: 0,
+    stunT: 0,
+    megaWatchT: 0,
     bossKind: -1,
     hand: null,
     starfish: null,
@@ -529,6 +546,7 @@ export function createSentry(): Sentry {
     ramHit: false,
     ramDirX: 1,
     ramDirY: 0,
+    stunT: 0,
     shapeState: 2,
     shapeT: 0,
     shapeAtkCd: 0,
@@ -674,6 +692,7 @@ export function clearPlayerForSpawn(p: Player, x: number, y: number, facing: num
   p.chargeHeld = false;
   p.guardT = 0;
   p.guardCd = 0;
+  p.parryT = 0;
   p.armT = 0;
   p.armMax = 0;
   p.armHitCd = 0;

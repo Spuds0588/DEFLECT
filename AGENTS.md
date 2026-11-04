@@ -294,6 +294,35 @@ field is read only by `bounceRocketPath`. Mines, traps, bombs (8/9), the super b
 (17) keep their own no-bounce rules. The planned path and the flown path are both drawn dotted; never restore
 the solid band. The car route is unaffected and remains body geometry.
 
+### D66 — Level-2 route and the 2026-11-04 feedback pass (decided 2026-11-04)
+
+- `CAMPAIGN_LEVELS` is now ten nodes: the four quarantine rooms, REBOOT, NETWORK SWITCH,
+  DOCUMENT SCANNER, FAX MACHINE, SMART WATCH and BUSINESS LAPTOP (BLOB finale). The live route is
+  data in `CAMPAIGN_ROUTE`; `drawCampaignRoad` renders completed, current, revealed and generic future
+  stops. A clear shows the route plate before the portal hop. Future branches are just extra `links`
+  entries, and unseen stops stay dim generic nodes until the preceding node is cleared.
+- Campaign bots are selected through `World.botSlots`; `0` means no bots. `activateCampaignBots` puts
+  every selected bot on the floor from the first campaign frame, and the main loop keeps their brains
+  live through calibration, breach and assault. Do not restore the old minimum-one clamp or deactivate
+  them on the assault transition.
+- Melee identity: `swingReach`/`punchReach`, `punchDamage` and `punchKnockback` are the shared melee
+  numbers. Preserve the health budget (D10); tune reach, damage and knockback, never `PLAYER.hp` or
+  program health segments, without explicit approval.
+- Ordinary worms close distance with a telegraphed dash (`WORM.dashWindup`/`active`/`recovery`,
+  cooldown, damage and knockback). A guard or fresh swing inside `PLAYER.parryWindow` is a parry: it
+  cancels the lunge, stuns the attacker for `parryStun` and deals no player damage. A late block shoves
+  both bodies but stuns nobody and deals no damage.
+- Laser emitters have a `phase === 3` warning window of `EMITTER.warn` (0.5 s): a thin red lane is drawn
+  along the full beam reach before the live shaft. Keep the warning visible when the lens is offscreen.
+- NETWORK SWITCH pipes are transparent offscreen tubes. The renderer carries file cargo toward the
+  mouth; a caught player travels to a random other mouth with `NETWORK.playerTransit` invulnerability
+  and cooldown. Pipe geometry and transit remain local, never in `Snapshot`.
+- Mega Worm fly-bys fire one reflectable type-20 bolt from each side of the head. A stalled pass is
+  restaged by the `megaWatchT` recovery watchdog. Do not move the volley back to a tail node that is
+  offscreen.
+- The Warden lesson combines each instruction with its bindings, catches three test shots, then catches
+  three more while locked on a subject. HOLDING's clear plays `KITTY_NETWORK` before the pull.
+
 ### D9 — Gauntlet is a local threat sandbox (revised 2026-10-29)
 On explicit designer request, hostiles exist in a **GAUNTLET** mode, not in ranked PvP. It is a test bed
 for the eventual PvE direction, not a promise of online PvE. The single exception is INFECTION, which is

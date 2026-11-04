@@ -31,9 +31,9 @@ check('arena has a firewall switch', !!arena.firewallSwitch);
 check('pipes start live and healthy', w.pipes.every((p) => p.active && p.hp === p.maxHp));
 check('no hostile files before the first beat', hazardCount() === 0);
 
-// The first pipe offset is 1.2 s; its first file leaves at 3.4 s.
+// The first pipe offset is 1.2 s; its first file leaves at 4.6 s.
 w.players[0].iframes = 999;
-for (let i = 0; i < 230; i++) w.step(1 / 60, input);
+for (let i = 0; i < 330; i++) w.step(1 / 60, input);
 check('pipe feeds a hostile file', hazardCount() >= 1, String(hazardCount()));
 const fed = w.props.find((b) => b.active && b.hazard);
 check('fed file is a hazard', !!fed?.hazard);

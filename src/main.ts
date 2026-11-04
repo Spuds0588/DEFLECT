@@ -27,6 +27,7 @@ import { Input, type MenuEdges } from './game/input';
 import { Renderer, type RenderState } from './game/render';
 import { PROGRAM_ID, PROGRAMS, clampProgram, programDef } from './game/programs';
 import { STORY_SLOT_COUNT, clearStorySlot, loadStorySlots, saveStoryProgress, type StorySave } from './game/saves';
+import { drawCampaignRoad } from './game/road';
 import {
   SERIES_LENGTHS,
   normalizeSeriesGames,
@@ -60,7 +61,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.191';
+const BUILD = '0.1.192';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -180,6 +181,27 @@ const tutorialLine = el('tutorial-line');
 const tutorialPrompt = el('tutorial-prompt');
 const tutorialSkipBtn = el<HTMLButtonElement>('tutorial-skip');
 const countdownEl = el('countdown');
+
+// Between-level route plate. It is a DOM layer, not a World entity, so the cleared
+// simulation can sit frozen behind it and no resume state has to be invented.
+const campaignRoadEl = document.createElement('div');
+campaignRoadEl.className = 'campaign-road';
+campaignRoadEl.hidden = true;
+campaignRoadEl.innerHTML = `
+  <div class="campaign-road-card">
+    <p class="campaign-road-kicker">SCRIPT KITTY // ROUTE UPDATED</p>
+    <h2 class="campaign-road-title">NETWORK BACKBONE</h2>
+    <canvas class="campaign-road-canvas" width="960" height="340"></canvas>
+    <p class="campaign-road-next"></p>
+    <button class="campaign-road-continue" type="button">CONTINUE ROUTE</button>
+  </div>`;
+document.body.appendChild(campaignRoadEl);
+const campaignRoadCanvas = campaignRoadEl.querySelector<HTMLCanvasElement>('.campaign-road-canvas')!;
+const campaignRoadTitle = campaignRoadEl.querySelector<HTMLElement>('.campaign-road-title')!;
+const campaignRoadNextLine = campaignRoadEl.querySelector<HTMLElement>('.campaign-road-next')!;
+const campaignRoadContinueBtn = campaignRoadEl.querySelector<HTMLButtonElement>('.campaign-road-continue')!;
+let campaignRoadAction: (() => void) | null = null;
+let campaignRoadTimer = 0;
 const countdownLabel = el('countdown-label');
 const countdownValue = el<HTMLElement>('countdown-value');
 const perfEl = el('perf');
@@ -671,6 +693,7 @@ function bindUi(): void {
     else startLocalMatch();
   });
   tutorialSkipBtn.addEventListener('click', () => world?.skipTutorial());
+  campaignRoadContinueBtn.addEventListener('click', () => continueCampaignRoad());
   programBackBtn.addEventListener('click', () => programStageBack());
   soloBackBtn.addEventListener('click', () => showMenuStage('hub'));
   multiBackBtn.addEventListener('click', () => showMenuStage('hub'));
@@ -1706,6 +1729,7 @@ function startCampaignLevel(viaPortal = false): void {
   if (busy) return;
   teardownSession();
   hideOverlayInternal();
+  hideCampaignRoad();
   campaignClearHandled = false;
   mode = 'campaign';
   localSlot = 0;
@@ -1713,10 +1737,9 @@ function startCampaignLevel(viaPortal = false): void {
   campaignLevelIndex = Math.max(0, Math.min(PLAYABLE_CAMPAIGN_LEVELS.length - 1, campaignLevelIndex));
   const level = PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex];
   const arena = getArena(level.arenaId);
-  const drill = Math.max(
-    CAMPAIGN.minDrillBots,
-    Math.min(CAMPAIGN.maxDrillBots, campaignBots > 0 ? campaignBots : CAMPAIGN.minDrillBots),
-  );
+  // NO BOTS means no bots. The old clamp forced one companion into every campaign
+  // node, including a run that had explicitly chosen zero.
+  const drill = Math.max(0, Math.min(CAMPAIGN.maxDrillBots, campaignBots));
   const names = new Array(MAX_PLAYERS).fill('');
   names[0] = getCallsign();
   for (let i = 1; i <= drill; i++) names[i] = BOT_NAMES[(i - 1) % BOT_NAMES.length];
@@ -2629,7 +2652,10 @@ function stepSession(now: number, dt: number): void {
       // Training and campaign bots are practice partners, not round opponents. They
       // write the same InputFrame a human does. The drill squad stops thinking once
       // the breach de-rezzes it.
-      const drillLive = !world.campaign || world.campaignPhase === 'drill';
+      // Campaign companions stay live through calibration, the breach and the assault.
+      // They only stop once the node is cleared or the run has failed.
+      const drillLive =
+        !world.campaign || (world.campaignPhase !== 'cleared' && world.campaignPhase !== 'failed');
       for (let i = 1; i < botBrains.length; i++) {
         const brain = botBrains[i];
         const frame = trainingInputs[i];
@@ -4878,6 +4904,37 @@ function hopMatchRound(): void {
  * One island hop. The wipe closes over the old arena, the action swaps it at the
  * midpoint, and the opening half reveals the new device. Nothing queues behind it.
  */
+function showCampaignRoad(
+  clearedName: string,
+  nextName: string,
+  nextIndex: number,
+  action: () => void,
+): void {
+  campaignRoadAction = action;
+  campaignRoadTitle.textContent = `${clearedName} SECURED`;
+  campaignRoadNextLine.textContent = `NEXT NODE REVEALED // ${nextName}`;
+  drawCampaignRoad(campaignRoadCanvas, campaignLevelIndex, nextIndex);
+  campaignRoadEl.hidden = false;
+  window.clearTimeout(campaignRoadTimer);
+  campaignRoadTimer = window.setTimeout(() => {
+    if (!campaignRoadEl.hidden) continueCampaignRoad();
+  }, CAMPAIGN.routeRevealTime * 1000);
+}
+
+function hideCampaignRoad(): void {
+  window.clearTimeout(campaignRoadTimer);
+  campaignRoadTimer = 0;
+  campaignRoadEl.hidden = true;
+  campaignRoadAction = null;
+}
+
+function continueCampaignRoad(): void {
+  if (campaignRoadEl.hidden) return;
+  const action = campaignRoadAction;
+  hideCampaignRoad();
+  action?.();
+}
+
 function beginIslandHop(label: string, action: () => void): void {
   if (portalHopAction) {
     action();
@@ -5100,10 +5157,14 @@ function handleCampaignClear(w: World): void {
     bestLine = ` // BEST ${loadStorySlots()[campaignSlot]?.bestScore ?? score}`;
   }
   if (next) {
-    beginIslandHop(`SCRIPT_KITTY // PORTAL TO ${next.name}`, () => {
-      campaignLevelIndex += 1;
-      startCampaignLevel(true);
-      toast(`${cleared.name} SECURED // SCORE ${score}${clean ? ' // CLEAN SWEEP' : ''}`);
+    // The route plate owns the beat between devices. It names the next stop only after
+    // this one is secure; later stops stay generic until their turn.
+    showCampaignRoad(cleared.name, next.name, campaignLevelIndex + 1, () => {
+      beginIslandHop(`SCRIPT_KITTY // PORTAL TO ${next.name}`, () => {
+        campaignLevelIndex += 1;
+        startCampaignLevel(true);
+        toast(`${cleared.name} SECURED // SCORE ${score}${clean ? ' // CLEAN SWEEP' : ''}`);
+      });
     });
     return;
   }

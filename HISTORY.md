@@ -7873,3 +7873,42 @@ must enter through enemy portals, not appear around the squad.
 
 **Next:** watch a published `?demo=true` capture on 0.1.191 and confirm the opening/refill portals read as
 the source of the wave. Committed and pushed with this entry.
+
+## 2026-11-04 — Campaign feedback pass: route, squads, worm pressure (v0.1.192)
+
+**Goal:** act on the level-1/level-2 playtest pass: remove the REBOOT head start, make the Mega Worm
+recover from a stalled pass, raise melee impact, give worms a closing attack, add laser warning lanes,
+make NETWORK SWITCH pipes read as tubes, show Mega volleys, tighten the Warden lesson, add a parry, and
+turn the level-2 blueprints into a playable, map-backed chain.
+
+**Changes.**
+- `CAMPAIGN_LEVELS` now runs ten nodes through NETWORK SWITCH, DOCUMENT SCANNER, FAX MACHINE, SMART WATCH
+  and BUSINESS LAPTOP (BLOB finale). `CAMPAIGN_ROUTE` carries per-stop links; `drawCampaignRoad` shows
+  completed, current, revealed and dim generic future stops. A clear shows that plate before the portal.
+- Campaign bots use the selected count, including zero. `activateCampaignBots` places them beside the
+  lead on the first frame and the main loop keeps their brains live through calibration/breach/assault.
+- REBOOT's kitty briefing no longer grants a quiet head start: the node begins its assault immediately
+  while Kitty talks. HOLDING's clear plays `KITTY_NETWORK` before the pull.
+- Shared melee reach/damage/knockback raised; health is unchanged. Ordinary worms gained a telegraphed
+  dash. A guard or lash inside `PLAYER.parryWindow` parries a dash for a one-second stun; a late block
+  separates both bodies with no stun and no damage. Sentry rams use the same rule.
+- Emitters spend `EMITTER.warn` (0.5 s) as a thin red lane across their full reach before firing.
+- Pipes are transparent offscreen tubes with moving file cargo. A player at the mouth is carried
+  offscreen and returned through a random other live mouth.
+- Mega Worm volleys now leave the head's two sides; `megaWatchT` restages a pass that stops advancing.
+- Warden lines combine instructions and bindings; reflection is three catches, then three locked catches.
+  The awakened-primitive white hit-outline box was removed.
+- Updated AGENTS, README, GAME_GUIDE, CAMPAIGN and TODO; bumped all version stamps to 0.1.192.
+
+**Verification.**
+- `.tmp/feedback-pass-check.ts` OK: selected bots load, NO BOTS stays empty, perfect parry stuns with no
+  damage, late block shoves both, pipe captures/returns a player, emitter warning appears, and the locked
+  reflection step requires a lock.
+- `.tmp/campaign-rules-check.ts` OK for the ten-node route and the live feed rooms; `.tmp/check-network-switch.ts`
+  and `.tmp/check-reflect.ts` green; `.tmp/megaworm-check.ts` and `.tmp/reboot-boss-check.ts` green.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only); `npm run bench` 0. 8P bot
+  swarm 0.147 ms avg / 0.447 ms p99; gauntlet max 0.306 ms avg / 0.954 ms p99 at 29.5 live threats.
+- Not yet tested: couch readability of the route plate and the new worm dash/parry timing; next human run.
+
+**Next:** campaign debug playthrough on 0.1.192 with bots, checking the route plate, Mega side volleys,
+worm dashes/parries, pipe carry and the revised reflection lesson.

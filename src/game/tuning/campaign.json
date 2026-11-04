@@ -32,7 +32,8 @@
     "portalThrowSpeed": 1500,
     "portalThrowDelay": 0.62,
     "campaignEntryThrowDelay": 2.15,
-    "portalEntryIframes": 1.4
+    "portalEntryIframes": 1.4,
+    "routeRevealTime": 3.6
   },
   "CALIBRATION": {
     "bannerTime": 3.8,

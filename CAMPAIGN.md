@@ -1,10 +1,13 @@
 # CAMPAIGN // route blueprint
 
-Status: `BUILD ROOT` and `REBOOT` are playable; the rest of the route is still blueprint. A clear opens
-script_kitty's portal straight into the next node, so the live devices form one continuous run.
+Status: `BUILD ROOT`, `REBOOT`, and the first level-2 chain are playable. The live route runs BUILD ROOT
+(INTAKE -> HOLDING -> MAINBOARD -> ROUTER) -> REBOOT -> NETWORK SWITCH -> DOCUMENT SCANNER -> FAX MACHINE ->
+SMART WATCH -> BUSINESS LAPTOP. A clear shows the route plate before script_kitty's portal opens, so the
+next device is a named reveal and unseen stops stay dim generic nodes. The route is data in `CAMPAIGN_ROUTE`,
+with explicit per-stop links ready for a future branch.
 `SINGLE PLAYER > CAMPAIGN` is the story-mode entry: three local save slots first, then for a new run a bot
 count and player select. The run saves after every completed level via `src/game/saves.ts`; after the last
-live level the slot reports `MORE LEVELS COMING SOON`.
+live level the slot reports the campaign complete state.
 Neither surface enters `World`, `Snapshot`, rooms, or the network. Any networked PvPvE run still needs its
 own protocol work.
 

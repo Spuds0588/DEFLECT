@@ -12,6 +12,7 @@
  * per-sector blueprint. It never touches `World`, `Snapshot` or a room.
  */
 import { fitCanvas } from '../ui/dom';
+import { CAMPAIGN_ROUTE, PLAYABLE_CAMPAIGN_LEVELS } from './campaign';
 import { SECTORS, type SectorDef } from './sectors';
 
 const ROAD_W = 960;
@@ -635,4 +636,128 @@ function drawLegend(ctx: CanvasRenderingContext2D): void {
   ctx.textAlign = 'right';
   ctx.fillText('BLUEPRINT ONLY // PADS, BRIDGES AND LIFTS ARE NOT SIMULATED', ROAD_W - 26, ROAD_H - 14);
   ctx.restore();
+}
+
+/**
+ * The live campaign route. Completed stops stay lit, the current stop is ringed, the
+ * next stop is named, and everything beyond it is a dim generic node until the run
+ * clears another device. `links` is per stop, so a future branch can point at two
+ * different stops without changing this renderer or the save format.
+ */
+export function drawCampaignRoad(
+  canvas: HTMLCanvasElement,
+  current: number,
+  revealed: number,
+): void {
+  const ctx = fitCanvas(canvas, ROAD_W, ROAD_H);
+  if (!ctx) return;
+  const levels = PLAYABLE_CAMPAIGN_LEVELS;
+  const count = Math.max(1, levels.length);
+  const left = 58;
+  const right = ROAD_W - 58;
+  const span = right - left;
+  const yAt = (i: number): number => 168 + (i % 2 === 0 ? -22 : 22);
+  const xAt = (i: number): number => left + (count === 1 ? span * 0.5 : (i / (count - 1)) * span);
+
+  ctx.clearRect(0, 0, ROAD_W, ROAD_H);
+  ctx.fillStyle = '#04080e';
+  ctx.fillRect(0, 0, ROAD_W, ROAD_H);
+  ctx.strokeStyle = 'rgba(120, 214, 230, 0.05)';
+  ctx.lineWidth = 1;
+  for (let gx = 48; gx < ROAD_W; gx += 48) {
+    ctx.beginPath();
+    ctx.moveTo(gx + 0.5, 0);
+    ctx.lineTo(gx + 0.5, ROAD_H);
+    ctx.stroke();
+  }
+  for (let gy = 36; gy < ROAD_H; gy += 48) {
+    ctx.beginPath();
+    ctx.moveTo(0, gy + 0.5);
+    ctx.lineTo(ROAD_W, gy + 0.5);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(120, 214, 230, 0.16)';
+  ctx.strokeRect(8.5, 8.5, ROAD_W - 17, ROAD_H - 17);
+
+  // Cables first: travelled spans are solid, unknown spans are a dashed guess.
+  for (let i = 0; i < CAMPAIGN_ROUTE.length; i++) {
+    const from = CAMPAIGN_ROUTE[i];
+    for (let k = 0; k < from.links.length; k++) {
+      const j = from.links[k];
+      if (!levels[j]) continue;
+      const live = i < current;
+      const known = j <= revealed;
+      ctx.save();
+      ctx.setLineDash(known ? [] : [5, 8]);
+      ctx.strokeStyle = live ? '#4ce4ec' : known ? 'rgba(125, 248, 255, 0.45)' : 'rgba(125, 248, 255, 0.16)';
+      ctx.lineWidth = live ? 2.4 : 1.3;
+      ctx.beginPath();
+      ctx.moveTo(xAt(i), yAt(i));
+      ctx.lineTo(xAt(j), yAt(j));
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  ctx.textAlign = 'center';
+  ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  for (let i = 0; i < count; i++) {
+    const level = levels[i];
+    const x = xAt(i);
+    const y = yAt(i);
+    const known = i <= revealed;
+    const done = i < current;
+    const active = i === current;
+    const color = level.finale ? '#ffb27a' : '#7df8ff';
+    ctx.save();
+    ctx.globalAlpha = known ? (done ? 0.62 : 1) : 0.26;
+    ctx.fillStyle = '#07131c';
+    ctx.strokeStyle = known ? color : 'rgba(125, 248, 255, 0.45)';
+    ctx.lineWidth = active ? 3 : 1.8;
+    if (!known) ctx.setLineDash([4, 5]);
+    ctx.beginPath();
+    ctx.arc(x, y, active ? 14 : 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (known) {
+      ctx.fillStyle = done ? color : '#dffcff';
+      ctx.beginPath();
+      ctx.arc(x, y, done ? 3.4 : 4.6, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = 'rgba(190, 245, 255, 0.7)';
+      ctx.font = '700 13px ui-monospace, monospace';
+      ctx.fillText('?', x, y + 4);
+      ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    }
+    if (active) {
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(x, y, 21, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = known ? 0.92 : 0.28;
+    ctx.fillStyle = known ? '#dffcff' : 'rgba(190, 245, 255, 0.7)';
+    const label = known ? level.name.split('//').pop()!.trim() : 'UNKNOWN NODE';
+    const labelY = y + (i % 2 === 0 ? 36 : -26);
+    ctx.fillText(label, x, labelY);
+    if (known) {
+      ctx.globalAlpha = 0.5;
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.fillText(level.code, x, labelY + 13);
+      ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    }
+    ctx.restore();
+  }
+
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = '#bdfbff';
+  ctx.font = '600 10px ui-monospace, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('SCRIPT KITTY // NETWORK ROUTE', 28, 28);
+  ctx.textAlign = 'right';
+  ctx.fillText('CLEARED', ROAD_W - 30, 28);
 }

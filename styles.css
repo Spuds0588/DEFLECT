@@ -2722,6 +2722,77 @@ body.pointer-live .story-slot-clear:hover {
   outline: none;
 }
 
+/* Between-level route plate. It owns the screen after a clear, so the next stop is a
+   deliberate reveal instead of a toast that scrolls past during the portal hop. */
+.campaign-road {
+  position: fixed;
+  inset: 0;
+  z-index: 26;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(1, 5, 9, 0.78);
+  backdrop-filter: blur(3px);
+  font-family: var(--ui);
+}
+
+.campaign-road[hidden] { display: none; }
+
+.campaign-road-card {
+  width: min(980px, calc(100vw - 32px));
+  padding: 20px 22px 18px;
+  border: 1px solid rgba(46, 230, 255, 0.34);
+  background: rgba(3, 10, 16, 0.96);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75), 0 26px 70px rgba(0, 0, 0, 0.7);
+}
+
+.campaign-road-kicker {
+  margin: 0 0 4px;
+  color: #7df8ff;
+  font: 600 12px/1.2 var(--mono);
+  letter-spacing: 0.14em;
+}
+
+.campaign-road-title {
+  margin: 0 0 8px;
+  color: #e7feff;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.campaign-road-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid rgba(46, 230, 255, 0.14);
+}
+
+.campaign-road-next {
+  margin: 12px 0 0;
+  color: rgba(255, 200, 135, 0.92);
+  font: 600 14px/1.4 var(--ui);
+  letter-spacing: 0.06em;
+}
+
+.campaign-road-continue {
+  margin-top: 14px;
+  padding: 9px 16px;
+  border: 1px solid rgba(120, 248, 255, 0.55);
+  background: rgba(46, 230, 255, 0.1);
+  color: #e7feff;
+  font: 600 14px/1 var(--ui);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.campaign-road-continue:hover,
+.campaign-road-continue:focus-visible {
+  background: rgba(46, 230, 255, 0.2);
+  outline: 2px solid rgba(120, 248, 255, 0.6);
+  outline-offset: 2px;
+}
+
 .console-arena-card {
   display: flex;
   flex-direction: column;

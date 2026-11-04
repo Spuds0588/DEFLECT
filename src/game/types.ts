@@ -286,6 +286,12 @@ export interface Pipe {
   /** Short glow after an intake swallow. */
   catchFlash: number;
   catchT: number;
+  /** Tube mouth exit point, outside the arena. The tube is drawn from mouth to here. */
+  outX: number;
+  outY: number;
+  /** Length and width of the visible transparent feed tube. */
+  tubeLength: number;
+  tubeWidth: number;
 }
 
 export interface Player {
@@ -450,6 +456,8 @@ export interface Player {
   meleeReachMult: number;
   meleeHalfAngle: number;
   meleeKnock: number;
+  /** Perfect-parry window opened by a fresh guard or melee press. Local only. */
+  parryT: number;
 
   /**
    * Pinball's deployed flipper arm. The base is a fixed world point captured at cast,
@@ -512,6 +520,16 @@ export interface Player {
   travelToX: number;
   travelToY: number;
   travelSwap: boolean;
+  /** Pipe intake ride: remaining seconds, duration, path endpoints and exit pipe index. */
+  pipeTransitT: number;
+  pipeTransitDur: number;
+  pipeFromX: number;
+  pipeFromY: number;
+  pipeToX: number;
+  pipeToY: number;
+  pipeFromIndex: number;
+  pipeToIndex: number;
+  pipeCooldown: number;
   /**
    * Fisher's web holds this body in place. Refreshed every tick it is inside a web,
    * so a caught player, bot or thrall stays stuck until the web expires; a dash tears
@@ -916,6 +934,16 @@ export interface Worm {
   biteHit: boolean;
   biteDirX: number;
   biteDirY: number;
+  /** Ordinary worm dash: wind-up/active/recovery clock, cooldown and latched direction. */
+  dashT: number;
+  dashCd: number;
+  dashHit: boolean;
+  dashDirX: number;
+  dashDirY: number;
+  /** Parry stun; a stunned worm cannot steer, bite or dash. */
+  stunT: number;
+  /** Mega Worm only: recovery watchdog for a pass that failed to relaunch. */
+  megaWatchT: number;
   /** Mini-boss registry id (`minibosses.ts`), -1 for an ordinary worm. */
   bossKind: number;
   /** Idle Hands bodies only; null on every other worm or boss. */
@@ -1072,6 +1100,8 @@ export interface Sentry {
   ramHit: boolean;
   ramDirX: number;
   ramDirY: number;
+  /** Parry stun; a stunned sentry cannot move, fire or ram. */
+  stunT: number;
   /**
    * Campaign calibration shapes. 0 dormant, 1 waking, 2 active, 3 windup,
    * 4 committed attack. Ordinary sentries leave this at 2.
@@ -1100,6 +1130,8 @@ export interface LaserEmitter {
   offset: number;
   /** 0 idle, 1 gathering, 2 firing. */
   phase: number;
+  /** Fire warning: a thin red line before the beam becomes dangerous. */
+  warnT: number;
   /** 0..1 gather progress; 1 while the beam is live. */
   charge: number;
   /** Distance from the lens to the first solid surface. */

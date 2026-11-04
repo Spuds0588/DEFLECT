@@ -136,6 +136,7 @@ import {
   INTAKE_CLEAR,
   INTAKE_WAKE,
   KITTY_TUTORIAL,
+  KITTY_NETWORK,
   KITTY_FIRST_HOP,
   TutorialRunner,
   WARDEN_TUTORIAL, BOSS_INBOUND, type TutorialStep } from './tutorial';
@@ -1064,6 +1065,7 @@ export class World {
           angle: d.angle,
           offset: d.offset ?? 0,
           phase: 0,
+          warnT: 0,
           charge: 0,
           beamDist: 0,
           caught: false,
@@ -1092,6 +1094,10 @@ export class World {
           hitFlash: 0,
           catchFlash: 0,
           catchT: 0,
+          outX: d.x - Math.cos(d.angle) * NETWORK.tubeLength,
+          outY: d.y - Math.sin(d.angle) * NETWORK.tubeLength,
+          tubeLength: NETWORK.tubeLength,
+          tubeWidth: NETWORK.tubeWidth,
         });
       }
       for (let i = 0; i < NETWORK.filePool; i++) {
@@ -1244,6 +1250,7 @@ export class World {
     for (let i = 0; i < this.emitters.length; i++) {
       const e = this.emitters[i];
       e.phase = 0;
+      e.warnT = 0;
       e.charge = 0;
       e.beamDist = 0;
       e.caught = false;
@@ -1367,6 +1374,7 @@ export class World {
    */
   private setupCampaign(): void {
     this.setupGauntlet();
+    this.activateCampaignBots();
     this.spawnCampaignPorts();
     this.calibrationAwake = false;
     this.campaignT = 0;
@@ -1384,21 +1392,19 @@ export class World {
     this.campaignWarnStep = null;
     this.campaignShapesSpawned = false;
     this.campaignSkillLessonTaught = false;
-    // The kitty node is a quiet briefing room: no subjects, no threats, just the lesson.
+    // The kitty node is live fire under the briefing. Kitty talks over the fight; the
+    // player never gets a quiet head start to walk the ports while she is still typing.
     if (this.campaignIntro === 'kitty') {
-      this.campaignPhase = 'briefing';
+      this.campaignPhase = 'assault';
       this.tutorial = new TutorialRunner(KITTY_TUTORIAL);
       this.tutorialCatchSeen = this.tutorialCatchTotal();
       this.campaignBannerT = 0;
+      this.beginAssault();
       return;
     }
-    // A feed-room node opens in live fire. The drill squad has already logged off; the
-    // port sweep is the whole fight, so there is no calibration class or sparring beat.
+    // A feed-room node opens in live fire. The port sweep is the whole fight, so there is
+    // no calibration class or sparring beat. The squad stays loaded through every phase.
     if (this.campaignIntro === 'assault') {
-      for (let i = 1; i < this.players.length; i++) {
-        this.players[i].active = false;
-        this.players[i].alive = false;
-      }
       this.beginAssault();
       return;
     }
@@ -1653,6 +1659,30 @@ export class World {
     this.campaignPortalT = 0;
     this.campaignPortalLead = CAMPAIGN.portalLead;
     this.campaignExitReady = true;
+  }
+
+  /**
+   * Load the campaign squad beside the player. Bots are ordinary local bodies, and one
+   * that is selected must be on the floor from the first frame of every campaign node,
+   * not parked at the origin until the old drill beat. A NO BOTS run leaves slots 1+
+   * inactive.
+   */
+  private activateCampaignBots(): void {
+    const leader = this.players[0];
+    for (let i = 1; i <= this.botSlots; i++) {
+      const p = this.players[i];
+      p.active = true;
+      p.connected = true;
+      p.alive = true;
+      p.thrall = false;
+      p.hp = p.maxHp;
+      p.energy = PLAYER.energyMax;
+      p.respawnT = 0;
+      this.drillSlotPos(i - 1, leader);
+      const sx = this.spawnTmpX[i - 1];
+      const sy = this.spawnTmpY[i - 1];
+      clearPlayerForSpawn(p, sx, sy, Math.atan2(leader.y - sy, leader.x - sx));
+    }
   }
 
   /**
@@ -2887,9 +2917,9 @@ export class World {
             (!this.tutorial || this.tutorial.done),
         )
       ) {
-        // The cell wave is down. HOLDING clears into the next portal; a combined node
-        // keeps the old drill path for any future level that still authors one room.
-        if (this.campaignIntro === 'holding') this.beginCampaignPortal();
+        // The cell wave is down. HOLDING gets Kitty's network handoff before the pull;
+        // a combined node keeps the old drill path for a future authored room.
+        if (this.campaignIntro === 'holding') this.beginCampaignExit(KITTY_NETWORK);
         else this.beginDrill();
       }
       return;
@@ -2950,7 +2980,7 @@ export class World {
           // never end the fight. The final node gets Kitty's send-off first.
           if (this.campaignClearHold(dt, true)) {
             if (this.campaignFinale) this.beginCampaignExit(CAMPAIGN_FINALE, true);
-            else this.clearCampaign();
+            else this.beginCampaignExit(KITTY_NETWORK);
           }
         } else {
           this.campaignClearWait = 0;
@@ -3002,11 +3032,12 @@ export class World {
     ) {
       this.spawnCalibrationShapes(3);
     }
-    if (runner.current?.action === 'reflect') {
+    if (runner.current?.action === 'reflect' || runner.current?.action === 'reflect-lock') {
       this.tutorialBoltT -= dt;
       if (this.tutorialBoltT <= 0) {
         this.spawnTutorialBolt();
-        this.tutorialBoltT = 2.1;
+        // Faster cadence keeps a three-catch lesson from feeling like a waiting room.
+        this.tutorialBoltT = 1.35;
       }
     }
     const catches = this.tutorialCatchTotal();
@@ -3172,14 +3203,8 @@ export class World {
     this.campaignBannerKind = 1;
     this.campaignBannerT = CAMPAIGN.breachBannerTime;
     this.campaignBannerDur = CAMPAIGN.breachBannerTime;
-    // The drill squad logs off on the breach beat so the incoming hostiles own the room.
-    for (let i = 1; i < this.players.length; i++) {
-      const p = this.players[i];
-      if (!p.active) continue;
-      this.emit(EV.ELIMINATED, 0, p.x, p.y, p.slot);
-      p.active = false;
-      p.alive = false;
-    }
+    // The squad stays on the floor. A selected bot is a companion for the whole run,
+    // not a drill prop that de-rezzes when the first hostile arrives.
     for (let i = 0; i < this.projectiles.length; i++) this.projectiles[i].active = false;
     const p = this.players[0];
     // A knockdown on the last drill frame must not leave the player dead for the breach.
@@ -3721,6 +3746,8 @@ export class World {
         this.tickTravel(p, dt);
         continue;
       }
+      // The feed tube owns the body while it travels between mouths.
+      if (p.pipeTransitT > 0) continue;
 
       // Over the void: the body hangs for a beat instead of vanishing on the lip. It is
       // still steerable at reduced speed against a slight outward pull, so a quick stick
@@ -3820,6 +3847,8 @@ export class World {
         if (p.aimSightT === 0) p.aimClip = 0;
       }
       if (p.dazeT > 0) p.dazeT = Math.max(0, p.dazeT - dt);
+      if (p.parryT > 0) p.parryT = Math.max(0, p.parryT - dt);
+      if (p.pipeCooldown > 0) p.pipeCooldown = Math.max(0, p.pipeCooldown - dt);
       if (p.shrinkT > 0) p.shrinkT = Math.max(0, p.shrinkT - dt);
       if (p.scareT > 0) p.scareT = Math.max(0, p.scareT - dt);
       if (p.scareFaceT > 0) p.scareFaceT = Math.max(0, p.scareFaceT - dt);
@@ -4165,6 +4194,7 @@ export class World {
           p.chargeT += dt;
           if (p.guardT <= 0 && p.guardCd <= 0 && p.chargeT >= PLAYER.guardStartDelay) {
             p.guardT = p.guardMax;
+            p.parryT = PLAYER.parryWindow;
           }
           if (p.guardT > 0) {
             p.guardT = Math.max(0, p.guardT - dt);
@@ -4721,6 +4751,7 @@ export class World {
     p.swingFacing = p.facing;
     p.swingDir = dir;
     p.swingKind = kind;
+    p.parryT = PLAYER.parryWindow;
     this.emit(EV.SWING, p.slot, p.x, p.y, p.facing);
     return true;
   }
@@ -5167,26 +5198,37 @@ export class World {
     if (this.mode === 'match') return;
     this.emitterT += dt;
     const gather = EMITTER.gather;
+    const warnStart = Math.max(0, gather - EMITTER.warn);
     const live = gather + EMITTER.duration;
     for (let i = 0; i < this.emitters.length; i++) {
       const e = this.emitters[i];
       let cycle = (this.emitterT + e.offset * EMITTER.period) % EMITTER.period;
       if (cycle < 0) cycle += EMITTER.period;
-      if (cycle < gather) {
+      if (cycle < warnStart) {
         // The gather is a visible promise: the dots converge for the whole window so
         // both the lens and the firing direction are readable before the flash.
         e.phase = 1;
         e.charge = cycle / gather;
+        e.warnT = 0;
+      } else if (cycle < gather) {
+        // The last half-second is a thin red lane, drawn across the whole floor even
+        // when the lens is offscreen. This is the dodge window, not the damage frame.
+        e.phase = 3;
+        e.charge = 1;
+        e.warnT = (gather - cycle) / Math.max(0.001, EMITTER.warn);
+        e.beamDist = this.emitterReach(e);
       } else if (cycle < live) {
         if (e.phase !== 2) this.fireEmitter(e);
         // A deployed wall or a moving compactor can enter the lane during the flash.
         // Keep the drawn shaft and the damage line on the current surface.
         else if (!e.caught) e.beamDist = this.emitterReach(e);
         e.phase = 2;
+        e.warnT = 0;
         e.charge = 1;
         if (!e.spent) this.resolveEmitterBeam(e);
       } else {
         e.phase = 0;
+        e.warnT = 0;
         e.charge = 0;
         e.caught = false;
         e.spent = false;
@@ -5214,6 +5256,7 @@ export class World {
   /** Snapshot the surface distance on the frame the beam goes live. */
   private fireEmitter(e: LaserEmitter): void {
     e.phase = 2;
+    e.warnT = 0;
     e.charge = 1;
     e.caught = false;
     e.spent = false;
@@ -11171,6 +11214,7 @@ export class World {
    * pipe stops that emitter and its intake for the rest of the run.
    */
   private updateNetwork(dt: number): void {
+    this.tickPipeTransit(dt);
     for (let i = 0; i < this.pipes.length; i++) {
       const pipe = this.pipes[i];
       if (pipe.hitFlash > 0) pipe.hitFlash = Math.max(0, pipe.hitFlash - dt);
@@ -11182,9 +11226,94 @@ export class World {
         pipe.fireT = pipe.feed === 1 ? SPACE_CADET.pipeInterval : NETWORK.pipeInterval;
         this.firePipe(pipe);
       }
-      this.catchAtPipe(pipe, dt);
+      this.catchAtPipe(pipe, dt, i);
     }
     this.updateFirewallSwitch(dt);
+  }
+
+  /**
+   * A body caught by a feed mouth is carried out through the tube, off the floor, then
+   * returned through a different mouth. The ride is presentation, but it also keeps the
+   * body untouchable until it lands, so it cannot be shot inside the pipe.
+   */
+  private tickPipeTransit(dt: number): void {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (p.pipeTransitT <= 0) continue;
+      p.pipeTransitT = Math.max(0, p.pipeTransitT - dt);
+      p.iframes = Math.max(p.iframes, 0.12);
+      p.vx = 0;
+      p.vy = 0;
+      p.kx = 0;
+      p.ky = 0;
+      const k = 1 - p.pipeTransitT / Math.max(0.001, p.pipeTransitDur);
+      const from = this.pipes[p.pipeFromIndex];
+      const to = this.pipes[p.pipeToIndex];
+      if (k < 0.45) {
+        const t = k / 0.45;
+        const ax = from ? from.outX : p.pipeFromX;
+        const ay = from ? from.outY : p.pipeFromY;
+        p.x = p.pipeFromX + (ax - p.pipeFromX) * t;
+        p.y = p.pipeFromY + (ay - p.pipeFromY) * t;
+      } else {
+        const t = (k - 0.45) / 0.55;
+        const ax = to ? to.outX : p.pipeToX;
+        const ay = to ? to.outY : p.pipeToY;
+        p.x = ax + (p.pipeToX - ax) * t;
+        p.y = ay + (p.pipeToY - ay) * t;
+      }
+      p.prevX = p.x;
+      p.prevY = p.y;
+      if (p.pipeTransitT > 0) continue;
+      p.pipeTransitDur = 0;
+      p.pipeFromIndex = -1;
+      p.pipeToIndex = -1;
+      p.pipeCooldown = NETWORK.playerTransitCooldown;
+      p.iframes = Math.max(p.iframes, 0.45);
+      this.emit(EV.RESPAWN, p.slot, p.x, p.y, 1);
+    }
+  }
+
+  /** Pick another mouth and hand the player to the tube ride. */
+  private catchPlayerAtPipe(pipe: Pipe, pipeIndex: number): boolean {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.travelT > 0 || p.pipeTransitT > 0 || p.pipeCooldown > 0) continue;
+      const dx = p.x - pipe.x;
+      const dy = p.y - pipe.y;
+      if (dx * dx + dy * dy > (pipe.radius * 0.92) ** 2) continue;
+      let exit = pipeIndex;
+      let seen = 0;
+      for (let n = 0; n < this.pipes.length; n++) {
+        if (n === pipeIndex || !this.pipes[n].active) continue;
+        seen++;
+        if (this.rng.next() < 1 / seen) exit = n;
+      }
+      const target = this.pipes[exit];
+      p.pipeTransitT = NETWORK.playerTransit;
+      p.pipeTransitDur = NETWORK.playerTransit;
+      p.pipeFromX = pipe.x;
+      p.pipeFromY = pipe.y;
+      p.pipeToX = target.x;
+      p.pipeToY = target.y;
+      p.pipeFromIndex = pipeIndex;
+      p.pipeToIndex = exit;
+      p.pipeCooldown = NETWORK.playerTransitCooldown + NETWORK.playerTransit;
+      p.iframes = Math.max(p.iframes, NETWORK.playerTransit + 0.25);
+      p.guardT = 0;
+      p.chargeT = 0;
+      p.swingPhase = 0;
+      p.swingT = 0;
+      p.swingPct = 0;
+      p.laserChargeHeld = false;
+      p.laserChargeT = 0;
+      p.laserT = 0;
+      pipe.catchFlash = 0.5;
+      pipe.catchT = NETWORK.catchCooldown + NETWORK.playerTransit;
+      this.emit(EV.PROP_BREAK, -1, pipe.x, pipe.y, pipe.radius * 1.5);
+      return true;
+    }
+    return false;
   }
 
   private firePipe(pipe: Pipe): void {
@@ -11310,8 +11439,11 @@ export class World {
     proj.trailCount = 0;
   }
 
-  private catchAtPipe(pipe: Pipe, dt: number): void {
+  private catchAtPipe(pipe: Pipe, dt: number, pipeIndex: number): void {
     if (pipe.catchT > 0) return;
+    // A player is a body too. Send them out of a different mouth so the pipe is a
+    // shortcut across the switchboard, not a pit that deletes the run.
+    if (this.catchPlayerAtPipe(pipe, pipeIndex)) return;
     for (let i = 0; i < this.props.length; i++) {
       const b = this.props[i];
       if (!b.active || b.dropT > 0) continue;
@@ -11557,6 +11689,63 @@ export class World {
     return false;
   }
 
+  /**
+   * A guard or a fresh swing timed against an enemy dash is a parry. Perfect timing
+   * stuns the attacker; a late block still shoves both bodies apart but deals no damage
+   * and stuns nobody. This is checked before health, so a parry can never chip a segment.
+   */
+  private tryParryDash(
+    p: Player,
+    sourceKind: number,
+    sourceId: number,
+    dirX: number,
+    dirY: number,
+    force: number,
+  ): boolean {
+    let target: Worm | Sentry | null = null;
+    let active = false;
+    if (sourceKind === SRC.WORM && sourceId >= 0) {
+      const w = this.worms[sourceId];
+      if (w && w.active && w.dashT > 0) {
+        const elapsed = WORM.dashWindup + WORM.dashActive + WORM.dashRecovery - w.dashT;
+        active = elapsed >= WORM.dashWindup && elapsed < WORM.dashWindup + WORM.dashActive;
+        target = w;
+      }
+    } else if (sourceKind === SRC.SENTRY && sourceId >= 0) {
+      const s = this.sentries[sourceId];
+      if (s && s.active && s.ramT > 0) {
+        const total = SENTRY.ram.windup + SENTRY.ram.active + SENTRY.ram.recovery;
+        const elapsed = total - s.ramT;
+        active = elapsed >= SENTRY.ram.windup && elapsed < SENTRY.ram.windup + SENTRY.ram.active;
+        target = s;
+      }
+    }
+    if (!active || !target) return false;
+    const facingAttacker = -(Math.cos(p.facing) * dirX + Math.sin(p.facing) * dirY);
+    const perfect = p.parryT > 0 && facingAttacker > 0.05;
+    // A held guard or an active lash counts as the late block. The parry window is the
+    // only way to earn the stun; a late block still avoids the hit and separates both.
+    const blocking = perfect || p.guardT > 0 || p.swingPhase === 1;
+    if (!blocking) return false;
+    p.parryT = 0;
+    if (perfect) {
+      target.stunT = PLAYER.parryStun;
+      target.kx -= dirX * PLAYER.parryKnockback;
+      target.ky -= dirY * PLAYER.parryKnockback;
+      if (sourceKind === SRC.WORM) (target as Worm).dashT = 0;
+      p.iframes = Math.max(p.iframes, 0.22);
+      this.emit(EV.DEFLECT, p.slot, p.x, p.y, 3, -dirX, -dirY);
+    } else {
+      p.kx += dirX * force * 0.55;
+      p.ky += dirY * force * 0.55;
+      target.kx -= dirX * force * 0.35;
+      target.ky -= dirY * force * 0.35;
+      p.iframes = Math.max(p.iframes, 0.12);
+      this.emit(EV.DEFLECT, p.slot, p.x, p.y, 1, -dirX, -dirY);
+    }
+    return true;
+  }
+
   private damagePlayer(
     p: Player,
     amount: number,
@@ -11569,6 +11758,7 @@ export class World {
   ): void {
     amount = this.memoryDamage(sourceSlot, amount);
     if (!p.alive || p.iframes > 0 || phased(p) || p.travelT > 0) return;
+    if (this.tryParryDash(p, sourceKind, sourceId, dirX, dirY, force)) return;
     // Atomize spends one shield ball per real hit, before health or campaign damage is
     // recorded. A chip tick (venom) is not a hit, and the floor is never shielded.
     if (p.atomBalls > 0 && amount >= 1 && sourceKind !== SRC.VOID) {
@@ -14670,6 +14860,9 @@ export class World {
       for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) this.updateSentry(this.sentries[i], dt);
       for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) this.updateFirewall(this.firewalls[i], dt);
       this.updateErrors(dt);
+      // NETWORK SWITCH is a campaign node too; its feed tubes and firewall starter must
+      // keep running after the room becomes an authored assault.
+      if (this.pipes.length > 0) this.updateNetwork(dt);
       return;
     }
     // The rush owns its own clock: no wave ramp, no assault queue, no network fixtures.
@@ -15519,6 +15712,7 @@ export class World {
     s.ramHit = false;
     s.ramDirX = 1;
     s.ramDirY = 0;
+    s.stunT = 0;
     return true;
   }
 
@@ -15574,6 +15768,17 @@ export class World {
     s.prevY = s.y;
     s.phase += dt;
     if (s.hitFlash > 0) s.hitFlash = Math.max(0, s.hitFlash - dt);
+    if (s.stunT > 0) {
+      s.stunT = Math.max(0, s.stunT - dt);
+      s.ramT = 0;
+      s.vx = 0;
+      s.vy = 0;
+      s.x += s.kx * dt;
+      s.y += s.ky * dt;
+      s.kx *= Math.exp(-WORM.knockDrag * dt);
+      s.ky *= Math.exp(-WORM.knockDrag * dt);
+      return;
+    }
     if (s.ramCd > 0) s.ramCd = Math.max(0, s.ramCd - dt);
     // Held in Atomize's orbit: the field owns position and firing until it releases.
     if (s.orbitOwner >= 0) {
@@ -16226,6 +16431,12 @@ export class World {
     w.biteHit = false;
     w.biteDirX = Math.cos(w.angle);
     w.biteDirY = Math.sin(w.angle);
+    w.dashT = 0;
+    w.dashCd = 0;
+    w.dashHit = false;
+    w.dashDirX = Math.cos(w.angle);
+    w.dashDirY = Math.sin(w.angle);
+    w.stunT = 0;
     if (held) {
       w.patrolX = w.x;
       w.patrolY = w.y;
@@ -17525,7 +17736,9 @@ export class World {
   /** Two jagged bolts peel off opposite sides of the body during a straight pass. */
   private fireMegaVolley(w: Worm): void {
     const cfg = MEGA_WORM.flyby.volley;
-    const node = Math.min(4, w.segCount);
+    // Fire from the head shoulder, not a tail plate buried offscreen. The two bolts are
+    // the read that says the fly-by is attacking, and they are reflectable back at it.
+    const node = 0;
     const ox = this.megaNodeX(w, node);
     const oy = this.megaNodeY(w, node);
     const srcId = this.worms.indexOf(w);
@@ -17772,6 +17985,7 @@ export class World {
     w.megaDeathSegs = 0;
     w.megaDeathSpin = 0;
     w.megaDeathBy = -1;
+    w.megaWatchT = 0;
     w.volleyT = 0.4;
     w.anchorX = w.x;
     w.anchorY = w.y;
@@ -17979,6 +18193,23 @@ export class World {
       return;
     }
     if (w.spawnT <= 0 && w.flyPhase === 2) this.beginMegaPass(w);
+    // Recovery watchdog: a pass that somehow stops advancing is restaged instead of
+    // leaving the boss parked offscreen for the rest of the fight.
+    if (
+      (w.flyPhase === 0 && Math.abs(w.vx) + Math.abs(w.vy) < 0.01) ||
+      (w.flyPhase === 2 && w.spawnT <= 0)
+    ) {
+      w.megaWatchT += dt;
+      if (w.megaWatchT > 0.65) {
+        w.megaWatchT = 0;
+        this.stageMegaPass(w);
+        w.spawnT = 0;
+        this.beginMegaPass(w);
+        return;
+      }
+    } else {
+      w.megaWatchT = 0;
+    }
     if (w.pinT > 0) {
       w.pinT = Math.max(0, w.pinT - dt);
       w.vx = 0;
@@ -18077,6 +18308,7 @@ export class World {
     w.volleyT = 0.3;
     w.flyPhase = 2;
     w.flyT = 0;
+    w.megaWatchT = 0;
     w.touchCd = w.spawnT;
     for (let i = 0; i < w.segCount; i++) {
       w.segX[i] = w.x - Math.cos(w.angle) * MEGA_WORM.spacing * (i + 1);
@@ -18279,6 +18511,19 @@ export class World {
     if (w.touchCd > 0) w.touchCd = Math.max(0, w.touchCd - dt);
     if (w.biteCd > 0) w.biteCd = Math.max(0, w.biteCd - dt);
     if (w.biteT > 0) w.biteT = Math.max(0, w.biteT - dt);
+    if (w.dashCd > 0) w.dashCd = Math.max(0, w.dashCd - dt);
+    if (w.dashT > 0) w.dashT = Math.max(0, w.dashT - dt);
+    if (w.stunT > 0) {
+      // A parried dash leaves the worm in a committed stun: no steering, bite or dash.
+      w.stunT = Math.max(0, w.stunT - dt);
+      w.vx = 0;
+      w.vy = 0;
+      w.x += w.kx * dt;
+      w.y += w.ky * dt;
+      w.kx *= Math.exp(-WORM.knockDrag * dt);
+      w.ky *= Math.exp(-WORM.knockDrag * dt);
+      return;
+    }
     if (w.spawnT > 0) {
       w.spawnT = Math.max(0, w.spawnT - dt);
       w.vx = 0;
@@ -18310,7 +18555,30 @@ export class World {
     // A close player is answered with a committed bite. The wind-up is the tell; the
     // direction is latched so a dash or a step sideways can still beat it.
     const biteDistSq = pdx * pdx + pdy * pdy;
+    // A worm outside bite range and inside its dash band commits to a straight lunge.
+    // The wind-up and the latched line are the counterplay; cover still stops it.
     if (
+      w.dashT <= 0 &&
+      w.dashCd <= 0 &&
+      w.biteT <= 0 &&
+      w.aggroT > 0 &&
+      p.alive &&
+      p.cloakT <= 0 &&
+      biteDistSq >= WORM.dashMinRange * WORM.dashMinRange &&
+      biteDistSq <= WORM.dashRange * WORM.dashRange &&
+      !this.lineBlocked(w.x, w.y, p.x, p.y)
+    ) {
+      const d = Math.sqrt(biteDistSq) || 1;
+      w.dashT = WORM.dashWindup + WORM.dashActive + WORM.dashRecovery;
+      w.dashCd = WORM.dashCooldown;
+      w.dashHit = false;
+      w.dashDirX = pdx / d;
+      w.dashDirY = pdy / d;
+    }
+    const dashElapsed =
+      w.dashT > 0 ? WORM.dashWindup + WORM.dashActive + WORM.dashRecovery - w.dashT : -1;
+    if (
+      w.dashT > 0 &&
       w.biteT <= 0 &&
       w.biteCd <= 0 &&
       w.aggroT > 0 &&
@@ -18355,7 +18623,19 @@ export class World {
       }
     }
 
-    if (w.biteT > 0) {
+    if (w.dashT > 0) {
+      w.angle = Math.atan2(w.dashDirY, w.dashDirX);
+      if (dashElapsed < WORM.dashWindup) {
+        w.vx = 0;
+        w.vy = 0;
+      } else if (dashElapsed < WORM.dashWindup + WORM.dashActive) {
+        w.vx = w.dashDirX * WORM.dashSpeed;
+        w.vy = w.dashDirY * WORM.dashSpeed;
+      } else {
+        w.vx = 0;
+        w.vy = 0;
+      }
+    } else if (w.biteT > 0) {
       const biteTurn = WORM.biteTurnRate * dt;
       const biteAngle = Math.atan2(w.biteDirY, w.biteDirX);
       let faceDiff = biteAngle - w.angle;
@@ -18405,6 +18685,35 @@ export class World {
     // Worms are not one of the cover-phasing threats. Their chain is pushed out of
     // geometry exactly like a player body, so cover is real against them.
     this.pushOutOfCover(w, w.hitR);
+
+    // Dash contact. A guard or a timed lash is resolved in `tryParryDash`, before any
+    // health is spent, so a perfect parry stops the lunge and stuns the worm.
+    if (
+      dashElapsed >= WORM.dashWindup &&
+      dashElapsed < WORM.dashWindup + WORM.dashActive &&
+      !w.dashHit &&
+      p.alive &&
+      p.cloakT <= 0
+    ) {
+      const bdx = p.x - w.x;
+      const bdy = p.y - w.y;
+      const reach = WORM.headRadius + PLAYER.radius;
+      if (bdx * bdx + bdy * bdy <= reach * reach) {
+        const d = Math.hypot(bdx, bdy) || 1;
+        w.dashHit = true;
+        w.aggroT = WORM.aggroTime;
+        this.damagePlayer(
+          p,
+          WORM.dashDamage,
+          -1,
+          bdx / d,
+          bdy / d,
+          WORM.dashKnockback,
+          SRC.WORM,
+          this.worms.indexOf(w),
+        );
+      }
+    }
 
     for (let i = 0; i < w.segCount; i++) {
       w.segPrevX[i] = w.segX[i];

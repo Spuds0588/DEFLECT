@@ -2,6 +2,22 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Campaign feedback pass (2026-11-04, v0.1.192)
+
+- [x] Campaign squad count honors `NO BOTS`; selected bots load on the first frame of every node
+- [x] Level-2 chain wired through NETWORK SWITCH, DOCUMENT SCANNER, FAX MACHINE, SMART WATCH and BUSINESS LAPTOP
+- [x] Route plate reveals the next node, keeps unseen nodes generic, and is branch-ready through `CAMPAIGN_ROUTE`
+- [x] Mega Worm fly-bys fire visible, reflectable side volleys; a recovery watchdog restages a stalled pass
+- [x] Shared melee reach/damage/knockback raised without touching health budgets
+- [x] Worms dash to close distance; a timed guard/melee parries the dash for a one-second stun
+- [x] Emitters draw a thin red warning lane for 0.5 s before firing
+- [x] NETWORK SWITCH pipes render as offscreen tubes and carry a caught player to another mouth
+- [x] Warden lesson binds each instruction to its buttons; reflection is 3 catches plus 3 locked catches
+- [x] Awakened primitives no longer draw the white hit-outline box
+- [x] `feedback-pass-check`, `megaworm-check`, `campaign-rules-check`, `check-network-switch-check` and `check-reflect` green
+- [x] `npm run build` and `npm run bench` green
+- [ ] Fresh human playthrough on 0.1.192 with campaign bots: judge route plate, Mega volleys, worm dashes and parries
+
 ## Attract demo portal-only arrivals (2026-11-04, v0.1.191)
 
 - [x] `seedAttractRun` and `fillAttractRoom` queue opening and refill sentries, worms and viruses through

@@ -2904,6 +2904,31 @@ export class Renderer {
       ctx.translate(pipe.x, pipe.y);
       ctx.rotate(pipe.angle);
       ctx.globalAlpha = live ? 1 : 0.42;
+      // The feed is a transparent tube running offscreen, not a ring on the floor. A
+      // live line carries loose files toward the mouth, so the intake reads before a
+      // body is close enough to be swallowed.
+      const tubeLen = pipe.tubeLength;
+      const tubeW = pipe.tubeWidth;
+      ctx.fillStyle = 'rgba(8, 19, 25, 0.34)';
+      ctx.strokeStyle = live ? arena.accent : 'rgba(130, 160, 170, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-tubeLen, -tubeW * 0.5, tubeLen, tubeW, 12);
+      ctx.fill();
+      ctx.stroke();
+      if (live) {
+        for (let k = 0; k < 4; k++) {
+          const flow = (t * 0.42 + k * 0.25) % 1;
+          const fx = -tubeLen + flow * tubeLen;
+          ctx.globalAlpha = 0.2 + 0.35 * Math.sin(flow * Math.PI);
+          ctx.fillStyle = arena.accent;
+          ctx.fillRect(fx - 7, -6, 14, 12);
+          ctx.strokeStyle = '#d9fbff';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(fx - 7, -6, 14, 12);
+        }
+      }
+      ctx.globalAlpha = live ? 1 : 0.42;
       // Housing and elbow.
       ctx.fillStyle = live ? '#132a30' : '#101820';
       ctx.strokeStyle = live ? arena.accent : 'rgba(130, 160, 170, 0.35)';
@@ -10455,12 +10480,8 @@ export class Renderer {
         ctx.stroke();
       }
 
-      if (s.hitFlash > 0) {
-        ctx.globalAlpha = Math.min(1, s.hitFlash * 6);
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2.4;
-        ctx.strokeRect(-r - 4, -r - 4, (r + 4) * 2, (r + 4) * 2);
-      }
+      // Hit feedback is carried by the body flash and sparks. A white outline box read
+      // as a debug collision rect, so it is deliberately absent.
       ctx.restore();
 
       if (s.ramT > 0) {
@@ -11279,6 +11300,26 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(0, 0, 1.4 + charge * 2.2, 0, TWO_PI);
         ctx.fill();
+      }
+
+      // Thin warning lane. It runs the full beam length, so a lens just off camera still
+      // tells the player which lane is about to fire. `warnT` counts down 0.5 -> 0.
+      if (e.phase === 3 && e.beamDist > 0) {
+        const x1 = Math.max(16, e.beamDist);
+        const pulse = 0.5 + 0.5 * Math.sin(t * 34);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#ff2f24';
+        ctx.globalAlpha = 0.55 + pulse * 0.35;
+        ctx.lineWidth = 1.6 + pulse * 0.8;
+        ctx.setLineDash([10, 7]);
+        ctx.beginPath();
+        ctx.moveTo(8, 0);
+        ctx.lineTo(x1, 0);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.22 + pulse * 0.18;
+        ctx.lineWidth = 12;
+        ctx.stroke();
       }
 
       if (e.phase === 2 && e.beamDist > 0) {

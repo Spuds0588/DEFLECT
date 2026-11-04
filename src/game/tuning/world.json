@@ -172,6 +172,7 @@
   "EMITTER": {
     "period": 7,
     "gather": 2.4,
+    "warn": 0.5,
     "duration": 0.42,
     "damage": 1,
     "halfWidth": 20,
@@ -199,7 +200,11 @@
     "switchDwell": 0.65,
     "switchCooldown": 180,
     "switchFlash": 0.7,
-    "pipeBlastDamage": 2
+    "pipeBlastDamage": 2,
+    "tubeLength": 260,
+    "tubeWidth": 58,
+    "playerTransit": 1.15,
+    "playerTransitCooldown": 2.5
   },
   "ATTRACT": {
     "idle": 24,

@@ -247,6 +247,13 @@ result with
 `MORE LEVELS COMING SOON`. GRID ZERO's outer edge is open to shots and beams (but not bodies), so the Worm
 can be hit on its staged approach before it crosses the lip.
 
+The live level-2 chain continues after REBOOT through NETWORK SWITCH, DOCUMENT SCANNER, FAX MACHINE,
+SMART WATCH and the BUSINESS LAPTOP finale. A clear saves the slot and opens a route plate before the
+portal hop: completed stops stay lit, the current stop is ringed, the next stop is named, and unseen stops
+are dim generic nodes. The route is data (`CAMPAIGN_ROUTE`) with per-stop outgoing links, so a future
+branch needs another link rather than another transition system. Campaign bots are loaded on the first
+frame of every node; `NO BOTS` now means zero, not a forced drill companion.
+
 Every round-based match hops the same way. When a round ends, a white portal opens on the right wall and
 pulls every standing body in; the next round is thrown out of the left-wall mouth with a decaying eastward
 impulse, not placed under it. The pull writes positions directly, so cover cannot trap a body. Campaign

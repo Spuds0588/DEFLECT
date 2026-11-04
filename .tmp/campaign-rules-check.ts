@@ -18,9 +18,10 @@ if (t.current?.id !== 'dash') throw new Error('tutorial did not advance after th
 // 2. The live route is the four split quarantine rooms, then the first network.
 const route = PLAYABLE_CAMPAIGN_LEVELS.map((level) => [level.arenaId, level.intro]);
 console.log('route:', route.map(([id, intro]) => `${id}:${intro}`).join(' -> '));
-if (PLAYABLE_CAMPAIGN_LEVELS.length !== 5) throw new Error(`expected five playable levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
-if (route[0][0] !== 14 || route[1][0] !== 34 || route[2][0] !== 35 || route[3][0] !== 36 || route[4][0] !== 1) {
-  throw new Error('campaign route is not intake -> holding -> mainboard -> router -> reboot');
+if (PLAYABLE_CAMPAIGN_LEVELS.length !== 10) throw new Error(`expected ten playable levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
+const expectedArenas = [14, 34, 35, 36, 1, 9, 12, 25, 28, 29];
+if (route.some(([id], i) => id !== expectedArenas[i])) {
+  throw new Error('campaign route does not match the authored level-2 sequence');
 }
 
 const names = new Array<string>(MAX_PLAYERS).fill('');
@@ -61,8 +62,8 @@ const arrival = holding.tutorial?.current;
 if (arrival?.speaker !== 'SCRIPT_KITTY' || arrival?.id !== 'kitty-worked') throw new Error('holding did not open on kitty saying it worked');
 const shapes = holding.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <= 6);
 if (shapes.length !== 6) throw new Error(`expected six calibration subjects, got ${shapes.length}`);
-if (holding.worms.filter((w) => w.active && w.held).length !== 1) throw new Error('holding has no held worm');
-if (holding.viruses.filter((v) => v.active && v.held).length !== 2) throw new Error('holding has no held viruses');
+if (holding.worms.filter((w) => w.active && w.held).length !== 2) throw new Error('holding does not have its two held worm chains');
+if (holding.viruses.filter((v) => v.active && v.held).length !== 8) throw new Error('holding does not have its eight held viruses');
 
 // 5. Feed rooms open live with their authored port counts and no calibration class.
 for (const index of [2, 3]) {

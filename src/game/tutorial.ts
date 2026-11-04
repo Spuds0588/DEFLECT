@@ -9,6 +9,7 @@ export type TutorialAction =
   | 'cycle'
   | 'melee'
   | 'reflect'
+  | 'reflect-lock'
   | 'skill'
   | 'power';
 
@@ -109,6 +110,10 @@ export class TutorialRunner {
       case 'reflect':
         complete = ctx.reflected;
         break;
+      case 'reflect-lock':
+        // Lock holds facing on the subject, so the catch is sent straight back at it.
+        complete = ctx.lockActive && ctx.reflected;
+        break;
       case 'skill':
         if ((pressed & ACTION.CANDLE) !== 0 && (held & ACTION.CANDLE) === 0) {
           // A tap can be sampled with `pressed` set and `held` already released.
@@ -189,6 +194,32 @@ export const KITTY_FIRST_HOP: readonly TutorialStep[] = [
 ];
 
 /**
+ * HOLDING is clear. Kitty is out of the cell, but the infection is not: she opens a
+ * network route and sends the squad to the devices that are still hosting it. This is
+ * the bridge from the quarantine tutorial into the level-2 route.
+ */
+export const KITTY_NETWORK: readonly TutorialStep[] = [
+  {
+    id: 'network-free',
+    speaker: 'SCRIPT_KITTY',
+    line: 'THANKS FOR GETTING ME OUT OF THERE. I CAN BREATHE AGAIN.',
+    readTime: 3.2,
+  },
+  {
+    id: 'network-infected',
+    speaker: 'SCRIPT_KITTY',
+    line: 'THE SYSTEM IS STILL FULL OF INFECTED. THEY ARE HOLDING THE NETWORK OPEN.',
+    readTime: 4.0,
+  },
+  {
+    id: 'network-route',
+    speaker: 'SCRIPT_KITTY',
+    line: 'I AM PATCHING YOU INTO THE BACKBONE. CLEAR THE AREAS THEY ARE STILL IN, ONE BY ONE.',
+    readTime: 4.6,
+  },
+];
+
+/**
  * The quarantine orientation. The Warden keeps the subjects dormant until the player has
  * actually moved, dashed, fired, locked, cycled, swung and caught a shot. Keyboard
  * lock is toggled with `Q`; cycling is `R` / `F` while it is active.
@@ -207,52 +238,54 @@ export const WARDEN_TUTORIAL: readonly TutorialStep[] = [
   {
     id: 'move',
     speaker: 'WARDEN',
-    line: 'LESSON ONE: MOVE. YOUR HEADING IS YOUR AIM. THERE IS NO SECOND STICK.',
-    prompt: 'MOVE WITH WASD / LEFT STICK',
+    line: 'MOVE WITH WASD OR THE LEFT STICK. YOUR HEADING IS YOUR AIM. THERE IS NO SECOND STICK.',
     action: 'move',
     goal: 1.1,
   },
   {
     id: 'dash',
-    speaker: 'WARDEN',      line: 'DASH THROUGH FIRE AND ENEMIES, BUT NOT SOLID COVER. TWO CHARGES, THEN YOU WAIT.',
-    prompt: 'DASH WITH SHIFT / A',
+    speaker: 'WARDEN',
+    line: 'DASH WITH SHIFT OR A. CROSS FIRE AND ENEMIES, BUT NOT SOLID COVER.',
     action: 'dash',
   },
   {
     id: 'fire',
     speaker: 'WARDEN',
-    line: 'RANGED ATTACK. THREE SHOTS. THE BURST IS NOT A MACHINE GUN.',
-    prompt: 'FIRE WITH RIGHT MOUSE / X',
+    line: 'FIRE WITH RIGHT MOUSE OR X. TAP FOR A BURST; HOLD FOR THE STREAM.',
     action: 'bolt',
     goal: 3,
   },
   {
     id: 'lock',
     speaker: 'WARDEN',
-    line: 'LOCK A SUBJECT. KEEP YOUR FACE ON IT.',
-    prompt: 'LOCK ON A DORMANT SUBJECT (LT HOLD / Q TOGGLE)',
+    line: 'HOLD LT OR PRESS Q TO LOCK A SUBJECT. KEEP YOUR FACE ON IT.',
     action: 'lock',
   },
   {
     id: 'cycle',
     speaker: 'WARDEN',
-    line: 'NOW CHANGE IT. DO NOT LET ONE SUBJECT OWN YOUR FACE.',
-    prompt: 'WHILE LOCKED, PRESS RB / R (OR FLICK THE RIGHT STICK)',
+    line: 'WHILE LOCKED, PRESS RB OR R TO CHANGE TARGET. DO NOT LET ONE SUBJECT OWN YOUR FACE.',
     action: 'cycle',
   },
   {
     id: 'melee',
     speaker: 'WARDEN',
-    line: 'MELEE. FOR WHEN IT IS ALREADY IN YOUR TEETH.',
-    prompt: 'SWING WITH LEFT MOUSE / B',
+    line: 'MELEE WITH LEFT MOUSE OR B. TAP TO SWING; HOLD TO GUARD.',
     action: 'melee',
   },
   {
     id: 'reflect',
     speaker: 'WARDEN',
-    line: 'LAST LESSON. I WILL THROW ONE SLOW TEST SHOT. SEND IT BACK.',
-    prompt: 'HOLD GUARD (LEFT MOUSE / B) AS THE SHOT ARRIVES',
+    line: 'THREE CATCHES. FACE THE TEST SHOT AND PRESS LEFT MOUSE OR B AS IT ARRIVES.',
     action: 'reflect',
+    goal: 3,
+  },
+  {
+    id: 'reflect-lock',
+    speaker: 'WARDEN',
+    line: 'NOW HOLD LOCK ON A SUBJECT AND CATCH THREE MORE. SEND THEM BACK AT ITS FACE.',
+    action: 'reflect-lock',
+    goal: 3,
   },
   {
     id: 'orientation-end',

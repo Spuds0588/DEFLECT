@@ -62,6 +62,18 @@ export interface CampaignLevel {
 
 export type CampaignIntro = 'none' | 'warden' | 'holding' | 'assault' | 'kitty';
 
+/**
+ * A stop on the between-level route plate. The route is data so a future branch can
+ * add a second outgoing link without changing the transition or the save format.
+ * `lane` is the vertical lane; a branch is simply another stop with its own lane.
+ */
+export interface CampaignRouteStop {
+  level: number;
+  label: string;
+  lane: number;
+  links: readonly number[];
+}
+
 export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
   {
     id: 0,
@@ -126,13 +138,74 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     arenaId: 1,
     intro: 'kitty',
     playable: true,
-    finale: true,
     // Six corner feeds fill the arena; a full opening squad fights from the first
     // frame. The Mega Worm arrives only after every port and every body is gone, then
     // its death opens the scripted finale portal.
     clearKills: 0,
     opening: { sentries: 4, viruses: 2, worms: 1 },
     boss: MINIBOSS.MEGA_WORM,
+    dataCrates: [],
+  },
+  {
+    id: 5,
+    sector: 1,
+    nodeId: 'network-switch',
+    name: 'NETWORK SWITCH',
+    code: 'BACKBONE',
+    arenaId: 9,
+    intro: 'assault',
+    clearKills: 9,
+    opening: { sentries: 3, viruses: 2, worms: 1 },
+    dataCrates: [{ x: 780, y: 540, kind: PROP.DOC }],
+  },
+  {
+    id: 6,
+    sector: 1,
+    nodeId: 'document-scanner',
+    name: 'DOCUMENT SCANNER',
+    code: 'READ LINE',
+    arenaId: 12,
+    intro: 'assault',
+    clearKills: 9,
+    opening: { sentries: 3, viruses: 2, worms: 1 },
+    dataCrates: [{ x: 900, y: 760, kind: PROP.ZIP }],
+  },
+  {
+    id: 7,
+    sector: 2,
+    nodeId: 'fax-machine',
+    name: 'FAX MACHINE',
+    code: 'PRINT QUEUE',
+    arenaId: 25,
+    intro: 'assault',
+    clearKills: 10,
+    opening: { sentries: 4, viruses: 2, worms: 1 },
+    dataCrates: [{ x: 1040, y: 620, kind: PROP.AUDIO }],
+  },
+  {
+    id: 8,
+    sector: 2,
+    nodeId: 'smart-watch',
+    name: 'SMART WATCH',
+    code: 'SECOND HAND',
+    arenaId: 28,
+    intro: 'assault',
+    clearKills: 10,
+    opening: { sentries: 4, viruses: 3, worms: 1 },
+    dataCrates: [{ x: 960, y: 700, kind: PROP.VIDEO }],
+  },
+  {
+    id: 9,
+    sector: 2,
+    nodeId: 'business-laptop',
+    name: 'BUSINESS LAPTOP',
+    code: 'HOST FILE',
+    arenaId: 29,
+    intro: 'assault',
+    clearKills: 0,
+    finale: true,
+    opening: { sentries: 5, viruses: 3, worms: 1 },
+    boss: MINIBOSS.BLOB,
     dataCrates: [],
   },
 ];
@@ -142,3 +215,11 @@ export const PLAYABLE_CAMPAIGN_LEVELS = CAMPAIGN_LEVELS.filter((level) => level.
 
 /** The first authored level. Everything campaign-shaped starts here for now. */
 export const FIRST_CAMPAIGN_LEVEL: CampaignLevel = PLAYABLE_CAMPAIGN_LEVELS[0] ?? CAMPAIGN_LEVELS[0];
+
+/** Linear today, branch-ready: every stop names its outgoing links explicitly. */
+export const CAMPAIGN_ROUTE: readonly CampaignRouteStop[] = PLAYABLE_CAMPAIGN_LEVELS.map((level, index) => ({
+  level: index,
+  label: level.name,
+  lane: 0,
+  links: index + 1 < PLAYABLE_CAMPAIGN_LEVELS.length ? [index + 1] : [],
+}));

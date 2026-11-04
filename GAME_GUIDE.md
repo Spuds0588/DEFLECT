@@ -16,7 +16,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **VS BOTS:** normal round matches against one to three local bot opponents, first to 3.
 - **GAUNTLET:** a scored, one-life local run against worms, viruses, cascading errors, sentries and
   infected thralls, with a local top-eight table.
-- **CAMPAIGN:** `BUILD ROOT` and `REBOOT`, the first two story levels, with three local save slots. A cleared level carries the run to the next one.
+- **CAMPAIGN:** `BUILD ROOT`, `REBOOT`, and the first level-2 device chain, with three local save slots. A cleared level shows the route map and carries the run to the next device.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
 - Thirteen programs, thirty-two arenas.
@@ -82,8 +82,10 @@ the results overlay records your callsign, arena, wave reached, survival time an
 in-run respawn; training is the practice space.
 
 `NETWORK SWITCH` is a rectangular feed floor: four destructible pipes on the long walls alternate
-launching hostile file boxes and enemies into the room. The boxes damage on contact; the pipes also have
-an intake that pulls loose files and small threats into the mouth. Shoot a pipe down and that feed and its
+launching hostile file boxes and enemies into the room. Each feed is a transparent tube running offscreen,
+with file cargo visibly moving toward the mouth. The boxes damage on contact; the pipes also pull loose
+files, small threats and a player at the mouth into the intake. A caught player is carried offscreen and
+spat out of a random other live mouth. Shoot a pipe down and that feed and its
 intake stop for the rest of the run. The west-end firewall plate starts one sweep from the far wall and
 rearms after three minutes.
 
@@ -107,6 +109,10 @@ threats hold.
   single-stick rules. A virus that lines you up at 34–150 units winds up and **charges** in a straight
   line for 1 damage and a 540 shove; sidestep or dash to make it miss, then punish the recovery. They
   still infect worms and split on a timer.
+- **WORM DASH AND PARRY:** an ordinary worm that sees you between its bite range and dash range latches a
+  straight line, rears for 0.26 s, then lunges. A raised guard or a fresh melee swing inside the parry
+  window cancels the lunge and stuns the worm for one second. A late block still shoves both bodies apart
+  but deals no damage and stuns nobody.
 - **SENTRIES:** pulse squares, triplex shotguns, homing trapezoids and dart flocks. They land in a zone
   and hold it, with a 100–250 unit leash instead of following you across the arena. Heavy triplex and
   homing silhouettes are much slower than the pulse and flock. A pulse square or a flock that finds you
@@ -174,7 +180,9 @@ without changing the fight. The Warden's moves are in INTAKE, the skill and powe
 REBOOT's kitty briefing is narration only.
 
 `BUILD ROOT` opens in quarantine. The Warden talks you through move, dash, ranged attack, lock and target
-cycling, melee, and reflection on the bare intake plate. Three dormant shapes (one of each primary) are
+cycling, melee, and reflection on the bare intake plate. Each instruction names its bindings directly; the
+reflection lesson first asks for three catches, then three more while locked on a subject so the returns
+go back at its face. Three dormant shapes (one of each primary) are
 placed only when the lesson reaches target lock. When the lesson ends (or you skip it), they wake together:
 the Warden gets one shocked line, drops out of the story box, and the system orders **DESTROY ALL AWAKENED
 PRIMITIVES**. The class is inert during the Warden's lesson: shots and melee are absorbed until the script
@@ -221,9 +229,10 @@ speed up. Its death spends one last scream and bursts into a lot of little red s
 outer wall: your shots and beams leave the plate, so you can open fire before the Worm crosses the lip;
 your body is still held on the floor. That node does not
 end on a kill count or a port sweep; it ends when the boss is dead. After the kill, Kitty says the infection
-got into the network here and to follow its path back to the source. Her portal pulls the party through,
-the level result shows the clear stats, and the card ends on **MORE LEVELS COMING SOON**. A run is never
-saved mid-level.
+got into the network here and patches the party into the backbone. Her portal pulls the party through and a
+route plate names the next device; unseen stops are dim generic nodes. The live chain continues through
+`NETWORK SWITCH`, `DOCUMENT SCANNER`, `FAX MACHINE`, `SMART WATCH` and the `BUSINESS LAPTOP` finale. A run
+is never saved mid-level.
 Everything before the assault is practice: if you fall off a plate or get caught during orientation or
 the drill, you come back on the training timer and the lesson keeps its place, so a bad start costs time
 rather than the run. **The assault is one life** — going down once the fight starts ends the node, and
@@ -323,7 +332,9 @@ no health or readiness telemetry yet.
 | **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a persistent trap mine that waits until stepped on and detonates in a wide blast (three live max), Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises two orbiting shield balls, Ghost cloaks for a few seconds, Compress folds small and runs fast for 3.5 seconds, Pinball plants a flipper arm for 16 seconds that punts hostile shots and swats bodies toward other enemies, Copy Pasta summons a bot-driven copy of itself that fights for nine seconds, and Aim Bot raises a visible laser sight for 7 seconds and loads a three-shot clip that ignores his normal reload. Every Copy Pasta dash also leaves a one-hit, 1.5-second afterimage that pulls enemy attention. Its mark in the readiness dock shows when the skill is ready. |
 | **DASH** | `A` / `Shift` / `Space` | Two charges, one shared recharge. Tap to pass through enemies and clear floor gaps in your last movement direction; solid cover and deployed walls stop the dash. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. Pinball carries three charges. |
 
-Ranged fire is the pressure tool. Melee is the answer to incoming fire: tap to lash, hold to guard. The
+Melee hits harder and reaches farther across the roster: the lash reaches 64 units (88 on the straight
+punch), deals 2 damage and knocks bodies back hard. Ranged fire is the pressure tool. Melee is the answer
+to incoming fire: tap to lash, hold to guard. The
 power/skill button is the commitment button: tap for your program's skill, hold to charge and run the
 heavy. Most heavies plant your feet; Atomize's orbit field does not. Every option obeys the same facing
 rules. Energy still gates the heavies; basic fire is cheap enough to hold.
@@ -466,7 +477,9 @@ and page cards from them, while the host applies the click damage.
 
 ### Laser emitters
 
-`CROSSROADS`, `THE RING` and `MAINFRAME` mount red laser fixtures in local training, gauntlet and campaign
+Laser emitters now spend the last half-second before firing as a thin red lane along their full reach.
+The lane crosses the floor even when the lens is offscreen, so you get a real dodge window before the
+live shaft appears. `CROSSROADS`, `THE RING` and `MAINFRAME` mount red laser fixtures in local training, gauntlet and campaign
 runs. Each one gathers for 2.4 s, with red dots falling inward toward the lens and a shrinking ring, then
 fires a short vertical or horizontal beam. The shaft stops on pillars, deployed walls, the compactor plate
 and a walled arena's bounds; cover is real. A player caught in it loses one segment and is shoved along
