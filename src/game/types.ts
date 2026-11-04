@@ -623,6 +623,12 @@ export interface Player {
   /** Current lock position, used by the local sight and camera. Local-only. */
   lockTX: number;
   lockTY: number;
+  /**
+   * Last player slot this body locked on to, kept briefly so a melee hit still carries
+   * the player's intent after updateLock drops lockActive during the swing.
+   */
+  lockIntentSlot: number;
+  lockIntentT: number;
 
   hitFlash: number;
   respawnT: number;

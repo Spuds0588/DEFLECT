@@ -2,6 +2,19 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Campaign allies, node map, companion loss (2026-11-04, v0.1.194)
+
+- [x] Campaign bots are allies to the player and each other; stray damage never turns them
+- [x] Locked damage turns only the hit bot; a 0.6 s lock-intent window carries through melee swings and heavies
+- [x] A turned bot targets humans only; allied bot fire passes through the party
+- [x] Dead companions stay removed for the run, across later nodes and a saved resume; `deadBots` is saved on clear
+- [x] `beginDrill` and `activateCampaignBots` skip lost bots; the training respawn timer is not started for them
+- [x] TPK retry restores only companions lost in that arena; prior-arena losses and non-TPK retries keep them gone
+- [x] Route plate appears only when `cleared.nodeId !== next.nodeId`; the four BUILD ROOT rooms portal straight through
+- [x] `.tmp/campaign-bot-death-check.ts`, `.tmp/ally-real-check.ts` and `.tmp/campaign-ally-check.ts` green
+- [x] `npm run build` and `npm run bench` green
+- [ ] Human campaign playtest on 0.1.194: check ally betrayal, permanent loss, TPK retry and the node-gated route plate
+
 ## Match wipe result (2026-11-04, v0.1.193)
 
 - [x] A round with no survivor ends the match at `RING BROKEN // ALL OPERATORS DOWN`; it no longer opens

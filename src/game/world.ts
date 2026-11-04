@@ -323,6 +323,18 @@ export class World {
    * the run is created; never part of a snapshot.
    */
   friendlyFire = true;
+  /**
+   * Campaign companions the player deliberately attacked while locked on them, as a
+   * slot bitmask. A companion stays an ally until that intent signal lands; a stray
+   * shot or splash never flips it. Local-only, like the rest of the campaign run.
+   */
+  campaignAllyAggro = 0;
+  /**
+   * Campaign companions lost for the rest of the run, as a slot bitmask. A dead bot is
+   * not brought back on a later arena or a resume; only a TPK retry restores the bots
+   * that died in the arena being retried.
+   */
+  campaignBotsLost = 0;
   /** Internal bench/headless path: endless respawns and max threat caps. Not exposed in the UI. */
   /** One shard per player slot; PvE drops only. Local content, never in `Snapshot`. */
   readonly fragments: Fragment[] = Array.from({ length: MAX_PLAYERS }, () => ({
@@ -832,6 +844,7 @@ export class World {
     primitivesOnly = false,
     campaignOpening: CampaignOpening | null = null,
     campaignFinale = false,
+    campaignDeadBots = 0,
   ) {
     this.mode = mode;
     this.campaignIntro = campaignIntro;
@@ -845,6 +858,7 @@ export class World {
     this.campaignFinale = campaignFinale;
     this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
+    this.campaignBotsLost = campaignDeadBots & 0xfe;
     this.arena = arena;
     this.radar = arena.radar ?? null;
     this.resetRadar();
@@ -1670,6 +1684,7 @@ export class World {
   private activateCampaignBots(): void {
     const leader = this.players[0];
     for (let i = 1; i <= this.botSlots; i++) {
+      if ((this.campaignBotsLost & (1 << i)) !== 0) continue;
       const p = this.players[i];
       p.active = true;
       p.connected = true;
@@ -1860,7 +1875,7 @@ export class World {
     let count = 0;
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      if (i > 0 && i <= this.botSlots && p.name) {
+      if (i > 0 && i <= this.botSlots && p.name && (this.campaignBotsLost & (1 << i)) === 0) {
         p.active = true;
         p.connected = true;
         p.thrall = false;
@@ -3400,6 +3415,11 @@ export class World {
       if (p.active && p.alive && !p.copyClone) n++;
     }
     return n;
+  }
+
+  /** True once the player deliberately attacked this campaign companion. */
+  campaignAllyHostile(slot: number): boolean {
+    return this.campaign && slot > 0 && (this.campaignAllyAggro & (1 << slot)) !== 0;
   }
 
   setName(slot: number, name: string): void {
@@ -5372,6 +5392,13 @@ export class World {
   }
 
   private updateLock(p: Player, input: InputFrame | null, canAct: boolean, dt: number): void {
+    // A swing, dash or heavy drops lockActive while it runs. Keep the last locked player
+    // for a short window so the hit that lands still carries the lock intent.
+    if (p.lockIntentT > 0) p.lockIntentT = Math.max(0, p.lockIntentT - dt);
+    if (p.lockActive && p.lockKind === 1) {
+      p.lockIntentSlot = p.lockId;
+      p.lockIntentT = PLAYER.lockIntentWindow;
+    }
     const held = !!input && canAct && p.alive && (input.held & ACTION.LOCK) !== 0;
     if (!held) {
       p.lockKind = 0;
@@ -5496,6 +5523,10 @@ export class World {
     }
 
     p.lockActive = p.lockKind !== 0 && p.lockT >= PLAYER.lockAcquire;
+    if (p.lockActive && p.lockKind === 1) {
+      p.lockIntentSlot = p.lockId;
+      p.lockIntentT = PLAYER.lockIntentWindow;
+    }
     if (p.lockActive) {
       p.lockTX = tx;
       p.lockTY = ty;
@@ -11772,6 +11803,11 @@ export class World {
   ): void {
     amount = this.memoryDamage(sourceSlot, amount);
     if (!p.alive || p.iframes > 0 || phased(p) || p.travelT > 0) return;
+    // Campaign companions are allies. Their own fire passes through the party unless
+    // that specific companion has been turned, and it never damages another bot.
+    if (this.campaign && sourceSlot > 0 && p.slot !== sourceSlot) {
+      if (p.slot > 0 || !this.campaignAllyHostile(sourceSlot)) return;
+    }
     if (this.tryParryDash(p, sourceKind, sourceId, dirX, dirY, force)) return;
     // Atomize spends one shield ball per real hit, before health or campaign damage is
     // recorded. A chip tick (venom) is not a hit, and the floor is never shielded.
@@ -11789,6 +11825,16 @@ export class World {
     p.killerKind = sourceKind;
     p.killerId = sourceId >= 0 ? sourceId : sourceSlot;
     p.hp -= amount;
+    // Companion intent: the player must damage this bot while locked on it. A stray
+    // shot, splash or lock on a different body does not turn an ally.
+    if (this.campaign && p.slot > 0 && amount > 0 && sourceSlot >= 0 && sourceSlot < this.players.length) {
+      const attacker = this.players[sourceSlot];
+      const lockedOn =
+        !!attacker &&
+        ((attacker.lockActive && attacker.lockKind === 1 && attacker.lockId === p.slot) ||
+          (attacker.lockIntentT > 0 && attacker.lockIntentSlot === p.slot));
+      if (lockedOn) this.campaignAllyAggro |= 1 << p.slot;
+    }
     p.hitFlash = PLAYER.hitFlash;
     p.kx += dirX * force;
     p.ky += dirY * force;
@@ -11840,9 +11886,13 @@ export class World {
       p.lockKind = 0;
       p.lockId = -1;
       if (this.campaign) {
-        // Drill bots are sparring partners, not threat kills; they log back in.
+        // A companion is gone for the rest of the run. Do not start the training
+        // respawn timer: leaving the body dead-but-active would revive it next tick.
         if (p.slot > 0) {
-          p.respawnT = TRAINING.playerRespawn;
+          p.active = false;
+          p.thrall = false;
+          p.respawnT = 0;
+          this.campaignBotsLost |= 1 << p.slot;
           this.emit(EV.ELIMINATED, sourceSlot, p.x, p.y, p.slot);
           return;
         }

@@ -299,12 +299,14 @@ the solid band. The car route is unaffected and remains body geometry.
 - `CAMPAIGN_LEVELS` is now ten nodes: the four quarantine rooms, REBOOT, NETWORK SWITCH,
   DOCUMENT SCANNER, FAX MACHINE, SMART WATCH and BUSINESS LAPTOP (BLOB finale). The live route is
   data in `CAMPAIGN_ROUTE`; `drawCampaignRoad` renders completed, current, revealed and generic future
-  stops. A clear shows the route plate before the portal hop. Future branches are just extra `links`
-  entries, and unseen stops stay dim generic nodes until the preceding node is cleared.
+  stops. A clear shows the route plate only at a level boundary (`cleared.nodeId !== next.nodeId`); the
+  four BUILD ROOT rooms share one node and portal straight through. Sector is not the gate. Future
+  branches are just extra `links` entries, and unseen stops stay dim generic nodes until the preceding
+  node is cleared.
 - Campaign bots are selected through `World.botSlots`; `0` means no bots. `activateCampaignBots` puts
   every selected bot on the floor from the first campaign frame, and the main loop keeps their brains
   live through calibration, breach and assault. Do not restore the old minimum-one clamp or deactivate
-  them on the assault transition.
+  them on the assault transition. A companion lost under D67 is skipped instead of restored.
 - Melee identity: `swingReach`/`punchReach`, `punchDamage` and `punchKnockback` are the shared melee
   numbers. Preserve the health budget (D10); tune reach, damage and knockback, never `PLAYER.hp` or
   program health segments, without explicit approval.
@@ -322,6 +324,25 @@ the solid band. The car route is unaffected and remains body geometry.
   offscreen.
 - The Warden lesson combines each instruction with its bindings, catches three test shots, then catches
   three more while locked on a subject. HOLDING's clear plays `KITTY_NETWORK` before the pull.
+
+### D67 — Campaign companions: allies first, permanent loss (decided 2026-11-04)
+
+Campaign companions are allies, not free-for-all bodies. They never target another bot, and they only
+target a human after that human damages the specific bot while locked on it. A stray shot, splash or lock
+on another body never turns an ally. The lock test is `lockActive` or a retained
+`PLAYER.lockIntentWindow` (0.6 s) on `Player.lockIntentSlot`; a swing clears `lockActive` for its animation,
+so the retained intent is what makes a locked lash count. A turned bot may damage humans, never another
+bot. Allied bot fire passes through the party; only a turned bot's fire reaches a human. `World.campaignAllyAggro`
+owns the turn bits and `campaignAllyHostile(slot)` is the target gate in `BotBrain.pickTarget`. This is
+local-only state and never enters `Snapshot`.
+
+A companion death is permanent for the campaign run. `World.damagePlayer` sets `campaignBotsLost`, clears
+active/thrall and must not start `respawnT`; `activateCampaignBots` and `beginDrill` skip the lost mask.
+Main carries `campaignBotDead` across nodes and saves it as `StorySave.deadBots` on a level clear.
+`campaignDeadHere` records the current arena's losses. A **TPK retry** (the player and every active
+companion down) clears only those current-arena bits, so those bots return for the retry while bots lost
+in an earlier arena stay gone. A non-TPK retry keeps current losses. The player still gets the pre-assault
+practice respawn; companions never use it. Training, VS BOTS and gauntlet squad respawns are unchanged.
 
 ### D9 — Gauntlet is a local threat sandbox (revised 2026-10-29)
 On explicit designer request, hostiles exist in a **GAUNTLET** mode, not in ranked PvP. It is a test bed
@@ -659,8 +680,7 @@ link is a `portal`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
 - **A level may end on a mini-boss (2026-11-02).** `CampaignLevel.boss` names the `MINIBOSS` id; `World`
   takes it as `campaignBoss` and spawns it once the assault kills are met (`campaignBossSpawned`). A boss
   node ignores the port sweep and the bare kill count: it clears only after the staged intro and when no
-  body of that kind is live, so neither a port nor a fodder kill can end the fight. Mini-boss health is
-  not a level budget: do not tune a node by changing it. **A death before the assault is practice (2026-11-02):** every live campaign phase ticks the training respawn, so a body that falls into a chasm or gets caught during calibration, release, briefing, drill or breach comes back and the lesson keeps its progress; only a death in the assault ends the run. Ticking that timer during the drill alone left a body permanently dead in calibration, which stalled the lesson with no overlay to leave from.
+  body of that kind is live, so neither a port nor a fodder kill can end the fight. Mini-boss health  is not a level budget: do not tune a node by changing it. **A death before the assault is practice for the local player (2026-11-02):** every live campaign phase ticks the training respawn, so the player's body that falls into a chasm or gets caught during calibration, release, briefing, drill or breach comes back and the lesson keeps its progress; only a death in the assault ends the run. Campaign companions do not respawn; see D67. Ticking that timer during the drill alone left a body permanently dead in calibration, which stalled the lesson with no overlay to leave from.
 - The campaign route plate (`road.ts`) belongs to the between-level transition, not to the archive. Do not mount it in a menu.
 - **Narrative framing (first beat built 2026-11-01, v0.1.92)**: the run opens in the quarantine section of a dev
   system. Every roster program is a "bad" program pulled by antivirus and sent to be retrained; the pick is
@@ -868,20 +888,21 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
   wait in the holding room, not in the player's opening circle, and script_kitty is behind the middle cell
   bars.
 - **Drill**: 18 s of sparring against the run's bot squad, using the same `BotBrain` inputs as training and
-  VS BOTS. A `NO BOTS` run still gets one instructor so the drill has a partner. Death on either side
-  respawns on the training timer. The squad forms an arc `CAMPAIGN.drillRing` in front of the player and
-  respawns on that arc, so the drill is a spar in arm's reach instead of a cross-map jog; the ring steps
-  outward, then inward, and falls back to the nearest clear arena spawn on a small island. The player
-  keeps the gauntlet spawn so a drill knockdown respawns inside the spar. No threats exist yet.
-- **Breach**: a 3.4 s `SYSTEM BREACH` warning. The squad de-rezzes, live projectiles clear, and the local
-  player is healed to full for the assault. The squad is gone for the rest of the node.
+  VS BOTS. A `NO BOTS` run still gets one instructor so the drill has a partner. The player respawns on
+  the training timer; a companion that dies does not (D67). The living squad forms an arc
+  `CAMPAIGN.drillRing` in front of the player, so the drill is a spar in arm's reach instead of a
+  cross-map jog; the ring steps outward, then inward, and falls back to the nearest clear arena spawn on
+  a small island. The player keeps the gauntlet spawn so a drill knockdown respawns inside the spar. No
+  threats exist yet.
+- **Breach**: a 3.4 s `SYSTEM BREACH` warning. Live projectiles clear and the local player is healed to
+  full for the assault. The squad stays on the floor; a companion lost earlier stays lost (D67).
 - **Assault**: every node opens with its authored `CampaignLevel.opening` squad from the first frame; its
   authored ports add the rest. Campaign nodes do not run the gauntlet's wave ramp or automatic packs;
   `updateGauntlet` takes a campaign branch that only updates the authored portals and bodies. A room clears
   when every port is shut and `campaignFloorClear` finds no live sentry, virus, worm or error; one death
   fails it. The opening squad counts toward that clear and is never bypassed by a boss branch.
 - **Completion**: a clear writes the save slot (`level` = completed count, `program`, `players`, `bots`,
-  seconds) and shows the clear overlay. BUILD ROOT and REBOOT are both live. The final node's clear plays
+  `deadBots`, seconds) and shows the clear overlay. BUILD ROOT and REBOOT are both live. The final node's clear plays
   `CAMPAIGN_FINALE` (the infection entered the network here; follow its path to the source), pulls the party
   through the portal, then shows the level stats with `MORE LEVELS COMING SOON`; it keeps the slot so a
   replay can resume. Nothing is saved mid-level. A failed node offers RETRY and SLOTS.

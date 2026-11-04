@@ -1584,8 +1584,15 @@ export class BotBrain {
   private pickTarget(world: World, me: Player): void {
     let best = -1;
     let bestScore = 1e12;
+    // Campaign companions are on the player's side. They never target another bot,
+    // and they only target the human after the human deliberately attacks this bot
+    // while locked on it (the world owns that intent bit). A stray shot does not
+    // turn an ally hostile.
+    const companion = world.campaign && this.slot > 0;
+    const betrayed = companion && world.campaignAllyHostile(this.slot);
     for (let i = 0; i < world.players.length; i++) {
       if (i === this.slot) continue;
+      if (companion && (i > 0 || !betrayed)) continue;
       const p = world.players[i];
       if (!p.active || !p.alive || p.cloakT > 0) continue;
       const dx = p.x - me.x;

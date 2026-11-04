@@ -1,7 +1,7 @@
 {
   "name": "deflect",
   "private": true,
-  "version": "0.1.193",
+  "version": "0.1.194",
   "type": "module",
   "description": "DEFLECT — top-down geometric arena duelist with one-stick facing",
   "license": "SEE LICENSE IN LICENSE",

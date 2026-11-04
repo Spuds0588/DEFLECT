@@ -173,6 +173,13 @@ room from the result screen; guests can leave. The host records the clear time l
 `SINGLE PLAYER > CAMPAIGN` opens three local save slots first. An empty slot starts a new run: pick the
 bot count (none to three), then your program. A filled slot shows the level and player count and resumes
 the run, skipping both steps. Bots take the programs you leave unused. A filled row also carries `CLEAR`,
+
+Bots are companions, not extra targets: they fight the room with you, and their fire passes through you.
+They only turn hostile if you damage that specific bot while locked on to it; a stray shot or splash does
+not. A companion that dies is gone for the rest of the run, across later rooms and a resumed save written
+after a clear. If the whole party goes down, `RETRY` brings back only the companions lost in that room; bots
+lost earlier stay lost. Companions do not use the training respawn. The route plate appears only when you cross to a new
+level; the four quarantine rooms are one level and portal straight through.
 which asks for confirmation before deleting the save. `START NEW GAME` takes the first empty slot; when all
 three are full it asks which save to replace. Replacing a slot deletes its old run before the new setup
 starts.
@@ -219,7 +226,8 @@ the left mouth for the wipe, then throws you out to the right with a real decayi
 protection window; campaign landing lanes are kept clear of authored hostiles.
 The clear reports
 kills, time, damage taken, data crates preserved and a score; losing no crates is a clean sweep and pays a
-bonus, and the best score and sweep count stay in the slot.
+bonus, and the best score and sweep count stay in the slot. A clear saves the surviving companion roster;
+a bot lost in an earlier room does not return on the next one.
 
 Clearing writes the slot and opens the portal. `BUILD ROOT` hops straight to `REBOOT` on `GRID ZERO`: the
 cat gets you out of quarantine, then six corner feeds fill the arena with sentries, viruses, worms and

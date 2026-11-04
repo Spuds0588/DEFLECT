@@ -32,6 +32,8 @@ export interface StorySave {
   memory?: number[];
   /** Uncollected memory shards, as fractions of the arena bounds. */
   shards?: { x: number; y: number }[];
+  /** Bot slots already lost in this run, bit 1 = slot 1. Absent on older saves. */
+  deadBots?: number;
   updatedAt: number;
 }
 
@@ -73,6 +75,10 @@ export function loadStorySlots(): (StorySave | null)[] {
               .slice(0, 8)
               .map((shard) => ({ x: Math.max(0, Math.min(1, shard.x)), y: Math.max(0, Math.min(1, shard.y)) }))
           : undefined,
+        deadBots:
+          typeof entry.deadBots === 'number' && Number.isFinite(entry.deadBots)
+            ? Math.max(0, Math.floor(entry.deadBots)) & 0xfe
+            : undefined,
         updatedAt: typeof entry.updatedAt === 'number' ? entry.updatedAt : 0,
       };
     }

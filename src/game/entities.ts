@@ -222,6 +222,8 @@ export function createPlayer(slot: number): Player {
     aimClip: 0,
     lockTX: 0,
     lockTY: 0,
+    lockIntentSlot: -1,
+    lockIntentT: 0,
     hitFlash: 0,
     respawnT: 0,
   };

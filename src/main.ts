@@ -61,7 +61,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.193';
+const BUILD = '0.1.194';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -448,6 +448,12 @@ let campaignPlaySeconds = 0;
 let lastCampaignPhase = '';
 /** Memory stacks earned in the live campaign run, carried between nodes. */
 let campaignMemory: number[] = new Array(MAX_PLAYERS).fill(0);
+/** Bot slots lost for the rest of this campaign run, bit 1 = slot 1. */
+let campaignBotDead = 0;
+/** Bot slots lost in the current arena; a TPK retry restores these. */
+let campaignDeadHere = 0;
+/** The fail overlay belongs to a full-party wipe, so its retry revives current losses. */
+let campaignRetryRevives = false;
 /** Uncollected shards held at the last save point, restored on the next node. */
 let campaignShards: { x: number; y: number }[] = [];
 /** Island-hop transition: one portal wipe covers the arena swap. */
@@ -1696,6 +1702,9 @@ function startNewCampaign(): void {
   campaignPlaySeconds = 0;
   campaignMemory = new Array(MAX_PLAYERS).fill(0);
   campaignShards = [];
+  campaignBotDead = 0;
+  campaignDeadHere = 0;
+  campaignRetryRevives = false;
   campaignDebug?.mark('new-campaign', `slot ${campaignSlot + 1}`);
   startCampaignLevel();
 }
@@ -1709,6 +1718,9 @@ function resumeCampaign(index: number, save: StorySave): void {
   campaignSaved = false;
   campaignPlaySeconds = 0;
   campaignMemory = new Array(MAX_PLAYERS).fill(0);
+  campaignBotDead = (save.deadBots ?? 0) & 0xfe;
+  campaignDeadHere = 0;
+  campaignRetryRevives = false;
   for (let i = 0; i < MAX_PLAYERS; i++) campaignMemory[i] = save.memory?.[i] ?? 0;
   campaignShards = save.shards ? save.shards.slice(0, MAX_PLAYERS) : [];
   // `level` is the number of completed levels, so it is also the next index.
@@ -1725,12 +1737,16 @@ function resumeCampaign(index: number, save: StorySave): void {
   startCampaignLevel();
 }
 
-function startCampaignLevel(viaPortal = false): void {
+function startCampaignLevel(viaPortal = false, retrySameArena = false): void {
   if (busy) return;
   teardownSession();
   hideOverlayInternal();
   hideCampaignRoad();
   campaignClearHandled = false;
+  // A retry keeps this arena's losses eligible for a later TPK restore; a fresh node
+  // starts a new arena and only its own losses can come back.
+  if (!retrySameArena) campaignDeadHere = 0;
+  campaignRetryRevives = false;
   mode = 'campaign';
   localSlot = 0;
   stress = false;
@@ -1763,6 +1779,7 @@ function startCampaignLevel(viaPortal = false): void {
     level.primitivesOnly === true,
     level.opening ?? null,
     level.finale === true,
+    campaignBotDead,
   );
   world.friendlyFire = friendlyFire;
   for (let i = 0; i < MAX_PLAYERS; i++) world.setMemoryStacks(i, campaignMemory[i] ?? 0);
@@ -4736,6 +4753,7 @@ function syncPhaseUi(state: RenderState): void {
     return;
   }
   if (mode === 'campaign' && world) {
+    syncCampaignBotLosses(world);
     if (world.campaignPhase !== lastCampaignPhase) {
       const phase = world.campaignPhase;
       if (phase === 'breach') audio.roundStart(1);
@@ -5152,6 +5170,7 @@ function handleCampaignClear(w: World): void {
       cleanSweeps,
       memory: campaignMemory,
       shards: campaignShards,
+      deadBots: campaignBotDead & 0xfe,
     });
     campaignSaved = true;
     bestLine = ` // BEST ${bestScore}`;
@@ -5160,15 +5179,21 @@ function handleCampaignClear(w: World): void {
     bestLine = ` // BEST ${loadStorySlots()[campaignSlot]?.bestScore ?? score}`;
   }
   if (next) {
-    // The route plate owns the beat between devices. It names the next stop only after
-    // this one is secure; later stops stay generic until their turn.
-    showCampaignRoad(cleared.name, next.name, campaignLevelIndex + 1, () => {
+    const advance = () => {
       beginIslandHop(`SCRIPT_KITTY // PORTAL TO ${next.name}`, () => {
         campaignLevelIndex += 1;
         startCampaignLevel(true);
         toast(`${cleared.name} SECURED // SCORE ${score}${clean ? ' // CLEAN SWEEP' : ''}`);
       });
-    });
+    };
+    // The route plate is the network map between levels, not a card between every
+    // arena in the same level. The four BUILD ROOT rooms share one node, so they
+    // portal straight on; crossing to a new node gets the map beat.
+    if (cleared.nodeId !== next.nodeId) {
+      showCampaignRoad(cleared.name, next.name, campaignLevelIndex + 1, advance);
+    } else {
+      advance();
+    }
     return;
   }
   const dataLine = w.dataTotal > 0 ? `DATA ${w.dataKept}/${w.dataTotal}` : 'NO DATA AT RISK';
@@ -5191,11 +5216,16 @@ function handleCampaignClear(w: World): void {
 
 function showCampaignFailOverlay(w: World): void {
   if (overlayKind === 'leave' || overlayKind === 'runover') return;
+  syncCampaignBotLosses(w);
+  // A TPK retry restores only the companions that died in this arena. Bots lost in
+  // an earlier arena stay lost for the run.
+  const tpk = !w.players.some((p, i) => i > 0 && p.active && p.alive);
+  campaignRetryRevives = tpk;
   campaignDebug?.mark(
     'level-failed',
     `${w.gauntletKills}/${w.campaignKillsToClear} kills // ${campaignPlaySeconds.toFixed(1)}s // ${
       (PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex] ?? FIRST_CAMPAIGN_LEVEL).name
-    }`,
+    } // ${tpk ? 'TPK' : 'retry'}`,
   );
   setOverlay(
     'runover',
@@ -5206,12 +5236,32 @@ function showCampaignFailOverlay(w: World): void {
     }`,
     withSessionShare(
       [
-        { label: 'RETRY', primary: true, onClick: startCampaignLevel },
+        { label: 'RETRY', primary: true, onClick: retryCampaignLevel },
         { label: 'SLOTS', onClick: returnToStory },
       ],
       sessionResult('campaign-failed', { cleared: false, seconds: campaignPlaySeconds, kills: w.gauntletKills }),
     ),
   );
+}
+
+function retryCampaignLevel(): void {
+  if (campaignRetryRevives) campaignBotDead &= ~campaignDeadHere;
+  campaignRetryRevives = false;
+  // Keep `campaignDeadHere`: a bot lost in an earlier attempt in this arena is still
+  // eligible if a later attempt ends in a TPK.
+  startCampaignLevel(false, true);
+}
+
+/**
+ * Folds a campaign bot's permanent death into the run mask. A bot that was already
+ * dead when the node loaded is already in the mask, so it never counts as a loss here.
+ */
+function syncCampaignBotLosses(w: World): void {
+  const lost = w.campaignBotsLost & ~campaignBotDead;
+  if (lost === 0) return;
+  campaignBotDead |= lost;
+  campaignDeadHere |= lost;
+  campaignDebug?.mark('bot-lost', `slots ${lost.toString(2)}`);
 }
 
 function showMatchOverlay(state: RenderState): void {
@@ -5902,6 +5952,7 @@ if (import.meta.env.DEV) {
       level: campaignLevelIndex,
       players: campaignPlayers,
       bots: campaignBots,
+      deadBots: campaignBotDead,
       saved: campaignSaved,
     }),
     setCampaignLevel: (index: number) => {

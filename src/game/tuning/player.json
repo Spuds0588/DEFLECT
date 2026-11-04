@@ -43,6 +43,7 @@
     "comboWindow": 0.62,
     "lockRange": 1600,
     "lockAcquire": 0.12,
+    "lockIntentWindow": 0.6,
     "laserChargeTime": 0.45,
     "heavyTapMax": 0.16,
     "laserDuration": 3,

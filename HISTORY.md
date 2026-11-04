@@ -7942,3 +7942,41 @@ in through the entry portal.
 
 **Next:** human couch check on 0.1.193: a normal round win still hops through the portal; a full-party
 wipe ends at RING BROKEN with no restart. Committed and pushed with this entry.
+
+## 2026-11-04 — Campaign allies, node-gated route, permanent companion loss (v0.1.194)
+
+**Goal:** fix the playtest reports that campaign companions never turn on the player and that the network
+route map appears between arenas in the same level; then make companion deaths permanent instead of
+training-timer respawns, with a TPK retry exception for the current arena.
+
+**Changes.**
+- Campaign companions stay allied. `World.campaignAllyAggro` marks only the bot the player damages while
+  locked on it. `Player.lockIntentSlot`/`lockIntentT` retain that lock for `PLAYER.lockIntentWindow` (0.6 s),
+  because a melee swing clears `lockActive` for its animation. Stray shots and splash do not turn an ally.
+- A turned bot targets humans only; `BotBrain.pickTarget` never targets another bot. Allied bot fire passes
+  through the party until that specific bot is turned.
+- A dead campaign companion sets `World.campaignBotsLost`, clears active/thrall, and does not start the
+  training respawn timer. `activateCampaignBots` and `beginDrill` skip the lost mask, so the bot stays gone
+  on later nodes. `StorySave.deadBots` carries the roster across a resumed run.
+- Main tracks `campaignBotDead` for the run and `campaignDeadHere` for the current arena. A TPK retry clears
+  only the current arena's losses; a non-TPK retry and earlier-arena losses stay permanent.
+- The route plate is gated on `cleared.nodeId !== next.nodeId`, not the sector. INTAKE, HOLDING, MAINBOARD and
+  ROUTER share BUILD ROOT and now portal straight through; the map appears at ROUTER -> REBOOT and later
+  level boundaries.
+- Added `.tmp/ally-real-check.ts`, `.tmp/campaign-ally-check.ts` and `.tmp/campaign-bot-death-check.ts`.
+- Updated AGENTS (D66/D67), GAME_GUIDE, TODO and HISTORY; all version stamps are 0.1.194.
+
+**Verification.**
+- `.tmp/ally-real-check.ts` OK: a held-lock bolt and a held-lock melee both damage and turn the companion.
+- `.tmp/campaign-ally-check.ts` OK: both companions allied, stray hit ignored, locked hit turns only bot 1,
+  a turned bot targets the human, allied fire passes through.
+- `.tmp/campaign-bot-death-check.ts` OK: a dead bot is removed, does not respawn after 5 simulated seconds,
+  records the loss bit, and a later node plus `beginDrill` never activate it.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only); `npm run bench` 0. 8P bot
+  swarm 0.180 ms avg / 0.486 ms p99; gauntlet max 0.390 ms avg / 1.181 ms p99 at 29.5 threats.
+- Not yet tested: human campaign playthrough on 0.1.194. The checkpoint was committed and pushed at the
+  user's request while that playtest is still running.
+
+**Next:** human campaign debug run on 0.1.194: check ally betrayal by locked melee and ranged damage, a
+companion staying gone across a node and a save resume, a TPK retry restoring only that arena's losses, and
+no route plate between the four BUILD ROOT rooms.
