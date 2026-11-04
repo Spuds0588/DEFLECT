@@ -106,7 +106,9 @@ Canvas path commands and text each frame.
   triangle afterimage; melee draws the lash, bowie arc or Pinball's two-flipper snap from the current swing
   phase; Sweep's broom is
   cached character rows stretched across the lane; projectiles keep ring-buffer trails; particles are
-  pooled. There are no sprite frames, skeletal rigs or tween library. Every effect is a function of
+  pooled. Screen impact feedback is local and edge-only: a hit on the player tints a thin red frame, and
+  low health pulses an edge band, never a full-screen additive wash. There are no sprite frames, skeletal
+  rigs or tween library. Every effect is a function of
   simulation state and time.
 
 That is also why there is nothing to import: no PNG, WebP or SVG character assets, no atlas and no audio
@@ -196,8 +198,13 @@ with its own furniture and labels; the only way between them is the portal. All 
 `48,48 -> 1942,1046` playfield: the quarantine rooms were too cramped to dodge fire or make a reflect read.
 INTAKE is deliberately bare, with six dormant lock targets and no cover. The Warden's lesson ends by
 waking that class: he gets one shocked line and drops out of the story box, the system orders
-`DESTROY ALL AWAKENED PRIMITIVES`, and the first portal opens only after every subject is gone. HOLDING
-keeps its back-right cell block but opens the left and front; the block is a local barrier, not an island gate.
+`DESTROY ALL AWAKENED PRIMITIVES`, and the first portal opens only after every subject is gone. The class
+absorbs hits during the lesson and while any subject is still opening; otherwise the lesson's own fire step
+wakes them and a held burst can delete the fight before the shock beat. HOLDING keeps its back-right cell
+block but opens the left and front; the block is a local barrier, not an island gate. An arrival holds the
+body at the left mouth for `CAMPAIGN.portalThrowDelay` (0.62 s) while the hop wipe opens, then applies the
+decaying `portalThrowSpeed` (1500) throw and 1.4 s of entry protection. Landing lanes stay clear of authored
+hostiles.
 
 Threats still arrive through authored **ports** (`ArenaDef.ingress`): fixed, damageable squares that emit
 a threat family on a clock and stop when shot shut. Ports reuse the file-box damage path rather than a

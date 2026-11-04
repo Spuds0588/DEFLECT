@@ -167,8 +167,10 @@ the run, skipping both steps. Bots take the programs you leave unused.
 `BUILD ROOT` opens in quarantine. The Warden talks you through move, dash, ranged attack, lock and target
 cycling, melee, and reflection on the bare intake plate. Six dormant shapes sit there as lock targets.
 When the lesson ends (or you skip it), they wake together: the Warden gets one shocked line, drops out of
-the story box, and the system orders **DESTROY ALL AWAKENED PRIMITIVES**. Clear all six to open the
-right-wall portal. The holding office stages its own six for **wave 1**, one at a time: a bouncing
+the story box, and the system orders **DESTROY ALL AWAKENED PRIMITIVES**. The class is inert during the
+Warden's lesson: shots and melee are absorbed until the script wakes them, and they cannot be damaged while
+any of them is still opening. That is deliberate, so the shock beat and the fight both happen. Clear all
+six to open the right-wall portal. The holding office stages its own six for **wave 1**, one at a time: a bouncing
 blue circle, a floating red mother with a shard cloud, and a yellow row of clones that charges together.
 The cell block stays solid while it is sealed, so the held wave cannot leave early and you cannot walk
 into the cells. The three civilian monitors in that office are destroyed in the breakout, dropping
@@ -186,8 +188,9 @@ port — ranged shots, the lash, a damaging skill or a damaging heavy — so bri
 for good. A room is clear only when every feed is shut **and** every hostile it delivered is gone; then its
 white right-wall portal opens and the suction pulls you in. There is no white party port to walk into and
 no bridge to earn. The entry mouth is the same pulsing white square on the left wall, so the crossing reads
-from both ends. The next room throws you out of it with real momentum and a short entry protection window;
-campaign landing lanes are kept clear of authored hostiles.
+from both ends. The next room holds you at the mouth for a beat while the wipe opens, then throws you out
+with a real decaying impulse and a short entry protection window; campaign landing lanes are kept clear of
+authored hostiles.
 The clear reports
 kills, time, damage taken, data crates preserved and a score; losing no crates is a clean sweep and pays a
 bonus, and the best score and sweep count stay in the slot.

@@ -3677,3 +3677,13 @@ arrive.
 - [x] Impact flash is a thin screen-edge cue; a full-screen additive white wash cannot cover a fight.
 - [ ] Play a fresh campaign from INTAKE through HOLDING and judge the wake, Warden handoff and thrown landing
       from the couch camera.
+
+## INTAKE WAKE HARDENING / VISIBLE THROW (v0.1.184)
+
+- [x] Dormant calibration subjects absorb hits; the Warden's own fire step cannot wake or damage the class.
+- [x] The whole class is untouchable while any subject is still opening, so a held burst cannot skip the fight.
+- [x] The Warden shock line still leads the SYSTEM objective; the wake banner holds for 4.0 s.
+- [x] Portal arrival waits 0.62 s for the hop wipe, then throws east at 1500 with entry protection.
+- [x] Hit feedback is a red edge cue; the low-health warning is clipped to an edge band.
+- [ ] Fresh human INTAKE -> HOLDING pass: confirm the class visibly attacks, the shock line reads, and the
+      arena-2 throw is visible after the wipe.

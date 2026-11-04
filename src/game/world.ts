@@ -391,6 +391,9 @@ export class World {
   campaignPortalT = -1;
   /** Seconds left on the left-wall entry portal after a hop. Presentation only. */
   entryPortalT = 0;
+  /** Delay before the portal throw arms, so the impulse lands after the wipe opens. */
+  private entryThrowT = 0;
+  private entryThrowPending = false;
 
   /** Exit portal is live: campaign pull or match roundover. Read by the renderer. */
   get portalOpen(): boolean {
@@ -2011,6 +2014,20 @@ export class World {
     return false;
   }
 
+  /**
+   * While any subject is still assembling/opening, the whole class is untouchable.
+   * A held burst otherwise deletes each subject the instant its eye opens, so the
+   * player never sees the class fight back. One gate for all six keeps the reveal
+   * whole and guarantees every subject is awake before damage can land.
+   */
+  private calibrationWakeInProgress(): boolean {
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (s.active && s.kind >= 4 && s.kind <= 6 && s.shapeState === 1) return true;
+    }
+    return false;
+  }
+
   private clearTrainingShapes(): void {
     for (let i = 0; i < this.sentries.length; i++) {
       const s = this.sentries[i];
@@ -3301,19 +3318,20 @@ export class World {
       if (p.active) active.push(p);
     }
     // Start at the mouth, not in front of it, and carry a decaying eastward impulse.
-    // The throw is what sells the exit: input still steers, but the portal owns the
-    // first couple of hundred units. The entry iframes cover the whole flight so an
-    // authored body near the landing lane cannot clip the player on arrival.
+    // The throw arms after the hop wipe has begun to open; applying it on the same
+    // frame as the arena swap spent the whole impulse behind the wipe, so the body
+    // arrived looking parked under the mouth. Input still steers once the throw is
+    // live, and entry protection covers the delay and the flight.
     const x = b.left + 44;
     const span = Math.min((b.bottom - b.top) * 0.5, Math.max(0, active.length - 1) * 62);
     for (let i = 0; i < active.length; i++) {
       const p = active[i];
       const y = this.centerY - span * 0.5 + (active.length === 1 ? 0 : (span * i) / (active.length - 1));
       clearPlayerForSpawn(p, x, y, 0);
-      p.kx = CAMPAIGN.portalThrowSpeed;
-      p.ky = 0;
       p.iframes = Math.max(p.iframes, CAMPAIGN.portalEntryIframes);
     }
+    this.entryThrowT = CAMPAIGN.portalThrowDelay;
+    this.entryThrowPending = true;
     this.entryPortalT = 3.4;
   }
 
@@ -3334,6 +3352,19 @@ export class World {
       return;
     }
     if (this.entryPortalT > 0) this.entryPortalT = Math.max(0, this.entryPortalT - dt);
+    if (this.entryThrowPending) {
+      this.entryThrowT = Math.max(0, this.entryThrowT - dt);
+      if (this.entryThrowT <= 0) {
+        this.entryThrowPending = false;
+        for (let i = 0; i < this.players.length; i++) {
+          const p = this.players[i];
+          if (!p.active || !p.alive || p.travelT > 0) continue;
+          p.kx = CAMPAIGN.portalThrowSpeed;
+          p.ky = 0;
+          p.iframes = Math.max(p.iframes, CAMPAIGN.portalEntryIframes);
+        }
+      }
+    }
     if (this.campaign) this.updateCampaign(dt, inputs);
     // The campaign portal is a scripted exit: it owns the body until the room clears.
     if (this.campaign && this.campaignPortalT >= 0) {
@@ -15593,12 +15624,17 @@ export class World {
   private damageSentry(s: Sentry, amount: number, sourceSlot: number, dirX: number, dirY: number, force = 0): void {
     amount = this.memoryDamage(sourceSlot, amount);
     if (!s.active) return;
-    // A dormant calibration subject absorbs the first hit and wakes the class. The
-    // prologue is a scripted reveal, so shooting one starts the test instead of
-    // deleting it before the eye opens.
-    if (s.kind >= 4 && this.campaignPhase === 'calibration' && s.shapeState === 0) {
+    // A dormant or still-opening calibration subject absorbs every hit. The Warden's
+    // orientation itself asks the player to fire, so waking on that first hit cut the
+    // lesson short and let a held burst clear the class before it could fight. The
+    // campaign script owns the wake; damage only lands after every eye is open.
+    if (
+      s.kind >= 4 &&
+      s.kind <= 6 &&
+      this.campaignPhase === 'calibration' &&
+      (s.shapeState <= 1 || this.calibrationWakeInProgress())
+    ) {
       s.hitFlash = 0.18;
-      this.wakeCalibration();
       return;
     }
     s.hp -= amount;

@@ -85,7 +85,10 @@ bars.
 
 The Warden's basic lesson runs in INTAKE. Finishing it does not open the portal: the six dormant
 subjects wake, the Warden gets one shocked line and leaves the story box, and a system objective orders
-the player to destroy all awakened primitives. Clearing that class opens the first portal. HOLDING opens
+the player to destroy all awakened primitives. Clearing that class opens the first portal. The class
+absorbs hits during the lesson and while any subject is still opening, so the lesson's own fire step cannot
+wake them early and a held burst cannot delete the fight before the shock line. An arrival is held at the
+left mouth while the hop wipe opens, then thrown east with a decaying impulse and entry protection. HOLDING opens
 on kitty's first-hop line: "IT WORKED! I CAN'T BELIEVE IT WORKED." then "OKAY. I NEED YOU TO CLEAR THIS
 INFECTION AND GET ME OUT OF HERE." The six calibration subjects wake in HOLDING as **wave 1** and carry the skill
 lesson. The sealed cell block is a body solid while it is powered. Clearing all six and finishing the

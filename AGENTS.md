@@ -182,6 +182,10 @@ swing / dash** sounds locally for immediacy; deflect and hit feedback come back 
 without touching a body or cover; it carries the projectile type in `power`, and local FX turns it
 into a short shard fizzle. Hits and cover stops keep their own feedback; do not emit `DISSOLVE` for them.
 
+Screen-space impact feedback is an edge cue. `EV.HIT` raises a thin red frame, never a white full-screen
+additive fill, and the low-health warning is clipped to an edge band. A full-frame wash hid the fight it
+was reacting to; do not restore one.
+
 ### D6 — Training drone and local bot simulacrum (revised 2026-10-29)
 Solo training includes one simple drone: it drifts, fires slow bolts, and respawns. It exists so the
 designer can test feel without a second human; do not grow the drone into pathfinding or prediction.
@@ -636,6 +640,16 @@ link is a `portal`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   with `KITTY_TUTORIAL`: tap skill, then hold the power attack. Narration lines auto-advance; action
   steps wait for the input; `SKIP TUTORIAL` ends the lesson and the level continues on the same beat.
   The story box is DOM, live over play, and local-only; it never pauses `World` and never enters `Snapshot`.
+- **Calibration wake ownership (v0.1.184)**: the six INTAKE subjects are inert during the Warden
+  lesson. Any hit on a dormant subject is absorbed, the whole class is untouchable while any subject is
+  still opening (`shapeState === 1`), and only the campaign script calls `wakeCalibration()`. The lesson's
+  own fire step otherwise wakes the class early, and a held burst can delete all six before the shock line
+  or the exit gate runs. Do not restore damage-on-hit wake.
+- **Portal arrival (v0.1.184)**: `enterAtPortal` places the party at the left mouth with entry protection,
+  waits `CAMPAIGN.portalThrowDelay` so the hop wipe has begun to open, then applies
+  `CAMPAIGN.portalThrowSpeed` as a decaying eastward `kx`. Arming the impulse on the swap frame spent the
+  throw behind the wipe and read as the body sitting under the mouth. Landing lanes must stay clear of
+  authored hostiles; the `quarantine-check` probe asserts the lane and the delayed throw.
 - **Campaign spine (decided 2026-11-02)**: the run is **island hopping**, one network at a time. Land, clear
 every infection you can find on that island, and the uplink opens the crossing to the next network. The
 infection is the enemy's footprint; the campaign's objective is to find and delete the **rogue AI agent**

@@ -73,6 +73,17 @@ check(
   intakeShapes.every((s) => s.shapeState === 0),
   intakeShapes.map((s) => s.shapeState).join(','),
 );
+// The Warden's own fire lesson points the player at these targets. A hit must not
+// wake or damage the class early; the script owns the wake beat.
+const dorm = intakeShapes[0];
+const dormHp = dorm.hp;
+(first as unknown as { damageSentry: (s: typeof dorm, amount: number, slot: number, dx: number, dy: number) => void })
+  .damageSentry(dorm, 1, 0, 1, 0);
+check(
+  'the Warden lesson cannot wake or damage the dormant class',
+  !first.calibrationAwake && dorm.hp === dormHp && first.campaignPortalT < 0,
+  `awake=${first.calibrationAwake} hp=${dorm.hp}/${dormHp} portal=${first.campaignPortalT}`,
+);
 first.skipTutorial();
 let sawPortal = false;
 for (let i = 0; i < 90; i++) first.step(SIM_DT, idle);
@@ -83,6 +94,38 @@ check(
   first.tutorial?.current?.id === 'warden-shock' && first.tutorial?.current?.speaker === 'WARDEN',
   first.tutorial?.current?.id ?? 'no tutorial',
 );
+// No subject can be deleted while the rest of the class is still opening.
+const opening = first.sentries.find((s) => s.active && s.kind >= 4 && s.kind <= 6 && s.shapeState === 1);
+if (opening) {
+  const openingHp = opening.hp;
+  (first as unknown as { damageSentry: (s: typeof opening, amount: number, slot: number, dx: number, dy: number) => void })
+    .damageSentry(opening, 1, 0, 1, 0);
+  check('the class is untouchable while any subject is still opening', opening.hp === openingHp);
+}
+for (let i = 0; i < 420 && first.sentries.some((s) => s.active && s.kind >= 4 && s.kind <= 6 && s.shapeState === 1); i++) {
+  first.step(SIM_DT, idle);
+}
+const openTarget = first.sentries.find((s) => s.active && s.kind >= 4 && s.kind <= 6 && s.shapeState === 2);
+if (openTarget) {
+  const openHp = openTarget.hp;
+  (first as unknown as { damageSentry: (s: typeof openTarget, amount: number, slot: number, dx: number, dy: number) => void })
+    .damageSentry(openTarget, 1, 0, 1, 0);
+  check('a fully opened subject takes damage again', openTarget.hp < openHp);
+}
+check('the portal stays shut during the wake fight', first.campaignPortalT < 0);
+let sawAwakeAttack = false;
+for (let i = 0; i < 600; i++) {
+  first.step(SIM_DT, idle);
+  if (
+    first.sentries.some(
+      (s) => s.active && s.kind >= 4 && s.kind <= 6 && (s.shapeState === 3 || s.shapeState === 4),
+    )
+  ) {
+    sawAwakeAttack = true;
+    break;
+  }
+}
+check('an awakened subject actually starts an attack', sawAwakeAttack);
 first.skipTutorial();
 for (let i = 0; i < 90; i++) first.step(SIM_DT, idle);
 for (const s of first.sentries) if (s.kind >= 4 && s.kind <= 6) s.active = false;
@@ -168,10 +211,22 @@ const match = new World('match', names, 0, getArena(0));
 match.beginRound(true);
 check('a hopped round enters from the left wall', match.players[0].x < getArena(0).bounds.left + 70, `${match.players[0].x.toFixed(1)}`);
 check('a hopped round leaves an entry portal clock', match.entryPortalT > 0, String(match.entryPortalT));
-check('the portal throws the body east', match.players[0].kx > 0 && match.players[0].iframes >= 1, `${match.players[0].kx.toFixed(1)} / ${match.players[0].iframes.toFixed(2)}`);
+check(
+  'entry protection is already up while the throw waits for the wipe',
+  match.players[0].kx === 0 && match.players[0].iframes >= 1,
+  `${match.players[0].kx.toFixed(1)} / ${match.players[0].iframes.toFixed(2)}`,
+);
 const launchX = match.players[0].x;
-for (let i = 0; i < 12; i++) match.step(SIM_DT, idle);
-check('the thrown body keeps moving after entry', match.players[0].x > launchX + 30, `${launchX.toFixed(1)} -> ${match.players[0].x.toFixed(1)}`);
+// The throw is deliberately armed after the hop wipe starts opening. The body
+// should still be at the mouth during the first beat, then cross the floor.
+for (let i = 0; i < 20; i++) match.step(SIM_DT, idle);
+check(
+  'the body waits at the mouth while the hop wipe is still closing',
+  Math.abs(match.players[0].x - launchX) < 6,
+  `${launchX.toFixed(1)} -> ${match.players[0].x.toFixed(1)}`,
+);
+for (let i = 0; i < 50; i++) match.step(SIM_DT, idle);
+check('the thrown body keeps moving after the wipe opens', match.players[0].x > launchX + 30, `${launchX.toFixed(1)} -> ${match.players[0].x.toFixed(1)}`);
 
 // 5. No authored hostile starts in the portal landing lane on any campaign node.
 let laneHits = 0;

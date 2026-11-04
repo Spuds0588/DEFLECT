@@ -7512,3 +7512,43 @@ of parking them under it.
 serves `sw.js` `deflect-0.1.183`, and returns 200 for the `assets/index-5wHFbTE3.js` bundle.
 
 **Next:** play INTAKE through HOLDING and judge the wake pace, the story-box handoff and the landing throw.
+
+## 2026-11-04 — INTAKE wake cannot be skipped, arrival throw lands on screen (v0.1.184)
+
+**Goal:** the first campaign pass was still reaching the portal without a primitive fight, the Warden never
+held the shock beat, and arena 2 still looked parked under the entry mouth. The 0.1.183 wake gate existed,
+but the Warden's own fire/melee lesson was the trigger that bypassed it.
+
+**Changes.**
+- `damageSentry` now absorbs every hit on a dormant calibration subject instead of calling
+  `wakeCalibration()`. The script owns the wake. This is the actual 0.1.183 gap: the orientation asks the
+  player to fire, so the first practice shot woke the class early and a held burst could clear it before
+  the shock beat or the portal gate played out.
+- The whole calibration class is invulnerable while any subject is still in `shapeState === 1` (wake-in).
+  Every eye opens before damage lands, so the class gets its attack window instead of being deleted one by
+  one on its wake frames. The portal still waits for `trainingParentsActive()` to be false and the SYSTEM
+  objective to finish.
+- `INTAKE_WAKE` keeps the Warden's shocked line and the SYSTEM `DESTROY ALL AWAKENED PRIMITIVES` order. The
+  wake banner is 4.0 s and the SYSTEM line 4.2 s so the direction is readable at couch distance.
+- `enterAtPortal` no longer applies the throw on the swap frame. It places the party at the mouth with 1.4 s
+  of protection, waits `CAMPAIGN.portalThrowDelay` (0.62 s) for the wipe to open, then arms
+  `CAMPAIGN.portalThrowSpeed` (now 1500) as a decaying eastward `kx`. The body is visibly thrown after the
+  cut, not during the covered frames.
+- `EV.HIT` now raises a thin red edge; the impact flash remains edge-only. The one-segment low-health veil
+  is clipped to an 18 px border instead of tinting the whole pane. Both changes keep the arena readable
+  when a hit lands.
+- Version stamps bumped to 0.1.184.
+
+**Verification.**
+- `npx tsc --noEmit` 0.
+- `quarantine-check` 0, including: Warden fire cannot wake/damage the dormant class; the class is untouchable
+  while a subject is opening; a fully opened subject takes damage; an awakened subject starts an attack; the
+  portal stays shut through the wake fight; the arrival waits at the mouth then moves east; no authored
+  hostile is in the landing lane.
+- `campaign-rules-check` 0.
+- Not yet tested: a fresh human INTAKE -> HOLDING playthrough after the 0.1.184 deploy.
+
+**Production.** Pending the `origin/main` push and Pages run for this entry.
+
+**Next:** play the published 0.1.184 build through INTAKE and HOLDING; confirm the fight attacks, the shock
+line reads, and the throw is visible on arena 2.

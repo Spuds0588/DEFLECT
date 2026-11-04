@@ -24,12 +24,13 @@
     "scorePerDamage": 80,
     "bossWarnTime": 5.0,
     "bossWarnBannerTime": 3.2,
-    "portalThrowSpeed": 1100,
+    "portalThrowSpeed": 1500,
+    "portalThrowDelay": 0.62,
     "portalEntryIframes": 1.4
   },
   "CALIBRATION": {
     "bannerTime": 3.8,
-    "wakeBannerTime": 2.6,
+    "wakeBannerTime": 4.0,
     "wakeDelay": 6,
     "wakeRadius": 175,
     "entryWait": 18,

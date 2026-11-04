@@ -776,7 +776,13 @@ export class Renderer {
         }
       }
       if (introDone && lowHp && this.lowHpGradient) {
+        // The warning is a border pulse, not a full-screen red veil. At one segment
+        // the old 35% wash hid the fight under the hit the player was trying to read.
         ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, view.w, view.h);
+        ctx.rect(18, 18, Math.max(0, view.w - 36), Math.max(0, view.h - 36));
+        ctx.clip('evenodd');
         ctx.scale(view.w / VIEW_W, view.h / VIEW_H);
         ctx.globalAlpha = 0.35 + Math.sin(t * 4) * 0.08;
         ctx.fillStyle = this.lowHpGradient;

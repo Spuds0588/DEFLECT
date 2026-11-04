@@ -141,8 +141,10 @@ export class Fx {
         this.particles.burst(ev.x, ev.y, 6, P_COLOR_WHITE, 90, 320);
         this.particles.ring(ev.x, ev.y, color, 8, 72, 0.2);
         this.shake = Math.max(this.shake, 6);
-        this.flash = Math.max(this.flash, 0.1);
-        this.flashColor = '#ffffff';
+        // A hit on the local body is a red edge cue, never a white flash. The old
+        // white wash read as the whole screen dropping out for a beat.
+        this.flash = Math.max(this.flash, 0.08);
+        this.flashColor = '#ff6b73';
         break;
       }
       case EV.DISSOLVE: {

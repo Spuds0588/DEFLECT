@@ -279,7 +279,7 @@ export const INTAKE_WAKE: readonly TutorialStep[] = [
     speaker: 'SYSTEM',
     line: 'DESTROY ALL AWAKENED PRIMITIVES.',
     prompt: 'DESTROY ALL AWAKENED PRIMITIVES',
-    readTime: 3.6,
+    readTime: 4.2,
   },
 ];
 
