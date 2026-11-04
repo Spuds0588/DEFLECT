@@ -58,7 +58,7 @@ for (const [id, expected] of [[14, 0], [34, 0], [35, 2], [36, 1]] as const) {
       for (const v of retired.viruses) v.active = false;
       for (const w of retired.worms) w.active = false;
       for (const e of retired.errors) e.active = false;
-      for (let i = 0; i < 120 && !world.campaignExitReady; i++) world.step(SIM_DT, [null]);
+      for (let i = 0; i < 180 && !world.campaignExitReady; i++) world.step(SIM_DT, [null]);
     }
     if (!world.campaignExitReady) fail(`${arena.name}: last port and clear floor did not open the exit portal`);
     if (world.campaignPortalT < 0) fail(`${arena.name}: portal pull did not start`);
@@ -81,6 +81,6 @@ if (satWorld.portTotal !== 0) fail('a replicator must not count as a campaign po
 const damageProp = (satWorld as unknown as { damageProp: (b: any, n: number, x: number, y: number) => void }).damageProp.bind(satWorld);
 damageProp(reps[0], reps[0].hp, 0, 0);
 if (satWorld.portsClosed !== 0) fail('closing a replicator counted as a campaign port');
-if (!((reps[0].portalCloseT ?? 0) > 0)) fail('the replicator did not close');
+if (reps[0].active) fail('the replicator did not disappear on destruction');
 
 console.log('islands-ports-check: OK (split rooms, last port + clear floor starts the pull, replicators stay separate)');

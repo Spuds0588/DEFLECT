@@ -2,7 +2,7 @@
   "GAUNTLET": {
     "assault": {
       "maxPortals": 2,
-      "edgeInset": 104,
+      "edgeInset": 60,
       "playerClear": 430,
       "half": 44,
       "openTime": 0.3,

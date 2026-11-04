@@ -7771,3 +7771,38 @@ and a real HOLDING cell breakout.
 
 **Next:** human campaign replay with the new portal camera and Mega Worm volleys; watch HOLDING's cell
 breakout and report any remaining lane or readability issues. Committed and pushed with this entry.
+
+## 2026-11-04 — Campaign playtest round 3: edge mouths and immediate portal bursts (v0.1.189)
+
+**Goal:** apply the third campaign feedback pass: enemy mouths on arena edges, one solid red square with a
+heavy glow and particles, and destruction that disappears in the red-square burst instead of shrinking.
+
+**Changes.**
+- `drawEnemyPortalMouth` is now the shared enemy-port visual: one opaque `#ff2338` square, a wide additive
+  halo and two rings of red square motes. No inner fill, rim, brackets or chevrons; the health bar stays a
+  separate diagnostic above the mouth. Campaign ports and transient gauntlet portals both use it.
+- `World.closePort` removes the prop in the same frame (`active = false`, `hp = 0`) and emits
+  `EV.PORTAL_BREAK`; `portalCloseT`, the close timer, the renderer shrink and the replicator close scaling
+  are gone. The burst is the only death read.
+- `GAUNTLET.assault.edgeInset` is 60: the 44-unit half leaves a 16-unit wall gap, and `assaultPoint()`
+  still rejects points within 58 units of a rim or 430 of the player. `assault-check` verifies the edge lane.
+- MAINBOARD's two authored feeds are on the left and right walls; ROUTER's last feed is on its right wall.
+  REBOOT keeps its six tuned corner feeds after moving them flush to the rim broke the continuous
+  playthrough at the bottom lane. `.tmp/port-sweep-check.ts` now asserts every campaign port is within 12
+  units of an arena edge.
+- Updated `AGENTS.md`, `README.md`, `GAME_GUIDE.md`, `CAMPAIGN.md`, `TODO.md` and `HISTORY.md`; bumped
+  `package.json`, `package-lock.json`, `index.html`, `src/main.ts` and `public/sw.js` to 0.1.189.
+
+**Verification.**
+- `assault-check` OK: four queued sentries opened on an edge 60 units in, burst together, then closed.
+- `port-sweep-check` OK: MAINBOARD ports at `96,300` and `1894,830`; ROUTER at `1894,523`; all cleared.
+- `islands-ports-check` OK after its stale 2 s clear-hold loop was extended to 3 s; `campaign-playthrough-check`
+  cleared 3/3 continuous runs after REBOOT's tuned feeds were restored.
+- `campaign-finale-check` and `reboot-boss-check` OK. Direct destruction probe: port `active=false`, `hp=0`,
+  no close field, with `closePort` emitting `PORTAL_BREAK`.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only); `npm run bench` 0. 8P bot
+  swarm 0.147 ms avg / 0.493 ms p99; gauntlet max 0.272 ms avg / 0.835 ms p99 at 29.6 live threats. Under
+  the 4 ms budget. `git diff --check` clean.
+- Not yet tested: couch readability of the glow and the immediate burst; the next human playtest covers it.
+
+**Next:** human campaign replay on 0.1.189. Committed and pushed with this entry.

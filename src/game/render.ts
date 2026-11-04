@@ -7372,14 +7372,8 @@ export class Renderer {
     if (arena.port) this.drawArenaPort(arena, t, frameA);
   }
 
-  /**
-   * Ingress ports: a red square leaking square particles, plus the white party port that
-   * opens once every enemy port is closed. Health reads as a lit bar on the top edge, and
-   * the closing beat collapses the frame into its own centre.
-   */
   /** Gauntlet ingress bursts: a red square that opens on an edge, spews, and slams shut. */
   private drawAssaultPortals(portals: readonly AssaultPortal[], t: number): void {
-    const ctx = this.ctx;
     for (let i = 0; i < portals.length; i++) {
       const portal = portals[i];
       if (!portal.active) continue;
@@ -7388,117 +7382,83 @@ export class Renderer {
       const closing = portal.t > emitEnd ? Math.min(1, (portal.t - emitEnd) / Math.max(0.001, portal.closeDur)) : 0;
       const scale = Math.max(0, Math.min(open, 1 - closing));
       const half = portal.half * (0.35 + scale * 0.65);
-      const cx = portal.x;
-      const cy = portal.y;
-      ctx.save();
-      ctx.globalAlpha = scale;
-      // One solid red mouth. No dark inner box and no translucent fill: a live ingress
-      // is a hole in the floor, not a tinted window onto it.
-      ctx.fillStyle = '#ff2338';
-      ctx.fillRect(cx - half, cy - half, half * 2, half * 2);
-      ctx.fillStyle = '#e3172c';
-      ctx.fillRect(cx - half + 5, cy - half + 5, Math.max(1, half * 2 - 10), Math.max(1, half * 2 - 10));
-      // Inward chevrons: the mouth is pulling, not pushing.
-      ctx.strokeStyle = '#7d0715';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      for (let side = 0; side < 4; side++) {
-        const a = (side * Math.PI) / 2 + Math.PI / 4;
-        const r0 = half * 0.95;
-        const r1 = half * 0.55;
-        ctx.moveTo(cx + Math.cos(a - 0.22) * r0, cy + Math.sin(a - 0.22) * r0);
-        ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
-        ctx.lineTo(cx + Math.cos(a + 0.22) * r0, cy + Math.sin(a + 0.22) * r0);
-      }
-      ctx.stroke();
-      ctx.globalAlpha = scale;
-      ctx.strokeStyle = '#ff5a63';
-      ctx.lineWidth = Math.max(2, 5 * scale);
-      ctx.strokeRect(cx - half + 1.5, cy - half + 1.5, half * 2 - 3, half * 2 - 3);
-      // Corner brackets stay on the same red family as the mouth.
-      ctx.globalAlpha = scale;
-      ctx.strokeStyle = '#ff8a95';
-      ctx.lineWidth = 3;
-      const arm = Math.max(6, half * 0.34);
-      ctx.beginPath();
-      for (let side = 0; side < 4; side++) {
-        const sx = side === 1 || side === 2 ? 1 : -1;
-        const sy = side === 0 || side === 1 ? -1 : 1;
-        ctx.moveTo(cx + sx * half - sx * arm, cy + sy * half);
-        ctx.lineTo(cx + sx * half, cy + sy * half);
-        ctx.lineTo(cx + sx * half, cy + sy * half - sy * arm);
-      }
-      ctx.stroke();
-      ctx.restore();
+      this.drawEnemyPortalMouth(portal.x, portal.y, half, t, scale);
     }
+  }
+
+  /**
+   * One enemy mouth. A single opaque red square, a wide additive halo, and red square
+   * motes. No inner fill, no rim, no brackets: the silhouette is the square itself.
+   */
+  private drawEnemyPortalMouth(cx: number, cy: number, half: number, t: number, alpha: number): void {
+    if (alpha <= 0.001 || half <= 0.5) return;
+    const ctx = this.ctx;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5.8);
+    ctx.save();
+    // Heavy glow in solid additive slabs. No shadowBlur: the canvas budget and the art
+    // direction both want hard-edged shapes.
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = '#ff2338';
+    ctx.globalAlpha = alpha * (0.1 + pulse * 0.035);
+    ctx.fillRect(cx - half * 1.9, cy - half * 1.9, half * 3.8, half * 3.8);
+    ctx.globalAlpha = alpha * (0.17 + pulse * 0.055);
+    ctx.fillRect(cx - half * 1.55, cy - half * 1.55, half * 3.1, half * 3.1);
+    // Square motes leak off the rim and drift back in, matching the party portal language.
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * TWO_PI + t * (0.5 + (i % 3) * 0.13);
+      const phase = (t * (0.38 + (i % 4) * 0.07) + i * 0.173) % 1;
+      const dist = half * (1.08 + phase * 0.95);
+      const size = 2 + (i % 4) * 1.2;
+      ctx.globalAlpha = alpha * (0.8 - phase * 0.35);
+      ctx.fillRect(cx + Math.cos(a) * dist - size * 0.5, cy + Math.sin(a) * dist - size * 0.5, size, size);
+    }
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * TWO_PI - t * 0.42;
+      const dist = half * (1.75 + (i % 3) * 0.18);
+      const size = 2 + (i % 3);
+      ctx.globalAlpha = alpha * 0.34;
+      ctx.fillRect(cx + Math.cos(a) * dist - size * 0.5, cy + Math.sin(a) * dist - size * 0.5, size, size);
+    }
+    // The mouth itself: one opaque red block. Nothing is drawn inside it.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#ff2338';
+    ctx.fillRect(cx - half, cy - half, half * 2, half * 2);
+    ctx.restore();
   }
 
   private drawPorts(props: readonly Prop[], t: number): void {
     const ctx = this.ctx;
     for (let i = 0; i < props.length; i++) {
       const b = props[i];
-      if (!b.portal) continue;
+      if (!b.portal || !b.active) continue;
       if (b.replicator) {
         this.drawReplicator(b, t);
         continue;
       }
-      const closing = (b.portalCloseT ?? 0) > 0;
-      if (!b.active && !closing) continue;
       const exit = b.portalExit === true;
-      const close = closing ? Math.max(0, Math.min(1, (b.portalCloseT ?? 0) / 0.9)) : 1;
       const cx = b.x + b.w * 0.5;
       const cy = b.y + b.h * 0.5;
-      const half = b.w * 0.5 * close;
-      const color = exit ? '#eafcff' : '#ff2338';
-
-      const r = b.w * 0.5;
-      ctx.save();
-      // Square particles leak out of the mouth and drift back toward the rim.
-      ctx.globalAlpha = (exit ? 0.55 : 0.85) * close;
-      ctx.fillStyle = color;
-      for (let k = 0; k < 10; k++) {
-        const phase = (t * (0.45 + k * 0.09) + k * 0.37) % 1;
-        const a = (k / 10) * Math.PI * 2 + t * 0.3;
-        const dist = half * (0.45 + phase * 1.15);
-        const size = 2 + (1 - phase) * 4;
-        ctx.fillRect(cx + Math.cos(a) * dist - size * 0.5, cy + Math.sin(a) * dist - size * 0.5, size, size);
-      }
-      // Frame: a solid mouth with no floor showing through.
-      ctx.globalAlpha = close;
-      ctx.fillStyle = color;
-      ctx.fillRect(cx - half, cy - half, half * 2, half * 2);
-      if (!exit) {
-        ctx.fillStyle = '#e3172c';
-        ctx.fillRect(cx - half + 5, cy - half + 5, Math.max(1, half * 2 - 10), Math.max(1, half * 2 - 10));
-      }
-      ctx.strokeStyle = exit ? 'rgba(234, 252, 255, 0.8)' : '#7d0715';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(cx - half + 7.5, cy - half + 7.5, Math.max(1, half * 2 - 15), Math.max(1, half * 2 - 15));
-      ctx.globalAlpha = close;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = Math.max(2, 5 * close);
-      ctx.strokeRect(cx - half + 1.5, cy - half + 1.5, half * 2 - 3, half * 2 - 3);
-      ctx.globalAlpha = 0.5 * close;
-      ctx.lineWidth = 1.5;
-      const spin = t * 0.8;
-      ctx.beginPath();
-      for (let k = 0; k < 4; k++) {
-        const a0 = spin + (k * Math.PI) / 2;
-        const a1 = a0 + 0.45;
-        ctx.moveTo(cx + Math.cos(a0) * half * 0.62, cy + Math.sin(a0) * half * 0.62);
-        ctx.lineTo(cx + Math.cos(a1) * half * 0.62, cy + Math.sin(a1) * half * 0.62);
-      }
-      ctx.stroke();
-      // Health: a lit bar across the top edge. The party port needs none.
-      if (!exit && !closing) {
-        const max = Math.max(1, b.portalMaxHp ?? b.hp);
-        const hp = Math.max(0, Math.min(1, b.hp / max));
+      const half = b.w * 0.5;
+      if (exit) {
+        // The actual exit mouth is drawn by drawExitPortal; keep a prop fallback white.
+        ctx.save();
         ctx.globalAlpha = 0.9;
-        ctx.fillStyle = 'rgba(20, 6, 8, 0.9)';
-        ctx.fillRect(cx - half, cy - half - 13, half * 2, 5);
-        ctx.fillStyle = color;
-        ctx.fillRect(cx - half, cy - half - 13, half * 2 * hp, 5);
+        ctx.fillStyle = '#eafcff';
+        ctx.fillRect(cx - half, cy - half, half * 2, half * 2);
+        ctx.restore();
+        continue;
       }
+      this.drawEnemyPortalMouth(cx, cy, half, t, 1);
+      // Health: a lit bar across the top edge; the mouth itself stays one clean square.
+      const max = Math.max(1, b.portalMaxHp ?? b.hp);
+      const hp = Math.max(0, Math.min(1, b.hp / max));
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = 'rgba(20, 6, 8, 0.9)';
+      ctx.fillRect(cx - half, cy - half - 13, half * 2, 5);
+      ctx.fillStyle = '#ff2338';
+      ctx.fillRect(cx - half, cy - half - 13, half * 2 * hp, 5);
       ctx.restore();
     }
   }
@@ -7508,29 +7468,26 @@ export class Renderer {
    * one family onto the tray. It reads as a machine someone installed, not a connection.
    */
   private drawReplicator(b: Prop, t: number): void {
+    if (!b.active) return;
     const ctx = this.ctx;
-    const closing = (b.portalCloseT ?? 0) > 0;
-    if (!b.active && !closing) return;
-    const close = closing ? Math.max(0, Math.min(1, (b.portalCloseT ?? 0) / 0.9)) : 1;
-    const w = b.w * close;
-    const h = b.h * close;
-    const x = b.x + (b.w - w) * 0.5;
-    const y = b.y + (b.h - h) * 0.5;
+    const w = b.w;
+    const h = b.h;
+    const x = b.x;
+    const y = b.y;
     const cx = x + w * 0.5;
     ctx.save();
-    ctx.globalAlpha = close;
     ctx.fillStyle = '#120b04';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#ffb347';
-    ctx.lineWidth = Math.max(2, 3 * close);
+    ctx.lineWidth = 3;
     ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
     // The print bar sweeps top to bottom; one pass is one copy.
     const scan = ((t * 0.55) % 1) * Math.max(1, h - 14) + 7;
-    ctx.globalAlpha = 0.7 * close;
+    ctx.globalAlpha = 0.7;
     ctx.fillStyle = '#ffd27a';
     ctx.fillRect(x + 5, y + scan, Math.max(1, w - 10), 2);
     // Print slot along the bottom edge.
-    ctx.globalAlpha = 0.9 * close;
+    ctx.globalAlpha = 0.9;
     ctx.fillStyle = '#05070a';
     ctx.fillRect(x + w * 0.18, y + h - 9, w * 0.64, 5);
     // Copies sliding out of the slot onto the tray.
@@ -7540,18 +7497,16 @@ export class Renderer {
       const size = 5 + phase * 3;
       const px = cx + (k - 1) * (w * 0.22) + Math.sin(t * 1.4 + k) * 2;
       const py = y + h - 4 + phase * 12;
-      ctx.globalAlpha = (0.85 - phase * 0.6) * close;
+      ctx.globalAlpha = 0.85 - phase * 0.6;
       ctx.fillRect(px - size * 0.5, py, size, size);
     }
-    if (!closing) {
-      const max = Math.max(1, b.portalMaxHp ?? b.hp);
-      const hp = Math.max(0, Math.min(1, b.hp / max));
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = 'rgba(20, 12, 4, 0.9)';
-      ctx.fillRect(x, y - 13, w, 5);
-      ctx.fillStyle = '#ffb347';
-      ctx.fillRect(x, y - 13, w * hp, 5);
-    }
+    ctx.globalAlpha = 0.9;
+    const max = Math.max(1, b.portalMaxHp ?? b.hp);
+    const hp = Math.max(0, Math.min(1, b.hp / max));
+    ctx.fillStyle = 'rgba(20, 12, 4, 0.9)';
+    ctx.fillRect(x, y - 13, w, 5);
+    ctx.fillStyle = '#ffb347';
+    ctx.fillRect(x, y - 13, w * hp, 5);
     ctx.restore();
   }
 

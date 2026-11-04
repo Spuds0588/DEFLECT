@@ -2437,17 +2437,18 @@ notes recorded, and both extend `ArenaLaptopDef` rather than adding a second scr
 ### D58 — Ports are the threat ingress in campaign and infection (decided 2026-11-02, built v0.1.125)
 
 Campaign and INFECTION levels must not materialize threats at arbitrary floor points. Threats arrive through
-**ports**: red glowing squares that leak small square particles, emit the level's threat families, and close
-permanently when damaged. A level is cleared by destroying the threats already in play **and** closing every
-port; threats delivered before a port died stay alive, so closing a port never ends a fight by itself. The
+**ports**: one opaque red square with an additive halo and red square motes, never an outline wrapped around
+an inner fill. They emit the level's threat families and close permanently when damaged. A level is cleared
+by destroying the threats already in play **and** closing every port; threats delivered before a port died
+stay alive, so closing a port never ends a fight by itself. The
 party also gets **white** ports at each level's entry and exit for arriving and leaving — traversal dressing
 that is never solid and never damageable.
 
 **Built (v0.1.125) for BUILD ROOT.** `ArenaDef.ingress` authors each port; `World.spawnCampaignPorts` adds
 them to the prop pool as `fixed` records, so the existing `damageProp` shot, lash and blast paths close
-them — do not add a second damage system or a second entity type. **Every damaging action closes a port**: ranged shots stop on it, the lash and guard chips it, each damaging skill (Toxic's spray and jet, Sweep's split brooms) and each damaging super (Probe's beam, Wedge's bracket and plow, Sweep's stroke, the charged dash) resolves against it too, gated by a per-port 0.3 s contact cooldown so a per-frame attack cannot delete one in two ticks. Health and cadence are tuned together and authored per port (BUILD ROOT: 20–26 hits, one emission every 2.6–3 s); a tough port that trickles threats is boring, a fragile one that floods is noise. `updatePortals` runs the emission clock
-and the 0.9 s collapse, the families reuse `spawnSentry`/`spawnVirus`/`spawnWorm` and respect the live
-caps. The exit waits for **every port down and every delivered body gone**; `campaignFloorClear` is the one
+them — do not add a second damage system or a second entity type. **Every damaging action closes a port**: ranged shots stop on it, the lash and guard chips it, each damaging skill (Toxic's spray and jet, Sweep's split brooms) and each damaging super (Probe's beam, Wedge's bracket and plow, Sweep's stroke, the charged dash) resolves against it too, gated by a per-port 0.3 s contact cooldown so a per-frame attack cannot delete one in two ticks. Health and cadence are tuned together and authored per port (BUILD ROOT: 20–26 hits, one emission every 2.6–3 s); a tough port that trickles threats is boring, a fragile one that floods is noise. `updatePortals` runs only the emission
+clock; `closePort` removes the prop in the same frame and emits `PORTAL_BREAK`, the families reuse
+`spawnSentry`/`spawnVirus`/`spawnWorm` and respect the live caps. The exit waits for **every port down and every delivered body gone**; `campaignFloorClear` is the one
 gate, and a last-port hit no longer pulls the player out mid-fight. The level still opens populated:
 `seedAssaultFloor` posts one opening silhouette on a flat device and the ports add the rest. INFECTION
 still seeds through `setupInfection` and `spawnVirusCluster`; routing that flood through ports is open work
@@ -2462,8 +2463,10 @@ campaign-port pass should route those through authored ports instead of layering
 per-family pools, live caps, interval tapering and wave gates.
 - Ports are **authored per arena** on `ArenaDef`, not rolled at runtime. A fair lane, a readable boss room
 and a route plate all need known positions; randomness belongs to emission timing and a small offset.
-- A port must read as damaged before it closes: give it health, a cracked or dim state and a close beat.
-"I shot it and nothing happened" is the failure mode.
+- MAINBOARD and ROUTER mouth centres sit on a wall at half-width 39, leaving a 9-unit gap; `.tmp/port-sweep-check.ts` asserts every authored campaign port is within 12 units of an edge. REBOOT keeps its six tuned corner feeds: moving that bottom lane flush to the wall broke the continuous campaign probe, so do not re-author it casually.
+- A port must read as damaged before it dies: keep the health bar and hit flash, then remove the prop in the
+  same frame and let `EV.PORTAL_BREAK`'s red-square burst own the death. Do not shrink the mouth or run a
+  close beat; "I shot it and nothing happened" is the failure mode.
 - Bots must target a port when no player is in range, or they idle once the floor is clear.
 - Ports stay **local-only** like the rest of campaign and INFECTION: not in `Snapshot`, `NetView` or
 `SnapshotHazards`. Hosted co-op infection still ships only the colony readout; do not send port geometry over
@@ -2625,13 +2628,15 @@ player. On a wide arena that read as enemies materialising in your footprint, an
 one second, then get surrounded" run the demos kept showing.
 
 - Arrivals are now **edge ingress bursts**. `World.queueAssault(family, kind, count)` fills a pending queue
-  (family 0 sentry, 1 worm, 2 virus) and `tickAssault` opens a red square portal on an arena edge, emits the
-  batch at the mouth over roughly a second, then closes. Nothing spawns in the middle of the floor.
-- Placement is chosen in `assaultPoint()`: sample all four edges at `GAUNTLET.assault.edgeInset`, keep only
-  points clear of cover and at least `playerClear` (430) from the player, then take the farthest. If no edge
+  (family 0 sentry, 1 worm, 2 virus) and `tickAssault` opens a red square portal on an arena edge, releases
+  the whole batch at the mouth in one simulation frame, holds, then closes. Nothing spawns in the middle of
+  the floor.
+- Placement is chosen in `assaultPoint()`: sample all four edges at `GAUNTLET.assault.edgeInset` (60, leaving
+  a 16-unit wall gap around the 44-unit half), keep only points clear of cover and at least `playerClear`
+  (430) from the player, then take the farthest. If no edge
   point qualifies the burst waits; it never falls back to a spawn near the body.
-- The beat is: open 0.32 s, one arrival every 0.13 s with a small scatter, close 0.55 s, 1.1 s between
-  portals, at most two portals at once. All of it lives under `GAUNTLET.assault` in `tuning/threats.json`.
+- The beat is: open 0.3 s, release the whole burst, hold 0.2 s, close 0.5 s, 0.8 s between portals, at most
+  two portals at once. All of it lives under `GAUNTLET.assault` in `tuning/threats.json`.
 - Sentry packs, worms and virus clusters all feed the same queue. A pack request now waits for the pending
   burst (`assaultQueueCount === 0`) before queueing again, so a wave cannot stack two bursts on top of the
   cap. Caps are still checked when the request is made.

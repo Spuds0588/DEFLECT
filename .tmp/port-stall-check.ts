@@ -46,7 +46,7 @@ while (t < 200 && world.campaignPhase !== 'cleared') {
         const cx = Math.round(pr.x + pr.w * 0.5);
         const cy = Math.round(pr.y + pr.h * 0.5);
         const d = Math.round(Math.hypot(cx - p.x, cy - p.y));
-        return `[${cx},${cy} hp${Math.round(pr.hp)}/${pr.portalMaxHp} close${(pr.portalCloseT ?? 0).toFixed(1)} d${d}]`;
+        return `[${cx},${cy} hp${Math.round(pr.hp)}/${pr.portalMaxHp} d${d}]`;
       }).join(' ');
       console.log(`t=${t.toFixed(0)} ${world.campaignPhase} hp${p.hp} steer=${(brains[0] as any)?.steerBranch ?? '-'} closed=${world.portsClosed}/${world.portTotal} exit=${world.campaignExitReady} kills=${world.gauntletKills} p=${Math.round(p.x)},${Math.round(p.y)} ${desc}`);
     }

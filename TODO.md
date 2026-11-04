@@ -2,6 +2,18 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Campaign playtest round 3 (2026-11-04, v0.1.189)
+
+- [x] Automatic gauntlet mouths sit at `GAUNTLET.assault.edgeInset` 60 (a 16-unit wall gap), not in the floor
+- [x] Authored MAINBOARD and ROUTER ports are wall-mounted; REBOOT keeps its six tuned corner feeds
+- [x] Enemy mouths are one opaque red square with an additive halo and red square motes; no inner fill, rim,
+      brackets or chevrons
+- [x] Destroying a port removes it in the same frame; `PORTAL_BREAK`'s red-square burst is the only death
+      read, with no shrink or close beat
+- [x] Probes green: `assault-check`, `port-sweep-check`, `islands-ports-check`, `campaign-playthrough-check`
+      (3/3), `campaign-finale-check`, `reboot-boss-check`; `npm run build`; `npm run bench`
+- [ ] Fresh human playthrough on 0.1.189: confirm edge mouth readability and the immediate burst on a couch
+
 ## Campaign playtest round 2 (2026-11-04, v0.1.188)
 
 - [x] Enemy portals and authored ports are fully opaque red; a destroyed port bursts into red squares only
@@ -14,7 +26,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] HOLDING's cell block releases two worms and eight viruses that walk out to open-floor waypoints
 - [x] Probes green: `megaworm-check`, `reboot-boss-check`, `assault-check`, `campaign-playthrough-check`
       (3/3), `campaign-finale-check`; `npm run build`; `npm run bench`
-- [ ] User playtest of the campaign build (0.1.188) and feedback pass
+- [x] User playtest of the campaign build (0.1.188) and feedback pass
 
 ## Gauntlet edge-portal bursts (2026-11-04, v0.1.187)
 

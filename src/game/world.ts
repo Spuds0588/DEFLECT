@@ -1468,7 +1468,6 @@ export class World {
         // Stagger the first emission so two ports never fire on the same frame.
         portalT: 1.4 + i * 0.9,
         portalExit: false,
-        portalCloseT: 0,
         portalMaxHp: p.hp,
       });
     }
@@ -1540,25 +1539,16 @@ export class World {
         // Give the player a beat before the first copy lands.
         portalT: 2.2 + i * 0.9,
         portalExit: false,
-        portalCloseT: 0,
         portalMaxHp: r.hp,
       });
     }
   }
 
-  /** Port clock: emits its family, runs the close anim, then de-rezzes. */
+  /** Port clock: emits its family until the port is destroyed. */
   private updatePortals(dt: number): void {
     for (let i = 0; i < this.props.length; i++) {
       const b = this.props[i];
       if (!b.portal || b.portalExit) continue;
-      if (b.portalCloseT !== undefined && b.portalCloseT > 0) {
-        b.portalCloseT -= dt;
-        if (b.portalCloseT <= 0) {
-          b.portalCloseT = 0;
-          b.active = false;
-        }
-        continue;
-      }
       if (!b.active) continue;
       if (b.hitFlash > 0) b.hitFlash = Math.max(0, b.hitFlash - dt);
       if (b.portalHitCd !== undefined && b.portalHitCd > 0) {
@@ -1610,13 +1600,12 @@ export class World {
     this.emit(EV.PROP_HIT, 0, x, y, 1);
   }
 
-  /** A port reaches zero: close it, and open the exit once every port is down. */
+  /** A port reaches zero: remove it at once and let the red-square burst own the death. */
   private closePort(b: Prop, x: number, y: number): void {
-    // 0.9 s of collapse, drawn by the renderer as the square sinking into its own frame.
-    b.portalCloseT = 0.9;
+    b.active = false;
     b.hp = 0;
     b.hazard = false;
-    // The red-square burst is the port's own death, distinct from a file box's dust.
+    // The burst is the death read. Nothing shrinks or lingers after this frame.
     this.emit(EV.PORTAL_BREAK, 0, x, y, Math.max(b.w, b.h));
     // A replicator is not a network port: it never counts toward the campaign tally, so
     // closing one cannot open the exit by itself.
@@ -11158,9 +11147,9 @@ export class World {
     if (!b.active) return;
     // A party port is scenery: never a target, never takes a hit.
     if (b.portalExit) return;
-    // A port closes instead of shattering, and stops counting damage once it is dying.
+    // A port disappears instead of shattering, and stops counting damage once dead.
     if (b.portal) {
-      if ((b.portalCloseT ?? 0) > 0 || b.hp <= 0) return;
+      if (b.hp <= 0) return;
       b.hp -= amount;
       b.hitFlash = FILE_PROP.hitFlash;
       this.emit(EV.PROP_HIT, 0, x, y, amount);

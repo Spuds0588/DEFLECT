@@ -190,10 +190,11 @@ charges, energy and cooldowns, and it keeps AI cost out of the physics loop.
 
 ### Gauntlet ingress: one edge, one burst
 
-Automatic gauntlet arrivals are queued into a transient red portal on an arena edge. The portal opens,
-releases its whole group across the mouth on one simulation frame, holds for `GAUNTLET.assault.burstHold`,
-then closes. If no edge point is both clear of cover and far enough from the player, the queue waits rather
-than dropping a body nearby. Sentry packs arrive as pairs when the live cap has room, worm and virus groups
+Automatic gauntlet arrivals are queued into a transient red portal on an arena edge. The portal draws as
+one solid red square with a heavy halo and square motes, opens, releases its whole group across the mouth on
+one simulation frame, holds for `GAUNTLET.assault.burstHold`, then closes. `GAUNTLET.assault.edgeInset` keeps
+the mouth at the rim. If no edge point is both clear of cover and far enough from the player, the queue waits
+rather than dropping a body nearby. Sentry packs arrive as pairs when the live cap has room, worm and virus groups
 arrive together, and a cascading-error colony enters as a three-block burst. Campaign opening squads and
 authored campaign ports are separate content.
 
@@ -228,10 +229,12 @@ NEW GAME` takes the first empty slot or, when all three are full, asks which sav
 bot setup starts.
 
 Threats still arrive through authored **ports** (`ArenaDef.ingress`): fixed, fully opaque red damageable
-squares that emit a threat family on a clock and stop when shot shut. Ports reuse the file-box damage path
-rather than a second entity type, respect the same live caps as a sentry pack, and gate the exit directly:
-the right-wall portal pull opens only when every port is shut **and** every live hostile from that room is
-gone. A shut port bursts into a spray of red squares, matching the enemy death language. Ports are
+squares with an additive halo and red square motes, never an outline around an inner fill. They emit a
+threat family on a clock and stop when shot shut. Ports reuse the file-box damage path rather than a second
+entity type, respect the same live caps as a sentry pack, and gate the exit directly: the right-wall portal
+pull opens only when every port is shut **and** every live hostile from that room is gone. A destroyed port
+is removed in the same frame; `PORTAL_BREAK` throws the red-square burst, with no shrink. MAINBOARD and
+ROUTER mount their feeds on a wall with a 9-unit gap; REBOOT keeps its six tuned corner feeds. Ports are
 local content — campaign and infection only, never in a snapshot. REBOOT is fed by six corner ports; the
 Mega Worm is announced only after all six and their delivered bodies are cleared. REBOOT opens with its
 authored squad already on the floor (four sentries, two viruses and a worm), so the arena is never an empty

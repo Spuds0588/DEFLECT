@@ -40,6 +40,15 @@ for (const index of [2, 3]) {
     throw new Error(`${level.name}: expected ${arena.ingress?.length ?? 0} ports, got ${ports.length}`);
   }
   if (world.portTotal !== ports.length) throw new Error(`${level.name}: portTotal ${world.portTotal}`);
+  for (const port of ports) {
+    const gap = Math.min(
+      port.x - arena.bounds.left,
+      arena.bounds.right - (port.x + port.w),
+      port.y - arena.bounds.top,
+      arena.bounds.bottom - (port.y + port.h),
+    );
+    if (gap > 12) throw new Error(`${level.name}: ingress port is ${gap.toFixed(0)} units off the arena edge`);
+  }
 
   const lineBlocked = (world as unknown as { lineBlocked: (x1: number, y1: number, x2: number, y2: number) => boolean }).lineBlocked.bind(
     world,

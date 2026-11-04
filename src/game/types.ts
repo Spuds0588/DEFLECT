@@ -225,8 +225,6 @@ export interface Prop {
    * clock and damage path, but it is not a campaign objective.
    */
   replicator?: boolean;
-  /** Closing animation countdown. Above zero the port is dying and emits nothing. */
-  portalCloseT?: number;
   /** Health the port was authored with, for the damage ring. */
   portalMaxHp?: number;
   /**

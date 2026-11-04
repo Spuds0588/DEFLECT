@@ -3368,9 +3368,10 @@ const ARENAS_BASE: readonly ArenaDef[] = [
         sub: 'BUS 02 // DATA PLANE',
       },
     ],
+    // Both feed mouths are wall-mounted, not interior floor props.
     ingress: [
-      { x: 650, y: 300, size: 78, hp: 24, family: 0, interval: 2.4 },
-      { x: 1350, y: 830, size: 78, hp: 24, family: 1, interval: 2.7 },
+      { x: 96, y: 300, size: 78, hp: 24, family: 0, interval: 2.4 },
+      { x: 1894, y: 830, size: 78, hp: 24, family: 1, interval: 2.7 },
     ],
     props: [
       { x: 1160, y: 600, w: 38, h: 28, kind: PROP.DOC },
@@ -3425,7 +3426,8 @@ const ARENAS_BASE: readonly ArenaDef[] = [
         sub: 'PORT 03 // UPLINK',
       },
     ],
-    ingress: [{ x: 990, y: 523, size: 78, hp: 26, family: 0, interval: 2.6 }],
+    // The last feed sits on the right wall, clear of the exit mouth.
+    ingress: [{ x: 1894, y: 523, size: 78, hp: 26, family: 0, interval: 2.6 }],
     props: [
       { x: 1240, y: 380, w: 42, h: 30, kind: PROP.DOC },
       { x: 1700, y: 520, w: 42, h: 30, kind: PROP.ZIP },

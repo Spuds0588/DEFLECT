@@ -55,10 +55,11 @@ tracks which island is next and coordinates the hopping while the player tries t
 the big bad from taking the world. That is narration in the existing bottom box, so it stays cosmetic,
 skippable and local-only (see **Narration rules**).
 
-**Shared ingress and ports.** Automatic gauntlet arrivals already use the transient edge ingress: a fully
-opaque red portal opens on the arena edge, releases its whole group in one frame, and closes. Campaign ports
-are separate authored content (`ArenaDef.ingress`) with their own damage and emission clock; a destroyed
-port throws red squares. `World.spawnVirusCluster`
+**Shared ingress and ports.** Automatic gauntlet arrivals already use the transient edge ingress: one opaque
+red square with a heavy halo and square motes opens on the arena edge, releases its whole group in one frame,
+and closes. Campaign ports are separate authored content (`ArenaDef.ingress`) with their own damage and
+emission clock; a destroyed port is removed at once and throws red squares, with no shrink. MAINBOARD and
+ROUTER mouths sit on walls; REBOOT keeps its six tuned corner feeds. `World.spawnVirusCluster`
 and `setupInfection` still seed directly; a port pass should route those through the authored ports,
 keeping the existing per-family pools, live caps, interval tapering and wave gates rather than adding a
 second spawn system.

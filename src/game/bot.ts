@@ -1245,7 +1245,7 @@ export class BotBrain {
     let port: any = null; let pd = Infinity;
     for (const b of world.props as any[]) {
       if (!b.active || !b.portal || b.portalExit) continue;
-      if ((b.portalCloseT ?? 0) > 0 || (b.hp ?? 0) <= 0) continue;
+      if ((b.hp ?? 0) <= 0) continue;
       const d = Math.hypot(b.x + b.w * 0.5 - me.x, b.y + b.h * 0.5 - me.y);
       if (d < pd) { pd = d; port = b; }
     }

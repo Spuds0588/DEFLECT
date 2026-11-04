@@ -194,10 +194,12 @@ so the release is a breakout rather than a row of targets waiting to be shot thr
 route is four rooms: `INTAKE` (the Warden lesson), `HOLDING` (the cells), `MAINBOARD` (two feeds) and
 `ROUTER` (one feed plus two wall emitters). Every room ends through script_kitty's portal; there is no
 sparring-drill or breach beat on the feed rooms now, so their floor is already live when you arrive. Two
-red **open ports** leak threats onto the mainboard and one feeds the router. Any damaging action closes a
+red **open ports** leak threats onto the mainboard and one feeds the router. Each is one solid red square
+with a heavy glow and red square motes, never an outline around a floor fill. Any damaging action closes a
 port — ranged shots, the lash, a damaging skill or a damaging heavy — so bring the whole kit. A port takes
 20–26 hits and leaks a threat every few seconds until it shuts, and a shut port stops feeding that room
-for good. A room is clear only when every feed is shut **and** every hostile it delivered is gone; then its
+for good. When its health runs out it vanishes in the same frame with a red-square burst; it does not
+shrink. The MAINBOARD and ROUTER feeds sit on their room walls. A room is clear only when every feed is shut **and** every hostile it delivered is gone; then its
 white right-wall portal opens and the suction pulls you in. There is no white party port to walk into and
 no bridge to earn. The entry mouth is the same pulsing white square on the left wall, so the crossing reads
 from both ends. A cleared room waits 2 seconds after the last port or body falls, so the death animation finishes, before
@@ -627,7 +629,8 @@ This build is a test rig as much as a game. A useful pass:
 ### Gauntlet ingress
 
 New threats arrive through red square portals that open on the arena edge, spit out the whole group in one
-simulation frame, hold for a beat, and slam shut. The mouth is always an edge lane and always well away
+simulation frame, hold for a beat, and slam shut. Each mouth is one solid square with a heavy halo and
+square motes, not an outline around a fill. The mouth is always an edge lane and always well away
 from your body, so you get a readable side to watch instead of a squad appearing on top of you. Sentry
 pairs, worms, virus clusters and cascading-error colonies all use the same ingress. If every edge point is
 blocked or too close, the burst waits rather than spawning next to you. Campaign opening squads and
