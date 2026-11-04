@@ -62,7 +62,7 @@ const names = new Array<string>(MAX_PLAYERS).fill('');
 names[0] = 'QA';
 const idle = new Array(MAX_PLAYERS).fill(null);
 
-// 1. Intake orientation ends into the right-wall portal with no walk-out step.
+// 1. Intake's orientation wakes the class; clearing it opens the right-wall portal.
 const first = new World(
   'gauntlet', names, 0, intake, false, 0, 0, null, true, [], false, 'warden', 0, false, -1, false,
 );
@@ -75,11 +75,22 @@ check(
 );
 first.skipTutorial();
 let sawPortal = false;
-for (let i = 0; i < 420; i++) {
+for (let i = 0; i < 90; i++) first.step(SIM_DT, idle);
+check('intake wakes its class after the Warden lesson', first.calibrationAwake && first.campaignBannerKind === 8);
+check('intake does not portal before the class fight', first.campaignPortalT < 0 && first.campaignPhase === 'calibration');
+check(
+  'the Warden reacts before the system objective',
+  first.tutorial?.current?.id === 'warden-shock' && first.tutorial?.current?.speaker === 'WARDEN',
+  first.tutorial?.current?.id ?? 'no tutorial',
+);
+first.skipTutorial();
+for (let i = 0; i < 90; i++) first.step(SIM_DT, idle);
+for (const s of first.sentries) if (s.kind >= 4 && s.kind <= 6) s.active = false;
+for (let i = 0; i < 240; i++) {
   first.step(SIM_DT, idle);
   if (first.campaignPortalT >= 0) sawPortal = true;
 }
-check('intake opens a portal after the Warden lesson', sawPortal);
+check('intake opens a portal after the awakened class is cleared', sawPortal);
 check('intake clears through the portal', first.campaignPhase === 'cleared', first.campaignPhase);
 check(
   'the pull carries the body across the room to the right wall',
@@ -152,11 +163,37 @@ check('router opens in live fire', fourth.campaignPhase === 'assault', fourth.ca
 check('router counts one feed', fourth.portTotal === 1, String(fourth.portTotal));
 check('router loads its data crates', fourth.dataTotal === PLAYABLE_CAMPAIGN_LEVELS[3].dataCrates.length, String(fourth.dataTotal));
 
-// 4. A hopped round enters on the next arena's left wall.
+// 4. A hopped round enters on the next arena's left wall with a real throw.
 const match = new World('match', names, 0, getArena(0));
 match.beginRound(true);
 check('a hopped round enters from the left wall', match.players[0].x < getArena(0).bounds.left + 70, `${match.players[0].x.toFixed(1)}`);
 check('a hopped round leaves an entry portal clock', match.entryPortalT > 0, String(match.entryPortalT));
+check('the portal throws the body east', match.players[0].kx > 0 && match.players[0].iframes >= 1, `${match.players[0].kx.toFixed(1)} / ${match.players[0].iframes.toFixed(2)}`);
+const launchX = match.players[0].x;
+for (let i = 0; i < 12; i++) match.step(SIM_DT, idle);
+check('the thrown body keeps moving after entry', match.players[0].x > launchX + 30, `${launchX.toFixed(1)} -> ${match.players[0].x.toFixed(1)}`);
+
+// 5. No authored hostile starts in the portal landing lane on any campaign node.
+let laneHits = 0;
+for (const level of PLAYABLE_CAMPAIGN_LEVELS) {
+  const arena = getArena(level.arenaId);
+  const w = new World(
+    'gauntlet', names, 0, arena, false, 0, 0, null, true,
+    level.dataCrates, false, level.intro, level.clearKills, false, level.boss ?? -1, false,
+  );
+  const laneRight = arena.bounds.left + 280;
+  const laneHalf = 90;
+  for (const s of w.sentries) {
+    if (s.active && s.x < laneRight && Math.abs(s.y - (arena.bounds.top + arena.bounds.bottom) * 0.5) < laneHalf) laneHits++;
+  }
+  for (const v of w.viruses) {
+    if (v.active && v.x < laneRight && Math.abs(v.y - (arena.bounds.top + arena.bounds.bottom) * 0.5) < laneHalf) laneHits++;
+  }
+  for (const ww of w.worms) {
+    if (ww.active && ww.x < laneRight && Math.abs(ww.y - (arena.bounds.top + arena.bounds.bottom) * 0.5) < laneHalf) laneHits++;
+  }
+}
+check('no campaign hostile spawns in the portal landing lane', laneHits === 0, String(laneHits));
 
 console.log(failures === 0 ? '\nALL QUARANTINE SPLIT CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

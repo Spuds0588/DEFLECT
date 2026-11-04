@@ -7476,3 +7476,36 @@ body simple and reliable, and close the visible gaps between its plates.
 ready. Max players: 8`; the title menu rendered with no console errors.
 
 **Next:** watch a full REBOOT Mega Worm fight for the open-edge read, plate overlap and capsule hit surface.
+
+## 2026-11-04 — INTAKE wakes its class, impact flash stays on the edge, portals throw (v0.1.183)
+
+**Goal:** stop the campaign opening from skipping the first primitive fight, remove the full-screen white hit
+flash, give the Warden his shock beat and a clear objective, and throw bodies out of the next portal instead
+of parking them under it.
+
+**Changes.**
+- `INTAKE_WAKE` gives the Warden one shocked line (`WHAA—WHAT'S HAPPENING?! ARE YOU DOING THIS?!`), then a
+  SYSTEM objective (`DESTROY ALL AWAKENED PRIMITIVES`). The story box keeps the speaker handoff; the Warden
+  leaves and the system speaks next.
+- INTAKE no longer clears its six practice targets and immediately opens the portal. Finishing the Warden
+  lesson calls `wakeCalibration`; the six subjects wake on their staggered clocks, and `beginCampaignPortal`
+  waits for `trainingParentsActive()` to be false and the new objective to finish. HOLDING keeps its own
+  six-subject class, kitty arrival, skill/heavy lessons and cell release.
+- `campaignBannerKind` 8 shows `PRIMITIVES AWAKE` / `DESTROY ALL AWAKENED PRIMITIVES` for the INTAKE wake.
+- `World.enterAtPortal` starts bodies at the left-wall mouth, applies `CAMPAIGN.portalThrowSpeed` (1100) as a
+  decaying `kx`, and grants `CAMPAIGN.portalEntryIframes` (1.4 s). The authored campaign hostiles are all
+  outside the 280-unit landing lane (full width, ±90 around centre), and the probe asserts it.
+- The impact flash is now a 12 px screen-edge cue, not a full-screen additive white rectangle. Finite guards
+  on `fx.flash` and `fx.flashScale` keep a bad saved value from becoming an opaque wash.
+- Version stamps bumped to 0.1.183.
+
+**Verification.**
+- `npx tsc --noEmit` 0; `npm run build` 0 (existing >500 kB chunk warning only); `git diff --check` 0.
+- `npm run bench` 0: 8P stress 0.054 ms avg / 0.150 ms p99; gauntlet max 0.206 ms avg / 0.745 ms p99.
+- Probes 0: `campaign-rules-check` (INTAKE wake, gate, HOLDING arrival), `quarantine-check` (wake, portal
+  only after class, entry throw, landing-lane safety), `campaign-death-check`, `round-hop-check`,
+  `holding-layout-check`, `port-sweep-check` and `plate-flow-check`.
+- Not tested: a fresh human campaign playthrough of the INTAKE wake fight, the Warden-to-system handoff at
+  couch distance, or the thrown landing on arena 2.
+
+**Next:** play INTAKE through HOLDING and judge the wake pace, the story-box handoff and the landing throw.

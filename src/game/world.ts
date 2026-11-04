@@ -132,6 +132,7 @@ import type { CampaignDataCrate, CampaignIntro } from './campaign';
 import {
   CALIBRATION_POWER_TUTORIAL,
   CALIBRATION_SKILL_TUTORIAL,
+  INTAKE_WAKE,
   KITTY_TUTORIAL,
   KITTY_FIRST_HOP,
   TutorialRunner,
@@ -1390,9 +1391,8 @@ export class World {
     this.campaignBannerDur = CALIBRATION.bannerTime;
     // Bots stay parked until the calibration subjects are cleared. The drill squad
     // then logs in on the existing ring with the player, before the breach removes it.
-    // Intake has no holding room: its lesson ends into the first portal instead.
-    // Intake carries the same six subjects as dormant lock targets. They never wake
-    // here: the Warden's lesson ends in the first portal, and HOLDING runs the fight.
+    // Intake carries the same six subjects as dormant lock targets. The Warden lesson
+    // ends by waking them, and clearing the class is what opens the first portal.
     if (this.campaignIntro === 'warden') this.spawnCalibrationShapes();
     if (this.arena.rooms?.some((room) => room.theme === 'holding')) {
       this.spawnCalibrationShapes();
@@ -2043,14 +2043,19 @@ export class World {
       s.ramDirX = 0;
       s.ramDirY = 0;
     }
-    this.campaignBannerKind = 5;
+    this.campaignBannerKind = this.campaignIntro === 'warden' ? 8 : 5;
     this.campaignBannerT = CALIBRATION.wakeBannerTime;
     this.campaignBannerDur = CALIBRATION.wakeBannerTime;
     // The class wakes in the holding office. The civilians are gone a beat later, and
-    // the player gets the skill/heavy lesson while the subjects are live.
+    // the player gets the skill/heavy lesson while the subjects are live. Intake has
+    // its own shocked-Warden beat and a system objective instead of the skill lesson.
     this.campaignHoldingWait = 0;
     this.campaignCivilianLossT = 0.65;
-    if (this.campaignIntro === 'warden' || this.campaignIntro === 'holding') {
+    if (this.campaignIntro === 'warden') {
+      this.tutorial = new TutorialRunner(INTAKE_WAKE);
+      this.tutorialFinished = false;
+      this.tutorialGrace = 0;
+    } else if (this.campaignIntro === 'holding') {
       this.tutorial = new TutorialRunner(CALIBRATION_SKILL_TUTORIAL);
       this.tutorialFinished = false;
       this.tutorialGrace = 0;
@@ -2649,13 +2654,10 @@ export class World {
         }
         if (!this.calibrationAwake) {
           const holding = this.arena.rooms?.find((room) => room.theme === 'holding');
-          // Intake has no holding room. Finishing the lesson is its clear: the first
-          // portal opens on the right wall and pulls the player into HOLDING.
+          // Intake has no holding room. Its orientation ends by waking the six
+          // subjects in front of the player, not by opening the portal over them.
           if (!holding) {
-            // The lesson dummies are practice-only. Clear them before the room folds
-            // into the right-wall portal so no inert body is left on a cleared floor.
-            this.clearTrainingShapes();
-            this.beginCampaignPortal();
+            this.wakeCalibration();
             return;
           }
           const player = this.players[0];
@@ -2684,7 +2686,10 @@ export class World {
         !this.trainingParentsActive() &&
         (!this.tutorial || this.tutorial.done)
       ) {
-        this.beginCellRelease();
+        // Intake's fight is the whole orientation: clearing the class opens the first
+        // portal. HOLDING still runs the cell release and its second wave.
+        if (this.campaignIntro === 'warden') this.beginCampaignPortal();
+        else this.beginCellRelease();
       }
       return;
     }
@@ -3295,13 +3300,19 @@ export class World {
       const p = this.players[i];
       if (p.active) active.push(p);
     }
-    const x = b.left + 52;
+    // Start at the mouth, not in front of it, and carry a decaying eastward impulse.
+    // The throw is what sells the exit: input still steers, but the portal owns the
+    // first couple of hundred units. The entry iframes cover the whole flight so an
+    // authored body near the landing lane cannot clip the player on arrival.
+    const x = b.left + 44;
     const span = Math.min((b.bottom - b.top) * 0.5, Math.max(0, active.length - 1) * 62);
     for (let i = 0; i < active.length; i++) {
       const p = active[i];
       const y = this.centerY - span * 0.5 + (active.length === 1 ? 0 : (span * i) / (active.length - 1));
       clearPlayerForSpawn(p, x, y, 0);
-      p.iframes = Math.max(p.iframes, 0.45);
+      p.kx = CAMPAIGN.portalThrowSpeed;
+      p.ky = 0;
+      p.iframes = Math.max(p.iframes, CAMPAIGN.portalEntryIframes);
     }
     this.entryPortalT = 3.4;
   }

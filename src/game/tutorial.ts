@@ -1,6 +1,6 @@
 import { ACTION, type InputFrame } from './types';
 
-export type TutorialSpeaker = 'WARDEN' | 'SCRIPT_KITTY';
+export type TutorialSpeaker = 'WARDEN' | 'SCRIPT_KITTY' | 'SYSTEM';
 export type TutorialAction =
   | 'move'
   | 'dash'
@@ -255,11 +255,31 @@ export const WARDEN_TUTORIAL: readonly TutorialStep[] = [
     action: 'reflect',
   },
   {
-    id: 'holding',
+    id: 'orientation-end',
     speaker: 'WARDEN',
-    line: 'THE SUBJECTS ARE STILL DORMANT. GET TO HOLDING. I WANT YOU TO SEE WHAT WAKES UP.',
-    prompt: 'HEAD TO HOLDING',
-    readTime: 4.2,
+    line: 'THAT IS EVERYTHING I CAN TEACH YOU. THE SUBJECTS ARE STILL DORMANT.',
+    readTime: 3.0,
+  },
+];
+
+/**
+ * The intake subjects wake the moment the Warden's orientation ends. He gets one
+ * shocked line, then the system takes over with the only order that matters: put the
+ * awakened primitives down before the exit portal opens.
+ */
+export const INTAKE_WAKE: readonly TutorialStep[] = [
+  {
+    id: 'warden-shock',
+    speaker: 'WARDEN',
+    line: "WHAA—WHAT'S HAPPENING?! ARE YOU DOING THIS?!",
+    readTime: 2.6,
+  },
+  {
+    id: 'intake-objective',
+    speaker: 'SYSTEM',
+    line: 'DESTROY ALL AWAKENED PRIMITIVES.',
+    prompt: 'DESTROY ALL AWAKENED PRIMITIVES',
+    readTime: 3.6,
   },
 ];
 

@@ -165,9 +165,10 @@ bot count (none to three), then your program. A filled slot shows the level and 
 the run, skipping both steps. Bots take the programs you leave unused.
 
 `BUILD ROOT` opens in quarantine. The Warden talks you through move, dash, ranged attack, lock and target
-cycling, melee, and reflection on the bare intake plate. Six dormant shapes sit there as lock targets; the
-holding office stages its own six for the fight. Finish the lesson (or skip it), step into the right-wall
-portal, and the holding shapes wake as **wave 1** one at a time: a bouncing
+cycling, melee, and reflection on the bare intake plate. Six dormant shapes sit there as lock targets.
+When the lesson ends (or you skip it), they wake together: the Warden gets one shocked line, drops out of
+the story box, and the system orders **DESTROY ALL AWAKENED PRIMITIVES**. Clear all six to open the
+right-wall portal. The holding office stages its own six for **wave 1**, one at a time: a bouncing
 blue circle, a floating red mother with a shard cloud, and a yellow row of clones that charges together.
 The cell block stays solid while it is sealed, so the held wave cannot leave early and you cannot walk
 into the cells. The three civilian monitors in that office are destroyed in the breakout, dropping
@@ -185,7 +186,8 @@ port — ranged shots, the lash, a damaging skill or a damaging heavy — so bri
 for good. A room is clear only when every feed is shut **and** every hostile it delivered is gone; then its
 white right-wall portal opens and the suction pulls you in. There is no white party port to walk into and
 no bridge to earn. The entry mouth is the same pulsing white square on the left wall, so the crossing reads
-from both ends.
+from both ends. The next room throws you out of it with real momentum and a short entry protection window;
+campaign landing lanes are kept clear of authored hostiles.
 The clear reports
 kills, time, damage taken, data crates preserved and a score; losing no crates is a clean sweep and pays a
 bonus, and the best score and sweep count stay in the slot.
@@ -375,9 +377,9 @@ cat face and sits in the middle holding cell.
 ### Portals, pads and lifts
 
 `QUARANTINE` is four tutorial arenas, not one floor. `INTAKE` is the Warden's lesson room, with a booking
-counter, desk blocks and chains. Finishing the lesson opens the right-wall portal into `HOLDING`, where the
-six dormant calibration subjects and three jail cells wait; kitty's first line there is "IT WORKED! I
-CAN'T BELIEVE IT WORKED." `MAINBOARD` has two feeds; `ROUTER` has one feed and two wall emitters. There is
+counter, desk blocks and chains. Its six dormant subjects wake when the lesson ends; clearing them opens
+the right-wall portal into `HOLDING`, where the three jail cells and the next six-subject class wait;
+kitty's first line there is "IT WORKED! I CAN'T BELIEVE IT WORKED." `MAINBOARD` has two feeds; `ROUTER` has one feed and two wall emitters. There is
 no walk between rooms and no floor gap to cross: the cell block is HOLDING's only local barrier.
 
 Every exit portal sits on the right wall; every entry portal sits on the left. The pull is deliberately

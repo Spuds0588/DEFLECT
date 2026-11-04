@@ -809,13 +809,23 @@ export class Renderer {
       this.drawViewFrames(state);
     }
 
-    if (fx.flash > 0.002) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = Math.min(0.5, fx.flash * 0.55 * fx.flashScale);
-      ctx.fillStyle = fx.flashColor;
-      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-      ctx.restore();
+    // Impact flash is an edge cue, never a full-screen wash. A live fight can land
+    // several hits in a row; covering the arena with additive white makes the fight
+    // unreadable. Keep the colour and the setting, but confine them to a thin frame.
+    if (Number.isFinite(fx.flash) && fx.flash > 0.002) {
+      const scale = Number.isFinite(fx.flashScale) ? fx.flashScale : 0;
+      const alpha = Math.max(0, Math.min(0.62, fx.flash * 0.55 * scale));
+      if (alpha > 0.002) {
+        const edge = 12;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = fx.flashColor;
+        ctx.fillRect(0, 0, VIEW_W, edge);
+        ctx.fillRect(0, VIEW_H - edge, VIEW_W, edge);
+        ctx.fillRect(0, edge, edge, VIEW_H - edge * 2);
+        ctx.fillRect(VIEW_W - edge, edge, edge, VIEW_H - edge * 2);
+        ctx.restore();
+      }
     }
 
     if (introDone && this.showUi) this.drawHud(state, t);
@@ -15561,6 +15571,12 @@ export class Renderer {
         ctx.font = FONT_TINY;
         ctx.fillStyle = 'rgba(255, 190, 190, 0.78)';
         ctx.fillText('WAVE 01 // SKILL CHECK', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
+      } else if (kind === 8) {
+        ctx.fillStyle = THREAT_COLORS.shapeTriangle;
+        ctx.fillText('PRIMITIVES AWAKE', VIEW_W * 0.5, VIEW_H * 0.34);
+        ctx.font = FONT_TINY;
+        ctx.fillStyle = 'rgba(255, 190, 190, 0.82)';
+        ctx.fillText('DESTROY ALL AWAKENED PRIMITIVES', VIEW_W * 0.5, VIEW_H * 0.34 + 16);
       } else if (kind === 7) {
         ctx.fillStyle = THREAT_COLORS.worm;
         ctx.fillText('SOMETHING BIG', VIEW_W * 0.5, VIEW_H * 0.34);

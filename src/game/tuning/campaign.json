@@ -23,7 +23,9 @@
     "scoreTimeRate": 6,
     "scorePerDamage": 80,
     "bossWarnTime": 5.0,
-    "bossWarnBannerTime": 3.2
+    "bossWarnBannerTime": 3.2,
+    "portalThrowSpeed": 1100,
+    "portalEntryIframes": 1.4
   },
   "CALIBRATION": {
     "bannerTime": 3.8,

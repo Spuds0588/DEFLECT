@@ -83,9 +83,11 @@ by floating CRT-monitor ordinary programs (TICKET, PATCH and CACHE); they are ci
 combatants, and are destroyed when the calibration class wakes. script_kitty waits behind the middle cell
 bars.
 
-The Warden's basic lesson runs in INTAKE; finishing it opens the first portal. HOLDING opens on kitty's
-first-hop line: "IT WORKED! I CAN'T BELIEVE IT WORKED." then "OKAY. I NEED YOU TO CLEAR THIS INFECTION AND
-GET ME OUT OF HERE." The six calibration subjects wake in HOLDING as **wave 1** and carry the skill
+The Warden's basic lesson runs in INTAKE. Finishing it does not open the portal: the six dormant
+subjects wake, the Warden gets one shocked line and leaves the story box, and a system objective orders
+the player to destroy all awakened primitives. Clearing that class opens the first portal. HOLDING opens
+on kitty's first-hop line: "IT WORKED! I CAN'T BELIEVE IT WORKED." then "OKAY. I NEED YOU TO CLEAR THIS
+INFECTION AND GET ME OUT OF HERE." The six calibration subjects wake in HOLDING as **wave 1** and carry the skill
 lesson. The sealed cell block is a body solid while it is powered. Clearing all six and finishing the
 skill beat makes the block fail: the bars retract unexpectedly and release **wave 2**, two viruses and a
 worm, for the power-attack lesson. The bodies are already in the cells, frozen and untargetable while the

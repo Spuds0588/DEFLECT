@@ -501,7 +501,9 @@ local is active.
 The DOM settings screen is tabbed: `FEEDBACK`, `CONTROLS`, `AUDIO`, `SYSTEM`. Persisted options are
 callsign, hit rotation, impact flash, scanlines, minimap, **game UI**, controller rumble, auto lock, auto
 attack, master volume, soundtrack, SFX, menu sounds, mute, and arena/bot preferences. New feedback options
-belong in the Feedback tab, not beside the title menu. The minimap is a small edge-anchored overlay showing cover, every local player
+belong in the Feedback tab, not beside the title menu. **Impact flash is an edge cue:** the slider scales a
+thin screen border, never a full-screen additive wash. A fight can land several hits in a row, and covering
+the arena with white makes it unreadable; keep the centre clear. The minimap is a small edge-anchored overlay showing cover, every local player
 and every local threat family; it is off only by explicit player choice. `GAME UI` hides the whole
 canvas UI layer (match strip, wave banners, readiness docks, minimap) for a clean capture without
 changing the avatar's own health or lock marks; `?ui=0` does the same for one load and does not persist.
@@ -760,9 +762,11 @@ The campaign's live route is four `QUARANTINE` rooms (INTAKE, HOLDING, MAINBOARD
 `World('gauntlet')` with `campaign = true`, so it reuses the threat simulation and stays local-only; the
 mode string stays `gauntlet` so no threat branch forks. The script lives in `World`, not in `main.ts`.
 
-- **Calibration**: INTAKE stages six dormant lock-target shapes on its bare plate for the Warden lesson;
-  the square **HOLDING** office holds six attack subjects, two each of a blue circle, a red triangle and a
-  yellow rectangle. HOLDING's class wakes on `CALIBRATION.wakeStagger` clocks (0.85 s apart) when the player
+- **Calibration**: INTAKE stages six dormant lock-target shapes on its bare plate. The Warden lesson ends
+  by waking them: `INTAKE_WAKE` gives the Warden one shocked line, then a SYSTEM objective
+  (`DESTROY ALL AWAKENED PRIMITIVES`); the first portal opens only after `trainingParentsActive()` is
+  false. The square **HOLDING** office holds its own six attack subjects, two each of a blue circle, a red
+  triangle and a yellow rectangle. HOLDING's class wakes on `CALIBRATION.wakeStagger` clocks (0.85 s apart) when the player
   reaches holding (or after `CALIBRATION.entryWait` 18 s, so a player who ignores the prompt cannot soft-lock
   the node), on a node without an intro after `CALIBRATION.wakeDelay` (6 s), inside
   `CALIBRATION.wakeRadius`, or on the first hit; killing them while dormant is deliberately not allowed,
@@ -785,9 +789,10 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
   The six reuse sentry kinds 4-8 so every player weapon already hits them, but calibration kills pay no score or
   pickups, no parents wake the assault counter, and arena emitters stay parked for the whole prologue.
   Everything lives in `CALIBRATION` in `tuning/campaign.json`.
-- **Tutorial route**: `INTAKE` stages the Warden lesson and portals to `HOLDING`, where the dormant-class
-  reveal and the cell release run; see D41. The six subjects wait in the holding room, not in the player's
-  opening circle, and script_kitty is behind the middle cell bars. HOLDING opens on kitty's first-hop line.
+- **Tutorial route**: `INTAKE` stages the Warden lesson, wakes its class, and portals only after that class
+  is down. `HOLDING` opens on kitty's first-hop line and runs its own dormant-class reveal and cell release;
+  see D41. HOLDING's subjects wait in the holding room, not in the player's opening circle, and script_kitty
+  is behind the middle cell bars.
 - **Drill**: 18 s of sparring against the run's bot squad, using the same `BotBrain` inputs as training and
   VS BOTS. A `NO BOTS` run still gets one instructor so the drill has a partner. Death on either side
   respawns on the training timer. The squad forms an arc `CAMPAIGN.drillRing` in front of the player and
@@ -1923,29 +1928,35 @@ presentation. There is no combined floor, no walk between rooms and no party-por
 between them is script_kitty's portal.
 
 - Campaign order is data, not a `World` branch: `CAMPAIGN_LEVELS` lists INTAKE -> HOLDING -> MAINBOARD ->
-  ROUTER -> REBOOT. Each clear saves the slot and auto-hops. The Warden lesson ends INTAKE, the cell wave
-  ends HOLDING, and MAINBOARD or ROUTER ends only when every feed is shut **and** every live hostile is gone
+  ROUTER -> REBOOT. Each clear saves the slot and auto-hops. INTAKE's awakened class ends the Warden lesson,
+  the cell wave ends HOLDING, and MAINBOARD or ROUTER ends only when every feed is shut **and** every live hostile is gone
   (`campaignFloorClear`). A last-port hit must never yank the player out with the port's squad still up.
 - Portals are right-wall exits and left-wall entries. `World.beginCampaignPortal` opens the right wall and
   `tickCampaignPortal` writes player positions directly for about 1.15 s, so cover, cell bars and hazards
   cannot stop the pull. The step consumes no other simulation while it runs. Do not turn this back into a
   walk to a party port or a collision-resolved drag.
+- Entries are a **throw**, not a placement. `World.enterAtPortal` starts each body at the left-wall mouth,
+  applies `CAMPAIGN.portalThrowSpeed` as a decaying `kx`, and grants `CAMPAIGN.portalEntryIframes`. Do not
+  park the body under the mouth. Campaign content keeps authored threats out of the landing lane; the entry
+  protection is the second guard, not a licence to spawn into the throw.
 - The first hop is the story beat: HOLDING opens with `KITTY_FIRST_HOP` over play ("IT WORKED! ... clear
   this infection and get me out of here"). It is local presentation only and never gates the fight.
 - `ArenaDef.rooms` is still presentation. HOLDING's block is the only local body barrier and
   `holdingCellLayout` is shared by bars and collision. No room collision enters `World` or the guest
   predictor.
-- `spawnCalibrationShapes` stages six dormant lock targets on the INTAKE plate for the Warden lesson, then
-  six attack subjects in HOLDING; INTAKE's set is practice-only and is cleared when the first portal opens.
-  The wave-2 worm and viruses wait behind the HOLDING bars with `held`. Clearing wave 1 opens the block;
-  clearing wave 2 starts the portal. HOLDING's wake clocks are staggered by `CALIBRATION.wakeStagger`.
+- `spawnCalibrationShapes` stages six dormant lock targets on the INTAKE plate, then six attack subjects in
+  HOLDING. INTAKE's set wakes after the Warden lesson and clearing it opens the first portal; HOLDING's class
+  carries the skill lesson. The wave-2 worm and viruses wait behind the HOLDING bars with `held`. Clearing
+  wave 1 opens the block; clearing wave 2 starts the portal. HOLDING's wake clocks are staggered by
+  `CALIBRATION.wakeStagger`.
 - MAINBOARD authors two ingress ports, ROUTER one. Closing the last port does **not** open the pull while any
   sentry, virus, worm or error is live; the portal waits for `campaignFloorClear`. There is no party-port
   prop and no stand-in-the-exit check. `portTotal` still owns the objective strip.
 - Room arenas are local-only: `isOnlineArena` skips `rooms`. The four tutorial devices never enter a hosted
   room or online series.
-- Probes: `.tmp/quarantine-check.ts` covers the split, route and first pull; `holding-layout-check`,
-  `port-sweep-check`, `exit-route-check` and `islands-ports-check` cover the room-level contracts.
+- Probes: `.tmp/quarantine-check.ts` covers the split, route, INTAKE wake, first pull and portal throw;
+  `holding-layout-check`, `port-sweep-check`, `exit-route-check` and `islands-ports-check` cover the
+  room-level contracts.
 
 ### D42 — Ordinary programs are floating CRT monitors, not roster hulls (built 2026-11-01)
 
@@ -2428,8 +2439,9 @@ spatial connector as a progression gate; the hop is the connector.
   parks on RETRY/SLOTS.
 - Every round-based mode (`bots`, `local`, `host`) hops too: the round-end portal opens on the right wall,
   `World.tickRoundHopPull` drags every standing body into it, and the main thread rebuilds the world on the
-  next arena while carrying scores and the next round. The next round enters on the left wall. The host
-  broadcasts `MSG.HOP`; a guest rebuilds its `NetView` from that message and never chooses an arena itself.
+  next arena while carrying scores and the next round. The next round enters on the left wall and is thrown
+  out of the mouth by `World.enterAtPortal`, never parked under it. The host broadcasts `MSG.HOP`; a guest
+  rebuilds its `NetView` from that message and never chooses an arena itself.
   Campaign and match hops share the renderer's square portal wipe (`beginPortalHop`).
 - The wipe is presentation only. It must not gate input, change `Snapshot`, or become a second round clock;
   `World` owns the pull and the round state, the renderer owns the closing square.

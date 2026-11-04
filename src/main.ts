@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.182';
+const BUILD = '0.1.183';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -4326,8 +4326,9 @@ function syncTutorialUi(): void {
   if (key === tutorialUiKey) return;
   tutorialUiKey = key;
   tutorialEl.hidden = false;
-  tutorialMark.textContent = step.speaker === 'SCRIPT_KITTY' ? '🐱' : '👮';
-  tutorialSpeaker.textContent = step.speaker === 'SCRIPT_KITTY' ? 'SCRIPT_KITTY' : 'THE WARDEN';
+  tutorialMark.textContent = step.speaker === 'SCRIPT_KITTY' ? '🐱' : step.speaker === 'SYSTEM' ? '▸' : '👮';
+  tutorialSpeaker.textContent =
+    step.speaker === 'SCRIPT_KITTY' ? 'SCRIPT_KITTY' : step.speaker === 'SYSTEM' ? 'SYSTEM' : 'THE WARDEN';
   tutorialLine.textContent = step.line;
   tutorialPrompt.textContent = step.prompt ?? '';
   tutorialPrompt.hidden = !step.prompt;

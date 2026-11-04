@@ -3666,3 +3666,14 @@ arrive.
 - [x] Plate spacing is 128 against a 99 segment radius, with a dark seam spine under the hex plates.
 - [ ] Play a full REBOOT boss fight: confirm the open edge lets you hit the approach outside the plate,
       and judge the wider plate overlap and capsule hit surface from the couch camera.
+
+## INTAKE WAKE / IMPACT FLASH / PORTAL THROW (v0.1.183)
+
+- [x] INTAKE's Warden lesson wakes the six subjects instead of opening the portal over them.
+- [x] The Warden gets a shocked line, then leaves the story box for a SYSTEM objective to destroy the class.
+- [x] The first portal opens only after every awakened subject is gone and the objective has finished.
+- [x] Portal entries are thrown from the left-wall mouth with a decaying impulse and 1.4 s of entry protection.
+- [x] No authored campaign hostile stands in the 280-unit landing lane.
+- [x] Impact flash is a thin screen-edge cue; a full-screen additive white wash cannot cover a fight.
+- [ ] Play a fresh campaign from INTAKE through HOLDING and judge the wake, Warden handoff and thrown landing
+      from the couch camera.

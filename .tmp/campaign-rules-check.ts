@@ -34,13 +34,22 @@ const build = (index: number, bots = 0) => {
   );
 };
 
-// 3. Intake's Warden lesson is the only gate and ends into the first portal.
+// 3. Intake's Warden lesson wakes the class; the class, not the clock, opens the portal.
 const intake = build(0);
 if (intake.campaignPhase !== 'calibration') throw new Error('intake did not open in calibration');
 if (!intake.tutorial || intake.tutorial.current?.id !== 'quarantine') throw new Error('intake is not running the Warden lesson');
 if (intake.props.some((p) => p.portal && !p.portalExit)) throw new Error('intake spawned ingress ports');
 intake.skipTutorial();
-for (let i = 0; i < 420; i++) intake.step(SIM_DT, new Array(MAX_PLAYERS).fill(null));
+const intakeIdle = new Array(MAX_PLAYERS).fill(null);
+for (let i = 0; i < 90; i++) intake.step(SIM_DT, intakeIdle);
+if (!intake.calibrationAwake) throw new Error('intake did not wake the six subjects after the lesson');
+if (intake.campaignPortalT >= 0) throw new Error('intake opened its portal before the subjects woke');
+if (intake.tutorial?.current?.id !== 'warden-shock') throw new Error('intake skipped the Warden shock line');
+intake.skipTutorial();
+for (let i = 0; i < 90; i++) intake.step(SIM_DT, intakeIdle);
+if (intake.campaignPortalT >= 0) throw new Error('intake opened its portal with the class still alive');
+for (const s of intake.sentries) if (s.kind >= 4 && s.kind <= 6) s.active = false;
+for (let i = 0; i < 240 && intake.campaignPhase !== 'cleared'; i++) intake.step(SIM_DT, intakeIdle);
 if (intake.campaignPhase !== 'cleared') throw new Error(`intake portal did not clear (${intake.campaignPhase})`);
 
 // 4. Holding lands on kitty's line and owns the six-subject class plus the cell wave.
@@ -63,4 +72,4 @@ for (const index of [2, 3]) {
   console.log(`${level.name}: ports=${world.portTotal} crates=${world.dataTotal}`);
 }
 
-console.log('campaign-rules-check: OK (lesson gates intake, kitty arrival, split route, live feed rooms)');
+console.log('campaign-rules-check: OK (intake wakes its class, kitty arrival, split route, live feed rooms)');

@@ -194,8 +194,10 @@ bridge between islands and no `NEXT ARENA` menu between devices; only the last n
 overlay. `QUARANTINE` is four portal-fed arenas: INTAKE, HOLDING, MAINBOARD and ROUTER. Each is one room
 with its own furniture and labels; the only way between them is the portal. All four use the full
 `48,48 -> 1942,1046` playfield: the quarantine rooms were too cramped to dodge fire or make a reflect read.
-INTAKE is deliberately bare, with six dormant lock targets and no cover; HOLDING keeps its back-right cell
-block but opens the left and front. HOLDING's cell block is a local barrier, not an island gate.
+INTAKE is deliberately bare, with six dormant lock targets and no cover. The Warden's lesson ends by
+waking that class: he gets one shocked line and drops out of the story box, the system orders
+`DESTROY ALL AWAKENED PRIMITIVES`, and the first portal opens only after every subject is gone. HOLDING
+keeps its back-right cell block but opens the left and front; the block is a local barrier, not an island gate.
 
 Threats still arrive through authored **ports** (`ArenaDef.ingress`): fixed, damageable squares that emit
 a threat family on a clock and stop when shot shut. Ports reuse the file-box damage path rather than a
@@ -206,8 +208,10 @@ Mega Worm is announced only after all six and their delivered bodies are cleared
 open to shots and beams (but not bodies), so the Worm can be hit on its staged approach before it crosses the lip.
 
 Every round-based match hops the same way. When a round ends, a white portal opens on the right wall and
-pulls every standing body in; the next round enters from the left wall. The pull writes positions directly,
-so cover cannot trap a body. Local and bot modes rebuild the `World` on the next arena, carrying scores and
+pulls every standing body in; the next round is thrown out of the left-wall mouth with a decaying eastward
+impulse, not placed under it. The pull writes positions directly, so cover cannot trap a body. Campaign
+entries keep the landing lane clear of authored hostiles and add a short entry protection window. Local and
+bot modes rebuild the `World` on the next arena, carrying scores and
 the round number; the host broadcasts `MSG.HOP` so guests rebuild their `NetView` on the same arena. The
 renderer's square portal wipe covers the swap. Open decks inside a plate arena are floor, never a
 progression gate.
