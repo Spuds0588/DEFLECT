@@ -7471,5 +7471,8 @@ body simple and reliable, and close the visible gaps between its plates.
   `campaign-rules-check` and `boss-warning-check` (warn 0.02 s, spawn 5.03 s, card 7).
 - Not tested: a full human boss kill or a couch-distance visual pass on the new plate overlap.
 
-**Next:** push Pages, verify the live 0.1.182 stamps, and watch a full REBOOT Mega Worm fight for the open-edge
-read, plate overlap and capsule hit surface.
+**Production.** Pages run `41770673665` succeeded. The live page reports HTML `v0.1.182`, serves `sw.js`
+`deflect-0.1.182`, and returns 200 for the JS and CSS bundles. Browser console: `[DEFLECT-INIT] Build 0.1.182
+ready. Max players: 8`; the title menu rendered with no console errors.
+
+**Next:** watch a full REBOOT Mega Worm fight for the open-edge read, plate overlap and capsule hit surface.
