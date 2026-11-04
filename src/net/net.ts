@@ -48,6 +48,8 @@ export const MSG = {
   ERROR: 7,
   PING: 8,
   PONG: 9,
+  /** Mid-match island hop: the host moved the room to a new arena. */
+  HOP: 10,
 } as const;
 
 /** Local, read-only connection telemetry for the in-game multiplayer status panel. */
@@ -347,6 +349,13 @@ export class HostNet {
     this.broadcast([MSG.START, this.arenaIndex, this.modeIndex, this.series, this.seriesGame, this.mapRule]);
   }
 
+  /** Move the live room to the next arena between rounds. */
+  hopArena(arenaIndex: number): void {
+    if (!this.peer || !this.inMatch) return;
+    this.arenaIndex = ((arenaIndex % ARENAS.length) + ARENAS.length) % ARENAS.length;
+    this.broadcast([MSG.HOP, this.arenaIndex]);
+  }
+
   /** Advance a host series without dropping the room back to the lobby. */
   startNextMatch(arenaIndex: number): void {
     if (!this.peer || !this.inMatch) return;
@@ -596,6 +605,8 @@ export interface GuestCallbacks {
   onLobby: (state: LobbyState) => void;
   onJoined: (slot: number) => void;
   onStart: (arenaId: number, mode: number, series: number, game: number, mapRule: number) => void;
+  /** The host hopped the room to a new arena between rounds. */
+  onHop: (arenaId: number) => void;
   onSnapshot: (snapshot: Snapshot) => void;
   onRematch: () => void;
   onClosed: (reason: string) => void;
@@ -860,6 +871,10 @@ export class GuestNet {
           Math.max(1, Number(data[4]) | 0),
           Number(data[5]) === 1 ? 1 : 0,
         );
+        break;
+      }
+      case MSG.HOP: {
+        this.callbacks.onHop(Number(data[1]) | 0);
         break;
       }
       case MSG.REMATCH: {

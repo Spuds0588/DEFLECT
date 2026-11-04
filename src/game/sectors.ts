@@ -2,8 +2,8 @@
  * Sector campaign blueprint.
  *
  * This is an authored design surface, not a playable mode. It describes how arena
- * blockouts connect into the five-system campaign (bridges, teleporter pads and a
- * central lift). Nothing here enters `World`, snapshots, rooms or the simulation.
+ * blockouts connect into the five-system campaign (portal hops, teleporter pads and
+ * a central lift). Nothing here enters `World`, snapshots, rooms or the simulation.
  *
  * `arenaId` points at an existing ArenaDef used as the first blockout for that node.
  * It is intentionally a placeholder until a layout is authored for the node itself.
@@ -23,7 +23,7 @@ export type SectorNodeKind =
   | 'hazard'
   | 'exit';
 
-export type SectorLinkKind = 'bridge' | 'teleport' | 'elevator';
+export type SectorLinkKind = 'portal' | 'teleport' | 'elevator';
 
 export interface SectorNode {
   id: string;
@@ -107,13 +107,13 @@ export const SECTORS: readonly SectorDef[] = [
       { id: 'modem', label: 'MODEM', kind: 'exit', x: 890, y: 270, arenaId: RING },
     ],
     links: [
-      { a: 'build-root', b: 'unit-test', kind: 'bridge' },
-      { a: 'build-root', b: 'cache', kind: 'bridge' },
-      { a: 'unit-test', b: 'firewall', kind: 'bridge' },
-      { a: 'cache', b: 'firewall', kind: 'bridge' },
-      { a: 'firewall', b: 'router', kind: 'bridge' },
+      { a: 'build-root', b: 'unit-test', kind: 'portal' },
+      { a: 'build-root', b: 'cache', kind: 'portal' },
+      { a: 'unit-test', b: 'firewall', kind: 'portal' },
+      { a: 'cache', b: 'firewall', kind: 'portal' },
+      { a: 'firewall', b: 'router', kind: 'portal' },
       { a: 'router', b: 'cache', kind: 'teleport', label: 'LOOPBACK' },
-      { a: 'router', b: 'modem', kind: 'bridge' },
+      { a: 'router', b: 'modem', kind: 'portal' },
     ],
   },
   {
@@ -144,16 +144,16 @@ export const SECTORS: readonly SectorDef[] = [
       { id: 'fiber', label: 'FIBER UPLINK', kind: 'exit', x: 890, y: 270, arenaId: GRID_ZERO },
     ],
     links: [
-      { a: 'vpn', b: 'switch', kind: 'bridge' },
+      { a: 'vpn', b: 'switch', kind: 'portal' },
       { a: 'switch', b: 'reception', kind: 'teleport' },
       { a: 'switch', b: 'accounts', kind: 'teleport' },
       { a: 'switch', b: 'design', kind: 'teleport' },
       { a: 'switch', b: 'meeting', kind: 'teleport' },
-      { a: 'switch', b: 'rack-a', kind: 'bridge' },
-      { a: 'switch', b: 'rack-b', kind: 'bridge' },
-      { a: 'rack-a', b: 'domain', kind: 'bridge' },
-      { a: 'rack-b', b: 'domain', kind: 'bridge' },
-      { a: 'domain', b: 'fiber', kind: 'bridge' },
+      { a: 'switch', b: 'rack-a', kind: 'portal' },
+      { a: 'switch', b: 'rack-b', kind: 'portal' },
+      { a: 'rack-a', b: 'domain', kind: 'portal' },
+      { a: 'rack-b', b: 'domain', kind: 'portal' },
+      { a: 'domain', b: 'fiber', kind: 'portal' },
     ],
   },
   {
@@ -192,17 +192,17 @@ export const SECTORS: readonly SectorDef[] = [
       { id: 'stream', label: 'STREAM UPLINK', kind: 'exit', x: 916, y: 270, arenaId: MAINFRAME },
     ],
     links: [
-      { a: 'home-router', b: 'projector', kind: 'bridge' },
-      { a: 'home-router', b: 'console', kind: 'bridge' },
-      { a: 'home-router', b: 'media', kind: 'bridge' },
-      { a: 'projector', b: 'media', kind: 'bridge' },
-      { a: 'console', b: 'media', kind: 'bridge' },
-      { a: 'media', b: 'lift', kind: 'bridge' },
+      { a: 'home-router', b: 'projector', kind: 'portal' },
+      { a: 'home-router', b: 'console', kind: 'portal' },
+      { a: 'home-router', b: 'media', kind: 'portal' },
+      { a: 'projector', b: 'media', kind: 'portal' },
+      { a: 'console', b: 'media', kind: 'portal' },
+      { a: 'media', b: 'lift', kind: 'portal' },
       { a: 'lift', b: 'disk-0', kind: 'elevator' },
       { a: 'lift', b: 'disk-1', kind: 'elevator' },
       { a: 'lift', b: 'disk-2', kind: 'elevator' },
       { a: 'lift', b: 'disk-3', kind: 'elevator' },
-      { a: 'lift', b: 'stream', kind: 'bridge' },
+      { a: 'lift', b: 'stream', kind: 'portal' },
     ],
   },
   {
@@ -240,16 +240,16 @@ export const SECTORS: readonly SectorDef[] = [
       { id: 'c2', label: 'C2 BACKBONE', kind: 'exit', x: 906, y: 270, arenaId: CROSSROADS },
     ],
     links: [
-      { a: 'cam', b: 'dvr', kind: 'bridge' },
-      { a: 'cam', b: 'printer', kind: 'bridge' },
-      { a: 'dvr', b: 'relay', kind: 'bridge' },
-      { a: 'printer', b: 'relay', kind: 'bridge' },
-      { a: 'relay', b: 'nest-a', kind: 'bridge' },
-      { a: 'relay', b: 'nest-b', kind: 'bridge' },
+      { a: 'cam', b: 'dvr', kind: 'portal' },
+      { a: 'cam', b: 'printer', kind: 'portal' },
+      { a: 'dvr', b: 'relay', kind: 'portal' },
+      { a: 'printer', b: 'relay', kind: 'portal' },
+      { a: 'relay', b: 'nest-a', kind: 'portal' },
+      { a: 'relay', b: 'nest-b', kind: 'portal' },
       { a: 'nest-a', b: 'nest-b', kind: 'teleport', label: 'WORM TUNNEL' },
-      { a: 'nest-a', b: 'brood', kind: 'bridge' },
-      { a: 'nest-b', b: 'brood', kind: 'bridge' },
-      { a: 'brood', b: 'c2', kind: 'bridge' },
+      { a: 'nest-a', b: 'brood', kind: 'portal' },
+      { a: 'nest-b', b: 'brood', kind: 'portal' },
+      { a: 'brood', b: 'c2', kind: 'portal' },
     ],
   },
   {
@@ -287,17 +287,17 @@ export const SECTORS: readonly SectorDef[] = [
       },
     ],
     links: [
-      { a: 'edge', b: 'rack-a1', kind: 'bridge' },
-      { a: 'edge', b: 'rack-a2', kind: 'bridge' },
-      { a: 'edge', b: 'coolant', kind: 'bridge' },
-      { a: 'rack-a1', b: 'gpu', kind: 'bridge' },
-      { a: 'rack-a2', b: 'cold-aisle', kind: 'bridge' },
+      { a: 'edge', b: 'rack-a1', kind: 'portal' },
+      { a: 'edge', b: 'rack-a2', kind: 'portal' },
+      { a: 'edge', b: 'coolant', kind: 'portal' },
+      { a: 'rack-a1', b: 'gpu', kind: 'portal' },
+      { a: 'rack-a2', b: 'cold-aisle', kind: 'portal' },
       { a: 'rack-a2', b: 'gpu', kind: 'teleport', label: 'COOLANT LOOP' },
-      { a: 'coolant', b: 'gpu', kind: 'bridge' },
-      { a: 'coolant', b: 'cold-aisle', kind: 'bridge' },
-      { a: 'gpu', b: 'security', kind: 'bridge' },
-      { a: 'cold-aisle', b: 'security', kind: 'bridge' },
-      { a: 'security', b: 'ai-core', kind: 'bridge' },
+      { a: 'coolant', b: 'gpu', kind: 'portal' },
+      { a: 'coolant', b: 'cold-aisle', kind: 'portal' },
+      { a: 'gpu', b: 'security', kind: 'portal' },
+      { a: 'cold-aisle', b: 'security', kind: 'portal' },
+      { a: 'security', b: 'ai-core', kind: 'portal' },
     ],
   },
 ];
@@ -450,8 +450,8 @@ function drawSectorLink(
   ctx.save();
   ctx.strokeStyle = sector.accent;
   ctx.fillStyle = sector.accent;
-  if (link.kind === 'bridge') {
-    ctx.globalAlpha = 0.22;
+  if (link.kind === 'portal') {
+    ctx.globalAlpha = 0.2;
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(ax, ay);
@@ -474,7 +474,13 @@ function drawSectorLink(
   ctx.stroke();
   ctx.setLineDash([]);
 
-  if (link.kind === 'teleport') {
+  if (link.kind === 'portal') {
+    // The hop is a square mouth, the same mark the arena port uses.
+    ctx.globalAlpha = 0.85;
+    ctx.strokeRect(midX - 5, midY - 5, 10, 10);
+    ctx.globalAlpha = 0.32;
+    ctx.fillRect(midX - 3, midY - 3, 6, 6);
+  } else if (link.kind === 'teleport') {
     ctx.globalAlpha = 0.8;
     ctx.beginPath();
     ctx.moveTo(midX - 6, midY);
@@ -739,12 +745,13 @@ function drawSectorLegend(ctx: CanvasRenderingContext2D): void {
 
   ctx.strokeStyle = '#bdfbff';
   ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.moveTo(startX, y);
-  ctx.lineTo(startX + 24, y);
-  ctx.stroke();
+  ctx.strokeRect(startX + 6, y - 5, 10, 10);
+  ctx.globalAlpha = 0.75;
+  ctx.fillStyle = 'rgba(189, 251, 255, 0.35)';
+  ctx.fillRect(startX + 9, y - 2, 4, 4);
+  ctx.globalAlpha = 0.62;
   ctx.fillStyle = 'rgba(189, 251, 255, 0.58)';
-  ctx.fillText('BRIDGE', startX + 31, y + 4);
+  ctx.fillText('PORTAL', startX + 31, y + 4);
 
   const tx = startX + 104;
   ctx.strokeStyle = '#bdfbff';
@@ -767,6 +774,6 @@ function drawSectorLegend(ctx: CanvasRenderingContext2D): void {
 
   ctx.globalAlpha = 0.42;
   ctx.textAlign = 'right';
-  ctx.fillText('BRIDGES GATE // TELEPORTS PAIR // LIFT CYCLES', MAP_W - 26, y + 4);
+  ctx.fillText('PORTALS HOP // TELEPORTS PAIR // LIFT CYCLES', MAP_W - 26, y + 4);
   ctx.restore();
 }

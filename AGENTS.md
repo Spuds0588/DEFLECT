@@ -255,7 +255,7 @@ same definition. The room host selects one and sends the id in `START`; snapshot
 Do not reintroduce a global `PILLARS` constant or branch collision on map names. New arenas are content
 entries, not new systems.
 
-**Arena flow reads left to right (2026-11-03).** Enter a plate on its left side and leave on its right wherever the layout allows; vertical links are the exception, not the default. QUARANTINE's intake bridge used to land on top of the holding plate, which is exactly where the sealed cell block sits, so a body arrived behind the powered bars in a 16-unit strip and could not reach the room at all. The block now sits back-right through `holdingCellLayout`, the intake deck lands on the open left, and the holding-to-mainboard deck joins in front of the cells. Painted bars and bar collision both read that one layout, so they cannot drift apart; `.tmp/holding-layout-check.ts` asserts the landing is left of the block and the exit doorway is in front of it. **Plate inventory (2026-11-03):** only QUARANTINE and CAPCOM are plate arenas. QUARANTINE is checked left-to-right by `.tmp/plate-flow-check.ts` (entry plate intake, exit plate router, three decks, every landing on open floor). Two deliberate non-left-to-right routes are recorded in that check: CAPCOM is a four-plate ring with every deck open by design, so it has no single exit, and TRANSIT is a chasm arena crossed by pads in the west and lifts in the east. Adding a plate arena means adding it to `plate-flow-check`, not just drawing it. `rooms`, `bridges` and `port` are tutorial presentation data, not a second traversal system. **Ingress ports must stand clear of cover (2026-11-03):** a port is an arena `ingress` entry and its square must not overlap a `pillars` rect, or no ranged line reaches it and the port sweep can never be completed. QUARANTINE shipped two ports inside pillars and BUILD ROOT was unwinnable because of it. `spawnCampaignPorts` nudges a buried port to the nearest clear square, but content is expected to place them in the open; keep new ports clear of cover and re-check with `.tmp/port-sweep-check.ts`. Rooms only
+**Arena flow reads left to right (revised 2026-11-04).** Enter a plate on its left side and leave on its right wherever the layout allows; vertical links are the exception, not the default. QUARANTINE is one continuous device floor now: its four rooms are painted plates, so the holding block is a local barrier rather than an island gate. The block still sits back-right through `holdingCellLayout`; the open left side and the front stay walkable. Painted bars and bar collision both read that one layout, so they cannot drift apart; `.tmp/holding-layout-check.ts` asserts the entry is left of the block and the front is reachable. **Plate inventory (2026-11-04):** only CAPCOM is a plate arena. QUARANTINE is checked as a single-floor device by `.tmp/plate-flow-check.ts` (entry spawn intake, party port router, no decks). Two deliberate non-left-to-right routes are recorded in that check: CAPCOM is a four-plate ring with every deck open by design, so it has no single exit, and TRANSIT is a chasm arena crossed by pads in the west and lifts in the east. Adding a plate arena means adding it to `plate-flow-check`, not just drawing it. `rooms` and `port` are tutorial presentation data; `bridges` on a plate arena are always-open floor, never a progression gate. **Ingress ports must stand clear of cover (2026-11-03):** a port is an arena `ingress` entry and its square must not overlap a `pillars` rect, or no ranged line reaches it and the port sweep can never be completed. QUARANTINE shipped two ports inside pillars and BUILD ROOT was unwinnable because of it. `spawnCampaignPorts` nudges a buried port to the nearest clear square, but content is expected to place them in the open; keep new ports clear of cover and re-check with `.tmp/port-sweep-check.ts`. Rooms only
 draw floor plates, labels and dressing; the matching `traverse.chasms` are the body blockers and the
 `traverse.bridges` are the walkable spans. A room arena stays local-only (`isOnlineArena` skips `rooms`)
 and never enters host/guest room selection. See D41.
@@ -582,7 +582,7 @@ columns align; never move the logo to `--ui`, because a proportional face breaks
 ### D13 — Sector campaign is an authored graph, blueprint first (decided 2026-10-29)
 The five-sector campaign is data, not a branch of `World`. `src/game/sectors.ts` owns the sector records,
 arena nodes, and links between them. A node names its prototype blockout with an existing `arenaId`; the
-link is a `bridge`, a paired `teleport`, or a shared `elevator`. Boss nodes carry the sector gate.
+link is a `portal`, a paired `teleport`, or a shared `elevator`. Boss nodes carry the sector gate.
 
 - The blueprint archive is **blueprint only** and is currently parked with no menu entry while the story
   flow is built. It may draw the topology and describe the fiction, but it must not start a match, enter a
@@ -754,8 +754,8 @@ All numbers live in `tuning/programs.json` under `KABOOM`.
 
 ### D17 — First campaign node: BUILD ROOT; REBOOT parked (built 2026-10-30)
 
-The campaign's live level is `BUILD ROOT` on `QUARANTINE` (`src/game/campaign.ts`); `REBOOT` on `GRID ZERO`
-is authored but marked `playable: false` until the next route segment ships. They run in a
+The campaign's live route is `BUILD ROOT` on `QUARANTINE` and `REBOOT` on `GRID ZERO`
+(`src/game/campaign.ts`); the remaining blueprint nodes stay parked until later segments ship. They run in a
 `World('gauntlet')` with `campaign = true`, so it reuses the threat simulation and stays local-only; the
 mode string stays `gauntlet` so no threat branch forks. The script lives in `World`, not in `main.ts`.
 
@@ -765,7 +765,7 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
   who ignores the prompt cannot soft-lock the node), on a node without an intro after
   `CALIBRATION.wakeDelay` (6 s), inside `CALIBRATION.wakeRadius`, or on the first hit; killing them while
   dormant is deliberately not allowed, because the eye opening is the lesson. The class forms two columns
-  in the holding office's lower half, leaving the centre lane for the bridge entry. Waking also hides the
+  in the holding office's lower half, leaving the centre lane open. Waking also hides the
   three holding civilians, marks their loss with a short burst, and starts `CALIBRATION_SKILL_TUTORIAL`:
   tap the skill while wave 1 is live. A dormant shape is plain geometry; awake, it
   carries a small red eye and each primary owns one attack: the circle dashes and bounces off walls and
@@ -1910,24 +1910,22 @@ coordinates, page cards or hit masks; they can drift or bloat the packet.
 
 ### D41 — QUARANTINE is the connected tutorial level (built 2026-11-01)
 
-`BUILD ROOT` now opens on `QUARANTINE` (arena id 14), one local-only arena with four authored rooms and
-three bridge crossings: the circular **INTAKE** office, the square **HOLDING** office with a three-cell
-block, the **MAINBOARD** rectangle, and the larger **ROUTER** room ending at a **NETWORK PORT**. This is
-one continuous level, not four campaign nodes; the camera and lesson follow the player across the bridges
-without a separate transition system.
+`BUILD ROOT` opens on `QUARANTINE` (arena id 14), one local-only arena with four authored rooms on one
+continuous floor: the circular **INTAKE** office, the square **HOLDING** office with a three-cell block,
+the **MAINBOARD** rectangle, and the larger **ROUTER** room ending at a **NETWORK PORT**. This is one
+device, not four campaign nodes and not four islands; the camera and lesson follow the player room to room
+without a bridge or a separate transition system.
 
-- `ArenaDef.rooms` (shape, theme, label, sub) and `ArenaDef.bridges` are presentation data.
-  `traverse.chasms` owns the body blockers: the floor between rooms is split above and below each deck,
-  so the bridge is the only crossing for bodies; shots and beams still cross the gap. Do not add room
+- `ArenaDef.rooms` (shape, theme, label, sub) are presentation data. There is no `traverse` record and no
+  bridge gate on this arena: the holding cell block is the only local body barrier. Do not add room
   collision to `World` or the guest predictor.
 - The room renderer (`drawTutorialRooms`) paints the circle/rect plates, intake carpet/lamp cones, holding
-  cell block and bars, mainboard traces/chip pads, router port banks/LEDs, bridge rails/data thread, and the
-  final port. `ROOM_THEME_COLORS` is shared with the picker preview. No `shadowBlur`, filters or per-frame
+  cell block and bars, mainboard traces/chip pads, router port banks/LEDs and the final port. `ROOM_THEME_COLORS` is shared with the picker preview. No `shadowBlur`, filters or per-frame
   gradients.
 - `BUILD ROOT` starts at spawn 6 in the intake circle. The Warden's move/dash/fire/lock/cycle/melee/
   reflect lesson runs there. `spawnCalibrationShapes` places the six dormant subjects in two columns in
-  the `holding` room's lower half when the arena has rooms, leaving the centre lane for the bridge entry.
-  The first crossing is the reveal. Keep the anchor generic; do not hard-code an arena id.
+  the `holding` room's lower half when the arena has rooms, leaving the centre lane open.
+  The walk into holding is the reveal. Keep the anchor generic; do not hard-code an arena id.
 - The holding room owns the scripted set piece: three civilian monitors (TICKET, PATCH, CACHE), three cells,
   and script_kitty in the middle cell. On wake the civilians are hidden and a short red/orange burst is
   emitted at each monitor anchor; any carried files drop. They remain decorative; no `Player` bodies, hits,
@@ -2379,11 +2377,10 @@ that is never solid and never damageable.
 them to the prop pool as `fixed` records, so the existing `damageProp` shot, lash and blast paths close
 them — do not add a second damage system or a second entity type. **Every damaging action closes a port**: ranged shots stop on it, the lash and guard chips it, each damaging skill (Toxic's spray and jet, Sweep's split brooms) and each damaging super (Probe's beam, Wedge's bracket and plow, Sweep's stroke, the charged dash) resolves against it too, gated by a per-port 0.3 s contact cooldown so a per-frame attack cannot delete one in two ticks. Health and cadence are tuned together and authored per port (BUILD ROOT: 20–26 hits, one emission every 2.6–3 s); a tough port that trickles threats is boring, a fragile one that floods is noise. `updatePortals` runs the emission clock
 and the 0.9 s collapse, the families reuse `spawnSentry`/`spawnVirus`/`spawnWorm` and respect the live
-caps, and a port's `bridge` index releases that deck only once every port sharing it is closed. Closing
-all of them pushes the white exit port onto the uplink and hands the story box to
+caps, and closing all of them pushes the white exit port onto the uplink and hands the story box to
 `KITTY_UPLINK_TUTORIAL`; walking into the exit clears the node, so live threats never hold a finished
-level open. The level still opens populated: `seedAssaultFloor` posts a capped squad on every plate and
-the ports add to it. INFECTION still seeds through `setupInfection` and `spawnVirusCluster`; routing that
+level open. The level still opens populated: `seedAssaultFloor` posts a capped squad on every plate, or
+in every painted room on a flat device, and the ports add to it. INFECTION still seeds through `setupInfection` and `spawnVirusCluster`; routing that
 flood through ports is open work behind the same data.
 
 - The clear condition replaces the bare kill count. `CAMPAIGN.killsToClear` (`tuning/campaign.json`, 10) and
@@ -2407,22 +2404,35 @@ never becomes a menu, an HUD dump or a gameplay gate.
 - Keep a port's footprint readable at play size, like the SMART WATCH hand and the laptop cards; a source the
 nav grid cannot represent lets bots stand inside it and turns the objective into a hidden trap.
 
-### D59 — Plate floors and earned bridges (decided 2026-11-02, built v0.1.125)
+### D59 — Island hops replace bridges (revised 2026-11-04, built v0.1.179)
 
-An arena can declare `islands: Rect[]`. When it does, the plates are the **only** floor: there is no
-arena-wide rectangle underneath, the gap is a real drop, and a body carried over an edge falls and
-de-rezzes exactly as it would off an open-lip arena. Do not paint plates on top of a shared floor again —
-that was the first BUILD ROOT, and it read as one big rectangle with room outlines drawn on it.
+A campaign level is **one arena in an ordered route**. Clearing it opens script_kitty's portal and drops
+the party on the next device. There are no bridge decks between islands, no `closed` decks, no
+`World.openBridge`, no `bridgeOpen`/`bridgeMask`, and no port that releases a bridge. Do not reintroduce a
+spatial connector as a progression gate; the hop is the connector.
 
-- Every plate needs a `rooms` entry with the same rect, so its theme, label and dressing follow it. Spawns,
-  cover, props and ports must sit on a plate; `.tmp/islands-ports-check.ts` asserts it and fails the probe
-  otherwise.
-- Crossings are `bridges`. A deck with `closed: true` is a body barrier **and** a dash blocker until
-  `World.openBridge(i)` extends it; `bridgeMask` is what the renderer reads. Author gaps wider than a dash
-  so a shut deck cannot be skipped, and release a deck on a milestone the player caused (a cleared block,
-  a closed port), never on a timer alone.
-- Off a plate is a death, not a reset. That is the price of real islands: keep spawns and tutorial beats
-  away from the rims instead of adding safety rails the level does not earn.
+- `QUARANTINE` is one continuous device floor. Its four rooms are painted plates with their own furniture
+  and labels, not islands: a body can walk from intake to holding to the mainboard to the router, and the
+  sealed cell block is the only local barrier. The player never has to earn a deck before the exit.
+- An arena may still author `islands` and open `bridges` for a plate floor (CAPCOM, and `traverse.bridges`
+  on TRANSIT). Those decks are **floor, always walkable**, never a gate: a deck is a way across a device,
+  not a way between devices. A new campaign node should not use them for progression.
+- The three BUILD ROOT ingress ports are now the whole gate: close all three and the white party port
+  opens. `closePort` increments `portsClosed` and calls `openCampaignExit`; it must not look up a bridge
+  index. `.tmp/plate-flow-check.ts` checks the flat floor, `.tmp/port-sweep-check.ts` clears it, and
+  `.tmp/islands-ports-check.ts` covers the port and replicator contract.
+- Campaign clears save the slot and **auto-hop** to the next node after the clear beat. There is no
+  `NEXT ARENA` menu between devices; only the final node parks on a result overlay. A failed node still
+  parks on RETRY/SLOTS.
+- Every round-based mode (`bots`, `local`, `host`) hops too: the round-end portal opens at the arena centre,
+  `World.tickRoundHopPull` drags every standing body into it, and the main thread rebuilds the world on the
+  next arena while carrying scores and the next round. The host broadcasts `MSG.HOP`; a guest rebuilds its
+  `NetView` from that message and never chooses an arena itself. Campaign and match hops share the
+  renderer's square portal wipe (`beginPortalHop`).
+- The wipe is presentation only. It must not gate input, change `Snapshot`, or become a second round clock;
+  `World` owns the pull and the round state, the renderer owns the closing square.
+- Off a plate is still a death on arenas that author `islands`; keep spawns away from rims. On the flat
+  campaign floor there is no rim to fall from.
 
 ### D60 — Replicators are the second ingress (decided 2026-11-02, built v0.1.127)
 
@@ -3186,7 +3196,8 @@ port objective (per-port hp, collapse timer, distance, tally, exit readiness, st
 
 ### Campaign objectives must stand on reachable floor (2026-11-03)
 
-BUILD ROOT's ingress ports were authored on the far side of the deck they release, so the objective was unwinnable and
-the pilot walked into the seam trying. Any campaign port, party port or objective fixture must be reachable from the
-player spawn with the arena's **initial** bridge state, and `.tmp/port-route-check.ts` proves it by flood-filling
-`offFloor` from spawn and measuring the nearest reachable cell to every ingress and party port. Current level 1: 0/0/0.
+BUILD ROOT's ingress ports were once authored on the far side of a retracted deck, so the objective was unwinnable.
+A flat device removes that whole failure mode: any campaign port, party port or objective fixture must be reachable
+from the player spawn with no gate to open, and `.tmp/port-route-check.ts` / `.tmp/exit-route-check.ts` prove it by
+flood-filling `offFloor` from spawn and measuring the nearest reachable cell to every ingress and party port.
+Current level 1: 0/0/0.

@@ -87,15 +87,13 @@ export function holdingCellLayout(room: ArenaRoomDef): HoldingCellLayout {
   };
 }
 
-/** A bridge deck spanning a tutorial chasm. The `traverse` record owns its collision. */
+/**
+ * A walkable deck across a plate arena's floor gap. A deck is always floor, never a
+ * progression gate: island-to-island travel is a script_kitty portal hop, so there is
+ * nothing to retract and no level milestone that can strand a body on the wrong plate.
+ */
 export interface ArenaBridgeDef extends Rect {
   label?: string;
-  /**
-   * Retracted at the start: the deck is a solid barrier until the level extends it.
-   * A bridge without this flag is walkable from the first frame. A retracted deck is
-   * still a dash blocker, so it cannot be crossed until it is earned.
-   */
-  closed?: boolean;
 }
 
 /**
@@ -134,8 +132,6 @@ export interface ArenaIngressDef {
   family: number;
   /** Seconds between emissions while open. */
   interval: number;
-  /** Bridge index extended once every port sharing this index has closed. */
-  bridge?: number;
 }
 
 /** One floating ordinary-program monitor in an arena. Decoration only; no body or collision. */
@@ -1442,7 +1438,7 @@ export interface ArenaDef {
   /**
    * Separate floor plates. When present the plates are the only walkable floor: the space
    * between them is a real drop, so a body carried over an edge falls and de-rezzes.
-   * Bridges are the crossings, and a `closed` bridge is a barrier until it extends.
+   * The open decks in `bridges` are the crossings; no deck ever starts retracted.
    */
   islands?: readonly Rect[];
   /** Enemy ingress ports for campaign and infection. Local content; out of Snapshot. */
@@ -1453,7 +1449,7 @@ export interface ArenaDef {
   traverse?: ArenaTraversalDef;
   /** Tutorial room floors and labels. Presentation only; never collision. */
   rooms?: readonly ArenaRoomDef[];
-  /** Tutorial bridge decks. The matching `traverse.bridges` entries are the walkable spans. */
+  /** Open decks across a plate arena's gaps. A deck is floor, never a locked gate. */
   bridges?: readonly ArenaBridgeDef[];
   /** The tutorial's outbound port, drawn on the final room's wall. */
   port?: ArenaPortDef;
@@ -2214,16 +2210,16 @@ const ARENAS_BASE: readonly ArenaDef[] = [
   {
     id: 14,
     name: 'QUARANTINE',
-    tagline: 'Intake, holding, mainboard, uplink. Four islands. One way out.',
+    tagline: 'Intake, holding, mainboard, uplink. One device. Kitty opens the way out.',
     hudLabel: 'ARENA // QUARANTINE',
     accent: '#ffcf6a',
     accentSoft: 'rgba(255, 207, 106, 0.32)',
     accentFaint: 'rgba(255, 207, 106, 0.032)',
     signature: 0,
     bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
-    // Four separate plates, one room each. Cover is furniture first: intake desks, the
-    // holding desk pair either side of the bridge aisle, board component banks and the
-    // router's port banks. Nothing crosses a gap except the three bridge decks.
+    // One continuous device floor. The four rooms are painted plates, not islands: no
+    // bridge has to be earned and no body can be stranded on the wrong side of a gate.
+    // Island-to-island travel is the campaign's script_kitty portal hop.
     pillars: [
       { x: 130, y: 130, w: 150, h: 56 },
       { x: 430, y: 130, w: 150, h: 56 },
@@ -2240,8 +2236,8 @@ const ARENAS_BASE: readonly ArenaDef[] = [
       { x: 1160, y: 330, w: 120, h: 60 },
       { x: 1720, y: 320, w: 100, h: 60 },
     ],
-    // All eight sit on the intake plate, clear of the desks. Spawn 6 is the campaign's
-    // opening slot: the Warden lesson runs here before the first bridge crossing.
+    // All eight sit in the intake room, clear of the desks. Spawn 6 is the campaign's
+    // opening slot: the Warden lesson runs here before the first portal hop.
     spawns: [
       { x: 300, y: 240 },
       { x: 180, y: 200 },
@@ -2294,35 +2290,17 @@ const ARENAS_BASE: readonly ArenaDef[] = [
         sub: 'PORT 03 // UPLINK',
       },
     ],
-    // A is the way in from intake, and it lands on the holding plate's open left side so
-    // the approach never drops a body behind the sealed cells. B joins the holding plate in
-    // front of the cell block, past its front wall, and starts retracted until the block is
-    // cleared; C stays shut until every port on the mainboard is closed.
-    bridges: [
-      { x: 140, y: 444, w: 150, h: 220, label: 'A' },
-      { x: 858, y: 862, w: 226, h: 138, label: 'B', closed: true },
-      { x: 1720, y: 444, w: 150, h: 220, label: 'C', closed: true },
-    ],
-    // Four plates over open void. There is no shared floor underneath: walking off an
-    // island is a drop, and the bridge decks are the only crossings. The gaps are wider
-    // than a dash, so a retracted deck cannot be skipped.
-    islands: [
-      { x: 48, y: 48, w: 810, h: 396 },
-      { x: 48, y: 664, w: 810, h: 382 },
-      { x: 1084, y: 664, w: 858, h: 382 },
-      { x: 1084, y: 48, w: 858, h: 396 },
-    ],
-    // Two open ports on the mainboard and one on the router. The mainboard pair extends
-    // bridge C; closing all three opens the white exit port on the router uplink. Every
-    // damaging action closes one, so the health is set to survive a couple of engages
-    // while the cadence keeps the plate busy: a port that is ignored refills the floor.
-    // Every port stands on open floor with a clear ranged line to at least three sides.
-    // Port A used to sit inside the mainboard's first pillar and the router port inside
-    // the router's first pillar: a body can never shoot what is buried in cover, so the
-    // sweep could not be completed at all. Keep new ports clear of `pillars`.
+    // Two open ports on the mainboard and one on the router. Closing all three opens the
+    // white party port on the router uplink; there is no bridge between them to release.
+    // Every damaging action closes one, so the health is set to survive a couple of
+    // engages while the cadence keeps the plate busy: a port that is ignored refills the
+    // floor. Every port stands on open floor with a clear ranged line to at least three
+    // sides. Port A used to sit inside the mainboard's first pillar and the router port
+    // inside the router's first pillar: a body can never shoot what is buried in cover,
+    // so the sweep could not be completed at all. Keep new ports clear of `pillars`.
     ingress: [
-      { x: 1330, y: 900, size: 78, hp: 20, family: 0, interval: 2.6, bridge: 2 },
-      { x: 1780, y: 940, size: 78, hp: 20, family: 1, interval: 3, bridge: 2 },
+      { x: 1330, y: 900, size: 78, hp: 20, family: 0, interval: 2.6 },
+      { x: 1780, y: 940, size: 78, hp: 20, family: 1, interval: 3 },
       { x: 1350, y: 230, size: 78, hp: 26, family: 0, interval: 2.8 },
     ],
     port: {
@@ -4637,8 +4615,8 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
   }
   ctx.globalAlpha = 1;
 
-  // Tutorial rooms are their own floor plates. The chasms and bridges drawn below cut
-  // between them, so the picker shows the same three-room route as the arena.
+  // Tutorial rooms are floor plates. Open decks drawn below connect any plate gaps, so
+  // the picker shows the same route as the arena.
   if (arena.rooms) {
     for (let i = 0; i < arena.rooms.length; i++) {
       const room = arena.rooms[i];
@@ -4948,15 +4926,15 @@ function scaleArena(base: ArenaDef, k: number): ArenaDef {
 /** Level 1's floor is authored at 1.5x: the plates were reading as small rooms. */
 /** Build Root's ingress ports stand on floor a body can reach while bridge 2 is shut. */
 const BUILD_ROOT_PORTS: readonly ArenaIngressDef[] = [
-  { x: 49, y: 1031, size: 117, hp: 20, family: 0, interval: 2.6, bridge: 2 },
-  { x: 529, y: 839, size: 117, hp: 20, family: 1, interval: 3, bridge: 2 },
-  { x: -303, y: 999, size: 117, hp: 26, family: 0, interval: 2.8, bridge: -1 },
+  { x: 49, y: 1031, size: 117, hp: 20, family: 0, interval: 2.6 },
+  { x: 529, y: 839, size: 117, hp: 20, family: 1, interval: 3 },
+  { x: -303, y: 999, size: 117, hp: 26, family: 0, interval: 2.8 },
 ];
 
 export const ARENAS: readonly ArenaDef[] = ARENAS_BASE.map((a) => {
   if (a.id !== 14) return a;
   const scaled = scaleArena(a, 1.5);
-  // The party port stays on the uplink plate right of the entry, per plate flow. It only has
-  // to be reachable once the exit opens, which is after bridge 2 releases.
+  // The party port stays on the uplink side right of the entry. It is reachable on the
+  // open floor once every ingress port closes; there is no bridge milestone in between.
   return { ...scaled, ingress: BUILD_ROOT_PORTS };
 });

@@ -143,8 +143,6 @@ export interface RenderState {
   campaignBannerDur?: number;
   /** 0 drill, 1 breach/inbound, 2 cleared, 3 failed, 4 calibration, 5 awake, 6 cell release. */
   campaignBannerKind?: number;
-  /** Extended bridge decks as a bitmask, one bit per `arena.bridges` entry. */
-  bridgeMask?: number;
   /** Enemy ingress ports closed, and how many the arena authored. */
   portsClosed?: number;
   portTotal?: number;
@@ -487,7 +485,6 @@ export class Renderer {
   private campaignBarsFlashT = 0;
   private campaignBarsOpen = false;
   private campaignActive = false;
-  private bridgeMask = 0;
   /** Local civilian monitors and their presentation-only flight/drop state. */
   private civilians: CivilianActor[] = [];
   private civilianArenaId = -1;
@@ -513,6 +510,9 @@ export class Renderer {
   private readonly carRouteScratch = { x: 0, y: 0 };
   private introT = INTRO_LEN;
   private introActive = false;
+  /** Island-hop portal wipe. Negative means idle; 0..0.9 is the closing/opening iris. */
+  private hopT = -1;
+  private hopLabel = '';
   private dustArena = -1;
   /** Per-slot trail used for the square dust a shove leaves behind. */
   private slideX = new Float32Array(MAX_PLAYERS);
@@ -581,6 +581,15 @@ export class Renderer {
     this.lowHpGradient = vignette;
   }
 
+  /**
+   * Island hop. The square mouth closes over the old arena, swaps it at the midpoint and
+   * opens over the new one. The label rides the covered frame so the hop has a source.
+   */
+  beginPortalHop(label = 'SCRIPT_KITTY // PORTAL'): void {
+    this.hopT = 0;
+    this.hopLabel = label;
+  }
+
   /** Console-to-arena load. Ground, cover, skeletons and rigs reveal in stages. */
   beginIntro(): void {
     this.introT = 0;
@@ -628,7 +637,6 @@ export class Renderer {
     this.campaignBarsFlashT = state.campaignBarsFlashT ?? 0;
     this.campaignBarsOpen = state.campaignBarsOpen === true;
     this.campaignActive = state.campaign === true;
-    this.bridgeMask = state.bridgeMask ?? 0;
     if (this.introActive) {
       this.introT += dt;
       if (this.introT >= INTRO_LEN) this.introActive = false;
@@ -757,6 +765,7 @@ export class Renderer {
         ctx.fillRect(0, 0, VIEW_W, VIEW_H);
         ctx.restore();
       }
+      if (state.phase === 'roundover' && state.mode === 'match') this.drawRoundHopPortal(state, t);
       this.drawTravelOverlay(state, view);
       ctx.restore();
     }
@@ -801,6 +810,84 @@ export class Renderer {
       this.drawReadinessDocks(state);
       if (this.showMinimap && !this.touchLayout) this.drawMinimap(state, t, this.localMask, this.localCount > 1);
     }
+    this.drawPortalHop(dt);
+  }
+
+  /** Full-screen island-hop wipe. Drawn in virtual screen space over every pane. */
+  private drawPortalHop(dt: number): void {
+    if (this.hopT < 0) return;
+    this.hopT += dt;
+    const len = 0.9;
+    if (this.hopT >= len) {
+      this.hopT = -1;
+      return;
+    }
+    const p = this.hopT / len;
+    // Close over the old arena by 45%, then open onto the new one.
+    const close = p < 0.45 ? p / 0.45 : 1 - (p - 0.45) / 0.55;
+    const ease = close * close * (3 - 2 * close);
+    const half = Math.max(10, (1 - ease) * 430 + 14);
+    const cx = VIEW_W * 0.5;
+    const cy = VIEW_H * 0.5;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#02050a';
+    ctx.fillRect(0, 0, VIEW_W, Math.max(0, cy - half));
+    ctx.fillRect(0, cy + half, VIEW_W, Math.max(0, VIEW_H - cy - half));
+    ctx.fillRect(0, cy - half, Math.max(0, cx - half), half * 2);
+    ctx.fillRect(cx + half, cy - half, Math.max(0, VIEW_W - cx - half), half * 2);
+    // Square mouth rim and the particles being pulled in.
+    ctx.globalAlpha = Math.min(1, 0.35 + close * 0.9);
+    ctx.strokeStyle = '#bff4ff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(cx - half, cy - half, half * 2, half * 2);
+    ctx.fillStyle = '#7fe6ff';
+    for (let k = 0; k < 14; k++) {
+      const a = k * 0.9 + p * 7;
+      const d = half + 14 + ((k * 37 + p * 400) % 90);
+      const size = 2 + (k % 3);
+      ctx.fillRect(cx + Math.cos(a) * d - size * 0.5, cy + Math.sin(a) * d - size * 0.5, size, size);
+    }
+    if (close > 0.45) {
+      ctx.globalAlpha = Math.min(1, (close - 0.45) * 2.4);
+      ctx.fillStyle = '#eafcff';
+      ctx.font = '600 15px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.hopLabel, cx, cy);
+    }
+    ctx.restore();
+  }
+
+  /** The white mouth that pulls every standing body to the middle of the round. */
+  private drawRoundHopPortal(state: RenderState, t: number): void {
+    const arena = state.arena;
+    const cx = (arena.bounds.left + arena.bounds.right) * 0.5;
+    const cy = (arena.bounds.top + arena.bounds.bottom) * 0.5;
+    const r = 54 + Math.sin(t * 3.1) * 6;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = 'rgba(234, 252, 255, 0.55)';
+    ctx.fillRect(cx - r - 26, cy - r - 26, (r + 26) * 2, (r + 26) * 2);
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#04121a';
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.strokeStyle = '#eafcff';
+    ctx.lineWidth = 5;
+    ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.globalAlpha = 0.7;
+    ctx.strokeStyle = '#9fe8ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = t * 1.4 + (i / 8) * Math.PI * 2;
+      ctx.moveTo(cx + Math.cos(a) * (r + 34), cy + Math.sin(a) * (r + 34));
+      ctx.lineTo(cx + Math.cos(a) * (r + 6), cy + Math.sin(a) * (r + 6));
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   /**
@@ -7437,58 +7524,12 @@ export class Renderer {
     if (bridges) {
       for (let i = 0; i < bridges.length; i++) {
         const bridge = bridges[i];
-        const open = (this.bridgeMask & (1 << i)) !== 0;
         const vertical = bridge.h > bridge.w;
         const x = bridge.x;
         const y = bridge.y;
         const w = bridge.w;
         const h = bridge.h;
         const label = bridge.label ? `LINK ${bridge.label}` : 'LINK';
-        if (!open) {
-          // Retracted: two short stubs off the plate edges and open dark between them.
-          // The deck is solid to the sim, so this must read as "not a way across yet".
-          const stub = 26;
-          ctx.save();
-          ctx.globalAlpha = alpha;
-          ctx.fillStyle = '#0c131b';
-          if (vertical) {
-            ctx.fillRect(x, y, w, stub);
-            ctx.fillRect(x, y + h - stub, w, stub);
-          } else {
-            ctx.fillRect(x, y, stub, h);
-            ctx.fillRect(x + w - stub, y, stub, h);
-          }
-          ctx.globalAlpha = 0.8 * alpha;
-          ctx.strokeStyle = arena.accent;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          if (vertical) {
-            ctx.moveTo(x, y + stub);
-            ctx.lineTo(x + w, y + stub);
-            ctx.moveTo(x, y + h - stub);
-            ctx.lineTo(x + w, y + h - stub);
-          } else {
-            ctx.moveTo(x + stub, y);
-            ctx.lineTo(x + stub, y + h);
-            ctx.moveTo(x + w - stub, y);
-            ctx.lineTo(x + w - stub, y + h);
-          }
-          ctx.stroke();
-          ctx.globalAlpha = 0.4 * alpha;
-          ctx.strokeStyle = 'rgba(150, 210, 235, 0.4)';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([7, 9]);
-          ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-          ctx.setLineDash([]);
-          ctx.globalAlpha = 0.6 * alpha;
-          ctx.fillStyle = arena.accent;
-          ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'alphabetic';
-          ctx.fillText(`${label} // SHUT`, x + w * 0.5, y - 7);
-          ctx.restore();
-          continue;
-        }
         ctx.save();
         ctx.beginPath();
         ctx.rect(x, y, w, h);

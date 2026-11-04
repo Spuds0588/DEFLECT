@@ -28,9 +28,8 @@ const DIRS: [number, number][] = [
   [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1],
 ];
 
-function buildFloor(arena: ArenaDef, isOpen: (i: number) => boolean) {
+function buildFloor(arena: ArenaDef) {
   const plates: Rect[] = [...(arena.islands ?? [])];
-  const decks: Rect[] = [...(arena.bridges ?? [])];
   const blocks: Rect[] = [...(arena.pillars ?? []), ...(arena.traverse?.chasms ?? [])];
   const room = arena.rooms?.find((r) => r.theme === 'holding');
   if (room) {
@@ -45,7 +44,6 @@ function buildFloor(arena: ArenaDef, isOpen: (i: number) => boolean) {
     if (x < b.left + 10 || x > b.right - 10 || y < b.top + 10 || y > b.bottom - 10) return false;
     let on = plates.length === 0;
     if (!on) for (const r of plates) if (inRect(r, x, y)) { on = true; break; }
-    if (!on) for (let i = 0; i < decks.length; i++) if (isOpen(i) && inRect(decks[i], x, y)) { on = true; break; }
     if (!on) return false;
     for (const r of blocks) if (inRect(r, x, y)) return false;
     return true;
@@ -184,7 +182,7 @@ function playLevel(level: CampaignLevel, run: number) {
       else { frames[i].mx = 0; frames[i].my = 0; frames[i].held = 0; frames[i].pressed = 0; }
     }
   };
-  const floor = buildFloor(arena, (i) => world.bridgeOpen[i] === true || arena.bridges?.[i]?.closed !== true);
+  const floor = buildFloor(arena);
   const p = world.players[0];
   const frames: any[] = new Array(MAX_PLAYERS).fill(null).map(() => ({ mx: 0, my: 0, held: 0, pressed: 0 }));
   let route: { x: number; y: number }[] | null = null;
@@ -215,7 +213,6 @@ function playLevel(level: CampaignLevel, run: number) {
       t: +(ticks * SIM_DT).toFixed(2), x: Math.round(p.x), y: Math.round(p.y),
       off, kx: Math.round(p.kx), ky: Math.round(p.ky), ft: +(p.fallT ?? 0).toFixed(2),
       hp: p.hp, phase: world.campaignPhase,
-      open: world.bridgeOpen.map((b) => (b ? 1 : 0)).join(''),
       dash: p.dashT ?? 0,
       mx: +frames[0].mx.toFixed(2), my: +frames[0].my.toFixed(2),
       held: frames[0].held, branch: (brain as any)?.steerBranch ?? '-',
@@ -459,7 +456,7 @@ function playLevel(level: CampaignLevel, run: number) {
         ports: `${world.portsClosed}/${world.portTotal}`, open: portals.length,
         kills: world.gauntletKills, hp: p.hp, x: Math.round(p.x), y: Math.round(p.y),
         route: route ? route.length : -1, aim: `${Math.round(aimX)},${Math.round(aimY)}`,
-        step: lastDir, refused, decks: world.bridgeOpen.map((o: boolean) => (o ? 1 : 0)).join(''),
+        step: lastDir, refused,
         heal: restore ? Math.round(restoreD) : -1,
         picks: (world.pickups ?? []).filter((k: any) => k.active).length,
       }));

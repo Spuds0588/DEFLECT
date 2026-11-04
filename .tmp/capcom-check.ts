@@ -52,7 +52,13 @@ const gapX = (islands[0].x + islands[0].w + islands[3].x) * 0.5;
 // Sample clear of deck C (160..300) and deck D (800..940): the first probe point
 // landed on a deck and read as floor, which is correct behaviour for a deck.
 if (!inVoid(gapX, islands[0].y + islands[0].h - 30)) fail('the gap between plates reads as floor');
-if (world.bridgeMask !== 0b1111) fail(`all four decks should start open, mask=${world.bridgeMask}`);
+// Decks are floor now, never a gate: no deck may appear in the body solver's solid list.
+const solids = (world as any).solids as Rect[];
+for (const b of bridges) {
+  if (solids.some((s) => s.x === b.x && s.y === b.y && s.w === b.w && s.h === b.h)) {
+    fail(`deck ${b.label} is a body blocker`);
+  }
+}
 for (const s of arena.spawns) if (inVoid(s.x, s.y)) fail(`spawn ${s.x},${s.y} is over the void`);
 for (const p of arena.pillars) {
   if (inVoid(p.x + p.w * 0.5, p.y + p.h * 0.5)) fail('a console floats over the void');

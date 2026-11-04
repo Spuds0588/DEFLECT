@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.178';
+const BUILD = '0.1.179';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -413,6 +413,13 @@ let lastCampaignPhase = '';
 let campaignMemory: number[] = new Array(MAX_PLAYERS).fill(0);
 /** Uncollected shards held at the last save point, restored on the next node. */
 let campaignShards: { x: number; y: number }[] = [];
+/** Island-hop transition: one portal wipe covers the arena swap. */
+let portalHopAction: (() => void) | null = null;
+let portalHopAt = 0;
+/** A campaign clear has already been scored and saved for this node. */
+let campaignClearHandled = false;
+/** Wall-clock time for the round-end hop; 0 when this round is not hopping. */
+let roundHopAt = 0;
 
 const touchControlsEl = el('touch-controls');
 const touchStickEl = el('touch-stick');
@@ -1644,10 +1651,11 @@ function resumeCampaign(index: number, save: StorySave): void {
   startCampaignLevel();
 }
 
-function startCampaignLevel(): void {
+function startCampaignLevel(viaPortal = false): void {
   if (busy) return;
   teardownSession();
   hideOverlayInternal();
+  campaignClearHandled = false;
   mode = 'campaign';
   localSlot = 0;
   stress = false;
@@ -1696,11 +1704,28 @@ function startCampaignLevel(): void {
   lastCampaignPhase = '';
   fx.reset();
   setScreen('game');
-  beginLoadSequence(`${level.name} // ${level.code}`);
+  // A portal hop is its own load screen: the wipe opens on the assembled arena instead
+  // of dropping the boot console over it. A fresh node from a menu still boots.
+  if (viaPortal) {
+    loading = false;
+    bootScreen.hidden = true;
+    bootScreen.classList.remove('active', 'leaving');
+    renderer.beginIntro();
+  } else {
+    beginLoadSequence(`${level.name} // ${level.code}`);
+  }
   audio.unlock();
   audio.startMusic();
   beginSessionLog();
-  console.log('[DEFLECT-STATE] Campaign node', level.name, 'drill bots', drill, 'friendly fire', friendlyFire ? 'on' : 'off');
+  console.log(
+    '[DEFLECT-STATE] Campaign node',
+    level.name,
+    'drill bots',
+    drill,
+    'friendly fire',
+    friendlyFire ? 'on' : 'off',
+    viaPortal ? 'VIA PORTAL' : '',
+  );
 }
 
 /** Back to the save-slot stage, abandoning the live node. */
@@ -2125,6 +2150,8 @@ function loop(now: number): void {
   }
 
   updateLoadSequence(now);
+  updateIslandHop(now);
+  updateRoundHop(now);
   if (screen === 'game' && !loading && overlayKind === 'none') applyInputAssist(localFrame);
 
   if (screen === 'game' && (world || guestView)) {
@@ -3805,6 +3832,10 @@ function joinRoom(): void {
       guestView.pushSnapshot(snap);
       handleRemoteEvents(snap.events);
     },
+    onHop: (arenaId) => {
+      if (guestNet !== net || !guestView) return;
+      beginIslandHop('SCRIPT_KITTY // HOP', () => startGuestHop(arenaId));
+    },
     onRematch: () => {
       if (guestNet !== net || !guestView) return;
       guestView.resetPrediction();
@@ -3852,6 +3883,24 @@ function startGuestGame(arenaId: number, gameMode = 0, seriesTotal = 1, gameNumb
   audio.startMusic();
   beginSessionLog();
   console.log('[DEFLECT-STATE] Guest', infectionRun ? 'infection' : 'match', 'start, slot', localSlot, arena.name);
+}
+
+function startGuestHop(arenaId: number): void {
+  if (!guestNet) return;
+  const arena = getArena(arenaId);
+  arenaIndex = arena.id;
+  guestView = new NetView(localSlot, arena, false);
+  guestView.names = namesFromLobby();
+  guestView.resetPrediction();
+  fx.reset();
+  hideOverlayInternal();
+  setScreen('game');
+  audio.startMusic();
+  lastPhase = '' as Phase;
+  lastRound = -1;
+  lastRoundWinner = -2;
+  lastMatchWinner = -2;
+  console.log('[DEFLECT-STATE] Guest hop to', arena.name);
 }
 
 function startHostMatch(): void {
@@ -4327,7 +4376,7 @@ function syncPhaseUi(state: RenderState): void {
       // Let the last de-rez and the empty arena sit for a beat before the buttons land.
       if (deathHoldUntil === 0) deathHoldUntil = performance.now() + DEATH_HOLD_MS;
       if (performance.now() >= deathHoldUntil) {
-        if (world.campaignPhase === 'cleared') showCampaignClearOverlay(world);
+        if (world.campaignPhase === 'cleared') handleCampaignClear(world);
         else showCampaignFailOverlay(world);
       }
     }
@@ -4348,8 +4397,10 @@ function syncPhaseUi(state: RenderState): void {
     state.matchWinner !== lastMatchWinner;
 
   if (phaseChanged) {
+    roundHopAt = 0;
     if (state.phase === 'roundover') {
       showRoundOverlay(state);
+      if (state.matchWinner < 0 && canHopRound()) roundHopAt = performance.now() + 900;
     } else if (state.phase === 'matchend') {
       showMatchOverlay(state);
     } else if (overlayKind === 'round' || overlayKind === 'match') {
@@ -4370,8 +4421,133 @@ function showRoundOverlay(state: RenderState): void {
   if (overlayKind === 'leave') return;
   const winner = state.roundWinner;
   const title = winner >= 0 ? `${nameOf(state, winner)} TAKES ROUND ${state.round}` : `ROUND ${state.round} DRAW`;
-  const sub = `${scoreLine(state)} // ${state.matchWinner >= 0 ? 'MATCH POINT SECURED' : `FIRST TO ${ROUND.winsNeeded}`}`;
+  const hop = state.matchWinner < 0 && canHopRound() ? ' // PORTAL OPENING' : '';
+  const sub = `${scoreLine(state)} // ${state.matchWinner >= 0 ? 'MATCH POINT SECURED' : `FIRST TO ${ROUND.winsNeeded}`}${hop}`;
   setOverlay('round', 'ROUND COMPLETE', title, sub, []);
+}
+
+/** Rounds that open a portal: everything round-based, never a solo run or a guest. */
+function canHopRound(): boolean {
+  if (attract || demo || stress || playtestActive || infectionRun) return false;
+  if (overlayKind === 'leave') return false;
+  if (mode !== 'bots' && mode !== 'local' && mode !== 'host') return false;
+  return !!world && world.phase === 'roundover';
+}
+
+/** Next arena in the island route. Online rooms skip local-only devices. */
+function nextHopArena(currentId: number, online: boolean): number {
+  const pool = online ? ARENAS.filter(isOnlineArena) : ARENAS.slice();
+  if (pool.length === 0) return currentId;
+  let at = pool.findIndex((a) => a.id === currentId);
+  if (at < 0) at = 0;
+  return pool[(at + 1) % pool.length].id;
+}
+
+/** Carry the scoreline and round number into the freshly built arena world. */
+function carryRoundInto(target: World, source: World): void {
+  target.round = source.round + 1;
+  target.roundWinner = -1;
+  target.matchWinner = -1;
+  for (let i = 0; i < MAX_PLAYERS; i++) target.players[i].score = source.players[i].score;
+  target.beginRound();
+  lastPhase = '' as Phase;
+  lastRound = -1;
+  lastRoundWinner = -2;
+  lastMatchWinner = -2;
+  hideOverlayInternal();
+  fx.reset();
+  setScreen('game');
+  audio.startMusic();
+}
+
+function rebuildLocalRound(arenaId: number, old: World): void {
+  const arena = getArena(arenaId);
+  const names = new Array(MAX_PLAYERS).fill('');
+  for (let i = 0; i < MAX_PLAYERS; i++) if (old.players[i].active) names[i] = old.players[i].name;
+  if (mode === 'bots') {
+    const count = Math.max(1, botCount);
+    world = new World('match', names, 0, arena, false, selectedProgram, count, botProgramList(count));
+    botInputs = new Array(MAX_PLAYERS);
+    for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
+    botBrains = new Array(MAX_PLAYERS).fill(null);
+    for (let i = 1; i <= count; i++) {
+      botBrains[i] = new BotBrain(i, botTier, i - 1, 0x51f15e + arena.id * 997 + i * 131);
+    }
+    if (autoplay) botBrains[0] = new BotBrain(0, botTier, 0, 0x51f15e + arena.id * 991 + 17);
+    else botInputs[0] = localFrame;
+    trainingInputs = botInputs;
+  } else {
+    world = new World('match', names, 0, arena, false, selectedProgram, 0, botProgramList(localSeats.maxSeats - 1));
+    botInputs = [];
+    botBrains = [];
+    localSeats.writeFrames(localFrame, localFrames);
+    trainingInputs = localFrames;
+    renderer.setLocalSlots(localSeats.slots());
+  }
+  arenaIndex = arena.id;
+  seriesLastArenaId = arena.id;
+  carryRoundInto(world, old);
+  console.log('[DEFLECT-STATE] Round hop to', arena.name, 'round', world.round);
+}
+
+function rebuildHostRound(arenaId: number, old: World): void {
+  if (!hostNet) return;
+  const arena = getArena(arenaId);
+  const state = hostNet.getLobbyState();
+  const names = new Array(MAX_PLAYERS).fill('');
+  for (let i = 0; i < MAX_PLAYERS; i++) if (old.players[i].active) names[i] = old.players[i].name;
+  for (let i = 0; i < state.players.length; i++) {
+    const p = state.players[i];
+    if (p.connected) names[p.slot] = p.name;
+  }
+  world = new World('match', names, 0, arena);
+  hostNet.inputs[0] = localFrame;
+  hostNet.hopArena(arena.id);
+  arenaIndex = arena.id;
+  seriesLastArenaId = arena.id;
+  carryRoundInto(world, old);
+  console.log('[DEFLECT-STATE] Host round hop to', arena.name, 'round', world.round);
+}
+
+function hopMatchRound(): void {
+  if (!world || !canHopRound()) return;
+  const old = world;
+  if (old.phase !== 'roundover' || old.matchWinner >= 0) return;
+  const arenaId = nextHopArena(old.arena.id, mode === 'host');
+  const label = `SCRIPT_KITTY // SUCKING OPERATORS // ${getArena(arenaId).name}`;
+  beginIslandHop(label, () => {
+    if (mode === 'host') rebuildHostRound(arenaId, old);
+    else rebuildLocalRound(arenaId, old);
+  });
+}
+
+/**
+ * One island hop. The wipe closes over the old arena, the action swaps it at the
+ * midpoint, and the opening half reveals the new device. Nothing queues behind it.
+ */
+function beginIslandHop(label: string, action: () => void): void {
+  if (portalHopAction) {
+    action();
+    return;
+  }
+  portalHopAction = action;
+  portalHopAt = performance.now();
+  roundHopAt = 0;
+  renderer.beginPortalHop(label);
+}
+
+function updateIslandHop(now: number): void {
+  if (!portalHopAction) return;
+  if (now - portalHopAt < 400) return;
+  const action = portalHopAction;
+  portalHopAction = null;
+  action();
+}
+
+function updateRoundHop(now: number): void {
+  if (roundHopAt === 0 || now < roundHopAt) return;
+  roundHopAt = 0;
+  hopMatchRound();
 }
 
 function showGauntletOverOverlay(state: RenderState): void {
@@ -4527,8 +4703,14 @@ function scoreCampaign(w: World): { score: number; clean: boolean } {
   return { score: Math.max(0, Math.round(score)), clean };
 }
 
-function showCampaignClearOverlay(w: World): void {
-  if (overlayKind === 'leave' || overlayKind === 'runover') return;
+/**
+ * A campaign node is one arena in the ordered island route. A clear saves the slot and
+ * immediately opens the next portal: there is no bridge and no result menu between
+ * devices. Only the final node parks on an overlay, because the route ends there.
+ */
+function handleCampaignClear(w: World): void {
+  if (overlayKind === 'leave' || overlayKind === 'runover' || campaignClearHandled) return;
+  campaignClearHandled = true;
   const { score, clean } = scoreCampaign(w);
   const cleared = PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex] ?? FIRST_CAMPAIGN_LEVEL;
   const next = PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex + 1] ?? null;
@@ -4558,32 +4740,27 @@ function showCampaignClearOverlay(w: World): void {
   } else if (campaignSlot >= 0) {
     bestLine = ` // BEST ${loadStorySlots()[campaignSlot]?.bestScore ?? score}`;
   }
-  const dataLine = w.dataTotal > 0 ? `DATA ${w.dataKept}/${w.dataTotal}` : 'NO DATA AT RISK';
-  const actions: OverlayAction[] = [];
   if (next) {
-    actions.push({
-      label: 'NEXT ARENA',
-      primary: true,
-      onClick: () => {
-        campaignLevelIndex += 1;
-        startCampaignLevel();
-      },
+    beginIslandHop(`SCRIPT_KITTY // PORTAL TO ${next.name}`, () => {
+      campaignLevelIndex += 1;
+      startCampaignLevel(true);
+      toast(`${cleared.name} SECURED // SCORE ${score}${clean ? ' // CLEAN SWEEP' : ''}`);
     });
-    actions.push({ label: 'REPLAY', onClick: startCampaignLevel });
-    actions.push({ label: 'SLOTS', onClick: returnToStory });
-  } else {
-    actions.push({ label: 'STORY SLOTS', primary: true, onClick: returnToStory });
-    actions.push({ label: 'REPLAY', onClick: startCampaignLevel });
+    return;
   }
+  const dataLine = w.dataTotal > 0 ? `DATA ${w.dataKept}/${w.dataTotal}` : 'NO DATA AT RISK';
   setOverlay(
     'runover',
-    complete ? `CAMPAIGN // LEVEL ${PLAYABLE_CAMPAIGN_LEVELS.length} CLEAR` : 'CAMPAIGN // NODE CLEARED',
-    complete ? 'MORE LEVELS COMING SOON' : `${cleared.name} SECURED`,
-    `${cleared.name} SECURED // ${w.gauntletKills} KILLS // ${formatGauntletTime(campaignPlaySeconds)} // ${w.campaignDamage} DAMAGE TAKEN // ${dataLine}${
-      clean ? ' // CLEAN SWEEP' : ''
-    } // SCORE ${score}${bestLine}${complete ? ' // PROGRESS SAVED' : ''}`,
+    `CAMPAIGN // LEVEL ${PLAYABLE_CAMPAIGN_LEVELS.length} CLEAR`,
+    'MORE LEVELS COMING SOON',
+    `${cleared.name} SECURED // ${w.gauntletKills} KILLS // ${formatGauntletTime(campaignPlaySeconds)} // ${
+      w.campaignDamage
+    } DAMAGE TAKEN // ${dataLine}${clean ? ' // CLEAN SWEEP' : ''} // SCORE ${score}${bestLine} // PROGRESS SAVED`,
     withSessionShare(
-      actions,
+      [
+        { label: 'STORY SLOTS', primary: true, onClick: returnToStory },
+        { label: 'REPLAY', onClick: () => startCampaignLevel() },
+      ],
       sessionResult('campaign-clear', { cleared: true, score, seconds: campaignPlaySeconds, kills: w.gauntletKills }),
     ),
   );

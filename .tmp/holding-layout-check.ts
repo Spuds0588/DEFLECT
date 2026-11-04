@@ -1,24 +1,101 @@
-/** Does the holding plate still admit a body from the intake bridge, clear of the cells? */
-import { ARENAS, holdingCellLayout } from '../src/game/arenas';
+/**
+ * QUARANTINE is one continuous device floor now. The holding room still has to admit a
+ * body from intake around the open side of the sealed cell block, and the party port
+ * has to be reachable by ordinary walking. No bridge milestone, no second floor.
+ */
+import { ARENAS, holdingCellLayout, type Rect } from '../src/game/arenas';
 import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
+import { MAX_PLAYERS } from '../src/game/config';
+import { World } from '../src/game/world';
 
 const level = PLAYABLE_CAMPAIGN_LEVELS[0];
 const arena = ARENAS.find((a) => a.id === level.arenaId)!;
-const room = arena.rooms!.find((r) => r.theme === 'holding')!;
-const cells = holdingCellLayout(room);
-const block = { x: cells.left, y: cells.top, w: cells.cellW * 3, h: cells.bottom - cells.top };
-const inside = (x: number, y: number) => x > block.x && x < block.x + block.w && y > block.y && y < block.y + block.h;
-const a = arena.bridges!.find((b) => b.label === 'A')!;
-const b = arena.bridges!.find((b) => b.label === 'B')!;
-const aLand = { x: a.x + a.w / 2, y: room.y + 24 };
-const bLand = { x: room.x + room.w - 30, y: b.y + b.h / 2 };
 const problems: string[] = [];
-if (inside(aLand.x, aLand.y)) problems.push(`intake bridge lands inside the cell block at ${aLand.x},${aLand.y}`);
-if (aLand.y > block.y && aLand.y < block.bottom) problems.push('intake landing is level with the cell block, not beside it');
-if (aLand.x > block.x) problems.push(`intake landing ${Math.round(aLand.x)} is not left of the block (${Math.round(block.x)})`);
-if (b.y < block.y + block.h) problems.push('holding->mainboard doorway starts behind the cell block front');
-if (inside(bLand.x, bLand.y)) problems.push('holding->mainboard doorway is inside the cell block');
-console.log(`cells x ${Math.round(block.x)}..${Math.round(block.x + block.w)} y ${Math.round(block.y)}..${Math.round(block.y + block.h)}`);
-console.log(`bridge A lands ${Math.round(aLand.x)},${Math.round(aLand.y)}; bridge B doorway ${Math.round(b.x)},${Math.round(b.y)}..${Math.round(b.y + b.h)}`);
-if (problems.length) { for (const p of problems) console.log('FAIL ' + p); process.exit(1); }
-console.log('holding-layout-check: OK (enter left of the cells, leave in front of them)');
+if (arena.islands) problems.push('QUARANTINE still declares islands');
+if (arena.bridges) problems.push('QUARANTINE still declares bridge decks');
+
+const room = arena.rooms?.find((r) => r.theme === 'holding');
+if (!room) throw new Error('QUARANTINE has no holding room');
+const cells = holdingCellLayout(room);
+const block: Rect = { x: cells.left, y: cells.top, w: cells.cellW * 3, h: cells.bottom - cells.top };
+
+const names = new Array<string>(MAX_PLAYERS).fill('');
+names[0] = 'INMATE';
+const world = new World(
+  'gauntlet',
+  names,
+  0,
+  arena,
+  false,
+  0,
+  0,
+  null,
+  true,
+  level.dataCrates,
+  false,
+  level.intro,
+  level.clearKills,
+  false,
+  level.boss ?? -1,
+  level.primitivesOnly === true,
+);
+
+const inside = (r: Rect, x: number, y: number) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h;
+const blocked: Rect[] = [...arena.pillars, block];
+const walkable = (x: number, y: number): boolean => {
+  const b = arena.bounds;
+  if (x <= b.left || x >= b.right || y <= b.top || y >= b.bottom) return false;
+  if ((world as any).offFloor(x, y)) return false;
+  for (let i = 0; i < blocked.length; i++) if (inside(blocked[i], x, y)) return false;
+  return true;
+};
+
+const step = 20;
+const key = (x: number, y: number) => `${Math.round(x)},${Math.round(y)}`;
+const start = arena.spawns[0];
+const seen = new Set<string>([key(start.x, start.y)]);
+const queue: [number, number][] = [[start.x, start.y]];
+while (queue.length) {
+  const [x, y] = queue.pop()!;
+  for (const [dx, dy] of [[step, 0], [-step, 0], [0, step], [0, -step]] as [number, number][]) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (!walkable(nx, ny)) continue;
+    const k = key(nx, ny);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    queue.push([nx, ny]);
+  }
+}
+const reach = (x: number, y: number): boolean => {
+  for (const k of seen) {
+    const [kx, ky] = k.split(',').map(Number);
+    if (Math.hypot(kx - x, ky - y) <= step) return true;
+  }
+  return false;
+};
+
+const frontY = Math.min(block.y + block.h + 40, room.y + room.h - 30);
+const left = { x: room.x + 40, y: frontY };
+const front = { x: block.x + block.w * 0.5, y: frontY };
+const port = arena.port;
+if (!reach(left.x, left.y)) problems.push('the open left side of the holding room is not reachable from spawn');
+if (!reach(front.x, front.y)) problems.push('the front of the cell block is not reachable from spawn');
+if (!port || !reach(port.x, port.y)) problems.push('the party port is not reachable from spawn');
+if (left.x >= block.x) problems.push('the holding entry point is not left of the cell block');
+
+console.log(
+  `flat floor: ${seen.size} cells // cells x ${Math.round(block.x)}..${Math.round(block.x + block.w)} y ${Math.round(
+    block.y,
+  )}..${Math.round(block.y + block.h)}`,
+);
+console.log(
+  `entry ${Math.round(left.x)},${Math.round(left.y)} // front ${Math.round(front.x)},${Math.round(
+    front.y,
+  )} // port ${port ? `${Math.round(port.x)},${Math.round(port.y)}` : 'none'}`,
+);
+if (problems.length) {
+  for (const p of problems) console.log('FAIL ' + p);
+  process.exit(1);
+}
+console.log('holding-layout-check: OK (one floor, enter left of the cells, leave in front, port reachable)');

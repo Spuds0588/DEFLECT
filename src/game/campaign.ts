@@ -1,10 +1,11 @@
 /**
  * Campaign runtime data for the first playable node.
  *
- * `SECTORS` owns the route graph and `saves.ts` owns the slots; this module is the
- * bridge between them and `World`. A level names the node, the arena blockout and the
- * sector it belongs to. The script itself (sparring drill, breach, threat assault) lives
- * in `World`; every tuning number lives in the `CAMPAIGN` block in `config.ts`.
+ * `SECTORS` owns the route graph and `saves.ts` owns the slots; this module links them
+ * to `World`. A level names the node, the arena blockout and the sector it belongs to.
+ * Levels are an ordered route: a clear opens script_kitty's portal to the next arena,
+ * never a bridge. The script itself (sparring drill, breach, threat assault) lives in
+ * `World`; every tuning number lives in the `CAMPAIGN` block in `config.ts`.
  */
 import { MINIBOSS } from './minibosses';
 import { PROP } from './types';

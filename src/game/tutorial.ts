@@ -239,7 +239,7 @@ export const WARDEN_TUTORIAL: readonly TutorialStep[] = [
     id: 'holding',
     speaker: 'WARDEN',
     line: 'THE SUBJECTS ARE STILL DORMANT. GET TO HOLDING. I WANT YOU TO SEE WHAT WAKES UP.',
-    prompt: 'CROSS THE BRIDGE TO HOLDING',
+    prompt: 'HEAD TO HOLDING',
     readTime: 4.2,
   },
 ];

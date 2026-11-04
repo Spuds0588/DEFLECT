@@ -160,7 +160,7 @@ in the hot path. Particles and projectile trails are pooled ring buffers.
 
 Content is data, not branches:
 
-- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), bridges, breakable props, pipe fixtures, moving keypad caps, USB drive geometry, satellite floor/solar/telescope/meteor/reentry data (host-synced online), rocket launch/telemetry data, weapon-console data, wall style and floor signature.
+- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), open decks, breakable props, pipe fixtures, moving keypad caps, USB drive geometry, satellite floor/solar/telescope/meteor/reentry data (host-synced online), rocket launch/telemetry data, weapon-console data, wall style and floor signature.
 - `src/game/sessionReport.ts` owns the opt-in session tracker and share text; `World` and `Snapshot` do not carry its state.
 - `src/game/programs.ts` holds the roster identity and kit tuning; the four action jobs branch in `World`.
 - `src/game/tuning/*.json` holds all gameplay numbers, re-exported through the typed facade in
@@ -186,19 +186,25 @@ charges, energy and cooldowns, and it keeps AI cost out of the physics loop.
 | Tuning | `src/game/tuning/*.json` |
 | Build tooling | `scripts/bench.ts`, `scripts/gen-icons.mjs` |
 
-### Campaign levels: plates and ports
+### Campaign levels: one device, one portal
 
-A campaign arena can declare separate floor plates (`ArenaDef.islands`). When it does, the plates are the
-only footing: the space between them is a real drop, `World.inVoid` reports a body there as falling, and
-`bridges` are the only crossings. A deck with `closed: true` is a solid barrier and a dash blocker until
-`World.openBridge` extends it on a milestone the player caused, so progression is spatial rather than a
-menu row. `QUARANTINE` is the first level built this way: four plates, two retracted decks.
+A campaign level is one arena in an ordered route, not a floor plan joined to the next. Clearing a node
+saves the slot, script_kitty opens a portal, and the party is dropped on the next device. There is no
+bridge between islands and no `NEXT ARENA` menu between devices; only the last node parks on a result
+overlay. `QUARANTINE` is one continuous floor: its four rooms are painted plates with their own furniture
+and labels, so the holding cell block is a local barrier rather than an island gate.
 
-Threats in these levels arrive through authored **ports** (`ArenaDef.ingress`): fixed, damageable squares
-that emit a threat family on a clock and stop when shot shut. Ports reuse the file-box damage path rather
-than a second entity type, respect the same live caps as a sentry pack, and release a bridge once the last
-one sharing it closes. Closing every port opens the white party port that ends the level. Ports are local
-content — campaign and infection only, never in a snapshot.
+Threats still arrive through authored **ports** (`ArenaDef.ingress`): fixed, damageable squares that emit
+a threat family on a clock and stop when shot shut. Ports reuse the file-box damage path rather than a
+second entity type, respect the same live caps as a sentry pack, and gate the exit directly: closing every
+port opens the white party port that ends the level. Ports are local content — campaign and infection only,
+never in a snapshot.
+
+Every round-based match hops the same way. When a round ends, a white portal opens at the arena centre and
+pulls every standing body in. Local and bot modes rebuild the `World` on the next arena, carrying scores and
+the round number; the host broadcasts `MSG.HOP` so guests rebuild their `NetView` on the same arena. The
+renderer's square portal wipe covers the swap. Open decks inside a plate arena are floor, never a
+progression gate.
 
 ## Performance on low-powered hardware
 

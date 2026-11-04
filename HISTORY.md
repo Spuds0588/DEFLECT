@@ -7312,3 +7312,44 @@ Mega Worm) are playable and live for the human pass.
 **Next:** a per-second exit trace on seed 5391916 (exit readiness, live portal count, distance to the prop,
 chosen steering branch) before any further structural change. Every ordering hypothesis tried so far is now
 measured out; the trace has to name the cause.
+
+## 2026-11-04 — Island hopping replaces bridges (v0.1.179)
+
+**Goal.** Remove the bridge progression model. A campaign level is one arena in an ordered route: clear it,
+script_kitty opens a portal, the party lands on the next device. Round-based modes use the same hop between
+rounds. No bridge deck, no earned gate, no plate seam to path around.
+
+**Changes.**
+- `QUARANTINE` is one continuous floor. The four rooms stay as painted plates; the holding cell block is
+  the only local barrier. `ArenaDef.islands`/`bridges` on this arena are gone.
+- Deleted the campaign bridge state: `ArenaBridgeDef.closed`, `ArenaIngressDef.bridge`,
+  `Prop.portalBridge`, `World.bridgeOpen`/`openBridge`/`bridgeMask`, and the closed-deck solver gates.
+  A deck on any remaining plate arena is always open floor; it is not a progression gate.
+- `closePort` now only increments the tally and opens the white party port at 3/3. The three BUILD ROOT
+  ingress ports are the whole gate; there is no bridge to release between them.
+- Flat-floor assault seed: `seedAssaultFloor` posts the opening squad in every painted room beyond intake
+  when the arena has no islands. The old code returned early, which would have emptied BUILD ROOT's assault.
+- Campaign clear: saves the slot and auto-hops through the portal. No `NEXT ARENA` menu between devices;
+  only the final node parks on a result overlay.
+- Round hop: `World.finishRound` starts the portal pull; `tickRoundHopPull` drags every standing body to the
+  arena centre. Main rebuilds the world on the next arena, carries scores and `round + 1`, and the host
+  broadcasts `MSG.HOP`; a guest rebuilds its `NetView` from that message. Applies to bots, local and host.
+- Renderer: `beginPortalHop` square iris/particle wipe covers the swap; a round-end white portal is drawn
+  at the arena centre. Screen-space only, no input gating.
+- Docs updated in the same change: AGENTS D59 (revised), D8/D17/D41/D58, README, GAME_GUIDE, CAMPAIGN, TODO.
+
+**Verification.**
+- `npx tsc --noEmit` 0; `npm run build` 0; `git diff --check` 0.
+- `npm run bench` 0: 8P 0.048 ms avg / 0.142 ms p99; 8P max proj 0.070 / 0.205; bot swarm 0.111 / 0.335;
+  gauntlet max 0.150 / 0.529.
+- Probes all 0: `plate-flow-check` (QUARANTINE one floor, spawn -> port 4; CAPCOM documented ring),
+  `holding-layout-check` (one floor, enter left, leave front, port reachable), `port-sweep-check` (3/3
+  ports closed in 12.0 s of fire, exit in 0.02 s, cleared), `port-route-check`, `exit-route-check`
+  (nearest floor to the party port 6), `islands-ports-check` (port gate + replicator contract),
+  `round-hop-check` (pull 432 -> 19, GRID ZERO -> CROSSROADS, round 2, score 2), `capcom-check`,
+  `campaign-rules-check`.
+- Headed Chromium, `?autoplay=3` on the dev build: Build 0.1.179; three live round hops:
+  CROSSROADS -> GRID ZERO (round 2) -> THE RING (round 3) -> SWITCHBACK (round 4).
+- Not tested: a two-client online hop (host `MSG.HOP`/guest rebuild is typechecked, not exercised), and a
+  headed campaign auto-hop from BUILD ROOT into REBOOT.
+- Production: pending Pages run for 0.1.179.

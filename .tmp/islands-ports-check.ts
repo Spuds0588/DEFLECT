@@ -1,12 +1,11 @@
 /**
- * QUARANTINE plate rebuild probe.
+ * QUARANTINE flat-floor campaign probe.
  *
- * Checks the four-plate floor (no shared rectangle under it), the three bridge decks
- * with two of them retracted, and the ingress ports: authored on the plates, damageable
- * through the ordinary prop path, releasing a bridge and finally the white exit port.
+ * The campaign device is one continuous floor now: rooms are painted plates, there are
+ * no island decks or retracted bridges, and the three ingress ports are the only gate to
+ * the white party port. Replicators still must not count as campaign ports.
  */
 import { ARENAS, arenaIndexById } from '../src/game/arenas';
-import { PLAYER } from '../src/game/config';
 import { CAMPAIGN_LEVELS } from '../src/game/campaign';
 import { World } from '../src/game/world';
 
@@ -14,44 +13,12 @@ const fail = (message: string): never => {
   throw new Error(message);
 };
 
-const index = arenaIndexById(14);
-const arena = ARENAS[index];
+const arena = ARENAS[arenaIndexById(14)];
 if (arena.name !== 'QUARANTINE') fail(`arena 14 is ${arena.name}`);
-const islands = arena.islands ?? fail('QUARANTINE has no islands');
-if (islands.length !== 4) fail(`expected 4 plates, got ${islands.length}`);
+if (arena.islands) fail('QUARANTINE still declares islands');
+if (arena.bridges) fail('QUARANTINE still declares bridge decks');
 const rooms = arena.rooms ?? fail('QUARANTINE has no rooms');
-if (rooms.length !== islands.length) fail('every plate needs one room dressing');
-const bridges = arena.bridges ?? fail('QUARANTINE has no bridges');
-
-// Each plate has to be bigger than the old floor plates it replaced and carry one room.
-for (let i = 0; i < islands.length; i++) {
-  const plate = islands[i];
-  const room = rooms[i];
-  if (room.x !== plate.x || room.y !== plate.y || room.w !== plate.w || room.h !== plate.h) {
-    fail(`room ${i} does not match its plate`);
-  }
-  if (plate.w * plate.h < 300_000) fail(`plate ${i} is only ${Math.round(plate.w * plate.h)} square units`);
-}
-
-// Plates must not touch each other: the gap is what makes them islands.
-for (let i = 0; i < islands.length; i++) {
-  for (let j = i + 1; j < islands.length; j++) {
-    const a = islands[i];
-    const b = islands[j];
-    const overlapX = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
-    const overlapY = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
-    if (overlapX > 0 && overlapY > 0) fail(`plates ${i} and ${j} overlap`);
-  }
-}
-
-// Bridge gaps must be wider than a dash, or a retracted deck is pointless.
-for (const bridge of bridges) {
-  const horizontal = bridge.h < bridge.w;
-  const span = horizontal ? bridge.w : bridge.h;
-  if (span < PLAYER.dashDistance + PLAYER.radius * 2) {
-    fail(`bridge ${bridge.label} spans ${span}, which a dash can clear`);
-  }
-}
+if (rooms.length !== 4) fail(`expected four painted rooms, got ${rooms.length}`);
 
 const level = CAMPAIGN_LEVELS[0];
 const world = new World(
@@ -72,28 +39,7 @@ const world = new World(
 
 const inVoid = (world as any).inVoid.bind(world) as (x: number, y: number) => boolean;
 
-// Every plate centre is floor; every gap centre is not.
-for (const plate of islands) {
-  if (inVoid(plate.x + plate.w * 0.5, plate.y + plate.h * 0.5)) fail('a plate centre reads as void');
-}
-const gapX = (islands[0].x + islands[0].w + islands[2].x) * 0.5;
-const gapY = islands[2].y + islands[2].h * 0.5;
-if (!inVoid(gapX, gapY)) fail('the gap between the left and right plates is floor');
-
-// Bridge A is the way in; B and C are retracted, and a retracted deck is solid.
-if (world.bridgeMask !== 1) fail(`only bridge A should start extended, mask=${world.bridgeMask}`);
-if (!inVoid(bridges[1].x + bridges[1].w * 0.5, bridges[1].y + bridges[1].h * 0.5)) {
-  fail('a retracted deck reads as walkable floor');
-}
-// The solver is rebuilt in place on a milestone, so read it fresh every time.
-const hasRect = (r: { x: number; y: number; w: number; h: number }): boolean =>
-  ((world as any).solids as { x: number; y: number; w: number; h: number }[]).some(
-    (s) => s.x === r.x && s.y === r.y && s.w === r.w && s.h === r.h,
-  );
-if (!hasRect(bridges[1])) fail('the retracted deck is not a body barrier');
-if (!hasRect(bridges[2])) fail('the retracted right deck is not a body barrier');
-
-// Spawns and cover have to sit on a plate, never over a gap.
+// The whole device is floor: spawns, cover and every room centre stay on it.
 for (const spawn of arena.spawns) {
   if (inVoid(spawn.x, spawn.y)) fail(`spawn ${spawn.x},${spawn.y} starts over the void`);
 }
@@ -101,6 +47,9 @@ for (const pillar of arena.pillars) {
   const cx = pillar.x + pillar.w * 0.5;
   const cy = pillar.y + pillar.h * 0.5;
   if (inVoid(cx, cy)) fail(`cover at ${cx},${cy} floats over the void`);
+}
+for (const room of rooms) {
+  if (inVoid(room.x + room.w * 0.5, room.y + room.h * 0.5)) fail(`room ${room.label} centre reads as void`);
 }
 
 // --- Ports ---------------------------------------------------------------------
@@ -112,7 +61,6 @@ for (const portal of portals) {
   if (portal.fixed !== true) fail('a port must be mounted, not loose debris');
 }
 
-// --- The level opens populated -------------------------------------------------
 const liveSentries = (): number => world.sentries.filter((s) => s.active).length;
 const liveViruses = (): number => world.viruses.filter((v) => v.active).length;
 for (const sentry of world.sentries) sentry.active = false;
@@ -134,24 +82,16 @@ openPort.portalT = 0;
 (world as any).updatePortals(0.02);
 if (liveSentries() <= before) fail('an open port emitted nothing');
 
+// Every port must close before the white party port opens. There is no bridge pacing
+// between them any more: the third closure is the gate.
 const damageProp = (world as any).damageProp.bind(world) as (b: any, n: number, x: number, y: number) => void;
-const boardPorts = portals.filter((p) => p.portalBridge === 2);
-if (boardPorts.length !== 2) fail(`expected two mainboard ports, got ${boardPorts.length}`);
-const routerPort = portals.find((p) => p.portalBridge !== 2) ?? fail('no router port');
+for (let i = 0; i < portals.length; i++) {
+  damageProp(portals[i], portals[i].hp, 0, 0);
+  if (i < portals.length - 1 && world.campaignExitReady) fail(`the exit opened with ${portals.length - 1 - i} ports standing`);
+}
+if (world.portsClosed !== 3) fail(`expected 3 closed ports, got ${world.portsClosed}`);
+if (!world.campaignExitReady) fail('the exit port did not open after all three ports closed');
 
-// Closing one of the board pair must not release the bridge on its own.
-damageProp(boardPorts[0], boardPorts[0].hp, 0, 0);
-if (world.portsClosed !== 1) fail('the port did not close');
-if (world.bridgeMask !== 1) fail('one board port released the bridge early');
-damageProp(boardPorts[0], 5, 0, 0);
-if (world.portsClosed !== 1) fail('a closing port kept taking damage');
-damageProp(boardPorts[1], boardPorts[1].hp, 0, 0);
-if (world.bridgeMask !== 5) fail(`both board ports should extend bridge C, mask=${world.bridgeMask}`);
-if (hasRect(bridges[2])) fail('the released deck is still a barrier');
-
-// All ports down: the white party port opens and kitty takes the story box.
-damageProp(routerPort, routerPort.hp, 0, 0);
-if (!world.campaignExitReady) fail('the exit port did not open');
 const exits = world.props.filter((p) => p.portalExit === true);
 if (exits.length !== 1) fail(`expected one white exit port, got ${exits.length}`);
 if (exits[0].fixed !== true) fail('the exit port must be mounted');
@@ -167,93 +107,6 @@ const held = liveSentries();
 closed.portalT = 0;
 (world as any).updatePortals(0.5);
 if (liveSentries() > held) fail('a closed port still emitted');
-
-// --- Every damaging action closes a port ---------------------------------------
-const mkPort = (x: number, y: number): any => {
-  const b = {
-    active: true,
-    kind: 0,
-    x: x - 30,
-    y: y - 30,
-    w: 60,
-    h: 60,
-    hp: 40,
-    hitFlash: 0,
-    dropT: 0,
-    vx: 0,
-    vy: 0,
-    tx: 0,
-    ty: 0,
-    fixed: true,
-    portal: true,
-    portalFamily: 0,
-    portalInterval: 99,
-    portalT: 99,
-    portalBridge: -1,
-    portalExit: false,
-    portalCloseT: 0,
-    portalMaxHp: 40,
-    portalHitCd: 0,
-  };
-  world.props.push(b);
-  return b;
-};
-const p0 = world.players[0];
-p0.x = 500;
-p0.y = 300;
-p0.active = true;
-p0.alive = true;
-p0.facing = 0;
-
-// Beam: Probe's super and the overcharge beam both resolve through this line pass.
-const beamPort = mkPort(700, 300);
-(world as any).damageBeamLine(0, p0.x, p0.y, 1, 0, 600, -1, -1);
-if (beamPort.hp >= 40) fail('the heavy beam did not damage a port');
-
-// Toxic cloud: the spray and the jet share this sink.
-const cloudPort = mkPort(560, 300);
-(world as any).damageGauntletInCloud(p0, 300, 3, false);
-if (cloudPort.hp >= 40) fail('the toxic cloud did not damage a port');
-
-// Wedge bracket.
-const bashPort = mkPort(620, 300);
-p0.bashFacing = 0;
-p0.bashHitPlayers = 0;
-p0.bashHitSentries = 0;
-p0.bashHitViruses = 0;
-p0.bashHitWorms = 0;
-p0.bashHitErrors = 0;
-(world as any).resolveBracket(p0);
-if (bashPort.hp >= 40) fail('the bracket did not damage a port');
-
-// Charged dash.
-const dashPort = mkPort(560, 300);
-p0.dashDirX = 1;
-p0.dashDirY = 0;
-p0.dashHitPlayers = 0;
-p0.dashHitSentries = 0;
-p0.dashHitViruses = 0;
-p0.dashHitWorms = 0;
-(world as any).resolveChargeDash(p0);
-if (dashPort.hp >= 40) fail('the charged dash did not damage a port');
-
-// Sweep's broom stroke.
-const broomPort = mkPort(560, 300);
-p0.broDur = 1;
-p0.broT = 0.5;
-p0.broDirX = 1;
-p0.broDirY = 0;
-p0.broX = 560;
-p0.broY = 300;
-p0.broS = 0;
-p0.broRevealT = 0;
-(world as any).resolveBroomSweep(p0);
-if (broomPort.hp >= 40) fail('the broom stroke did not damage a port');
-
-// A port does not take a second sustained hit inside the contact cooldown.
-const broomHeld = broomPort.hp;
-(world as any).resolveBroomSweep(p0);
-if (broomPort.hp !== broomHeld) fail('the contact cooldown did not gate the broom');
 
 // Standing in the open party port clears the node.
 world.players[0].x = exits[0].x + exits[0].w * 0.5;
@@ -271,8 +124,6 @@ const satWorld = new World('gauntlet', ['INMATE'], 0, satArena);
 const reps = satWorld.props.filter((p) => p.replicator === true);
 if (reps.length !== satArena.replicator.length) fail(`expected ${satArena.replicator.length} replicators, got ${reps.length}`);
 if (satWorld.portTotal !== 0) fail('a replicator must not count as a campaign port');
-// The emitter keeps copies 240 units from the player, so park the operator at the far
-// end: spawn clearance is not what this case is testing.
 satWorld.players[0].x = 640;
 satWorld.players[0].y = 1700;
 for (const s of satWorld.sentries) s.active = false;
@@ -287,4 +138,4 @@ reps[0].portalT = 0;
 (satWorld as any).updatePortals(0.5);
 if (satWorld.sentries.some((s) => s.active)) fail('a closed replicator kept printing');
 
-console.log('islands-ports-check: OK');
+console.log('islands-ports-check: OK (flat campaign floor, ports gate the exit, replicators stay separate)');

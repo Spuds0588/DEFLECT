@@ -201,13 +201,11 @@ export interface Prop {
   portalT?: number;
   /** Seconds between emissions while the port is open. */
   portalInterval?: number;
-  /** Bridge index this port releases once every port sharing it is closed (-1 = none). */
-  portalBridge?: number;
   /** The white party port: the level exit. It is not a target and takes no damage. */
   portalExit?: boolean;
   /**
    * A replicator rather than an open port: it prints one family and shares the port
-   * clock and damage path, but it releases no bridge and is not a campaign objective.
+   * clock and damage path, but it is not a campaign objective.
    */
   replicator?: boolean;
   /** Closing animation countdown. Above zero the port is dying and emits nothing. */

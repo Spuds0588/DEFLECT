@@ -1,9 +1,9 @@
 # CAMPAIGN // route blueprint
 
-Status: `BUILD ROOT` is playable; the rest of the route is still blueprint. `REBOOT` is authored but
-parked until the next segment ships.
+Status: `BUILD ROOT` and `REBOOT` are playable; the rest of the route is still blueprint. A clear opens
+script_kitty's portal straight into the next node, so the live devices form one continuous run.
 `SINGLE PLAYER > CAMPAIGN` is the story-mode entry: three local save slots first, then for a new run a bot
-count and player select. The run saves after every completed level via `src/game/saves.ts`; after the one
+count and player select. The run saves after every completed level via `src/game/saves.ts`; after the last
 live level the slot reports `MORE LEVELS COMING SOON`.
 Neither surface enters `World`, `Snapshot`, rooms, or the network. Any networked PvPvE run still needs its
 own protocol work.
@@ -75,9 +75,9 @@ retraining is the tutorial: it is where the run teaches movement, the four actio
 dashing. The existing BUILD ROOT beats (calibration subjects, drill squad, breach, assault) are the
 mechanics of the session; its fiction becomes the quarantine stop rather than a neutral sandbox.
 
-The opening blockout is **QUARANTINE**: one arena made of a round **INTAKE** office, a square **HOLDING**
-office with three jail cells, a rectangular **MAINBOARD**, and a larger **ROUTER** rectangle, linked by
-three bridge decks. The holding floor is staffed by floating CRT-monitor ordinary programs (TICKET, PATCH and
+The opening blockout is **QUARANTINE**: one continuous arena with a round **INTAKE** office, a square
+**HOLDING** office with three jail cells, a rectangular **MAINBOARD**, and a larger **ROUTER** rectangle.
+The rooms are painted plates, not islands; there is no bridge and no floor gap between them. The holding floor is staffed by floating CRT-monitor ordinary programs (TICKET, PATCH and
 CACHE); they are civilian dressing, not combatants, and are destroyed when the calibration class wakes.
 script_kitty waits behind the middle cell bars. The Warden's basic lesson runs in the intake; the six
 calibration subjects wake in holding as **wave 1** and carry the skill lesson. The sealed cell block is a
@@ -156,17 +156,17 @@ health, hitboxes or `InputFrame`s, or put them in `World`.
 ## One route, not a level select
 
 The campaign is a single internet route through device clusters. Each sector is one cluster: a dev
-sandbox, an office LAN, a home media network, a botnet, then the rival AI's data center. Bridges are the
-network paths between devices. Pads are direct links between paired machines. A lift is the shared bus
-inside one storage device. The route ends at `ROOT`, inside `THE SUCCESSOR`.
+sandbox, an office LAN, a home media network, a botnet, then the rival AI's data center. script_kitty's
+portal hops are the network paths between devices. Pads are direct links between paired machines. A lift
+is the shared bus inside one storage device. The route ends at `ROOT`, inside `THE SUCCESSOR`.
 
 The route blueprint is a review tool. In play, a player should not choose a sector from a menu. They
 push through the current cluster, find the uplink, and carry the route into the next system.
 
-The traversal grammar is now playable geometry. `ArenaDef.traverse` holds trenches, bridge decks, paired
-pads and linked lifts, and `TRANSIT` is the test arena that mixes all three. It is one continuous arena,
-not a node link yet: the campaign loader still has to decide how a bridge, pad or lift cut opens the next
-node. Nothing about this geometry enters `Snapshot`; the tests cover local play only.
+Local traversal is still playable geometry. `ArenaDef.traverse` holds trenches, open decks, paired pads
+and linked lifts, and `TRANSIT` is the test arena that mixes all three. It is one continuous arena, not a
+node link: the route itself is now a script_kitty portal hop. Nothing about this geometry enters
+`Snapshot`; the tests cover local play only.
 
 ## Where the archive lives
 
@@ -189,10 +189,10 @@ LOCALHOST --open web--> OFFICE LAN --smart TV--> CINEVAULT
 
 ## Run shape
 
-A sector is a small graph of arenas, not one open field. Players move between arena nodes through bridges,
-paired teleporter pads, or a lift. The graph carries the fiction and the pacing: a bridge is a held
-corridor, a pad is a fast rotation between objectives, and a gate is a fight that must be finished before
-the next edge opens.
+A sector is an ordered route of arenas, not one open field. Players move between nodes through script_kitty
+portals, paired teleporter pads, or a lift. The route carries the fiction and the pacing: a hop is a clean
+cut between devices, a pad is a fast rotation between objectives, and a gate is a fight that must be
+finished before the next portal opens.
 
 The five-sector arc starts in a local sandbox, escapes through a firewall, router, and modem, then travels
 the open web into the systems that will define the rest of the campaign. The player is always heading for
@@ -211,7 +211,7 @@ one destination, not collecting separate stages.
 | Element | Meaning | Traversal |
 | --- | --- | --- |
 | **Arena node** | One playable arena, one `ArenaDef` blockout | Entry and exit points connect to its links |
-| **Bridge** | Corridor or open connector | Walk through. Can be gated by a cleared encounter |
+| **Portal** | script_kitty hop between devices | Clear the node, step into the white port, arrive on the next device |
 | **Teleporter pad** | Paired point-to-point transfer | Stand on the pad, short transition, arrive on its pair |
 | **Lift** | Shared hub for several destinations | Choose a floor, move the whole local party |
 | **Gate** | A link that unlocks after a condition | Boss kill, switch break, or all side nodes cleared |
@@ -227,8 +227,8 @@ the same host-authoritative model as a match.
 `BUILD ROOT` forks to `UNIT TEST` or `DEP CACHE`. Both routes converge on `FIREWALL GATE`, then `ROUTER`,
 then `MODEM`. The router has a loopback pad back to the cache once the route is open.
 
-This is the tutorial sector. It teaches bridges, one optional branch, one pad, a boss gate, and the feeling
-of leaving a closed system. The firewall chamber should read as a machine room with a beam source and a
+This is the tutorial sector. It teaches portal hops, one optional branch, one pad, a boss gate, and the
+feeling of leaving a closed system. The firewall chamber should read as a machine room with a beam source and a
 breakable switch, not a plain corridor with a boss in it.
 
 Next sector: `MODEM` opens onto the web, and the web route lands in `OFFICE LAN`.
@@ -293,7 +293,7 @@ For every arena:
 3. **Cover.** Walls, desks, racks, platters, server cabinets, broken terrain. These are collision geometry,
    so draw them as solid shapes, not floor texture.
 4. **Entry and exit points.** Mark where players arrive and leave, and which link type connects them
-   (bridge, pad, lift). Pads need a pair, so name both ends.
+   (portal, pad, lift). Pads need a pair, so name both ends.
 5. **Spawn ring and ports.** Show where 1–4 players assemble. Mark every enemy port (a red square) with
    its footprint, which threats it emits and roughly how much damage closes it, plus the white entry and
    exit ports for the party. Enemies must not arrive anywhere that is not a port.
@@ -307,7 +307,7 @@ For every arena:
 For every link:
 
 - The two node names.
-- Bridge, pad, or lift.
+- Portal, pad, or lift.
 - Width in player diameters, and whether cover sits on the link.
 - What unlocks it: boss, switch, all desks, all disks, or nothing.
 
@@ -321,9 +321,9 @@ For every sector:
 ## Decisions needed before a playable slice
 
 1. **Scene transitions.** The scaffold assumes each arena is its own scene, with a short load or camera
-   cut on a bridge or pad. If you want one continuous map with no cuts, the runtime model changes.
+   cut on a portal or pad. If you want one continuous map with no cuts, the runtime model changes.
 2. **Party and wipe rules.** Shared lives, individual respawns, or a full-party wipe that resets the
-   current arena. This decides how hostile bridges can be.
+   current arena. This decides how hostile the hops can be.
 3. **PvP in PvPvE.** Can players damage each other everywhere, only in marked arenas, or only after the
    boss is engaged? The answer changes spawn placement and pad timing.
 4. **Boss scaling.** One boss for 1–4 players, or a different pattern count per party size. The local
@@ -337,7 +337,7 @@ For every sector:
 ## First implementation slice after the maps
 
 1. A local-only `SectorRuntime` that loads one arena node at a time and keeps party state between nodes.
-2. Bridge and pad transitions, with the same fade/assembly language as the level intro.
+2. Portal and pad transitions, with the same fade/assembly language as the level intro.
 3. One complete sector, `LOCALHOST`, with one boss and the modem exit.
 4. Gate and switch state in the local runtime only. No snapshot fields until networked PvE gets a
    protocol decision.

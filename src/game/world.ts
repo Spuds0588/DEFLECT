@@ -378,11 +378,6 @@ export class World {
   campaignBannerDur = 0;
   /** 0 drill, 1 breach/inbound, 2 cleared, 3 failed, 4 calibration, 5 awake, 6 cell release. */
   campaignBannerKind = 0;
-  /**
-   * Extended bridge decks, indexed like `arena.bridges`. A retracted deck is a solid
-   * barrier; the level extends it on a milestone. Local geometry state, never in a snapshot.
-   */
-  private bridgeOpen: boolean[] = [];
   /** Solver inputs kept apart from the removable gates and cell bars. */
   private baseSolids: readonly Rect[] = [];
   private baseDashSolids: readonly Rect[] = [];
@@ -410,6 +405,8 @@ export class World {
   roundTimer = 0;
   roundWinner = -1;
   matchWinner = -1;
+  /** Seconds into the round-end portal pull. Host-owned simulation state. */
+  private roundHopT = 0;
   localSlot: number;
 
   readonly events: GameEvent[];
@@ -841,11 +838,6 @@ export class World {
     this.baseSolids = staticSolids;
     this.baseDashSolids = [...arena.pillars, ...routeBarrierRects];
     this.campaignBarSolids = campaign ? campaignCellBarRects(arena) : [];
-    // A retracted deck is a barrier, not a route: it blocks a body and stops a dash until
-    // the level extends it. A deck without `closed` is walkable from the first frame.
-    const bridges = this.arena.bridges ?? [];
-    this.bridgeOpen = [];
-    for (let i = 0; i < bridges.length; i++) this.bridgeOpen.push(bridges[i].closed !== true);
     this.rebuildSolids();
     this.keypad = arena.keypad ?? null;
     this.keypadStates = new Uint8Array(this.keypad?.keys.length ?? 0);
@@ -1407,7 +1399,6 @@ export class World {
         portalInterval: p.interval,
         // Stagger the first emission so two ports never fire on the same frame.
         portalT: 1.4 + i * 0.9,
-        portalBridge: p.bridge ?? -1,
         portalExit: false,
         portalCloseT: 0,
         portalMaxHp: p.hp,
@@ -1480,7 +1471,6 @@ export class World {
         portalInterval: r.interval,
         // Give the player a beat before the first copy lands.
         portalT: 2.2 + i * 0.9,
-        portalBridge: -1,
         portalExit: false,
         portalCloseT: 0,
         portalMaxHp: r.hp,
@@ -1552,30 +1542,17 @@ export class World {
     this.emit(EV.PROP_HIT, 0, x, y, 1);
   }
 
-  /** A port reaches zero: close it, release its bridge, and open the exit when all are down. */
+  /** A port reaches zero: close it, and open the exit once every port is down. */
   private closePort(b: Prop, x: number, y: number): void {
     // 0.9 s of collapse, drawn by the renderer as the square sinking into its own frame.
     b.portalCloseT = 0.9;
     b.hp = 0;
     b.hazard = false;
     this.emit(EV.PROP_BREAK, 0, x, y, Math.max(b.w, b.h));
-    // A replicator is not a network port: it releases no bridge and never counts toward
-    // the campaign tally, so closing one cannot open the exit by itself.
+    // A replicator is not a network port: it never counts toward the campaign tally, so
+    // closing one cannot open the exit by itself.
     if (b.replicator) return;
     this.portsClosed++;
-    const bridge = b.portalBridge ?? -1;
-    if (bridge >= 0) {
-      // Only the last port sharing the bridge releases it, so a pair cannot open it early.
-      let pending = false;
-      for (let i = 0; i < this.props.length; i++) {
-        const other = this.props[i];
-        if (other === b || !other.portal || other.portalExit) continue;
-        // A port on the far side of the network must not hold this bridge shut.
-        if ((other.portalBridge ?? -1) !== bridge) continue;
-        if (other.active && (other.portalCloseT ?? 0) <= 0) pending = true;
-      }
-      if (!pending) this.openBridge(bridge);
-    }
     if (this.portsClosed >= this.portTotal) this.openCampaignExit();
   }
 
@@ -1632,12 +1609,25 @@ export class World {
    * on every plate beyond intake, and the ports keep adding to it until they close.
    */
   private seedAssaultFloor(): void {
+    // A plate arena posts a squad on every plate beyond intake. A flat device posts the
+    // same squad in every painted room beyond intake: the rooms are presentation, but
+    // they are still the level's authored beats and the right places to meet a squad.
+    const zones: { cx: number; cy: number }[] = [];
     const islands = this.arena.islands;
-    if (!islands) return;
-    for (let i = 1; i < islands.length; i++) {
-      const isle = islands[i];
-      const cx = isle.x + isle.w * 0.42;
-      const cy = isle.y + isle.h * 0.5;
+    if (islands) {
+      for (let i = 1; i < islands.length; i++) {
+        zones.push({ cx: islands[i].x + islands[i].w * 0.42, cy: islands[i].y + islands[i].h * 0.5 });
+      }
+    } else if (this.arena.rooms) {
+      for (let i = 1; i < this.arena.rooms.length; i++) {
+        const room = this.arena.rooms[i];
+        zones.push({ cx: room.x + room.w * 0.42, cy: room.y + room.h * 0.5 });
+      }
+    } else {
+      return;
+    }
+    for (let i = 0; i < zones.length; i++) {
+      const { cx, cy } = zones[i];
       // The live caps are the ceiling here too: the pre-placed squad may not push the
       // shooter count past the wave's limit, exactly like a pack drop.
       const sentries = this.sentryLiveCount();
@@ -1825,37 +1815,13 @@ export class World {
   }
 
   /**
-   * Rebuilds the body solver after a gate or the cell bars change. This runs on a
-   * milestone, not per tick, so the movement loop still reads one flat array.
+   * Rebuilds the body solver after the cell bars change. This runs on a milestone, not
+   * per tick, so the movement loop still reads one flat array. A walkable deck is part
+   * of the arena floor; it is never a gate and is never added here.
    */
   private rebuildSolids(): void {
-    const gates: Rect[] = [];
-    const bridges = this.arena.bridges ?? [];
-    for (let i = 0; i < bridges.length; i++) {
-      const b = bridges[i];
-      if (b.closed !== true || this.bridgeOpen[i]) continue;
-      gates.push({ x: b.x, y: b.y, w: b.w, h: b.h });
-    }
-    this.solids = [...this.baseSolids, ...this.campaignBarSolids, ...gates];
-    this.dashSolids = [...this.baseDashSolids, ...this.campaignBarSolids, ...gates];
-  }
-
-  /** Extends a bridge deck. Returns false when it is already open or the index is bad. */
-  openBridge(index: number): boolean {
-    if (index < 0 || index >= this.bridgeOpen.length) return false;
-    if (this.bridgeOpen[index]) return false;
-    this.bridgeOpen[index] = true;
-    this.rebuildSolids();
-    const b = this.arena.bridges?.[index];
-    if (b) this.emit(EV.PROP_BREAK, 0, b.x + b.w * 0.5, b.y + b.h * 0.5, 70);
-    return true;
-  }
-
-  /** Extended bridge decks as a bitmask for the renderer. */
-  get bridgeMask(): number {
-    let mask = 0;
-    for (let i = 0; i < this.bridgeOpen.length; i++) if (this.bridgeOpen[i]) mask |= 1 << i;
-    return mask;
+    this.solids = [...this.baseSolids, ...this.campaignBarSolids];
+    this.dashSolids = [...this.baseDashSolids, ...this.campaignBarSolids];
   }
 
   /** Six calibration subjects, two of each primary, laid out in front of the player. */
@@ -2657,8 +2623,7 @@ export class World {
         !this.campaignThreatsActive() &&
         (!this.tutorial || this.tutorial.done)
       ) {
-        // The cell block is down: the holding bridge extends and the board is next.
-        this.openBridge(1);
+        // The cell block is down and the drill begins on the same continuous floor.
         this.beginDrill();
       }
       return;
@@ -3140,6 +3105,7 @@ export class World {
     this.round = 1;
     this.matchWinner = -1;
     this.roundWinner = -1;
+    this.roundHopT = 0;
     this.beginRound();
   }
 
@@ -3193,6 +3159,7 @@ export class World {
   }
 
   beginRound(): void {
+    this.roundHopT = 0;
     this.clearCopyClones();
     this.clearAimMarks();
     if (this.keypad) this.resetKeypad();
@@ -3262,6 +3229,7 @@ export class World {
       }
       if (this.phase === 'roundover') {
         this.phaseTimer -= dt;
+        this.tickRoundHopPull(dt);
         if (this.phaseTimer <= 0) {
           if (this.matchWinner >= 0) {
             this.phase = 'matchend';
@@ -4245,12 +4213,39 @@ export class World {
     this.roundWinner = winnerSlot;
     this.phase = 'roundover';
     this.phaseTimer = ROUND.roundEndHold;
+    this.roundHopT = 0;
     if (winnerSlot >= 0) {
       const winner = this.players[winnerSlot];
       winner.score++;
       if (winner.score >= ROUND.winsNeeded) this.matchWinner = winnerSlot;
     }
     this.emit(EV.ROUND_END, winnerSlot, this.centerX, this.centerY, this.round);
+  }
+
+  /**
+   * Round-end island hop: the portal opens at the arena centre and drags every standing
+   * body into it. The host owns the pull; guests read the same positions from snapshots,
+   * and the next arena is built when the hop finishes. Positional only, no damage.
+   */
+  private tickRoundHopPull(dt: number): void {
+    if (this.mode !== 'match') return;
+    this.roundHopT += dt;
+    const k = Math.min(1, dt * (1.1 + this.roundHopT * 2.4));
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive) continue;
+      p.x += (this.centerX - p.x) * k;
+      p.y += (this.centerY - p.y) * k;
+      p.prevX = p.x;
+      p.prevY = p.y;
+      p.vx = 0;
+      p.vy = 0;
+      p.kx = 0;
+      p.ky = 0;
+      p.dashT = 0;
+      p.wedgeT = 0;
+      p.swingPhase = 0;
+    }
   }
 
   private tickSwing(p: Player, dt: number): void {
@@ -10648,7 +10643,8 @@ export class World {
     const islands = this.arena.islands;
     if (!islands) return false;
     // A plate arena has no floor between the plates. Off a plate a body is falling, and
-    // an extended bridge deck is the only other footing.
+    // an authored deck is the only other footing. Decks are always walkable: a bridge is
+    // floor, never a gate that a level has to open first.
     for (let i = 0; i < islands.length; i++) {
       const r = islands[i];
       if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return false;
@@ -10656,7 +10652,6 @@ export class World {
     const bridges = this.arena.bridges;
     if (bridges) {
       for (let i = 0; i < bridges.length; i++) {
-        if (!this.bridgeOpen[i]) continue;
         const b = bridges[i];
         if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return false;
       }

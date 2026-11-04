@@ -47,7 +47,49 @@ const problems: string[] = [];
 for (const arena of ARENAS) {
   const plates = plateOf(arena);
   const bridges = arena.bridges ?? [];
-  if (plates.length === 0 && !arena.traverse) continue;
+  if (plates.length === 0) {
+    if (!arena.rooms) continue;
+    // A campaign device is one continuous floor: its rooms are painted plates, and the
+    // route is a walk from the entry spawn to the party port, not a deck graph.
+    const tag = `${arena.id} ${arena.name}`;
+    if (bridges.length > 0) problems.push(`${tag}: single-floor device still declares bridge decks`);
+    const blocked: Rect[] = [...(arena.pillars ?? []), ...cellBlocks(arena)];
+    const b = arena.bounds;
+    const step = 24;
+    const key = (x: number, y: number) => `${Math.round(x)},${Math.round(y)}`;
+    const walk = (x: number, y: number) =>
+      x > b.left && x < b.right && y > b.top && y < b.bottom && !blocked.some((r) => inside(r, x, y));
+    const spawn = arena.spawns?.[0];
+    const port = arena.port;
+    if (!spawn || !port) {
+      problems.push(`${tag}: missing entry spawn or party port`);
+      continue;
+    }
+    const seen = new Set<string>([key(spawn.x, spawn.y)]);
+    const queue: [number, number][] = [[spawn.x, spawn.y]];
+    while (queue.length) {
+      const [x, y] = queue.pop()!;
+      for (const [dx, dy] of [[step, 0], [-step, 0], [0, step], [0, -step]] as [number, number][]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (!walk(nx, ny)) continue;
+        const k = key(nx, ny);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        queue.push([nx, ny]);
+      }
+    }
+    let nearest = Infinity;
+    for (const k of seen) {
+      const [x, y] = k.split(',').map(Number);
+      nearest = Math.min(nearest, Math.hypot(x - port.x, y - port.y));
+    }
+    if (nearest > 24) problems.push(`${tag}: party port is ${Math.round(nearest)} from the nearest walkable cell`);
+    if (port.x <= spawn.x) problems.push(`${tag}: party port is not right of the entry spawn`);
+    console.log(`${tag}: single floor, ${arena.rooms.length} rooms, spawn -> port ${Math.round(nearest)}`);
+    checked++;
+    continue;
+  }
   if (bridges.length === 0 && !arena.traverse) continue;
 
   const tag = `${arena.id} ${arena.name}`;

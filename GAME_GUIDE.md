@@ -179,17 +179,16 @@ run still drills against one instructor), survive a `SYSTEM BREACH` warning, the
 full when the assault starts: a squad is posted on every plate beyond intake, and two red **open ports**
 leak more onto the mainboard while a third feeds the router. Any attack that does damage closes a port —
 ranged shots, the lash, a damaging skill or a damaging super — so bring the whole kit. A port takes
-20–26 hits and leaks a threat every few seconds until it shuts, and a shut port stops feeding that plate
-for good. Closing both mainboard ports extends the bridge to the router; closing all
-three opens a **white party port** on the router uplink while script_kitty explains the infection was
-routed in from another network and the hop continues. Walk into the white port to clear the node. Enemies
-still alive do not block that exit, because closing the sources is the win.
+20–26 hits and leaks a threat every few seconds until it shuts, and a shut port stops feeding that room
+for good. Closing all three opens a **white party port** on the router uplink while script_kitty explains
+the infection was routed in from another network and the hop continues. Walk into the white port to clear
+the node. Enemies still alive do not block that exit, because closing the sources is the win.
 The clear reports
 kills, time, damage taken, data crates preserved and a score; losing no crates is a clean sweep and pays a
 bonus, and the best score and sweep count stay in the slot.
 
-Clearing writes the slot and advances the run. `BUILD ROOT` hands over to `REBOOT` on `GRID ZERO`: the cat
-gets you out of quarantine, four infected bodies are the run-up, and the **Mega Worm** arrives as the
+Clearing writes the slot and opens the portal. `BUILD ROOT` hops straight to `REBOOT` on `GRID ZERO`: the
+cat gets you out of quarantine, four infected bodies are the run-up, and the **Mega Worm** arrives as the
 level's final encounter. That node does not end on a kill count or a port sweep; it ends when the boss is
 dead. A completed `REBOOT` slot reports `MORE LEVELS COMING SOON`. A run is never saved mid-level.
 Everything before the assault is practice: if you fall off a plate or get caught during orientation or
@@ -326,14 +325,14 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `THE RING` | A hollow central box with a gate on each side. Close control fights and blind flanks. |
 | `SWITCHBACK` | Staggered bars form serpentine lanes. Long sightlines and heavy ricochets. |
 | `MAINFRAME` | A large multi-district map (four linked combat zones) with a camera that follows you. Cross lanes, pillar cover, a gate ring and a ricochet alley; fights move between districts. |
-| `TRANSIT` | Two decks over a service trench. Cross on the central bridge, ride the paired transporter pads, or take the lift on the east end. The trench blocks bodies but not shots; a dash can clear it, while solid cover still stops the body. |
+| `TRANSIT` | Two decks over a service trench. Cross on the central deck, ride the paired transporter pads, or take the lift on the east end. The trench blocks bodies but not shots; a dash can clear it, while solid cover still stops the body. |
 | `THE LEDGE` | No outer wall. The floor ends in a dashed lip over the void: a shove that carries a body over it kills, shots fall instead of ricocheting, and a pushed threat is a clear in the gauntlet. |
 | `RECYCLING BIN` | A trapezoid floor with no cover and a big hole in the bottom edge. A 130-unit compaction plate descends every 30 s, stops on the hole's rim and rides everything on the sides down to the ledges. Breakable file boxes are the only clutter, and they are light: shove them, launch them, bat them with a guard. The compactor clock and live boxes sync online. |
 | `DISK PLATTER` | A round platter with no outer wall. Nine holes turn with the disc, and a read arm sweeps across the face every 11.5 s, shoving anything it catches toward those holes or the rim. No cover: the floor and the arm are the whole fight. |
 | `KEYPAD` | The entire arena is a ten-key phone pad. There is no outside floor: spawns stand on the bezel. Each 680×528 key warns for 4 s, sinks for 1.2 s, holds as solid cover for 8 s, then rises for 1.6 s. A slam crushes threats instantly; a player caught under one loses three segments. Online: the key clock is synced and the host resolves the crush. |
 | `DOCUMENT SCANNER` | A large glass platen where documents load from a floor slot, a read line scans top to bottom, snaps back, and the sheet is replaced. Hop the line or dash over it. Online: the scan clock/page is synced and the host resolves the line. |
 | `BROWSER` | A browser window showing a forum. A giant cursor travels to the page link, hovers, and click-slams the floor before the forum navigates deeper and the cover layout changes. Online: the page/clock is synced and the host resolves the click. |
-| `QUARANTINE` | The campaign tutorial route: four separate floor plates over open void — intake (booking counter, desk cover, chains), holding (three jail cells), mainboard and router — linked by three bridge decks. Walking off a plate is a fall, and the gaps are wider than a dash. Two decks start retracted: the holding deck extends when the cell block is cleared and the router deck when both mainboard ports close. Red ingress ports sit on the mainboard and router; the router ends at a white party port. Local-only tutorial staging. |
+| `QUARANTINE` | The campaign tutorial device: one continuous floor with four painted rooms — intake (booking counter, desk cover, chains), holding (three jail cells), mainboard and router. There is no bridge and no floor gap between rooms; the sealed cell block is the only local barrier. Red ingress ports sit on the mainboard and router; closing all three opens the white party port on the router uplink. Clearing the node opens script_kitty's portal to the next device. Local-only tutorial staging. |
 | `USB HUB` | A round hub with four thumb-drive islands pushing out on a shared cycle. Only the hub and drives are floor; the gap grows to 230 units, so a dash can cross while the drives are travelling but not at full extension. While a drive extends, its current pushes outward; while it retracts, the current pulls inward, carrying players and threats off or onto the islands. Online: the drive clock is synced and the host resolves the ride. |
 | `SWIPE RIGHT` | A tall phone touchscreen showing a dating deck. Every 4.6 s the card swipes left or right and the whole floor slides 108 units that way, carrying every fighter and live shot toward the wall. A `YOU GOT A MATCH` popup rises from the center of the screen for a few seconds as real cover: it blocks bodies and shots, displaces anyone caught under it, then drops back into the floor. Online: the swipe and popup clocks are synced and the host owns the carry and collision. |
 | `ROCKET NAVIGATION` | A launch-control floor under a nav display. The rocket lifts from below the bottom lip while speed, altitude and trajectory count up. Its growing arc is a real barrier: a 24 s launch lays a continuous curved wall across the arena that bodies, dashes and shots cannot cross. The finished line splits the room for the rest of the round. Booster and fairing separation marks drift off the arc as presentation only. Local-only: the launch clock and barrier are not in the snapshot. |
@@ -365,21 +364,22 @@ toward a network port, a pad or lift, or a room farther from the fight. Three wo
 (violet, sleepy, two files). `PING`, the rose courier, is defined for later rooms. script_kitty keeps her
 cat face and sits in the middle holding cell.
 
-### Bridges, pads and lifts
+### Portals, pads and lifts
 
-`QUARANTINE` is the tutorial route built from four separate plates rather than a single open floor. The
-`INTAKE` plate is the Warden's lesson room, with a booking counter, desk blocks and chains; the `HOLDING`
-plate holds the six dormant calibration subjects and three jail cells; the `MAINBOARD` plate follows; the
-`ROUTER` plate is the approach to the network port.
-There is no floor between the plates: walking off an edge is a fall, and each bridge deck is the only
-walking route. Every gap is wider than a dash, so a shut deck cannot be skipped. Two decks start retracted
-and extend on a milestone — the holding deck when the cell block is cleared, the router deck when both
-mainboard ports close. The level clears when every red port is shut and you walk into the white party
-port, and enemies still alive do not block that exit. Room arenas are local-only and do not appear in
-online map rotation.
+`QUARANTINE` is the tutorial device: one continuous floor with four painted rooms. The `INTAKE` room is
+the Warden's lesson room, with a booking counter, desk blocks and chains; `HOLDING` holds the six dormant
+calibration subjects and three jail cells; `MAINBOARD` follows; `ROUTER` is the approach to the network
+port. There is no bridge between rooms and no floor gap to cross: the cell block is the only local
+barrier. Clearing every red port opens the white party port, and walking into it clears the node; the
+living enemies do not block that exit.
 
-Traversal is arena geometry, not a separate mode. A floor gap is solid to bodies, bots and gauntlet
-threats, while shots fly over it. The bridge is the only walking route across. Pads and lifts arm on a
+The clear saves the slot and opens script_kitty's portal straight to the next device. Every round-based
+match uses the same idea: when a round ends, a white portal opens at the arena centre, pulls every
+standing body in, and the next round starts on the next arena. Local and bot matches carry their scores;
+a host sends the hop to every guest. Room arenas are local-only and do not appear in online map rotation.
+
+Traversal is still arena geometry for the plate arenas. A floor gap is solid to bodies, bots and gauntlet
+threats, while shots fly over it. An open deck is the walking route across. Pads and lifts arm on a
 **standing** body, not on touch, so running through one does nothing; the ring around the avatar fills
 while the plate waits. A pad ride unloads the avatar layer by layer at the source, then rebuilds it at
 the mate, and the body cannot act or be hit while it is in transit. A lift ride is a longer screen

@@ -2,8 +2,21 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-Last updated: 2026-11-04 (EXIT-FRAME VARIANTS FALSIFIED)
-Formerly: 2026-11-03 (PORT GEOMETRY FIX)
+## Island hops (2026-11-04)
+
+- [x] Retire the campaign bridge system: no `closed` decks, `openBridge`, `bridgeMask` or `portalBridge`
+- [x] Flatten QUARANTINE into one continuous device floor; its four rooms are painted plates
+- [x] Ports gate the white party port directly; the third closure opens the exit, with no bridge pacing
+- [x] Seed the flat assault by painted room, so BUILD ROOT opens populated after the flatten
+- [x] Campaign clears auto-hop through script_kitty's portal, saving the slot before the cut
+- [x] Round-based modes hop: round-end pull, next-arena rebuild, carried scores/round, host `MSG.HOP`, guest `NetView` rebuild
+- [x] Square portal wipe in the renderer (`beginPortalHop`) covers the swap without gating input
+- [x] Probes: `plate-flow-check`, `holding-layout-check`, `port-sweep-check`, `port-route-check`, `exit-route-check`, `islands-ports-check`, `round-hop-check`
+- [x] Headed portal-hop pass on the dev build: `?autoplay=3` hopped CROSSROADS -> GRID ZERO -> THE RING -> SWITCHBACK across rounds 2-4
+- [ ] Headed campaign auto-hop and a published-build pass
+
+Last updated: 2026-11-04 (ISLAND HOPS)
+Formerly: 2026-11-04 (EXIT-FRAME VARIANTS FALSIFIED)
 Formerly: 2026-11-03 (CAMPAIGN PLAYTHROUGH PASS)
 Formerly: 2026-11-02 (BOSS SWEEP + CAMPAIGN LEVEL 2)
 Formerly: 2026-11-02 (PLATES + PORTS)
@@ -28,6 +41,10 @@ Formerly: 2026-11-02 (PLATES + PORTS)
 ---
 
 ## Campaign playthrough pass (2026-11-03)
+
+> Measurements below were taken on the retired QUARANTINE plate layout. v0.1.179 flattens the device, so
+> the exit-leg and plate-seam void falls no longer exist; these entries stay for the record, not as open
+> work.
 
 - [x] Headed Chromium runs of the live campaign surfaced a soft-lock: a body downed during
       `calibration`/`release`/`briefing`/`breach` set `respawnT` but only the `drill` branch ever ticked it, so
@@ -94,8 +111,8 @@ Formerly: 2026-11-02 (PLATES + PORTS)
 - [x] Exit leg routed through A* (`followPath`): 1 of 3 seeds clears at 299.2 s with 3/3 ports
 - [x] Four exit-leg variants measured and reverted (A* 1/3 @299 s, deck waypoint 1/3 @260 s, +hysteresis 0/3); every seed closes 3/3 ports
 - [x] Exit gate proven in code (`portsClosed >= portTotal` opens the prop); the race hypothesis was wrong
-- [ ] Monotone exit leg clears at 210.3 s on one seed and cycles on the plate/deck seam for two; seal that seam at floor level
-- [ ] 8-10 distinct VOID falls remain; seam overlap alone did not remove them
+- [x] Monotone exit leg clears at 210.3 s on one seed and cycles on the plate/deck seam for two (retired with the plate layout; the flat floor has no seam)
+- [x] 8-10 distinct VOID falls remain; seam overlap alone did not remove them (retired with the plate layout; port-sweep reaches the exit in 0.02 s)
 - [ ] Five void-fall events remain during scripted phases (respawn-covered, not zero) (measured with an inert slot 0, so re-baseline); BUILD ROOT assault stalls at ports 2/3 after a 10-kill quota, so the chain rarely reaches REBOOT. Port-objective branch in the pilot did not move the stall. Continuous REBOOT is 2/5; remaining deaths are a fodder worm trading at 55 units and head contact at ~153 during the punish window. Punish station moved off-axis and a 260 clearance added, yet head contact still lands at ~152, which is impossible for a flown pass. Trace `w.x/y`, `anchorX/Y`, `spawnT`, `entryT` for the two frames before contact: suspected staging teleport, not pilot tuning. Level 1 not re-measured (root cause: `fightBoss` was unreachable from `think()`'s early returns; now hoisted). Remaining: head contact at ~155 during the punish station; trace the 0.2 s before contact. Remaining: boss-head contact at ~155 when the launch catches the
   punish approach, and sentry fire at ~220 from beyond the 470 ring. Sampling is still not five distinct runs:
   runs 1 and 5 repeat because `fightBoss` ignores the per-run style. Boss must not be weakened
