@@ -925,6 +925,8 @@ export interface Worm {
   entryR: number;
   /** Mega Worm post-entry roar hold; drawn as a maw/ring beat. */
   roarT: number;
+  /** Index into the Mega Worm's fixed fly-by pattern; absent only before its first pass. */
+  megaPass?: number;
   /** Per-node health. Index 0 is the head, index k is segment k-1. */
   segHp: Float32Array;
   segMaxHp: Float32Array;

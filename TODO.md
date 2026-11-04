@@ -2,6 +2,19 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Campaign playtest fixes (2026-11-04, v0.1.181)
+
+- [x] INTAKE stages six dormant lock targets and no cover; the Warden lock/cycle step is completable
+- [x] All four QUARANTINE arenas use the full `48,48 -> 1942,1046` playfield
+- [x] HOLDING wakes its six subjects on `CALIBRATION.wakeStagger` clocks
+- [x] Feed rooms wait for every port **and** every live threat before opening the exit
+- [x] Remove the campaign auto-wave spawner; feed rooms post one opening silhouette plus their ports
+- [x] REBOOT uses six corner feeds, opens empty, and announces the Mega Worm only after the floor is clear
+- [x] Mega Worm entrance is one slow harmless fly-past; combat uses four fixed lanes, wide camera, no adds
+- [x] Exit portal is a pulsing white square with square motes; entry portal is visible under the assembly intro
+- [x] Probes green: `quarantine-check`, `port-sweep-check`, `islands-ports-check`, `reboot-boss-check`, `plate-flow-check`, `holding-layout-check`, `campaign-rules-check`, `exit-route-check`, `round-hop-check`, `port-route-check`
+- [ ] Published 0.1.181 playthrough (the user will run this)
+
 ## Quarantine split + portal suction (2026-11-04)
 
 - [x] Split QUARANTINE into four arena records: INTAKE (14), HOLDING (34), MAINBOARD (35), ROUTER (36)
@@ -30,7 +43,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] Production check: Pages run `41752976683` succeeded; the live page logs `Build 0.1.179`, serves `sw.js` `deflect-0.1.179`, and its bundles return 200
 - [ ] Headed campaign auto-hop and a published-build playthrough
 
-Last updated: 2026-11-04 (QUARANTINE SPLIT + PORTAL SUCTION)
+Last updated: 2026-11-04 (CAMPAIGN PLAYTEST FIXES)
 Formerly: 2026-11-04 (EXIT-FRAME VARIANTS FALSIFIED)
 Formerly: 2026-11-03 (CAMPAIGN PLAYTHROUGH PASS)
 Formerly: 2026-11-02 (BOSS SWEEP + CAMPAIGN LEVEL 2)

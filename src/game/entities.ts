@@ -407,6 +407,7 @@ export function createWorm(): Worm {
     entryA: 0,
     entryR: 0,
     roarT: 0,
+    megaPass: 0,
     segHp: new Float32Array(Math.max(WORM.maxSegments, MEGA_WORM.maxSegments + 1)),
     segMaxHp: new Float32Array(Math.max(WORM.maxSegments, MEGA_WORM.maxSegments + 1)),
     hitR: WORM.headRadius,

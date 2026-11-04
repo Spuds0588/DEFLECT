@@ -40,12 +40,11 @@ and fade. The port is the fiction and the objective in one body — someone is s
 it — and it is **damageable**. Hit it enough and it closes for good, and that port never emits again in
 that level.
 
-That changes what a clear means. Today the campaign assault counts deletes against `CAMPAIGN.killsToClear`
-(`tuning/campaign.json`, 10) and draws one pip per delete. With ports, a clear is **clear the system**:
-destroy the threats already in play *and* close every port. Enemies delivered before a port died stay
-alive, so a closed port never ends a fight by itself, and the objective strip counts ports remaining
-alongside live threats instead of a wave number nobody can see. Infection follows the same rule: close the
-colony's source rather than asking the player to outlast an unknown number of spawns.
+That changes what a clear means. The campaign assault is **clear the system**: close every port *and*
+destroy every threat already in play. Enemies delivered before a port died stay alive, so a closed port
+never ends a fight by itself. `campaignFloorClear` is the one gate; the objective strip counts ports
+remaining alongside live threats instead of a wave number nobody can see. Infection follows the same rule:
+close the colony's source rather than asking the player to outlast an unknown number of spawns.
 
 Player characters get the **white** version of the same mark: one at the level entry, one at the exit. The
 party arrives through the entry port and leaves through the exit, which gives each crossing a place
@@ -62,9 +61,9 @@ ring around the player, `World.spawnVirusCluster` seeds a cluster at a far arena
 the arena data and emit through them, keeping the existing per-family pools, live caps, `packStagger`,
 interval tapering and wave gates rather than adding a second spawn system.
 
-Open questions: what closes a port (ranged only, or every action job), whether ports can reopen within an
-island, whether an island may be left with ports still open, and whether a port's health is authored per
-arena or derived from the threat families it emits.
+Settled in `World`: every damaging action closes a port; a shut port never reopens in that level; a room
+cannot be left with a port still open; port health and cadence are authored per arena. Open question: how
+the port count is drawn on the route plate between islands.
 
 ## Narrative spine (decided 2026-11-01, not built)
 
@@ -75,12 +74,14 @@ retraining is the tutorial: it is where the run teaches movement, the four actio
 dashing. The existing BUILD ROOT beats (calibration subjects, drill squad, breach, assault) are the
 mechanics of the session; its fiction becomes the quarantine stop rather than a neutral sandbox.
 
-The opening blockout is **QUARANTINE**, now four separate arenas traversed by script_kitty's portal: the
-round **INTAKE** office, the square **HOLDING** office with three jail cells, the **MAINBOARD** feed room,
-and the **ROUTER** uplink. Each room is its own device with a right-wall exit portal; the next room throws
-the party in from its left wall. There is no walk between rooms. The holding floor is staffed by floating
-CRT-monitor ordinary programs (TICKET, PATCH and CACHE); they are civilian dressing, not combatants, and
-are destroyed when the calibration class wakes. script_kitty waits behind the middle cell bars.
+The opening blockout is **QUARANTINE**, now four full-size separate arenas traversed by script_kitty's
+portal: the round **INTAKE** office, the square **HOLDING** office with three jail cells, the **MAINBOARD**
+feed room, and the **ROUTER** uplink. All four use the `48,48 -> 1942,1046` playfield. INTAKE is bare, with
+six dormant lock targets and no cover. Each room is its own device with a right-wall exit portal; the next
+room throws the party in from its left wall. There is no walk between rooms. The holding floor is staffed
+by floating CRT-monitor ordinary programs (TICKET, PATCH and CACHE); they are civilian dressing, not
+combatants, and are destroyed when the calibration class wakes. script_kitty waits behind the middle cell
+bars.
 
 The Warden's basic lesson runs in INTAKE; finishing it opens the first portal. HOLDING opens on kitty's
 first-hop line: "IT WORKED! I CAN'T BELIEVE IT WORKED." then "OKAY. I NEED YOU TO CLEAR THIS INFECTION AND
@@ -91,9 +92,11 @@ worm, for the power-attack lesson. The bodies are already in the cells, frozen a
 block is powered; the power-down wakes them instead of spawning replacements. Clear that wave and the heavy
 beat to open the portal to MAINBOARD.
 
-MAINBOARD has two ingress feeds; ROUTER has one feed and two wall emitters. Closing the last feed in a room
-starts the right-wall pull. The rooms are local-only and their state never enters `Snapshot` (see AGENTS
-D41).
+MAINBOARD has two ingress feeds; ROUTER has one feed and two wall emitters. A room's right-wall pull starts
+only after every feed is shut and every live threat is gone. The rooms are local-only and their state never
+enters `Snapshot` (see AGENTS D41). REBOOT is the exception to the feed counts: six corner feeds fill
+`GRID ZERO`, then the Mega Worm is announced only after all six and their delivered bodies are cleared. Its
+fight is four fixed fly-by lanes with a wide arena camera and no small-enemy spawns between passes.
 
 **Inciting incident.** The infection breaks out of quarantine and spreads through the dev system. The
 friendly program gets the players out, and that escape carries the route through LOCALHOST and onto the

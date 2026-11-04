@@ -159,20 +159,20 @@
       "time": 6.8,
       "sweep": 6.28,
       "endRadiusMult": 0.38,
-      "speed": 620,
+      "speed": 520,
       "turnRate": 1.6,
       "handoff": 1.1,
-      "roar": 1.5
+      "roar": 2.4
     },
     "flyby": {
-      "speed": 940,
-      "exitRange": 380,
+      "speed": 560,
+      "exitRange": 900,
       "turnRate": 1.0,
       "turnSpeed": 760,
-      "rageSpeed": 0.75,
-      "leaveTime": 0.5,
-      "entryDistance": 900,
-      "repeatDelay": 1.4
+      "rageSpeed": 0.45,
+      "leaveTime": 4.4,
+      "entryDistance": 1100,
+      "repeatDelay": 2.8
     }
   },
   "BOSS_RUSH": {

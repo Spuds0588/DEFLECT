@@ -165,8 +165,9 @@ bot count (none to three), then your program. A filled slot shows the level and 
 the run, skipping both steps. Bots take the programs you leave unused.
 
 `BUILD ROOT` opens in quarantine. The Warden talks you through move, dash, ranged attack, lock and target
-cycling, melee, and reflection on the bare intake plate while six shapes sit dormant in the holding
-office. Finish the lesson (or skip it), cross to holding, and the shapes wake as **wave 1**: a bouncing
+cycling, melee, and reflection on the bare intake plate. Six dormant shapes sit there as lock targets; the
+holding office stages its own six for the fight. Finish the lesson (or skip it), step into the right-wall
+portal, and the holding shapes wake as **wave 1** one at a time: a bouncing
 blue circle, a floating red mother with a shard cloud, and a yellow row of clones that charges together.
 The cell block stays solid while it is sealed, so the held wave cannot leave early and you cannot walk
 into the cells. The three civilian monitors in that office are destroyed in the breakout, dropping
@@ -181,17 +182,21 @@ sparring-drill or breach beat on the feed rooms now, so their floor is already l
 red **open ports** leak threats onto the mainboard and one feeds the router. Any damaging action closes a
 port — ranged shots, the lash, a damaging skill or a damaging heavy — so bring the whole kit. A port takes
 20–26 hits and leaks a threat every few seconds until it shuts, and a shut port stops feeding that room
-for good. Closing the last feed in a room opens its right-wall portal; the suction pulls you in, so there
-is no white party port to walk into and no bridge to earn. Enemies still alive do not block the portal,
-because closing the sources is the win.
+for good. A room is clear only when every feed is shut **and** every hostile it delivered is gone; then its
+white right-wall portal opens and the suction pulls you in. There is no white party port to walk into and
+no bridge to earn. The entry mouth is the same pulsing white square on the left wall, so the crossing reads
+from both ends.
 The clear reports
 kills, time, damage taken, data crates preserved and a score; losing no crates is a clean sweep and pays a
 bonus, and the best score and sweep count stay in the slot.
 
 Clearing writes the slot and opens the portal. `BUILD ROOT` hops straight to `REBOOT` on `GRID ZERO`: the
-cat gets you out of quarantine, four infected bodies are the run-up, and the **Mega Worm** arrives as the
-level's final encounter. That node does not end on a kill count or a port sweep; it ends when the boss is
-dead. A completed `REBOOT` slot reports `MORE LEVELS COMING SOON`. A run is never saved mid-level.
+cat gets you out of quarantine, then six corner feeds fill the arena with sentries, viruses, worms and
+errors. Clear all six feeds and every body before the **Mega Worm** is announced. Its entrance is a slow,
+harmless fly-past with a roar; the camera stays wide for the whole fight. It then repeats four fixed
+straight lanes with a pause between passes, and no little enemies spawn between runs. That node does not
+end on a kill count or a port sweep; it ends when the boss is dead. A completed `REBOOT` slot reports the
+end of the authored route. A run is never saved mid-level.
 Everything before the assault is practice: if you fall off a plate or get caught during orientation or
 the drill, you come back on the training timer and the lesson keeps its place, so a bad start costs time
 rather than the run. **The assault is one life** — going down once the fight starts ends the node, and

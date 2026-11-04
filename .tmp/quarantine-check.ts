@@ -66,6 +66,13 @@ const idle = new Array(MAX_PLAYERS).fill(null);
 const first = new World(
   'gauntlet', names, 0, intake, false, 0, 0, null, true, [], false, 'warden', 0, false, -1, false,
 );
+const intakeShapes = first.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <= 6);
+check('intake stages six dormant lock targets', intakeShapes.length === 6, String(intakeShapes.length));
+check(
+  'intake lock targets stay dormant during the lesson',
+  intakeShapes.every((s) => s.shapeState === 0),
+  intakeShapes.map((s) => s.shapeState).join(','),
+);
 first.skipTutorial();
 let sawPortal = false;
 for (let i = 0; i < 420; i++) {
@@ -108,6 +115,23 @@ check(
       s.y < holding.bounds.bottom &&
       !(s.x > cells.left && s.x < cells.left + cells.cellW * 3 && s.y > cells.top && s.y < cells.bottom),
   ),
+);
+second.skipTutorial();
+let wokeAtOnce = 0;
+let wokeShapeT: number[] = [];
+for (let i = 0; i < 900; i++) {
+  second.step(SIM_DT, idle);
+  const woke = second.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <= 6 && s.shapeState === 1);
+  if (woke.length > 0) {
+    wokeAtOnce = woke.length;
+    wokeShapeT = woke.map((s) => s.shapeT);
+    break;
+  }
+}
+check(
+  'holding wakes all six subjects on staggered clocks',
+  wokeAtOnce === 6 && new Set(wokeShapeT.map((v) => v.toFixed(2))).size === 6,
+  `${wokeAtOnce} woke: ${wokeShapeT.map((v) => v.toFixed(2)).join(',')}`,
 );
 
 // 3. Feed rooms open live, with their authored port counts and crates.

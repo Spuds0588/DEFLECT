@@ -1385,6 +1385,9 @@ export class World {
     // Bots stay parked until the calibration subjects are cleared. The drill squad
     // then logs in on the existing ring with the player, before the breach removes it.
     // Intake has no holding room: its lesson ends into the first portal instead.
+    // Intake carries the same six subjects as dormant lock targets. They never wake
+    // here: the Warden's lesson ends in the first portal, and HOLDING runs the fight.
+    if (this.campaignIntro === 'warden') this.spawnCalibrationShapes();
     if (this.arena.rooms?.some((room) => room.theme === 'holding')) {
       this.spawnCalibrationShapes();
       // Wave 2 is already alive in the cells. These are the same bodies release wakes;
@@ -1585,12 +1588,22 @@ export class World {
     // closing one cannot open the exit by itself.
     if (b.replicator) return;
     this.portsClosed++;
-    if (this.portsClosed >= this.portTotal) this.openCampaignExit();
   }
 
-  /** The white party port: the run's way out of this network. */
-  private openCampaignExit(): void {
-    this.beginCampaignPortal();
+  /**
+   * A campaign room is clear only when every authored feed is down and every hostile
+   * body is gone. A closed port can still have its last squad on the floor; opening the
+   * exit at the last hit yanked players out mid-fight.
+   */
+  private campaignFloorClear(): boolean {
+    if (this.portTotal > 0 && this.portsClosed < this.portTotal) return false;
+    for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) return false;
+    for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) return false;
+    for (let i = 0; i < this.worms.length; i++) {
+      if (this.worms[i].active && !this.worms[i].held) return false;
+    }
+    for (let i = 0; i < this.errors.length; i++) if (this.errors[i].active) return false;
+    return true;
   }
 
   /**
@@ -1648,8 +1661,8 @@ export class World {
   }
 
   /**
-   * The assault opens on a populated floor, not an empty one. A squad is already posted
-   * on every plate beyond intake, and the ports keep adding to it until they close.
+   * A feed room opens with one posted silhouette and its authored ports. The old
+   * multi-family opening squad is gone: it buried the player before the first port read.
    */
   private seedAssaultFloor(): void {
     // A plate arena posts a squad on every plate beyond intake. A flat device posts the
@@ -1674,23 +1687,11 @@ export class World {
     }
     for (let i = 0; i < zones.length; i++) {
       const { cx, cy } = zones[i];
-      // The live caps are the ceiling here too: the pre-placed squad may not push the
-      // shooter count past the wave's limit, exactly like a pack drop.
+      // One posted silhouette per room. The enlarged floors and the live ports supply the
+      // pressure; the old two-shooter + two-virus + worm opening buried the player before
+      // the first port could even be read.
       const sentries = this.sentryLiveCount();
-      if (sentries < this.sentryLimit()) this.spawnSentry(0, cx, cy - 60);
-      if (sentries + 1 < this.sentryLimit()) this.spawnSentry(0, cx + 120, cy + 70);
-      if (!this.campaignPrimitivesOnly) {
-        const viruses = this.virusLiveCount();
-        if (viruses < this.virusLimit()) this.spawnVirus(cx + 40, cy + 120);
-        if (viruses + 1 < this.virusLimit()) this.spawnVirus(cx - 70, cy + 40);
-      }
-    }
-    this.spawnWorm();
-    // The scaled floor is more than twice the old area, so the primitive family fills it.
-    // Worms only: a primitives-only node never seeds a virus, and the spawner enforces it.
-    if (this.arena.bounds.right - this.arena.bounds.left > 2200) {
-      this.spawnWorm();
-      this.spawnWorm();
+      if (sentries < this.sentryLimit()) this.spawnSentry(0, cx, cy);
     }
   }
 
@@ -2022,11 +2023,15 @@ export class World {
   private wakeCalibration(): void {
     if (this.calibrationAwake) return;
     this.calibrationAwake = true;
+    let order = 0;
     for (let i = 0; i < this.sentries.length; i++) {
       const s = this.sentries[i];
       if (!s.active || s.kind < 4 || s.kind > 6 || s.shapeState !== 0) continue;
       s.shapeState = 1;
-      s.shapeT = CALIBRATION.wakeTime;
+      // One silhouette at a time. The player gets a clean look at each pattern
+      // before the next subject joins, instead of six attacks landing together.
+      s.shapeT = CALIBRATION.wakeTime + order * CALIBRATION.wakeStagger;
+      order++;
       s.shapeAtkCd = 0;
       s.ramT = 0;
       s.ramDirX = 0;
@@ -2641,6 +2646,9 @@ export class World {
           // Intake has no holding room. Finishing the lesson is its clear: the first
           // portal opens on the right wall and pulls the player into HOLDING.
           if (!holding) {
+            // The lesson dummies are practice-only. Clear them before the room folds
+            // into the right-wall portal so no inert body is left on a cleared floor.
+            this.clearTrainingShapes();
             this.beginCampaignPortal();
             return;
           }
@@ -2711,13 +2719,12 @@ export class World {
     if (this.campaignPhase === 'assault') {
       this.campaignT += dt;
       if (this.campaignBoss >= 0) {
-        // Boss node: the assault kills are the run-up, then the mini-boss arrives and its
-        // death is the clear. Ports and the bare kill count do not end this node.
-        if (!this.campaignBossSpawned && this.gauntletKills >= this.campaignKillsToClear) {
+        // Boss node: every feed and every body is the run-up. Only then does the worm
+        // arrive, and only its death clears the node. No wave spawner runs beside it.
+        if (!this.campaignBossSpawned && this.campaignFloorClear()) {
           if (!this.campaignBossWarned) {
-            // The run-up is done: Kitty calls it, the card names it, and the body takes its
-            // time crossing the room. The warning is presentation only; it never touches
-            // the arena, the quota or the clear rule.
+            // The floor is quiet: Kitty calls it, the card names it, and the body takes
+            // its time entering. The warning is presentation only.
             this.campaignBossWarned = true;
             this.campaignBossWarnT = CAMPAIGN.bossWarnTime;
             this.campaignBannerKind = 7;
@@ -2745,8 +2752,7 @@ export class World {
         return;
       }
       if (this.portTotal > 0) {
-        // Ports own the win: closing the last one starts the right-wall portal pull in
-        // closePort. There is no walk back to a party port and no exit prop to find.
+        if (this.campaignFloorClear()) this.beginCampaignPortal();
       } else if (this.gauntletKills >= this.campaignKillsToClear) {
         this.clearCampaign();
       }
@@ -2962,16 +2968,20 @@ export class World {
     this.campaignBannerT = 0;
     this.gauntletT = 0;
     this.gauntletKills = 0;
-    this.wave = CAMPAIGN.waveStart;
-    this.waveBannerT = 2.4;
+    // A boss node uses the high live caps so its six corner feeders can actually fill
+    // the room. The automatic gauntlet wave ramp stays off for every campaign node.
+    this.wave = this.campaignBoss >= 0 ? MEGA_WORM.wave : CAMPAIGN.waveStart;
+    this.waveBannerT = this.campaignBoss >= 0 ? 0 : 2.4;
     this.wormSpawnT = CAMPAIGN.openingWormDelay;
     // A node that opens straight into live fire still loads its crates.
     this.spawnCampaignData();
-    // Land the opening pack on the breach beat instead of waiting out the timer, and
-    // open on a floor that already has a squad on it.
-    this.spawnSentryPack();
-    this.sentrySpawnT = CAMPAIGN.sentryInterval;
-    this.seedAssaultFloor();
+    // A boss node opens empty on purpose: the six authored corner feeds are the only
+    // source. The ordinary feed rooms still open on a squad plus their ports.
+    if (this.campaignBoss < 0) {
+      this.spawnSentryPack();
+      this.sentrySpawnT = CAMPAIGN.sentryInterval;
+      this.seedAssaultFloor();
+    }
   }
 
   private clearCampaign(): void {
@@ -3287,7 +3297,7 @@ export class World {
       clearPlayerForSpawn(p, x, y, 0);
       p.iframes = Math.max(p.iframes, 0.45);
     }
-    this.entryPortalT = 1.25;
+    this.entryPortalT = 3.4;
   }
 
   /** Advances the simulation one fixed step. Consumes `pressed` bits from the provided frames. */
@@ -14314,6 +14324,20 @@ export class World {
 
   private updateGauntlet(dt: number): void {
     this.gauntletT += dt;
+    // Campaign rooms run only the bodies they authored. The gauntlet's wave ramp and
+    // automatic packs would add a second, invisible spawner behind the ports (and keep
+    // feeding the boss fight after the room was supposedly cleared).
+    if (this.campaign) {
+      if (this.waveBannerT > 0) this.waveBannerT = Math.max(0, this.waveBannerT - dt);
+      if (this.portTotal > 0) this.updatePortals(dt);
+      for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active) this.updateWorm(this.worms[i], dt);
+      this.separateIdleHands();
+      for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) this.updateVirus(this.viruses[i], dt);
+      for (let i = 0; i < this.sentries.length; i++) if (this.sentries[i].active) this.updateSentry(this.sentries[i], dt);
+      for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) this.updateFirewall(this.firewalls[i], dt);
+      this.updateErrors(dt);
+      return;
+    }
     // The rush owns its own clock: no wave ramp, no assault queue, no network fixtures.
     if (this.bossRush) {
       this.updateBossRush(dt);
@@ -17310,6 +17334,7 @@ export class World {
     w.flyDX = Math.cos(w.angle);
     w.flyDY = Math.sin(w.angle);
     w.roarT = 0;
+    w.megaPass = 0;
     w.anchorX = w.x;
     w.anchorY = w.y;
     w.patrolX = w.x;
@@ -17457,27 +17482,38 @@ export class World {
       w.kx *= Math.exp(-MEGA_WORM.knockDrag * dt);
       w.ky *= Math.exp(-MEGA_WORM.knockDrag * dt);
       this.followMegaChain(w, dt);
-      if (w.flyT >= fly.leaveTime) this.stageMegaPass(w, p);
+      if (w.flyT >= fly.leaveTime) this.stageMegaPass(w);
       return;
     }
   }
 
   /**
-   * Park the head offscreen on the next pass line and let it assemble there. The line is
-   * aimed at the last position the body detected, so every pass is a fixed, readable
-   * straight run through that spot; the golden-angle fan alternates the approach side.
+   * Park the head offscreen on the next fixed fly-by lane. Every pass crosses a lane
+   * the player can read from the arena floor; the worm never aims at a body. Four
+   * lanes alternate horizontal and vertical approaches.
    */
-  private stageMegaPass(w: Worm, p: Player): void {
+  private stageMegaPass(w: Worm): void {
     const cfg = MEGA_WORM.flyby;
-    this.latchMegaTarget(w, p);
-    const ang = (w.phase * 2.399963229728653) % (Math.PI * 2);
-    w.x = w.anchorX - Math.cos(ang) * cfg.entryDistance;
-    w.y = w.anchorY - Math.sin(ang) * cfg.entryDistance;
+    const b = this.arena.bounds;
+    const spanX = b.right - b.left;
+    const spanY = b.bottom - b.top;
+    const lanes = [
+      { fx: 0.5, fy: 0.5, angle: 0 },
+      { fx: 0.5, fy: 0.28, angle: Math.PI },
+      { fx: 0.26, fy: 0.5, angle: -Math.PI / 2 },
+      { fx: 0.74, fy: 0.5, angle: Math.PI / 2 },
+    ];
+    const lane = lanes[(w.megaPass ?? 0) % lanes.length];
+    w.megaPass = (w.megaPass ?? 0) + 1;
+    w.anchorX = b.left + spanX * lane.fx;
+    w.anchorY = b.top + spanY * lane.fy;
+    w.x = w.anchorX - Math.cos(lane.angle) * cfg.entryDistance;
+    w.y = w.anchorY - Math.sin(lane.angle) * cfg.entryDistance;
     w.vx = 0;
     w.vy = 0;
     w.kx = 0;
     w.ky = 0;
-    w.angle = Math.atan2(w.anchorY - w.y, w.anchorX - w.x);
+    w.angle = lane.angle;
     w.aggroT = MEGA_WORM.aggroTime;
     w.spawnT = cfg.repeatDelay;
     w.flyPhase = 2;
@@ -17499,6 +17535,35 @@ export class World {
    */
   private updateMegaEntrance(w: Worm, dt: number, allowTouch = true): void {
     const cfg = MEGA_WORM.entrance;
+    // Campaign staging: one slow, harmless fly-past over the arena while the worm
+    // roars. The body crosses the whole width instead of circling the player, and the
+    // first combat lane is staged only after the entrance beat ends.
+    if (this.campaign && this.bossIntro?.kind === MINIBOSS.MEGA_WORM) {
+      w.entryT = Math.max(0, w.entryT - dt);
+      const raw = 1 - w.entryT / cfg.time;
+      const b = this.arena.bounds;
+      const off = cfg.offscreen;
+      w.x = b.left - off + (b.right - b.left + off * 2) * raw;
+      w.y = b.top + (b.bottom - b.top) * 0.46;
+      w.prevX = w.x;
+      w.prevY = w.y;
+      w.angle = 0;
+      w.vx = (b.right - b.left + off * 2) / cfg.time;
+      w.vy = 0;
+      if (w.roarT > 0) w.roarT = Math.max(0, w.roarT - dt);
+      if (w.roarT <= 0 && raw > 0.18) {
+        w.roarT = cfg.roar;
+        this.emit(EV.MEGA_CRY, -1, w.x, w.y, w.hitR);
+      }
+      this.followMegaChain(w, dt);
+      if (w.entryT <= 0) {
+        w.entryT = 0;
+        w.vx = 0;
+        w.vy = 0;
+        this.stageMegaPass(w);
+      }
+      return;
+    }
     w.entryT = Math.max(0, w.entryT - dt);
     const elapsed = cfg.time - w.entryT;
     const raw = Math.min(1, elapsed / cfg.time);

@@ -485,6 +485,8 @@ export class Renderer {
   /** One entrance rig per assembled boss, not one per frame. */
   private bossCueLive = false;
   private bossCueKind = -1;
+  /** Campaign Mega Worm keeps the whole arena in frame until the boss dies. */
+  private megaFightCue = false;
   /** Campaign-only presentation state for the holding room's scripted beats. */
   private campaignCiviliansLost = false;
   private campaignBarsFlashT = 0;
@@ -606,6 +608,7 @@ export class Renderer {
     this.lastCampaignKind = -1;
     this.bossCueLive = false;
     this.bossCueKind = -1;
+    this.megaFightCue = false;
     this.lastViewCount = 0;
     this.layoutChanged = false;
     this.lastMasks.fill(0);
@@ -733,7 +736,9 @@ export class Renderer {
       }
       const entryT =
         state.entryPortalT ?? (state.phase === 'countdown' && state.round > 1 ? 0.8 : 0);
-      if (introDone && entryT > 0) this.drawEntryPortal(state, t, entryT);
+      // The entry mouth is the connecting dot: draw it under the assembly intro too,
+      // otherwise the player only sees the room after the portal clock has expired.
+      if (entryT > 0) this.drawEntryPortal(state, t, entryT);
       this.drawPlayers(state, alpha, t, intro, view.localMask);
       if (introDone) {
         if (state.copyMarks) this.drawCopyMarks(state.copyMarks);
@@ -882,57 +887,53 @@ export class Renderer {
     const x = b.right - 36;
     const y = (b.top + b.bottom) * 0.5;
     const opening = Math.min(1, Math.max(0, pullT) / 0.3);
-    const r = 36 + opening * 10 + Math.sin(t * 4.2) * 3;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5.4);
+    const r = 44 + opening * 12 + pulse * 5;
     const ctx = this.ctx;
     ctx.save();
-    // Suction lane: long streaks and square motes all point at the mouth.
-    ctx.globalAlpha = 0.18 + opening * 0.3;
-    ctx.strokeStyle = '#9fe8ff';
-    ctx.lineWidth = 2;
+
+    // The mouth is a white square first, so it reads through the whole room.
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.13 + opening * 0.18 + pulse * 0.08;
+    ctx.fillStyle = '#dffbff';
+    ctx.fillRect(x - r - 26, y - r - 26, (r + 26) * 2, (r + 26) * 2);
+    ctx.globalAlpha = 0.42 + opening * 0.28;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x - r * 1.36, y - r * 1.36, r * 2.72, r * 2.72);
+
+    // Little white squares, not arrows: every mote is drawn as a clean block and
+    // travels straight into the mouth across the whole arena height.
     const span = b.bottom - b.top;
-    for (let i = 0; i < 14; i++) {
-      const laneY = b.top + 24 + ((i + 0.5) / 14) * (span - 48);
-      const len = 46 + ((i * 67 + t * 340) % 150);
-      ctx.beginPath();
-      ctx.moveTo(x - r - len, laneY);
-      ctx.lineTo(x - r - 8, laneY);
-      ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 26; i++) {
+      const laneY = b.top + 24 + ((i + 0.5) / 26) * (span - 48);
+      const speed = 0.2 + (i % 5) * 0.028;
+      const travel = (t * speed + i * 0.137) % 1;
+      const start = b.left + 36;
+      const end = x - r - 28;
+      const px = start + (end - start) * travel;
+      const size = 3 + (i % 4);
+      ctx.globalAlpha = 0.38 + travel * 0.58;
+      ctx.fillRect(px - size * 0.5, laneY - size * 0.5, size, size);
     }
-    ctx.globalAlpha = 0.55 + opening * 0.35;
-    ctx.fillStyle = '#bff4ff';
-    for (let i = 0; i < 18; i++) {
-      const laneY = b.top + 20 + ((i * 83) % Math.max(1, span - 40));
-      const travel = ((t * (260 + (i % 5) * 55) + i * 97) % 420) / 420;
-      const px = x - r - travel * (b.right - b.left) * 0.8;
-      const size = 3 + (i % 3);
-      ctx.fillRect(px, laneY, size, size);
-    }
-    // The mouth itself. Opaque black so a body reads as gone once it reaches the rim.
-    ctx.globalAlpha = 0.24;
-    ctx.fillStyle = 'rgba(234, 252, 255, 0.5)';
-    ctx.fillRect(x - r - 18, y - r - 18, (r + 18) * 2, (r + 18) * 2);
-    ctx.globalAlpha = 0.95;
-    ctx.fillStyle = '#04121a';
+
+    // Core: solid white with a pale cyan heart and a breathing rim.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#eafcff';
+    ctx.fillRect(x - r - 7, y - r - 7, (r + 7) * 2, (r + 7) * 2);
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(x - r, y - r, r * 2, r * 2);
-    ctx.strokeStyle = '#eafcff';
-    ctx.lineWidth = 5;
-    ctx.strokeRect(x - r, y - r, r * 2, r * 2);
-    ctx.globalAlpha = 0.75;
+    ctx.globalAlpha = 0.66 + pulse * 0.2;
     ctx.strokeStyle = '#7fe6ff';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(x - r, y - r, r * 2, r * 2);
+    ctx.globalAlpha = 0.5 + opening * 0.3;
+    ctx.strokeStyle = '#eafcff';
     ctx.lineWidth = 2;
-    ctx.strokeRect(x - r * 0.64, y - r * 0.64, r * 1.28, r * 1.28);
-    // Inward chevrons on the rim.
-    ctx.globalAlpha = 0.55 + opening * 0.35;
-    ctx.strokeStyle = '#dffbff';
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const yy = y - r * 0.72 + (i / 5) * r * 1.44;
-      const xx = x - r - 16 - Math.sin(t * 5 + i) * 6;
-      ctx.moveTo(xx, yy - 9);
-      ctx.lineTo(xx + 8, yy);
-      ctx.lineTo(xx, yy + 9);
-    }
-    ctx.stroke();
+    const ring = r + 14 + pulse * 9;
+    ctx.strokeRect(x - ring, y - ring, ring * 2, ring * 2);
     ctx.restore();
   }
 
@@ -941,31 +942,43 @@ export class Renderer {
     const b = state.arena.bounds;
     const x = b.left + 36;
     const y = (b.top + b.bottom) * 0.5;
-    const k = Math.min(1, Math.max(0, clock));
-    const r = 22 + k * 10 + Math.sin(t * 5.4) * 2;
+    const k = Math.min(1, Math.max(0, clock / 3));
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5.4);
+    const r = 38 + k * 12 + pulse * 4;
     const ctx = this.ctx;
     ctx.save();
-    ctx.globalAlpha = 0.16 + k * 0.2;
+
+    // The landing mouth is the same white square as the exit, held open long enough
+    // to be seen under the room's assembly animation.
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.16 + k * 0.18;
     ctx.fillStyle = '#dffbff';
-    ctx.fillRect(x - r - 14, y - r - 14, (r + 14) * 2, (r + 14) * 2);
-    ctx.globalAlpha = 0.88;
-    ctx.fillStyle = '#04121a';
+    ctx.fillRect(x - r - 24, y - r - 24, (r + 24) * 2, (r + 24) * 2);
+    ctx.globalAlpha = 0.45 + k * 0.25;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x - r * 1.3, y - r * 1.3, r * 2.6, r * 2.6);
+
+    // Outward white squares: the room was thrown out of this mouth.
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2 + t * 0.35;
+      const dist = r + 28 + ((i * 37 + t * 130) % 120) * k + 10;
+      const size = 3 + (i % 3);
+      ctx.globalAlpha = (0.32 + k * 0.4) * (1 - ((i * 37 + t * 130) % 120) / 150);
+      ctx.fillRect(x + Math.cos(a) * dist - size * 0.5, y + Math.sin(a) * dist - size * 0.5, size, size);
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#eafcff';
+    ctx.fillRect(x - r - 7, y - r - 7, (r + 7) * 2, (r + 7) * 2);
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(x - r, y - r, r * 2, r * 2);
-    ctx.strokeStyle = '#eafcff';
+    ctx.globalAlpha = 0.7 + pulse * 0.2;
+    ctx.strokeStyle = '#7fe6ff';
     ctx.lineWidth = 4;
     ctx.strokeRect(x - r, y - r, r * 2, r * 2);
-    // Outward streaks: the room was thrown out of this mouth.
-    ctx.globalAlpha = 0.35 + k * 0.35;
-    ctx.strokeStyle = '#9fe8ff';
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 8; i++) {
-      const sy = y - r + (i / 7) * r * 2;
-      const len = 26 + ((i * 41 + t * 220) % 74);
-      ctx.beginPath();
-      ctx.moveTo(x + r + 6, sy);
-      ctx.lineTo(x + r + 6 + len, sy);
-      ctx.stroke();
-    }
     ctx.restore();
   }
 
@@ -998,21 +1011,27 @@ export class Renderer {
     // live focus because the Mega Worm crosses the room while it swims in.
     const intro = state.bossIntro;
     if (intro) {
+      // The Mega Worm entrance is a full-arena fly-past. Hold one wide frame on the
+      // floor instead of chasing the head, so the player can read the lane it crosses.
+      const mega = intro.kind === MINIBOSS.MEGA_WORM;
+      const ab = state.arena.bounds;
+      const centerX = (ab.left + ab.right) * 0.5;
+      const centerY = (ab.top + ab.bottom) * 0.5;
       if (!this.bossCueLive || this.bossCueKind !== intro.kind) {
         this.bossCueLive = true;
         this.bossCueKind = intro.kind;
         this.director.play({
-          x: intro.x,
-          y: intro.y,
+          x: mega ? centerX : intro.x,
+          y: mega ? centerY : intro.y,
           followSlot: -1,
-          zoom: CAMERA.bossIntroZoom,
-          hold: intro.duration + 0.8,
+          zoom: mega ? CAMERA.megaArenaZoom : CAMERA.bossIntroZoom,
+          hold: intro.duration + (mega ? 1.6 : 0.8),
           blendIn: 0.35,
           blendOut: 0.55,
           weight: 1,
           priority: 5,
         });
-      } else {
+      } else if (!mega) {
         this.director.track(intro.x, intro.y, 5);
       }
     } else {
@@ -1026,7 +1045,25 @@ export class Renderer {
           break;
         }
       }
-      if (boss && (!this.bossCueLive || this.bossCueKind !== boss.bossKind)) {
+      if (boss && state.campaign && boss.mega) {
+        // A campaign Mega Worm fight stays wide for the whole encounter. Its passes are
+        // fixed lanes, so the player needs the arena edge, not a close chase camera.
+        if (!this.megaFightCue) {
+          this.megaFightCue = true;
+          const ab = state.arena.bounds;
+          this.director.play({
+            x: (ab.left + ab.right) * 0.5,
+            y: (ab.top + ab.bottom) * 0.5,
+            followSlot: -1,
+            zoom: CAMERA.megaArenaZoom,
+            hold: 100000,
+            blendIn: 0.45,
+            blendOut: 0.8,
+            weight: 1,
+            priority: 6,
+          });
+        }
+      } else if (boss && (!this.bossCueLive || this.bossCueKind !== boss.bossKind)) {
         this.bossCueLive = true;
         this.bossCueKind = boss.bossKind;
         // Center between the head and the last plate so a long Mega Worm body reads as
@@ -1052,6 +1089,10 @@ export class Renderer {
       } else if (!boss) {
         this.bossCueLive = false;
         this.bossCueKind = -1;
+        if (this.megaFightCue) {
+          this.megaFightCue = false;
+          this.director.clear();
+        }
       }
     }
     if (state.mode === 'gauntlet' && !state.campaign && state.sentries && (state.waveBannerT ?? 0) > 0) {

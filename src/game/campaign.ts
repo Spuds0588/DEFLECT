@@ -86,8 +86,8 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     intro: 'assault',
     clearKills: 8,
     dataCrates: [
-      { x: 1280, y: 740, kind: PROP.DOC },
-      { x: 1840, y: 780, kind: PROP.AUDIO },
+      { x: 1250, y: 620, kind: PROP.DOC },
+      { x: 1700, y: 680, kind: PROP.AUDIO },
     ],
   },
   {
@@ -100,8 +100,8 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     intro: 'assault',
     clearKills: 6,
     dataCrates: [
-      { x: 1240, y: 380, kind: PROP.ZIP },
-      { x: 1870, y: 110, kind: PROP.VIDEO },
+      { x: 1240, y: 400, kind: PROP.ZIP },
+      { x: 1760, y: 900, kind: PROP.VIDEO },
     ],
   },
   {
@@ -113,8 +113,9 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     arenaId: 1,
     intro: 'kitty',
     playable: true,
-    // Four fodder bodies, then the Mega Worm is the level's final encounter.
-    clearKills: 4,
+    // Six corner feeds fill the arena; the Mega Worm arrives only after every port
+    // and every body is gone, then its death is the level's clear.
+    clearKills: 0,
     boss: MINIBOSS.MEGA_WORM,
     dataCrates: [],
   },

@@ -2,8 +2,9 @@
  * Split quarantine ports.
  *
  * MAINBOARD and ROUTER are separate flat devices. Each has only its authored ingress
- * ports, and closing the last one starts the right-wall portal pull. No party-port prop
- * spawns. Replicators remain a separate local fixture and never count as campaign ports.
+ * ports. Closing the last one does not pull the room while its squad is still live; the
+ * right-wall portal waits for both. No party-port prop spawns. Replicators remain a
+ * separate local fixture and never count as campaign ports.
  */
 import { ARENAS, arenaIndexById } from '../src/game/arenas';
 import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
@@ -44,7 +45,22 @@ for (const [id, expected] of [[14, 0], [34, 0], [35, 2], [36, 1]] as const) {
       if (i < portals.length - 1 && world.campaignExitReady) fail(`${arena.name}: exit opened with ports standing`);
     }
     if (world.portsClosed !== expected) fail(`${arena.name}: expected ${expected} closed ports, got ${world.portsClosed}`);
-    if (!world.campaignExitReady) fail(`${arena.name}: last port did not open the exit portal`);
+    if (!world.campaignExitReady) {
+      const floorClear = (world as unknown as { campaignFloorClear: () => boolean }).campaignFloorClear.bind(world);
+      if (floorClear()) fail(`${arena.name}: cleared floor did not open the exit portal`);
+      const retired = world as unknown as {
+        sentries: { active: boolean }[];
+        viruses: { active: boolean }[];
+        worms: { active: boolean }[];
+        errors: { active: boolean }[];
+      };
+      for (const s of retired.sentries) s.active = false;
+      for (const v of retired.viruses) v.active = false;
+      for (const w of retired.worms) w.active = false;
+      for (const e of retired.errors) e.active = false;
+      for (let i = 0; i < 120 && !world.campaignExitReady; i++) world.step(SIM_DT, [null]);
+    }
+    if (!world.campaignExitReady) fail(`${arena.name}: last port and clear floor did not open the exit portal`);
     if (world.campaignPortalT < 0) fail(`${arena.name}: portal pull did not start`);
     if (world.props.some((p) => p.portalExit)) fail(`${arena.name}: a party-port prop spawned`);
     for (let i = 0; i < 180 && world.campaignPhase !== 'cleared'; i++) world.step(SIM_DT, [null]);
@@ -67,4 +83,4 @@ damageProp(reps[0], reps[0].hp, 0, 0);
 if (satWorld.portsClosed !== 0) fail('closing a replicator counted as a campaign port');
 if (!((reps[0].portalCloseT ?? 0) > 0)) fail('the replicator did not close');
 
-console.log('islands-ports-check: OK (split rooms, last port starts the pull, replicators stay separate)');
+console.log('islands-ports-check: OK (split rooms, last port + clear floor starts the pull, replicators stay separate)');

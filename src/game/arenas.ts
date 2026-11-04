@@ -78,7 +78,7 @@ export function holdingCellLayout(room: ArenaRoomDef): HoldingCellLayout {
   // bridge lands on that open side, so a body walks in beside the cells and then reads the
   // block from the front as it heads right: arriving over the top of the plate dropped the
   // player behind the sealed bars, in a strip too thin to escape while they were powered.
-  const blockW = room.w * 0.52;
+  const blockW = Math.min(680, room.w * 0.36);
   return {
     left: room.x + room.w - blockW - 12,
     cellW: (blockW - 12) / 3,
@@ -1708,6 +1708,16 @@ const ARENAS_BASE: readonly ArenaDef[] = [
       { x: 243, y: 547 },
       { x: 259, y: 227 },
     ],
+    // REBOOT's corner spawners. They only exist while a campaign node is running;
+    // PvP and the standalone arena never call `spawnCampaignPorts`.
+    ingress: [
+      { x: 160, y: 200, size: 78, hp: 26, family: 0, interval: 2.2 },
+      { x: 990, y: 150, size: 78, hp: 26, family: 1, interval: 2.5 },
+      { x: 1820, y: 200, size: 78, hp: 30, family: 2, interval: 3.0 },
+      { x: 160, y: 900, size: 78, hp: 26, family: 0, interval: 2.3 },
+      { x: 990, y: 950, size: 78, hp: 26, family: 1, interval: 2.6 },
+      { x: 1820, y: 900, size: 78, hp: 26, family: 0, interval: 2.2 },
+    ],
   },
   {
     id: 2,
@@ -2219,43 +2229,33 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     // Intake is its own device now. The old four-room floor is four arena records, and
     // the only way between them is script_kitty's portal. The Warden's orientation is
     // the whole of this room; the exit portal opens on the right wall when it ends.
-    bounds: { left: 48, top: 48, right: 858, bottom: 444 },
-    pillars: [
-      { x: 130, y: 130, w: 150, h: 56 },
-      { x: 430, y: 130, w: 150, h: 56 },
-      { x: 130, y: 320, w: 150, h: 56 },
-      { x: 430, y: 320, w: 150, h: 56 },
-    ],
-    // All eight sit in the intake room, clear of the desks. Spawn 6 is the campaign's
-    // opening slot: the Warden lesson runs here before the first portal hop.
+    // Intake is the full device floor now. The orientation needs open room for the
+    // practice subjects and the test shot, so the room carries no cover at all.
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    // All eight sit on the open left side. Spawn 6 is the campaign's opening slot: the
+    // Warden lesson runs here before the first portal hop.
     spawns: [
-      { x: 300, y: 240 },
-      { x: 180, y: 200 },
-      { x: 420, y: 200 },
-      { x: 240, y: 250 },
-      { x: 360, y: 250 },
-      { x: 180, y: 400 },
-      { x: 300, y: 400 },
-      { x: 420, y: 400 },
+      { x: 150, y: 430 },
+      { x: 150, y: 523 },
+      { x: 150, y: 616 },
+      { x: 260, y: 430 },
+      { x: 260, y: 523 },
+      { x: 260, y: 616 },
+      { x: 180, y: 523 },
+      { x: 340, y: 523 },
     ],
     rooms: [
       {
         shape: 'rect',
         x: 48,
         y: 48,
-        w: 810,
-        h: 396,
+        w: 1894,
+        h: 998,
         theme: 'office',
         label: 'INTAKE 01',
         sub: 'BOOKING // ORIENTATION',
       },
-    ],
-    // Breakable intake files. The room has no ports: the campaign portal owns the exit.
-    props: [
-      { x: 200, y: 200, w: 38, h: 28, kind: PROP.DOC },
-      { x: 560, y: 200, w: 38, h: 28, kind: PROP.ZIP },
-      { x: 200, y: 400, w: 38, h: 28, kind: PROP.AUDIO },
-      { x: 560, y: 400, w: 38, h: 28, kind: PROP.VIDEO },
     ],
   },
   {
@@ -3272,28 +3272,28 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     accentSoft: 'rgba(255, 189, 102, 0.32)',
     accentFaint: 'rgba(255, 189, 102, 0.032)',
     signature: 2,
-    // The holding office is a separate device. The cell block is the only body barrier;
-    // the six calibration subjects form two columns in front of it. A portal enters on
-    // the open left side and exits on the right once the cell wave is down.
-    bounds: { left: 48, top: 664, right: 858, bottom: 1046 },
+    // The holding office is a full device floor. The cell block is the only body
+    // barrier; the six calibration subjects form two columns in front of it. A portal
+    // enters on the open left side and exits on the right once both waves are down.
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
     pillars: [],
     spawns: [
-      { x: 140, y: 740 },
-      { x: 140, y: 840 },
-      { x: 140, y: 940 },
-      { x: 230, y: 740 },
-      { x: 230, y: 880 },
-      { x: 230, y: 990 },
-      { x: 330, y: 760 },
-      { x: 330, y: 990 },
+      { x: 150, y: 430 },
+      { x: 150, y: 523 },
+      { x: 150, y: 616 },
+      { x: 260, y: 430 },
+      { x: 260, y: 523 },
+      { x: 260, y: 616 },
+      { x: 180, y: 523 },
+      { x: 340, y: 523 },
     ],
     rooms: [
       {
         shape: 'rect',
         x: 48,
-        y: 664,
-        w: 810,
-        h: 382,
+        y: 48,
+        w: 1894,
+        h: 998,
         theme: 'holding',
         label: 'HOLDING 02',
         sub: 'CELL BLOCK // CONTAINMENT',
@@ -3302,14 +3302,14 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     // Three civilians work the holding office. They are painted in the arena pass; the
     // campaign script hides them after the calibration class wakes. No bodies, no hits.
     regulars: [
-      { id: 'ticket', x: 200, y: 820, scale: 0.82, phase: 0.4, carry: 1 },
-      { id: 'patch', x: 80, y: 820, scale: 0.82, phase: 2.1 },
-      { id: 'cache', x: 330, y: 820, scale: 0.78, phase: 4.2, carry: 2 },
+      { id: 'ticket', x: 200, y: 900, scale: 0.82, phase: 0.4, carry: 1 },
+      { id: 'patch', x: 90, y: 900, scale: 0.82, phase: 2.1 },
+      { id: 'cache', x: 330, y: 900, scale: 0.78, phase: 4.2, carry: 2 },
     ],
     props: [
-      { x: 150, y: 700, w: 38, h: 28, kind: PROP.ZIP },
-      { x: 300, y: 700, w: 38, h: 28, kind: PROP.DOC },
-      { x: 120, y: 1000, w: 38, h: 28, kind: PROP.AUDIO },
+      { x: 150, y: 980, w: 38, h: 28, kind: PROP.ZIP },
+      { x: 300, y: 980, w: 38, h: 28, kind: PROP.DOC },
+      { x: 120, y: 700, w: 38, h: 28, kind: PROP.AUDIO },
     ],
   },
   {
@@ -3322,50 +3322,51 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     accentFaint: 'rgba(99, 255, 196, 0.032)',
     signature: 1,
     // The mainboard is a feed room: two ingress ports, bumper posts and rack cover.
-    // Close both ports and the right-wall portal opens; the room never asks a body to
-    // walk back across the device.
-    bounds: { left: 1084, top: 664, right: 1942, bottom: 1046 },
+    // Close both ports and clear the floor; only then does the right-wall portal open.
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
     pillars: [
-      { x: 1160, y: 720, w: 110, h: 76 },
-      { x: 1420, y: 780, w: 100, h: 70 },
-      { x: 1700, y: 710, w: 120, h: 80 },
-      { x: 1400, y: 930, w: 120, h: 60 },
+      { x: 280, y: 230, w: 160, h: 90 },
+      { x: 850, y: 180, w: 180, h: 100 },
+      { x: 1540, y: 240, w: 150, h: 90 },
+      { x: 360, y: 760, w: 180, h: 100 },
+      { x: 960, y: 720, w: 160, h: 90 },
+      { x: 1610, y: 760, w: 170, h: 100 },
     ],
     spawns: [
-      { x: 1120, y: 740 },
-      { x: 1120, y: 850 },
-      { x: 1120, y: 960 },
-      { x: 1210, y: 740 },
-      { x: 1210, y: 850 },
-      { x: 1210, y: 960 },
-      { x: 1300, y: 740 },
-      { x: 1300, y: 1010 },
+      { x: 150, y: 430 },
+      { x: 150, y: 523 },
+      { x: 150, y: 616 },
+      { x: 260, y: 430 },
+      { x: 260, y: 523 },
+      { x: 260, y: 616 },
+      { x: 180, y: 523 },
+      { x: 340, y: 523 },
     ],
     rooms: [
       {
         shape: 'rect',
-        x: 1084,
-        y: 664,
-        w: 858,
-        h: 382,
+        x: 48,
+        y: 48,
+        w: 1894,
+        h: 998,
         theme: 'board',
         label: 'MAINBOARD 03',
         sub: 'BUS 02 // DATA PLANE',
       },
     ],
     ingress: [
-      { x: 1330, y: 900, size: 78, hp: 20, family: 0, interval: 2.6 },
-      { x: 1780, y: 940, size: 78, hp: 20, family: 1, interval: 3 },
+      { x: 650, y: 300, size: 78, hp: 24, family: 0, interval: 2.4 },
+      { x: 1350, y: 830, size: 78, hp: 24, family: 1, interval: 2.7 },
     ],
     props: [
-      { x: 1300, y: 850, w: 38, h: 28, kind: PROP.DOC },
-      { x: 1650, y: 880, w: 42, h: 30, kind: PROP.AUDIO },
-      { x: 1250, y: 1000, w: 36, h: 26, kind: PROP.VIDEO },
+      { x: 1160, y: 600, w: 38, h: 28, kind: PROP.DOC },
+      { x: 1650, y: 560, w: 42, h: 30, kind: PROP.AUDIO },
+      { x: 700, y: 860, w: 36, h: 26, kind: PROP.VIDEO },
     ],
     bumpers: [
-      { x: 1200, y: 900, radius: 28, kind: 0 },
-      { x: 1620, y: 760, radius: 32, kind: 1 },
-      { x: 1880, y: 1000, radius: 28, kind: 0 },
+      { x: 600, y: 540, radius: 30, kind: 0 },
+      { x: 1100, y: 420, radius: 34, kind: 1 },
+      { x: 1600, y: 540, radius: 30, kind: 0 },
     ],
   },
   {
@@ -3378,44 +3379,46 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     accentFaint: 'rgba(102, 200, 255, 0.032)',
     signature: 3,
     // The router is the last quarantine device. One feed remains and two wall emitters
-    // sweep the uplink lane. Closing the feed opens the right-wall portal to REBOOT.
-    bounds: { left: 1084, top: 48, right: 1942, bottom: 444 },
+    // sweep the uplink lane. Closing the feed and clearing the floor opens the portal.
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
     pillars: [
-      { x: 1160, y: 120, w: 110, h: 70 },
-      { x: 1460, y: 130, w: 110, h: 66 },
-      { x: 1160, y: 330, w: 120, h: 60 },
-      { x: 1720, y: 320, w: 100, h: 60 },
+      { x: 300, y: 260, w: 160, h: 90 },
+      { x: 800, y: 180, w: 180, h: 100 },
+      { x: 1400, y: 260, w: 160, h: 90 },
+      { x: 380, y: 750, w: 180, h: 100 },
+      { x: 980, y: 720, w: 160, h: 90 },
+      { x: 1580, y: 760, w: 160, h: 100 },
     ],
     spawns: [
-      { x: 1120, y: 220 },
-      { x: 1120, y: 300 },
-      { x: 1120, y: 380 },
-      { x: 1260, y: 220 },
-      { x: 1260, y: 300 },
-      { x: 1260, y: 400 },
-      { x: 1350, y: 100 },
-      { x: 1350, y: 400 },
+      { x: 150, y: 430 },
+      { x: 150, y: 523 },
+      { x: 150, y: 616 },
+      { x: 260, y: 430 },
+      { x: 260, y: 523 },
+      { x: 260, y: 616 },
+      { x: 180, y: 523 },
+      { x: 340, y: 523 },
     ],
     rooms: [
       {
         shape: 'rect',
-        x: 1084,
+        x: 48,
         y: 48,
-        w: 858,
-        h: 396,
+        w: 1894,
+        h: 998,
         theme: 'router',
         label: 'ROUTER 04',
         sub: 'PORT 03 // UPLINK',
       },
     ],
-    ingress: [{ x: 1350, y: 230, size: 78, hp: 26, family: 0, interval: 2.8 }],
+    ingress: [{ x: 990, y: 523, size: 78, hp: 26, family: 0, interval: 2.6 }],
     props: [
-      { x: 1300, y: 220, w: 42, h: 30, kind: PROP.DOC },
-      { x: 1800, y: 140, w: 42, h: 30, kind: PROP.ZIP },
+      { x: 1240, y: 380, w: 42, h: 30, kind: PROP.DOC },
+      { x: 1700, y: 520, w: 42, h: 30, kind: PROP.ZIP },
     ],
     emitters: [
-      { x: 1104, y: 250, angle: 0, offset: 0.2 },
-      { x: 1104, y: 330, angle: 0, offset: 0.65 },
+      { x: 80, y: 380, angle: 0, offset: 0.2 },
+      { x: 80, y: 660, angle: 0, offset: 0.65 },
     ],
   },
   {

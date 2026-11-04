@@ -32,6 +32,7 @@
     "wakeRadius": 175,
     "entryWait": 18,
     "wakeTime": 1.05,
+    "wakeStagger": 0.85,
     "layoutRadius": 300,
     "layoutLift": 58,
     "layoutSpread": 0.36,

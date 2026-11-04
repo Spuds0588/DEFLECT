@@ -192,14 +192,17 @@ A campaign level is one arena in an ordered route, not a floor plan joined to th
 saves the slot, script_kitty opens a portal, and the party is dropped on the next device. There is no
 bridge between islands and no `NEXT ARENA` menu between devices; only the last node parks on a result
 overlay. `QUARANTINE` is four portal-fed arenas: INTAKE, HOLDING, MAINBOARD and ROUTER. Each is one room
-with its own furniture and labels; the only way between them is the portal. HOLDING's cell block is a local
-barrier, not an island gate.
+with its own furniture and labels; the only way between them is the portal. All four use the full
+`48,48 -> 1942,1046` playfield: the quarantine rooms were too cramped to dodge fire or make a reflect read.
+INTAKE is deliberately bare, with six dormant lock targets and no cover; HOLDING keeps its back-right cell
+block but opens the left and front. HOLDING's cell block is a local barrier, not an island gate.
 
 Threats still arrive through authored **ports** (`ArenaDef.ingress`): fixed, damageable squares that emit
 a threat family on a clock and stop when shot shut. Ports reuse the file-box damage path rather than a
-second entity type, respect the same live caps as a sentry pack, and gate the exit directly: closing every
-port starts the right-wall portal pull that ends the level. Ports are local content — campaign and infection
-only, never in a snapshot.
+second entity type, respect the same live caps as a sentry pack, and gate the exit directly: the right-wall
+portal pull opens only when every port is shut **and** every live hostile from that room is gone. Ports are
+local content — campaign and infection only, never in a snapshot. REBOOT is fed by six corner ports; the
+Mega Worm is announced only after all six and their delivered bodies are cleared.
 
 Every round-based match hops the same way. When a round ends, a white portal opens on the right wall and
 pulls every standing body in; the next round enters from the left wall. The pull writes positions directly,
@@ -341,7 +344,7 @@ Control tables and the full touch layout are in [GAME_GUIDE.md](GAME_GUIDE.md#co
   because the network layer is browser WebRTC. The native build adds packaging, not a parallel netcode.
 - **Public room discovery.** Planned around a shared prefix on the room code, with private rooms keeping
   an unprefixed code.
-- **More campaign nodes and sectors.** `BUILD ROOT` is live; `REBOOT` is authored and parked; the rest of the sector graph
+- **More campaign nodes and sectors.** `BUILD ROOT` and `REBOOT` are live; the rest of the sector graph
   and layout handoff live in [CAMPAIGN.md](CAMPAIGN.md).
 
 None of the Tauri work is built yet. It is listed because the current stack was chosen to make it a
@@ -415,8 +418,9 @@ full-radius clamping.
 `TEST RANGE` is a QA-only sandbox arena (3480x1920, empty floor) hidden from the arena picker. Boot it with
 `?range=1`, optionally `&bot=1&mega=1`, to read boss scale and behaviour before geometry gets a vote.
 
-The Mega Worm now arrives at roughly three times its old silhouette, doubled health and a slower turn,
-coiled around its own head so the body does not string across the room on spawn.
+The Mega Worm now arrives at roughly three times its old silhouette, doubled health and a slower turn.
+Campaign REBOOT gives it a slow harmless entrance pass and four fixed fly-by lanes with a wide arena
+camera; it never homes on the player after the entrance, and no small families spawn between passes.
 
 
 ## Demo boss rotation

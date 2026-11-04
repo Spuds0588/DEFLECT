@@ -7406,3 +7406,40 @@ hazards, and put script_kitty's first-hop line on the landing in HOLDING.
 
 **Next:** run the published campaign through the four rooms, judge the suction speed and the entry throw,
 then record any tuning in TODO/HISTORY.
+
+## 2026-11-04 — Campaign playtest fixes, full-size quarantine, boss staging (v0.1.181)
+
+**Goal:** act on the first campaign playtest: missing lock targets in INTAKE, rooms too small, unreadable
+portal exits/entries, premature pulls, and a Mega Worm intro/fight that fought the camera.
+
+**Changes.**
+- INTAKE stages six dormant calibration shapes on the bare plate; the Warden's lock/cycle lesson has real
+targets. Finishing the lesson clears them before the first portal.
+- INTAKE, HOLDING, MAINBOARD and ROUTER now use the full `48,48 -> 1942,1046` playfield. INTAKE has no
+  cover; HOLDING keeps its back-right cell block but opens the left and front. MAINBOARD and ROUTER gained
+  distributed cover and re-authored crates/ports for the larger floor.
+- HOLDING's six subjects wake on staggered clocks (`CALIBRATION.wakeStagger` 0.85 s), one pattern at a time.
+- Campaign clear is now "all feeds down and all live hostiles gone" (`campaignFloorClear`). `closePort` no
+  longer opens the exit by itself. The campaign branch in `updateGauntlet` does not run the gauntlet wave
+  ramp or automatic packs, and `seedAssaultFloor` posts one opening silhouette instead of a full squad.
+- REBOOT opens empty with six corner feeder ports, uses high live caps, and announces the Mega Worm only
+  after all six feeds and every delivered body are cleared. No little enemies spawn with or between passes.
+- Mega Worm campaign entrance is one slow harmless cross-arena fly-past with the roar. Combat uses four
+  fixed lanes (horizontal centre, horizontal upper, vertical left/right), a 2.8 s pause, and a fixed wide
+  arena camera at `CAMERA.megaArenaZoom` 0.52 for the intro and the whole fight. `flyby.leaveTime` is 4.4 s
+  so the 13-plate tail clears the floor before the next stage; passes never target the player.
+- `drawExitPortal` is now a pulsing white square with only small white square motes; `drawEntryPortal` is
+  the same mouth on the left and is drawn under the assembly intro for 3.4 s.
+- Version stamps bumped to 0.1.181.
+
+**Verification.**
+- `npx tsc --noEmit` 0.
+- Probes 0: `quarantine-check` (including six INTAKE lock targets and staggered HOLDING wake),
+  `port-sweep-check` (last port no longer pulls by itself), `islands-ports-check`, new
+  `reboot-boss-check` (six feeds, 5.0 s warning, 3 static passes, no adds), `holding-layout-check`,
+  `plate-flow-check`, `campaign-rules-check`, `exit-route-check`, `round-hop-check`, `port-route-check`.
+- Not yet claimed: a human clear of every enlarged room or a published boss kill. The end-to-end playtest
+  is the next step.
+
+**Next:** build/bench, push Pages, verify the live 0.1.181 stamps and load the first arena and boss in a
+browser for the portal and camera reads.

@@ -607,8 +607,8 @@ link is a `portal`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
 - The first playable node is **BUILD ROOT** (`src/game/campaign.ts`) across the four split `QUARANTINE`
   rooms: INTAKE -> HOLDING -> MAINBOARD -> ROUTER. Each is a scripted gauntlet-mode world, saves the slot
   on clear, and portals to the next; see D17 and D41. **REBOOT** on `GRID ZERO` is the first network node
-  after the quarantine sequence (v0.1.152): a kitty briefing, a four-kill assault, then the Mega Worm as the
-  level's final encounter.
+  after the quarantine sequence (v0.1.152): a kitty briefing, six corner feeders, then the Mega Worm as
+  the level's final encounter once every feed and delivered body is gone (v0.1.181).
 - **A level may end on a mini-boss (2026-11-02).** `CampaignLevel.boss` names the `MINIBOSS` id; `World`
   takes it as `campaignBoss` and spawns it once the assault kills are met (`campaignBossSpawned`). A boss
   node ignores the port sweep and the bare kill count: it clears only after the staged intro and when no
@@ -753,19 +753,20 @@ reads as a letter. `document.fonts.check` alone reports true for missing system 
 
 All numbers live in `tuning/programs.json` under `KABOOM`.
 
-### D17 — First campaign node: BUILD ROOT; REBOOT parked (built 2026-10-30)
+### D17 — First campaign node: BUILD ROOT; REBOOT live (built 2026-10-30)
 
 The campaign's live route is four `QUARANTINE` rooms (INTAKE, HOLDING, MAINBOARD, ROUTER) followed by `REBOOT` on `GRID ZERO`
 (`src/game/campaign.ts`); the remaining blueprint nodes stay parked until later segments ship. They run in a
 `World('gauntlet')` with `campaign = true`, so it reuses the threat simulation and stays local-only; the
 mode string stays `gauntlet` so no threat branch forks. The script lives in `World`, not in `main.ts`.
 
-- **Calibration**: after the Warden's orientation lesson the node holds six dormant geometric subjects,
-  two each of a blue circle, a red triangle and a yellow rectangle, in the square **HOLDING** office. The
-  class wakes together when the player reaches holding (or after `CALIBRATION.entryWait` 18 s, so a player
-  who ignores the prompt cannot soft-lock the node), on a node without an intro after
-  `CALIBRATION.wakeDelay` (6 s), inside `CALIBRATION.wakeRadius`, or on the first hit; killing them while
-  dormant is deliberately not allowed, because the eye opening is the lesson. The class forms two columns
+- **Calibration**: INTAKE stages six dormant lock-target shapes on its bare plate for the Warden lesson;
+  the square **HOLDING** office holds six attack subjects, two each of a blue circle, a red triangle and a
+  yellow rectangle. HOLDING's class wakes on `CALIBRATION.wakeStagger` clocks (0.85 s apart) when the player
+  reaches holding (or after `CALIBRATION.entryWait` 18 s, so a player who ignores the prompt cannot soft-lock
+  the node), on a node without an intro after `CALIBRATION.wakeDelay` (6 s), inside
+  `CALIBRATION.wakeRadius`, or on the first hit; killing them while dormant is deliberately not allowed,
+  because the eye opening is the lesson. The class forms two columns
   in the holding office's lower half, leaving the centre lane open. Waking also hides the
   three holding civilians, marks their loss with a short burst, and starts `CALIBRATION_SKILL_TUTORIAL`:
   tap the skill while wave 1 is live. A dormant shape is plain geometry; awake, it
@@ -795,17 +796,17 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
   keeps the gauntlet spawn so a drill knockdown respawns inside the spar. No threats exist yet.
 - **Breach**: a 3.4 s `SYSTEM BREACH` warning. The squad de-rezzes, live projectiles clear, and the local
   player is healed to full for the assault. The squad is gone for the rest of the node.
-- **Assault**: the opening sentry pack lands on the breach beat, then worms arrive, then a new pack every
-  14 s. Campaign waves start at 3 and step every 14 s, so viruses arrive after about 40 s. Clearing 10
-  threats clears the node; one death fails it. The objective strip at the bottom is one pip per delete.
+- **Assault**: a feed room posts one opening silhouette on the breach beat and lets its authored ports add
+  the rest. Campaign nodes do not run the gauntlet's wave ramp or automatic packs; `updateGauntlet` takes a
+  campaign branch that only updates the authored portals and bodies. A room clears when every port is shut
+  and `campaignFloorClear` finds no live sentry, virus, worm or error; one death fails it.
 - **Completion**: a clear writes the save slot (`level` = completed count, `program`, `players`, `bots`,
-  seconds) and shows the clear overlay. With only BUILD ROOT live, the overlay reads `MORE LEVELS COMING
-  SOON`, the slot shows `COMPLETE`, and `STORY SLOTS` / `REPLAY` are the actions. Nothing is saved
-  mid-level. A failed node offers RETRY and SLOTS. `PLAYABLE_CAMPAIGN_LEVELS` is the live list; do not
-  re-enable a parked level without checking its clear path.
-- **REBOOT (parked)**: script_kitty's briefing on `GRID ZERO`. It opens with `KITTY_TUTORIAL` (tap skill,
-  then hold the power attack) with no threats in the room, then starts the breach and a four-kill live-fire
-  check. Keep `playable: false` until the route after BUILD ROOT is authored and tested.
+  seconds) and shows the clear overlay. BUILD ROOT and REBOOT are both live; a completed run reports the end
+  of the authored route and keeps the slot. Nothing is saved mid-level. A failed node offers RETRY and
+  SLOTS. `PLAYABLE_CAMPAIGN_LEVELS` is the live list.
+- **REBOOT (live)**: script_kitty's briefing on `GRID ZERO`. It opens with `KITTY_TUTORIAL` (tap skill,
+  then hold the power attack) with no threats in the room, then starts the breach. Six corner feeds are the
+  level's only spawners: clear all six ports and every delivered body before the Mega Worm is announced.
 - **Bots are the drill squad, not allies.** `World` has no team model for bot companions yet, so do not
   fake allies by disabling friendly fire. Team ownership is the prerequisite for bots that fight beside
   the player after the breach.
@@ -1918,7 +1919,8 @@ between them is script_kitty's portal.
 
 - Campaign order is data, not a `World` branch: `CAMPAIGN_LEVELS` lists INTAKE -> HOLDING -> MAINBOARD ->
   ROUTER -> REBOOT. Each clear saves the slot and auto-hops. The Warden lesson ends INTAKE, the cell wave
-  ends HOLDING, and the last feed in MAINBOARD or ROUTER ends that room.
+  ends HOLDING, and MAINBOARD or ROUTER ends only when every feed is shut **and** every live hostile is gone
+  (`campaignFloorClear`). A last-port hit must never yank the player out with the port's squad still up.
 - Portals are right-wall exits and left-wall entries. `World.beginCampaignPortal` opens the right wall and
   `tickCampaignPortal` writes player positions directly for about 1.15 s, so cover, cell bars and hazards
   cannot stop the pull. The step consumes no other simulation while it runs. Do not turn this back into a
@@ -1928,10 +1930,13 @@ between them is script_kitty's portal.
 - `ArenaDef.rooms` is still presentation. HOLDING's block is the only local body barrier and
   `holdingCellLayout` is shared by bars and collision. No room collision enters `World` or the guest
   predictor.
-- `spawnCalibrationShapes` places the six dormant subjects in HOLDING; the wave-2 worm and viruses wait
-  behind the bars with `held`. Clearing wave 1 opens the block; clearing wave 2 starts the portal.
-- MAINBOARD authors two ingress ports, ROUTER one. Closing the last port starts the pull; there is no
-  party-port prop and no stand-in-the-exit check. `portTotal` still owns the objective strip.
+- `spawnCalibrationShapes` stages six dormant lock targets on the INTAKE plate for the Warden lesson, then
+  six attack subjects in HOLDING; INTAKE's set is practice-only and is cleared when the first portal opens.
+  The wave-2 worm and viruses wait behind the HOLDING bars with `held`. Clearing wave 1 opens the block;
+  clearing wave 2 starts the portal. HOLDING's wake clocks are staggered by `CALIBRATION.wakeStagger`.
+- MAINBOARD authors two ingress ports, ROUTER one. Closing the last port does **not** open the pull while any
+  sentry, virus, worm or error is live; the portal waits for `campaignFloorClear`. There is no party-port
+  prop and no stand-in-the-exit check. `portTotal` still owns the objective strip.
 - Room arenas are local-only: `isOnlineArena` skips `rooms`. The four tutorial devices never enter a hosted
   room or online series.
 - Probes: `.tmp/quarantine-check.ts` covers the split, route and first pull; `holding-layout-check`,
@@ -2368,11 +2373,11 @@ that is never solid and never damageable.
 them to the prop pool as `fixed` records, so the existing `damageProp` shot, lash and blast paths close
 them — do not add a second damage system or a second entity type. **Every damaging action closes a port**: ranged shots stop on it, the lash and guard chips it, each damaging skill (Toxic's spray and jet, Sweep's split brooms) and each damaging super (Probe's beam, Wedge's bracket and plow, Sweep's stroke, the charged dash) resolves against it too, gated by a per-port 0.3 s contact cooldown so a per-frame attack cannot delete one in two ticks. Health and cadence are tuned together and authored per port (BUILD ROOT: 20–26 hits, one emission every 2.6–3 s); a tough port that trickles threats is boring, a fragile one that floods is noise. `updatePortals` runs the emission clock
 and the 0.9 s collapse, the families reuse `spawnSentry`/`spawnVirus`/`spawnWorm` and respect the live
-caps, and closing all of them pushes the white exit port onto the uplink and hands the story box to
-`KITTY_UPLINK_TUTORIAL`; walking into the exit clears the node, so live threats never hold a finished
-level open. The level still opens populated: `seedAssaultFloor` posts a capped squad on every plate, or
-in every painted room on a flat device, and the ports add to it. INFECTION still seeds through `setupInfection` and `spawnVirusCluster`; routing that
-flood through ports is open work behind the same data.
+caps. The exit waits for **every port down and every delivered body gone**; `campaignFloorClear` is the one
+gate, and a last-port hit no longer pulls the player out mid-fight. The level still opens populated:
+`seedAssaultFloor` posts one opening silhouette on a flat device and the ports add the rest. INFECTION
+still seeds through `setupInfection` and `spawnVirusCluster`; routing that flood through ports is open work
+behind the same data.
 
 - The clear condition replaces the bare kill count. `CAMPAIGN.killsToClear` (`tuning/campaign.json`, 10) and
 the one-pip-per-delete objective strip in `render.ts` are today's gate; they become **ports remaining plus
@@ -2600,17 +2605,14 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
 - **Damage is contact, and nothing else.** `megaTouch` on any plate is the whole attack. There is no maw
   snap, no bite, no acid and no legs phase; the head is not a separate creature. Normal worms keep their
   own `WORM` bite in `updateWorm`, which is a different branch.
-- **Straight runs, wide turns, never a chase.** After the entrance, `updateMegaWorm` alternates two
-  states: a straight run at `flyby.speed` whose heading stays fixed until the head has passed the latched
-  point by `flyby.exitRange`, then a wide turn at `flyby.turnSpeed` / `flyby.turnRate` back toward the
-  player. It re-aims once when the turn starts; only the turn steers. There is no teleport, no orbit and
-  no ground chase. The turn radius (`turnSpeed / turnRate`, 760 units) must stay well above `spacing`, or
-  the trailing chain folds through itself; that is the rule, not the size of the old arc. Tuning is
-  `speed` 940, `exitRange` 380, `turnRate` 1.0, `turnSpeed` 760 (v0.1.152). The old wide arc
-  (1020/700/0.55/620) spent about 80% of every cycle outside the floor: 18 passes over 186 s with an
-  always-firing invulnerable pilot, including whole passes that only clipped the lip. The tighter loop
-  keeps ~35% of the fight on the floor and clears in 55-115 s depending on the kit. Measure passes and
-  uptime before changing these numbers; a slower pass also lets slow-projectile kits land more often.
+- **Fixed fly-by lanes, never a chase (v0.1.181).** Campaign REBOOT stages four static lanes: horizontal
+  through the centre, horizontal across the upper band, and one vertical pass on each side. `stageMegaPass`
+  parks the head offscreen on the lane and `updateMegaWorm` runs the line at `flyby.speed`; it never reads
+  the player's position after the entrance. The pass ends only after the trailing body has cleared the floor
+  (`flyby.leaveTime`), then waits `repeatDelay` before the next lane. The entrance is one slow, harmless
+  cross-arena fly-past with the roar; the arena camera holds a fixed wide frame at
+  `CAMERA.megaArenaZoom` through the intro and the whole fight. Keep the lanes static: the boss is a
+  pattern to read and dodge, not a homing worm. Do not spawn little families between passes.
 - **Bosses cannot be infected (2026-11-02).** `infectWorm` refills health because a converted worm becomes
   a thrall. A virus touching the Mega Worm healed it to full mid-fight and made the level unkillable, so
   both the virus host scan and its contact test skip `w.bossKind >= 0`.
