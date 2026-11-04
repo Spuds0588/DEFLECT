@@ -7791,7 +7791,8 @@ heavy glow and particles, and destruction that disappears in the red-square burs
   playthrough at the bottom lane. `.tmp/port-sweep-check.ts` now asserts every campaign port is within 12
   units of an arena edge.
 - Updated `AGENTS.md`, `README.md`, `GAME_GUIDE.md`, `CAMPAIGN.md`, `TODO.md` and `HISTORY.md`; bumped
-  `package.json`, `package-lock.json`, `index.html`, `src/main.ts` and `public/sw.js` to 0.1.189.
+  `package.json`, `package-lock.json`, `index.html`, `src/main.ts` and `public/sw.js` to 0.1.189; the SYSTEM
+  screen's BUILD readout now reports the same version.
 
 **Verification.**
 - `assault-check` OK: four queued sentries opened on an edge 60 units in, burst together, then closed.
