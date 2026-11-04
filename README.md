@@ -191,17 +191,19 @@ charges, energy and cooldowns, and it keeps AI cost out of the physics loop.
 A campaign level is one arena in an ordered route, not a floor plan joined to the next. Clearing a node
 saves the slot, script_kitty opens a portal, and the party is dropped on the next device. There is no
 bridge between islands and no `NEXT ARENA` menu between devices; only the last node parks on a result
-overlay. `QUARANTINE` is one continuous floor: its four rooms are painted plates with their own furniture
-and labels, so the holding cell block is a local barrier rather than an island gate.
+overlay. `QUARANTINE` is four portal-fed arenas: INTAKE, HOLDING, MAINBOARD and ROUTER. Each is one room
+with its own furniture and labels; the only way between them is the portal. HOLDING's cell block is a local
+barrier, not an island gate.
 
 Threats still arrive through authored **ports** (`ArenaDef.ingress`): fixed, damageable squares that emit
 a threat family on a clock and stop when shot shut. Ports reuse the file-box damage path rather than a
 second entity type, respect the same live caps as a sentry pack, and gate the exit directly: closing every
-port opens the white party port that ends the level. Ports are local content — campaign and infection only,
-never in a snapshot.
+port starts the right-wall portal pull that ends the level. Ports are local content — campaign and infection
+only, never in a snapshot.
 
-Every round-based match hops the same way. When a round ends, a white portal opens at the arena centre and
-pulls every standing body in. Local and bot modes rebuild the `World` on the next arena, carrying scores and
+Every round-based match hops the same way. When a round ends, a white portal opens on the right wall and
+pulls every standing body in; the next round enters from the left wall. The pull writes positions directly,
+so cover cannot trap a body. Local and bot modes rebuild the `World` on the next arena, carrying scores and
 the round number; the host broadcasts `MSG.HOP` so guests rebuild their `NetView` on the same arena. The
 renderer's square portal wipe covers the swap. Open decks inside a plate arena are floor, never a
 progression gate.

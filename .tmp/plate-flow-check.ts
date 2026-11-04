@@ -53,6 +53,13 @@ for (const arena of ARENAS) {
     // route is a walk from the entry spawn to the party port, not a deck graph.
     const tag = `${arena.id} ${arena.name}`;
     if (bridges.length > 0) problems.push(`${tag}: single-floor device still declares bridge decks`);
+    // A one-room tutorial arena is portal-fed: it has no party port, because the clear
+    // opens the right-wall portal itself. There is no left-to-right plate route to check.
+    if (!arena.port && arena.rooms.length === 1) {
+      console.log(`${tag}: portal-fed room (one room, no party port, right-wall exit)`);
+      checked++;
+      continue;
+    }
     const blocked: Rect[] = [...(arena.pillars ?? []), ...cellBlocks(arena)];
     const b = arena.bounds;
     const step = 24;

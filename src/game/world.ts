@@ -133,7 +133,7 @@ import {
   CALIBRATION_POWER_TUTORIAL,
   CALIBRATION_SKILL_TUTORIAL,
   KITTY_TUTORIAL,
-  KITTY_UPLINK_TUTORIAL,
+  KITTY_FIRST_HOP,
   TutorialRunner,
   WARDEN_TUTORIAL, BOSS_INBOUND, type TutorialStep } from './tutorial';
 import { beamReach, circleRect, hitScratch } from './collision';
@@ -384,8 +384,22 @@ export class World {
   /** Enemy ingress ports closed this run, and how many the arena authored. */
   portsClosed = 0;
   portTotal = 0;
-  /** Every enemy port is closed, so the white exit port is open on the uplink. */
+  /** Every enemy port is closed, so the right-wall exit portal is opening. */
   campaignExitReady = false;
+  /** Seconds into the campaign portal pull; negative means idle. */
+  campaignPortalT = -1;
+  /** Seconds left on the left-wall entry portal after a hop. Presentation only. */
+  entryPortalT = 0;
+
+  /** Exit portal is live: campaign pull or match roundover. Read by the renderer. */
+  get portalOpen(): boolean {
+    return this.campaignPortalT >= 0 || (this.mode === 'match' && this.phase === 'roundover');
+  }
+
+  /** Seconds into the live exit portal's animation. */
+  get portalT(): number {
+    return this.campaignPortalT >= 0 ? this.campaignPortalT : this.roundHopT;
+  }
   /** Escalation wave in gauntlet mode. Purely local presentation + spawn pacing. */
   wave = 1;
   waveBannerT = 0;
@@ -1347,18 +1361,36 @@ export class World {
       this.campaignBannerT = 0;
       return;
     }
+    // A feed-room node opens in live fire. The drill squad has already logged off; the
+    // port sweep is the whole fight, so there is no calibration class or sparring beat.
+    if (this.campaignIntro === 'assault') {
+      for (let i = 1; i < this.players.length; i++) {
+        this.players[i].active = false;
+        this.players[i].alive = false;
+      }
+      this.beginAssault();
+      return;
+    }
     this.campaignPhase = 'calibration';
-    this.tutorial = this.campaignIntro === 'warden' ? new TutorialRunner(WARDEN_TUTORIAL) : null;
+    this.tutorial =
+      this.campaignIntro === 'warden'
+        ? new TutorialRunner(WARDEN_TUTORIAL)
+        : this.campaignIntro === 'holding'
+          ? new TutorialRunner(KITTY_FIRST_HOP)
+          : null;
     this.tutorialCatchSeen = this.tutorialCatchTotal();
     this.campaignBannerKind = 4;
     this.campaignBannerT = CALIBRATION.bannerTime;
     this.campaignBannerDur = CALIBRATION.bannerTime;
     // Bots stay parked until the calibration subjects are cleared. The drill squad
     // then logs in on the existing ring with the player, before the breach removes it.
-    this.spawnCalibrationShapes();
-    // Wave 2 is already alive in the cells. These are the same bodies release wakes;
-    // nothing is spawned on the power-down beat.
-    this.spawnHeldCellThreats();
+    // Intake has no holding room: its lesson ends into the first portal instead.
+    if (this.arena.rooms?.some((room) => room.theme === 'holding')) {
+      this.spawnCalibrationShapes();
+      // Wave 2 is already alive in the cells. These are the same bodies release wakes;
+      // nothing is spawned on the power-down beat.
+      this.spawnHeldCellThreats();
+    }
   }
 
   /**
@@ -1558,50 +1590,61 @@ export class World {
 
   /** The white party port: the run's way out of this network. */
   private openCampaignExit(): void {
-    if (this.campaignExitReady) return;
-    this.campaignExitReady = true;
-    const port = this.arena.port;
-    const x = port ? port.x : this.centerX;
-    const y = port ? port.y : this.centerY;
-    const size = 76;
-    this.props.push({
-      active: true,
-      kind: 0,
-      x: x - size * 0.5,
-      y: y - size * 0.5,
-      w: size,
-      h: size,
-      hp: 1,
-      hitFlash: 0,
-      dropT: 0,
-      vx: 0,
-      vy: 0,
-      tx: 0,
-      ty: 0,
-      fixed: true,
-      portal: true,
-      portalExit: true,
-      portalCloseT: 0,
-    });
-    // Kitty takes the story box: the infection was routed in, so the hop continues.
-    this.tutorial = new TutorialRunner(KITTY_UPLINK_TUTORIAL);
-    this.tutorialFinished = false;
-    this.tutorialGrace = 0;
-    this.emit(EV.PROP_BREAK, 0, x, y, 120);
+    this.beginCampaignPortal();
   }
 
-  /** The local player is standing in the open party port. */
-  private playerAtCampaignExit(): boolean {
-    const p = this.players[0];
-    if (!p.active || !p.alive) return false;
-    for (let i = 0; i < this.props.length; i++) {
-      const b = this.props[i];
-      if (!b.active || !b.portalExit) continue;
-      const cx = b.x + b.w * 0.5;
-      const cy = b.y + b.h * 0.5;
-      return Math.hypot(p.x - cx, p.y - cy) <= b.w * 0.5 + PLAYER.radius;
+  /**
+   * Opens the right-wall exit portal and starts the pull. This is the only campaign
+   * exit: the room closes into a white square on its right side, every body is dragged
+   * into it without collision, and the level clears when the pull finishes.
+   */
+  private beginCampaignPortal(): void {
+    if (this.campaignPortalT >= 0 || this.campaignPhase === 'cleared' || this.campaignPhase === 'failed') return;
+    this.campaignPortalT = 0;
+    this.campaignExitReady = true;
+    this.emit(EV.PROP_BREAK, 0, this.arena.bounds.right - 36, this.centerY, 150);
+  }
+
+  /**
+   * Strong, short suction. Positions are written directly, so pillars, cell bars and
+   * any other body collider are irrelevant: a body in a corner crosses the whole room
+   * and lands in the portal. The step consumes no other simulation while this runs.
+   */
+  private tickCampaignPortal(dt: number): void {
+    this.campaignPortalT += dt;
+    const t = this.campaignPortalT;
+    // A short open beat shows the mouth before the yank, then the pull is immediate.
+    if (t < 0.32) return;
+    const pull = t - 0.32;
+    const targetX = this.arena.bounds.right - 36;
+    const targetY = this.centerY;
+    const k = Math.min(1, dt * (6 + pull * 18));
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive) continue;
+      p.x += (targetX - p.x) * k;
+      p.y += (targetY - p.y) * k;
+      p.prevX = p.x;
+      p.prevY = p.y;
+      p.vx = 0;
+      p.vy = 0;
+      p.kx = 0;
+      p.ky = 0;
+      p.dashT = 0;
+      p.wedgeT = 0;
+      p.swingPhase = 0;
+      p.swingT = 0;
+      p.swingPct = 0;
+      p.chargeT = 0;
+      p.chargeHeld = false;
+      p.laserChargeHeld = false;
+      p.laserChargeT = 0;
+      p.laserT = 0;
+      p.guardT = 0;
+      p.ocChargeT = 0;
+      p.ocFadeT = 0;
     }
-    return false;
+    if (t >= 1.15) this.clearCampaign();
   }
 
   /**
@@ -1619,7 +1662,10 @@ export class World {
         zones.push({ cx: islands[i].x + islands[i].w * 0.42, cy: islands[i].y + islands[i].h * 0.5 });
       }
     } else if (this.arena.rooms) {
-      for (let i = 1; i < this.arena.rooms.length; i++) {
+      // A split room is the whole arena now, so it seeds itself instead of every room
+      // after intake. A combined tutorial floor still skips its opening room.
+      const start = this.arena.rooms.length > 1 ? 1 : 0;
+      for (let i = start; i < this.arena.rooms.length; i++) {
         const room = this.arena.rooms[i];
         zones.push({ cx: room.x + room.w * 0.42, cy: room.y + room.h * 0.5 });
       }
@@ -1723,7 +1769,7 @@ export class World {
       this.campaignCivilianLossT = 0;
       this.loseCampaignCivilians();
     }
-    if (this.campaignIntro === 'warden') {
+    if (this.campaignIntro === 'warden' || this.campaignIntro === 'holding') {
       this.tutorial = new TutorialRunner(CALIBRATION_POWER_TUTORIAL);
       this.tutorialFinished = false;
       this.tutorialGrace = 0;
@@ -1993,7 +2039,7 @@ export class World {
     // the player gets the skill/heavy lesson while the subjects are live.
     this.campaignHoldingWait = 0;
     this.campaignCivilianLossT = 0.65;
-    if (this.campaignIntro === 'warden') {
+    if (this.campaignIntro === 'warden' || this.campaignIntro === 'holding') {
       this.tutorial = new TutorialRunner(CALIBRATION_SKILL_TUTORIAL);
       this.tutorialFinished = false;
       this.tutorialGrace = 0;
@@ -2567,6 +2613,12 @@ export class World {
 
   /** Advances the campaign script. The threat simulation waits for the assault phase. */
   private updateCampaign(dt: number, inputs: (InputFrame | null)[]): void {
+    // The portal owns the room once it starts. No collision, hit or hazard tick runs
+    // under the pull; updateCampaign is the only thing the step consumes.
+    if (this.campaignPortalT >= 0) {
+      this.tickCampaignPortal(dt);
+      return;
+    }
     if (this.campaignBannerT > 0) this.campaignBannerT = Math.max(0, this.campaignBannerT - dt);
     if (this.campaignBarsFlashT > 0) this.campaignBarsFlashT = Math.max(0, this.campaignBarsFlashT - dt);
     if (this.campaignCivilianLossT > 0) {
@@ -2586,8 +2638,14 @@ export class World {
         }
         if (!this.calibrationAwake) {
           const holding = this.arena.rooms?.find((room) => room.theme === 'holding');
+          // Intake has no holding room. Finishing the lesson is its clear: the first
+          // portal opens on the right wall and pulls the player into HOLDING.
+          if (!holding) {
+            this.beginCampaignPortal();
+            return;
+          }
           const player = this.players[0];
-          const inHolding = !!holding && player.x >= holding.x && player.x <= holding.x + holding.w && player.y >= holding.y && player.y <= holding.y + holding.h;
+          const inHolding = player.x >= holding.x && player.x <= holding.x + holding.w && player.y >= holding.y && player.y <= holding.y + holding.h;
           if (this.campaignHoldingWait <= 0) this.campaignHoldingWait = CALIBRATION.entryWait;
           this.campaignHoldingWait = Math.max(0, this.campaignHoldingWait - dt);
           if (inHolding || this.campaignHoldingWait <= 0) this.wakeCalibration();
@@ -2623,8 +2681,10 @@ export class World {
         !this.campaignThreatsActive() &&
         (!this.tutorial || this.tutorial.done)
       ) {
-        // The cell block is down and the drill begins on the same continuous floor.
-        this.beginDrill();
+        // The cell wave is down. HOLDING clears into the next portal; a combined node
+        // keeps the old drill path for any future level that still authors one room.
+        if (this.campaignIntro === 'holding') this.beginCampaignPortal();
+        else this.beginDrill();
       }
       return;
     }
@@ -2685,10 +2745,8 @@ export class World {
         return;
       }
       if (this.portTotal > 0) {
-        // Ports own the win: close every one, then leave through the white party port.
-        // Enemies still in play do not block the exit, which is why a port cannot end a
-        // fight by itself just by dying.
-        if (this.campaignExitReady && this.playerAtCampaignExit()) this.clearCampaign();
+        // Ports own the win: closing the last one starts the right-wall portal pull in
+        // closePort. There is no walk back to a party port and no exit prop to find.
       } else if (this.gauntletKills >= this.campaignKillsToClear) {
         this.clearCampaign();
       }
@@ -2907,6 +2965,8 @@ export class World {
     this.wave = CAMPAIGN.waveStart;
     this.waveBannerT = 2.4;
     this.wormSpawnT = CAMPAIGN.openingWormDelay;
+    // A node that opens straight into live fire still loads its crates.
+    this.spawnCampaignData();
     // Land the opening pack on the breach beat instead of waiting out the timer, and
     // open on a floor that already has a squad on it.
     this.spawnSentryPack();
@@ -3158,7 +3218,7 @@ export class World {
     return best;
   }
 
-  beginRound(): void {
+  beginRound(fromPortal = false): void {
     this.roundHopT = 0;
     this.clearCopyClones();
     this.clearAimMarks();
@@ -3198,11 +3258,36 @@ export class World {
       clearPlayerForSpawn(p, sx, sy, facing);
     }
     for (let i = 0; i < this.projectiles.length; i++) this.projectiles[i].active = false;
+    // A hopped round starts on the new arena's left wall, not on its authored ring.
+    if (fromPortal) this.enterAtPortal();
     this.phase = 'countdown';
     this.phaseTimer = ROUND.countdown;
     this.roundTimer = ROUND.timeLimit;
     this.roundWinner = -1;
     this.emit(EV.ROUND_START, -1, this.centerX, this.centerY, this.round);
+  }
+
+  /**
+   * Places every live body on the left-wall entry portal. Used after a campaign hop and
+   * by a hopped round, so the wipe opens on the room being entered rather than on a
+   * spawn ring behind the player.
+   */
+  enterAtPortal(): void {
+    const b = this.arena.bounds;
+    const active: Player[] = [];
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (p.active) active.push(p);
+    }
+    const x = b.left + 52;
+    const span = Math.min((b.bottom - b.top) * 0.5, Math.max(0, active.length - 1) * 62);
+    for (let i = 0; i < active.length; i++) {
+      const p = active[i];
+      const y = this.centerY - span * 0.5 + (active.length === 1 ? 0 : (span * i) / (active.length - 1));
+      clearPlayerForSpawn(p, x, y, 0);
+      p.iframes = Math.max(p.iframes, 0.45);
+    }
+    this.entryPortalT = 1.25;
   }
 
   /** Advances the simulation one fixed step. Consumes `pressed` bits from the provided frames. */
@@ -3221,7 +3306,13 @@ export class World {
       this.clearPressed(inputs);
       return;
     }
+    if (this.entryPortalT > 0) this.entryPortalT = Math.max(0, this.entryPortalT - dt);
     if (this.campaign) this.updateCampaign(dt, inputs);
+    // The campaign portal is a scripted exit: it owns the body until the room clears.
+    if (this.campaign && this.campaignPortalT >= 0) {
+      this.clearPressed(inputs);
+      return;
+    }
     if (this.mode === 'match') {
       if (this.phase === 'matchend') {
         this.clearPressed(inputs);
@@ -4230,12 +4321,16 @@ export class World {
   private tickRoundHopPull(dt: number): void {
     if (this.mode !== 'match') return;
     this.roundHopT += dt;
-    const k = Math.min(1, dt * (1.1 + this.roundHopT * 2.4));
+    // The round portal sits on the right wall, so the next arena can throw the room
+    // in from its left wall. The pull is direct and ignores cover.
+    const targetX = this.arena.bounds.right - 36;
+    const targetY = this.centerY;
+    const k = Math.min(1, dt * (5 + this.roundHopT * 14));
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
       if (!p.active || !p.alive) continue;
-      p.x += (this.centerX - p.x) * k;
-      p.y += (this.centerY - p.y) * k;
+      p.x += (targetX - p.x) * k;
+      p.y += (targetY - p.y) * k;
       p.prevX = p.x;
       p.prevY = p.y;
       p.vx = 0;

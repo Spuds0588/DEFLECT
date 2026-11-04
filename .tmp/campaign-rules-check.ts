@@ -2,7 +2,7 @@ import { TutorialRunner, WARDEN_TUTORIAL } from '../src/game/tutorial';
 import { World } from '../src/game/world';
 import { ARENAS } from '../src/game/arenas';
 import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
-import { MAX_PLAYERS } from '../src/game/config';
+import { MAX_PLAYERS, SIM_DT } from '../src/game/config';
 
 // 1. The lesson waits for the hands, not the clock.
 const t = new TutorialRunner(WARDEN_TUTORIAL);
@@ -15,16 +15,52 @@ for (let i = 0; i < 60 * 3; i++) t.update({ dt: 1 / 60, frame: { mx: 1, my: 0, h
 console.log('after moving: step=', t.current?.id, '(expected dash)');
 if (t.current?.id !== 'dash') throw new Error('tutorial did not advance after the move goal was met');
 
-// 2. Level 1 keeps the floor primitive.
-const level = PLAYABLE_CAMPAIGN_LEVELS[0];
-const arena = ARENAS.find((a) => a.id === level.arenaId)!;
+// 2. The live route is the four split quarantine rooms, then the first network.
+const route = PLAYABLE_CAMPAIGN_LEVELS.map((level) => [level.arenaId, level.intro]);
+console.log('route:', route.map(([id, intro]) => `${id}:${intro}`).join(' -> '));
+if (PLAYABLE_CAMPAIGN_LEVELS.length !== 5) throw new Error(`expected five playable levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
+if (route[0][0] !== 14 || route[1][0] !== 34 || route[2][0] !== 35 || route[3][0] !== 36 || route[4][0] !== 1) {
+  throw new Error('campaign route is not intake -> holding -> mainboard -> router -> reboot');
+}
+
 const names = new Array<string>(MAX_PLAYERS).fill('');
 names[0] = 'P';
-const w = new World('gauntlet', names, 0, arena, false, 0, 3, [11, 10, 9], true,
-  level.dataCrates, false, level.intro, level.clearKills, false, level.boss ?? -1, level.primitivesOnly === true);
-(w as any).beginAssault();
-const viruses = (w.viruses as any[]).filter((v) => v.active).length;
-const worms = (w.worms as any[]).filter((x) => x.active).length;
-console.log('level 1 assault: viruses=', viruses, 'worms=', worms, 'primitivesOnly=', (w as any).campaignPrimitivesOnly);
-if (viruses !== 0) throw new Error('level 1 spawned viruses despite the primitives-only rule');
-if (worms === 0) throw new Error('level 1 spawned no worms: the floor is empty');
+const build = (index: number, bots = 0) => {
+  const level = PLAYABLE_CAMPAIGN_LEVELS[index];
+  const arena = ARENAS.find((a) => a.id === level.arenaId)!;
+  return new World(
+    'gauntlet', names, 0, arena, false, 0, bots, bots > 0 ? [11, 10, 9] : null, true,
+    level.dataCrates, false, level.intro, level.clearKills, false, level.boss ?? -1, false,
+  );
+};
+
+// 3. Intake's Warden lesson is the only gate and ends into the first portal.
+const intake = build(0);
+if (intake.campaignPhase !== 'calibration') throw new Error('intake did not open in calibration');
+if (!intake.tutorial || intake.tutorial.current?.id !== 'quarantine') throw new Error('intake is not running the Warden lesson');
+if (intake.props.some((p) => p.portal && !p.portalExit)) throw new Error('intake spawned ingress ports');
+intake.skipTutorial();
+for (let i = 0; i < 420; i++) intake.step(SIM_DT, new Array(MAX_PLAYERS).fill(null));
+if (intake.campaignPhase !== 'cleared') throw new Error(`intake portal did not clear (${intake.campaignPhase})`);
+
+// 4. Holding lands on kitty's line and owns the six-subject class plus the cell wave.
+const holding = build(1);
+const arrival = holding.tutorial?.current;
+if (arrival?.speaker !== 'SCRIPT_KITTY' || arrival?.id !== 'kitty-worked') throw new Error('holding did not open on kitty saying it worked');
+const shapes = holding.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <= 6);
+if (shapes.length !== 6) throw new Error(`expected six calibration subjects, got ${shapes.length}`);
+if (holding.worms.filter((w) => w.active && w.held).length !== 1) throw new Error('holding has no held worm');
+if (holding.viruses.filter((v) => v.active && v.held).length !== 2) throw new Error('holding has no held viruses');
+
+// 5. Feed rooms open live with their authored port counts and no calibration class.
+for (const index of [2, 3]) {
+  const level = PLAYABLE_CAMPAIGN_LEVELS[index];
+  const world = build(index);
+  if (world.campaignPhase !== 'assault') throw new Error(`${level.name} did not open in assault`);
+  if (world.portTotal !== (world.arena.ingress?.length ?? 0)) throw new Error(`${level.name} portTotal mismatch`);
+  if (world.sentries.some((s) => s.active && s.kind >= 4 && s.kind <= 6)) throw new Error(`${level.name} spawned calibration shapes`);
+  if (world.dataTotal !== level.dataCrates.length) throw new Error(`${level.name} did not load its crates`);
+  console.log(`${level.name}: ports=${world.portTotal} crates=${world.dataTotal}`);
+}
+
+console.log('campaign-rules-check: OK (lesson gates intake, kitty arrival, split route, live feed rooms)');

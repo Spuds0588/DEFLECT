@@ -59,7 +59,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.179';
+const BUILD = '0.1.180';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -1690,6 +1690,9 @@ function startCampaignLevel(viaPortal = false): void {
   world.friendlyFire = friendlyFire;
   for (let i = 0; i < MAX_PLAYERS; i++) world.setMemoryStacks(i, campaignMemory[i] ?? 0);
   world.restoreFragments(campaignShards);
+  // A portal hop drops the squad on the new room's left wall. A fresh node keeps the
+  // authored spawn so the player still starts where the room expects them.
+  if (viaPortal) world.enterAtPortal();
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
   botBrains = new Array(MAX_PLAYERS).fill(null);
@@ -4374,7 +4377,11 @@ function syncPhaseUi(state: RenderState): void {
       deathHoldUntil = 0;
     } else if (overlayKind === 'none') {
       // Let the last de-rez and the empty arena sit for a beat before the buttons land.
-      if (deathHoldUntil === 0) deathHoldUntil = performance.now() + DEATH_HOLD_MS;
+      // A portal clear has already spent its beat on the suction. Do not stack the
+      // death hold on top of it; the wipe should follow the mouth immediately.
+      if (deathHoldUntil === 0) {
+        deathHoldUntil = performance.now() + (world.campaignPortalT >= 0 ? 260 : DEATH_HOLD_MS);
+      }
       if (performance.now() >= deathHoldUntil) {
         if (world.campaignPhase === 'cleared') handleCampaignClear(world);
         else showCampaignFailOverlay(world);
@@ -4449,7 +4456,7 @@ function carryRoundInto(target: World, source: World): void {
   target.roundWinner = -1;
   target.matchWinner = -1;
   for (let i = 0; i < MAX_PLAYERS; i++) target.players[i].score = source.players[i].score;
-  target.beginRound();
+  target.beginRound(true);
   lastPhase = '' as Phase;
   lastRound = -1;
   lastRoundWinner = -2;

@@ -174,15 +174,16 @@ any files they carry, and script_kitty watches from the middle cell. The Warden 
 while wave 1 is live. Clear all six and finish that lesson to make the cell block lose power: the bars
 retract unexpectedly and release **wave 2**, two viruses and a worm, while the Warden teaches your
 **power attack**. They are already in the cells behind the bars; the power-down releases them instead of
-spawning replacements. Clear wave 2 and finish the heavy lesson, then spar against the bot squad (a `NO BOTS`
-run still drills against one instructor), survive a `SYSTEM BREACH` warning, then the floor is already
-full when the assault starts: a squad is posted on every plate beyond intake, and two red **open ports**
-leak more onto the mainboard while a third feeds the router. Any attack that does damage closes a port —
-ranged shots, the lash, a damaging skill or a damaging super — so bring the whole kit. A port takes
+spawning replacements. Clear wave 2 and finish the heavy lesson to open the next portal. The quarantine
+route is four rooms: `INTAKE` (the Warden lesson), `HOLDING` (the cells), `MAINBOARD` (two feeds) and
+`ROUTER` (one feed plus two wall emitters). Every room ends through script_kitty's portal; there is no
+sparring-drill or breach beat on the feed rooms now, so their floor is already live when you arrive. Two
+red **open ports** leak threats onto the mainboard and one feeds the router. Any damaging action closes a
+port — ranged shots, the lash, a damaging skill or a damaging heavy — so bring the whole kit. A port takes
 20–26 hits and leaks a threat every few seconds until it shuts, and a shut port stops feeding that room
-for good. Closing all three opens a **white party port** on the router uplink while script_kitty explains
-the infection was routed in from another network and the hop continues. Walk into the white port to clear
-the node. Enemies still alive do not block that exit, because closing the sources is the win.
+for good. Closing the last feed in a room opens its right-wall portal; the suction pulls you in, so there
+is no white party port to walk into and no bridge to earn. Enemies still alive do not block the portal,
+because closing the sources is the win.
 The clear reports
 kills, time, damage taken, data crates preserved and a score; losing no crates is a clean sweep and pays a
 bonus, and the best score and sweep count stay in the slot.
@@ -332,7 +333,7 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `KEYPAD` | The entire arena is a ten-key phone pad. There is no outside floor: spawns stand on the bezel. Each 680×528 key warns for 4 s, sinks for 1.2 s, holds as solid cover for 8 s, then rises for 1.6 s. A slam crushes threats instantly; a player caught under one loses three segments. Online: the key clock is synced and the host resolves the crush. |
 | `DOCUMENT SCANNER` | A large glass platen where documents load from a floor slot, a read line scans top to bottom, snaps back, and the sheet is replaced. Hop the line or dash over it. Online: the scan clock/page is synced and the host resolves the line. |
 | `BROWSER` | A browser window showing a forum. A giant cursor travels to the page link, hovers, and click-slams the floor before the forum navigates deeper and the cover layout changes. Online: the page/clock is synced and the host resolves the click. |
-| `QUARANTINE` | The campaign tutorial device: one continuous floor with four painted rooms — intake (booking counter, desk cover, chains), holding (three jail cells), mainboard and router. There is no bridge and no floor gap between rooms; the sealed cell block is the only local barrier. Red ingress ports sit on the mainboard and router; closing all three opens the white party port on the router uplink. Clearing the node opens script_kitty's portal to the next device. Local-only tutorial staging. |
+| `QUARANTINE` | Four campaign tutorial arenas, one room each: INTAKE (booking counter, desk cover, chains), HOLDING (three jail cells), MAINBOARD (two feeds) and ROUTER (one feed and two wall emitters). There is no walk between rooms; script_kitty's portal is the only route. Each room exits through a portal on its right wall and the next room throws you in from the left. Closing the last feed in MAINBOARD or ROUTER starts the pull. HOLDING's sealed block is the only local body barrier. Local-only tutorial staging. |
 | `USB HUB` | A round hub with four thumb-drive islands pushing out on a shared cycle. Only the hub and drives are floor; the gap grows to 230 units, so a dash can cross while the drives are travelling but not at full extension. While a drive extends, its current pushes outward; while it retracts, the current pulls inward, carrying players and threats off or onto the islands. Online: the drive clock is synced and the host resolves the ride. |
 | `SWIPE RIGHT` | A tall phone touchscreen showing a dating deck. Every 4.6 s the card swipes left or right and the whole floor slides 108 units that way, carrying every fighter and live shot toward the wall. A `YOU GOT A MATCH` popup rises from the center of the screen for a few seconds as real cover: it blocks bodies and shots, displaces anyone caught under it, then drops back into the floor. Online: the swipe and popup clocks are synced and the host owns the carry and collision. |
 | `ROCKET NAVIGATION` | A launch-control floor under a nav display. The rocket lifts from below the bottom lip while speed, altitude and trajectory count up. Its growing arc is a real barrier: a 24 s launch lays a continuous curved wall across the arena that bodies, dashes and shots cannot cross. The finished line splits the room for the rest of the round. Booster and fairing separation marks drift off the arc as presentation only. Local-only: the launch clock and barrier are not in the snapshot. |
@@ -366,17 +367,19 @@ cat face and sits in the middle holding cell.
 
 ### Portals, pads and lifts
 
-`QUARANTINE` is the tutorial device: one continuous floor with four painted rooms. The `INTAKE` room is
-the Warden's lesson room, with a booking counter, desk blocks and chains; `HOLDING` holds the six dormant
-calibration subjects and three jail cells; `MAINBOARD` follows; `ROUTER` is the approach to the network
-port. There is no bridge between rooms and no floor gap to cross: the cell block is the only local
-barrier. Clearing every red port opens the white party port, and walking into it clears the node; the
-living enemies do not block that exit.
+`QUARANTINE` is four tutorial arenas, not one floor. `INTAKE` is the Warden's lesson room, with a booking
+counter, desk blocks and chains. Finishing the lesson opens the right-wall portal into `HOLDING`, where the
+six dormant calibration subjects and three jail cells wait; kitty's first line there is "IT WORKED! I
+CAN'T BELIEVE IT WORKED." `MAINBOARD` has two feeds; `ROUTER` has one feed and two wall emitters. There is
+no walk between rooms and no floor gap to cross: the cell block is HOLDING's only local barrier.
 
-The clear saves the slot and opens script_kitty's portal straight to the next device. Every round-based
-match uses the same idea: when a round ends, a white portal opens at the arena centre, pulls every
-standing body in, and the next round starts on the next arena. Local and bot matches carry their scores;
-a host sends the hop to every guest. Room arenas are local-only and do not appear in online map rotation.
+Every exit portal sits on the right wall; every entry portal sits on the left. The pull is deliberately
+strong and ignores cover, cell bars and hazards, so a body in a corner is yanked across the whole room.
+Closing the last feed starts the pull. The clear saves the slot and opens script_kitty's portal straight to
+the next device. Every round-based match uses the same idea: when a round ends, the right-wall portal pulls
+every standing body in, and the next round enters from the left wall. Local and bot matches carry their
+scores; a host sends the hop to every guest. Room arenas are local-only and do not appear in online map
+rotation.
 
 Traversal is still arena geometry for the plate arenas. A floor gap is solid to bodies, bots and gauntlet
 threats, while shots fly over it. An open deck is the walking route across. Pads and lifts arm on a

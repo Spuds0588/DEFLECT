@@ -1,15 +1,15 @@
 /**
- * QUARANTINE is one continuous device floor now. The holding room still has to admit a
- * body from intake around the open side of the sealed cell block, and the party port
- * has to be reachable by ordinary walking. No bridge milestone, no second floor.
+ * QUARANTINE // HOLDING is its own arena now. The room still has to admit a body on the
+ * open left side of the cell block, and the right-wall portal has to be reachable by
+ * ordinary walking after the cell wave clears.
  */
 import { ARENAS, holdingCellLayout, type Rect } from '../src/game/arenas';
 import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
 import { MAX_PLAYERS } from '../src/game/config';
 import { World } from '../src/game/world';
 
-const level = PLAYABLE_CAMPAIGN_LEVELS[0];
-const arena = ARENAS.find((a) => a.id === level.arenaId)!;
+const level = PLAYABLE_CAMPAIGN_LEVELS.find((entry) => entry.arenaId === 34)!;
+const arena = ARENAS.find((a) => a.id === 34)!;
 const problems: string[] = [];
 if (arena.islands) problems.push('QUARANTINE still declares islands');
 if (arena.bridges) problems.push('QUARANTINE still declares bridge decks');
@@ -78,10 +78,11 @@ const reach = (x: number, y: number): boolean => {
 const frontY = Math.min(block.y + block.h + 40, room.y + room.h - 30);
 const left = { x: room.x + 40, y: frontY };
 const front = { x: block.x + block.w * 0.5, y: frontY };
-const port = arena.port;
+const portalX = arena.bounds.right - 36;
+const portalY = (arena.bounds.top + arena.bounds.bottom) * 0.5;
 if (!reach(left.x, left.y)) problems.push('the open left side of the holding room is not reachable from spawn');
 if (!reach(front.x, front.y)) problems.push('the front of the cell block is not reachable from spawn');
-if (!port || !reach(port.x, port.y)) problems.push('the party port is not reachable from spawn');
+if (!reach(portalX, portalY)) problems.push('the right-wall portal is not reachable from spawn');
 if (left.x >= block.x) problems.push('the holding entry point is not left of the cell block');
 
 console.log(
@@ -92,10 +93,10 @@ console.log(
 console.log(
   `entry ${Math.round(left.x)},${Math.round(left.y)} // front ${Math.round(front.x)},${Math.round(
     front.y,
-  )} // port ${port ? `${Math.round(port.x)},${Math.round(port.y)}` : 'none'}`,
+  )} // portal ${Math.round(portalX)},${Math.round(portalY)}`,
 );
 if (problems.length) {
   for (const p of problems) console.log('FAIL ' + p);
   process.exit(1);
 }
-console.log('holding-layout-check: OK (one floor, enter left of the cells, leave in front, port reachable)');
+console.log('holding-layout-check: OK (enter left of the cells, front reachable, right-wall portal reachable)');

@@ -7355,3 +7355,51 @@ rounds. No bridge deck, no earned gate, no plate seam to path around.
 - Production: Pages run `41752976683` succeeded. <https://spuds0588.github.io/DEFLECT/> serves `v0.1.179`
   and `sw.js` reports `deflect-0.1.179`; the live page logs `[DEFLECT-INIT] Build 0.1.179 ready` with the
   CSS and JS bundles both 200. Code commit `5033ee3`.
+
+## 2026-11-04 — QUARANTINE split into four portal rooms (v0.1.180)
+
+**Goal:** split the tutorial device into four arenas that are traversed by portal, put every portal on
+the right wall for exits and the left wall for entries, make the suction strong enough to ignore cover and
+hazards, and put script_kitty's first-hop line on the landing in HOLDING.
+
+**Changes.**
+- `QUARANTINE` is four arenas: INTAKE (14), HOLDING (34), MAINBOARD (35) and ROUTER (36). Each has one
+  painted room, its own bounds, spawns and fixtures. The combined floor, party-port prop and three-port
+  router gate are gone.
+- `CAMPAIGN_LEVELS` is now INTAKE -> HOLDING -> MAINBOARD -> ROUTER -> REBOOT. INTAKE clears when the
+  Warden lesson ends; HOLDING clears when the cell wave is down; MAINBOARD and ROUTER clear on their last
+  feed. Every clear opens the next portal and saves the slot.
+- The first hop is a story beat: HOLDING starts `KITTY_FIRST_HOP` over play ("IT WORKED! I CAN'T BELIEVE IT
+  WORKED." / "OKAY. I NEED YOU TO CLEAR THIS INFECTION AND GET ME OUT OF HERE."). It is local presentation
+  and never gates the fight.
+- `World.beginCampaignPortal` and `tickCampaignPortal` own the exit: a right-wall mouth, a 0.32 s open beat,
+  then ~0.83 s of direct position writes. Pillars, cell bars and hazards cannot stop the pull; the step
+  consumes no other simulation while it runs.
+- Round hops use the same right-wall pull. `beginRound(true)` and `enterAtPortal()` place the next room's
+  bodies on its left wall, facing in, with a short entry portal clock. `carryRoundInto` uses the portal
+  entry for local, bot and host rebuilds.
+- Renderer: `drawExitPortal` draws the right-wall mouth, suction lane and motes; `drawEntryPortal` draws the
+  left-wall landing. The square iris wipe is unchanged. The old centre-portal draw is gone.
+- Probes updated: `.tmp/quarantine-check.ts` now covers the split and first pull; `holding-layout`,
+  `plate-flow`, `port-sweep`, `campaign-rules`, `exit-route`, `islands-ports` and `round-hop` follow the
+  new contract.
+- Version stamps bumped to 0.1.180.
+
+**Verification.**
+- `npx tsc --noEmit` 0; `npm run build` 0; `git diff --check` 0.
+- `npm run bench` 0: 8P 0.051 ms avg / 0.137 ms p99; 8P max proj 0.075 / 0.175; bot swarm 0.110 / 0.399;
+  gauntlet max 0.152 / 0.541.
+- Probes all 0: `quarantine-check` (27 checks), `round-hop-check` (right-wall pull 1008 -> 0, left-wall
+  entry, round 2, score 2), `holding-layout-check` (620 cells, right portal reachable), `plate-flow-check`
+  (four portal-fed rooms), `port-sweep-check` (3 ports, 16.1 s of fire, both feed rooms cleared through the
+  pull), `campaign-rules-check`, `exit-route-check` (nearest floor to each right portal 4-8), `port-route-check`,
+  `islands-ports-check` (last port starts the pull; replicators stay separate).
+- Headed Chromium on the dev build: INTAKE -> skip lesson -> `[DEFLECT-STATE] Campaign node BUILD ROOT //
+  HOLDING ... VIA PORTAL`; kitty's "IT WORKED" and "clear this infection" lines rendered in the story box;
+  no console or network errors.
+- Not tested: a headed clear of HOLDING -> MAINBOARD -> ROUTER. The port closures and pulls are covered
+  headlessly, but a human pass through both feed rooms is still open.
+- Production: pending Pages run for 0.1.180.
+
+**Next:** run the published campaign through the four rooms, judge the suction speed and the entry throw,
+then record any tuning in TODO/HISTORY.

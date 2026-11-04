@@ -1,7 +1,8 @@
 /**
  * Round-end island hop, headless:
- *   1. a decided round pulls every standing body toward the portal at the arena centre;
- *   2. the next arena is a fresh World that carries the scoreline and the next round.
+ *   1. a decided round pulls every standing body toward the right-wall portal;
+ *   2. the next arena is a fresh World that carries the scoreline and the next round
+ *      and drops the bodies on its left-wall entry portal.
  * The main-thread hop uses the same rule; this probe proves the simulation half.
  */
 import { ARENAS } from '../src/game/arenas';
@@ -30,20 +31,22 @@ world.players[1].alive = false;
 world.step(1 / 60, idle);
 if (world.phase !== 'roundover') fail(`round did not finish, phase=${world.phase}`);
 
-const cx = (first.bounds.left + first.bounds.right) * 0.5;
+const cx = first.bounds.right - 36;
 const cy = (first.bounds.top + first.bounds.bottom) * 0.5;
 const before = Math.hypot(world.players[0].x - cx, world.players[0].y - cy);
 for (let i = 0; i < 72; i++) world.step(1 / 60, idle);
 const after = Math.hypot(world.players[0].x - cx, world.players[0].y - cy);
 if (!(after < before - 40)) fail(`portal pull did not move the body (${before.toFixed(1)} -> ${after.toFixed(1)})`);
+if (!(world.players[0].x > first.bounds.right - 60)) fail('portal pull did not finish at the right wall');
 
 // The main thread rebuilds on the next arena, carries scores and starts the next round.
 world.players[0].score = 2;
 const nextWorld = new World('match', names, 0, next);
 nextWorld.round = world.round + 1;
 for (let i = 0; i < MAX_PLAYERS; i++) nextWorld.players[i].score = world.players[i].score;
-nextWorld.beginRound();
+nextWorld.beginRound(true);
 if (nextWorld.arena.id === first.id) fail('the hop did not change arenas');
+if (!(nextWorld.players[0].x < next.bounds.left + 70)) fail('the next round did not enter from the left wall');
 if (nextWorld.round !== 2) fail(`round did not carry, got ${nextWorld.round}`);
 if (nextWorld.players[0].score !== 2) fail(`score did not carry, got ${nextWorld.players[0].score}`);
 

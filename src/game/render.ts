@@ -150,6 +150,11 @@ export interface RenderState {
   campaignCiviliansLost?: boolean;
   campaignBarsFlashT?: number;
   campaignBarsOpen?: boolean;
+  /** Exit portal is open, and seconds into its suction animation. */
+  portalOpen?: boolean;
+  portalT?: number;
+  /** Left-wall entry portal clock after a portal hop. */
+  entryPortalT?: number;
   /** Breakable file boxes. Live boxes travel in Snapshot; physics stays host-side. */
   props?: readonly Prop[];
   /** NETWORK SWITCH feed pipes. Local arena content. */
@@ -726,6 +731,9 @@ export class Renderer {
         this.drawLasers(state, alpha, t);
         if (state.drone) this.drawDrone(state.drone, alpha, t);
       }
+      const entryT =
+        state.entryPortalT ?? (state.phase === 'countdown' && state.round > 1 ? 0.8 : 0);
+      if (introDone && entryT > 0) this.drawEntryPortal(state, t, entryT);
       this.drawPlayers(state, alpha, t, intro, view.localMask);
       if (introDone) {
         if (state.copyMarks) this.drawCopyMarks(state.copyMarks);
@@ -738,6 +746,11 @@ export class Renderer {
         }
         fx.particles.draw(ctx);
       }
+      // A guest `NetView` has no World getters: derive the same right-wall portal from
+      // the roundover phase and its countdown, so both peers draw one mouth.
+      const exitOpen = state.portalOpen ?? (state.mode === 'match' && state.phase === 'roundover');
+      const exitT = state.portalT ?? (state.mode === 'match' ? Math.max(0, 1.2 - state.phaseTimer) : 0);
+      if (introDone && exitOpen) this.drawExitPortal(state, t, exitT);
       ctx.restore();
 
       // Screen-space pane HUD. Never panned or shaken, and clipped to the pane so a
@@ -765,7 +778,6 @@ export class Renderer {
         ctx.fillRect(0, 0, VIEW_W, VIEW_H);
         ctx.restore();
       }
-      if (state.phase === 'roundover' && state.mode === 'match') this.drawRoundHopPortal(state, t);
       this.drawTravelOverlay(state, view);
       ctx.restore();
     }
@@ -860,33 +872,100 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** The white mouth that pulls every standing body to the middle of the round. */
-  private drawRoundHopPortal(state: RenderState, t: number): void {
-    const arena = state.arena;
-    const cx = (arena.bounds.left + arena.bounds.right) * 0.5;
-    const cy = (arena.bounds.top + arena.bounds.bottom) * 0.5;
-    const r = 54 + Math.sin(t * 3.1) * 6;
+  /**
+   * The right-wall exit portal. One mouth for campaign clears and round hops: a square
+   * on the right edge, a suction lane running back across the room, and square motes
+   * accelerating into it. No gradients and no shadow blur.
+   */
+  private drawExitPortal(state: RenderState, t: number, pullT: number): void {
+    const b = state.arena.bounds;
+    const x = b.right - 36;
+    const y = (b.top + b.bottom) * 0.5;
+    const opening = Math.min(1, Math.max(0, pullT) / 0.3);
+    const r = 36 + opening * 10 + Math.sin(t * 4.2) * 3;
     const ctx = this.ctx;
     ctx.save();
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = 'rgba(234, 252, 255, 0.55)';
-    ctx.fillRect(cx - r - 26, cy - r - 26, (r + 26) * 2, (r + 26) * 2);
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = '#04121a';
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-    ctx.strokeStyle = '#eafcff';
-    ctx.lineWidth = 5;
-    ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
-    ctx.globalAlpha = 0.7;
+    // Suction lane: long streaks and square motes all point at the mouth.
+    ctx.globalAlpha = 0.18 + opening * 0.3;
     ctx.strokeStyle = '#9fe8ff';
     ctx.lineWidth = 2;
+    const span = b.bottom - b.top;
+    for (let i = 0; i < 14; i++) {
+      const laneY = b.top + 24 + ((i + 0.5) / 14) * (span - 48);
+      const len = 46 + ((i * 67 + t * 340) % 150);
+      ctx.beginPath();
+      ctx.moveTo(x - r - len, laneY);
+      ctx.lineTo(x - r - 8, laneY);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.55 + opening * 0.35;
+    ctx.fillStyle = '#bff4ff';
+    for (let i = 0; i < 18; i++) {
+      const laneY = b.top + 20 + ((i * 83) % Math.max(1, span - 40));
+      const travel = ((t * (260 + (i % 5) * 55) + i * 97) % 420) / 420;
+      const px = x - r - travel * (b.right - b.left) * 0.8;
+      const size = 3 + (i % 3);
+      ctx.fillRect(px, laneY, size, size);
+    }
+    // The mouth itself. Opaque black so a body reads as gone once it reaches the rim.
+    ctx.globalAlpha = 0.24;
+    ctx.fillStyle = 'rgba(234, 252, 255, 0.5)';
+    ctx.fillRect(x - r - 18, y - r - 18, (r + 18) * 2, (r + 18) * 2);
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = '#04121a';
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    ctx.strokeStyle = '#eafcff';
+    ctx.lineWidth = 5;
+    ctx.strokeRect(x - r, y - r, r * 2, r * 2);
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = '#7fe6ff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - r * 0.64, y - r * 0.64, r * 1.28, r * 1.28);
+    // Inward chevrons on the rim.
+    ctx.globalAlpha = 0.55 + opening * 0.35;
+    ctx.strokeStyle = '#dffbff';
     ctx.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const a = t * 1.4 + (i / 8) * Math.PI * 2;
-      ctx.moveTo(cx + Math.cos(a) * (r + 34), cy + Math.sin(a) * (r + 34));
-      ctx.lineTo(cx + Math.cos(a) * (r + 6), cy + Math.sin(a) * (r + 6));
+    for (let i = 0; i < 6; i++) {
+      const yy = y - r * 0.72 + (i / 5) * r * 1.44;
+      const xx = x - r - 16 - Math.sin(t * 5 + i) * 6;
+      ctx.moveTo(xx, yy - 9);
+      ctx.lineTo(xx + 8, yy);
+      ctx.lineTo(xx, yy + 9);
     }
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /** The left-wall entry portal. Bodies land in front of it after a hop. */
+  private drawEntryPortal(state: RenderState, t: number, clock: number): void {
+    const b = state.arena.bounds;
+    const x = b.left + 36;
+    const y = (b.top + b.bottom) * 0.5;
+    const k = Math.min(1, Math.max(0, clock));
+    const r = 22 + k * 10 + Math.sin(t * 5.4) * 2;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.16 + k * 0.2;
+    ctx.fillStyle = '#dffbff';
+    ctx.fillRect(x - r - 14, y - r - 14, (r + 14) * 2, (r + 14) * 2);
+    ctx.globalAlpha = 0.88;
+    ctx.fillStyle = '#04121a';
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    ctx.strokeStyle = '#eafcff';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(x - r, y - r, r * 2, r * 2);
+    // Outward streaks: the room was thrown out of this mouth.
+    ctx.globalAlpha = 0.35 + k * 0.35;
+    ctx.strokeStyle = '#9fe8ff';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) {
+      const sy = y - r + (i / 7) * r * 2;
+      const len = 26 + ((i * 41 + t * 220) % 74);
+      ctx.beginPath();
+      ctx.moveTo(x + r + 6, sy);
+      ctx.lineTo(x + r + 6 + len, sy);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 

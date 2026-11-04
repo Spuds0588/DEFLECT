@@ -255,7 +255,7 @@ same definition. The room host selects one and sends the id in `START`; snapshot
 Do not reintroduce a global `PILLARS` constant or branch collision on map names. New arenas are content
 entries, not new systems.
 
-**Arena flow reads left to right (revised 2026-11-04).** Enter a plate on its left side and leave on its right wherever the layout allows; vertical links are the exception, not the default. QUARANTINE is one continuous device floor now: its four rooms are painted plates, so the holding block is a local barrier rather than an island gate. The block still sits back-right through `holdingCellLayout`; the open left side and the front stay walkable. Painted bars and bar collision both read that one layout, so they cannot drift apart; `.tmp/holding-layout-check.ts` asserts the entry is left of the block and the front is reachable. **Plate inventory (2026-11-04):** only CAPCOM is a plate arena. QUARANTINE is checked as a single-floor device by `.tmp/plate-flow-check.ts` (entry spawn intake, party port router, no decks). Two deliberate non-left-to-right routes are recorded in that check: CAPCOM is a four-plate ring with every deck open by design, so it has no single exit, and TRANSIT is a chasm arena crossed by pads in the west and lifts in the east. Adding a plate arena means adding it to `plate-flow-check`, not just drawing it. `rooms` and `port` are tutorial presentation data; `bridges` on a plate arena are always-open floor, never a progression gate. **Ingress ports must stand clear of cover (2026-11-03):** a port is an arena `ingress` entry and its square must not overlap a `pillars` rect, or no ranged line reaches it and the port sweep can never be completed. QUARANTINE shipped two ports inside pillars and BUILD ROOT was unwinnable because of it. `spawnCampaignPorts` nudges a buried port to the nearest clear square, but content is expected to place them in the open; keep new ports clear of cover and re-check with `.tmp/port-sweep-check.ts`. Rooms only
+**Arena flow reads left to right (revised 2026-11-04).** Enter a plate on its left side and leave on its right wherever the layout allows; vertical links are the exception, not the default. QUARANTINE is four portal-fed arenas now: INTAKE (14), HOLDING (34), MAINBOARD (35) and ROUTER (36), each one room with its own bounds. The holding block still sits back-right through `holdingCellLayout`; the open left side and the front stay walkable. Painted bars and bar collision both read that one layout, so they cannot drift apart; `.tmp/holding-layout-check.ts` asserts the entry is left of the block and the front is reachable. **Plate inventory (2026-11-04):** only CAPCOM is a plate arena. The four quarantine rooms are checked as portal-fed flat devices by `.tmp/plate-flow-check.ts` (one room each, right-wall portal, no party port). Two deliberate non-left-to-right routes are recorded in that check: CAPCOM is a four-plate ring with every deck open by design, so it has no single exit, and TRANSIT is a chasm arena crossed by pads in the west and lifts in the east. Adding a plate arena means adding it to `plate-flow-check`, not just drawing it. `rooms` and `port` are tutorial presentation data; `bridges` on a plate arena are always-open floor, never a progression gate. **Ingress ports must stand clear of cover (2026-11-03):** a port is an arena `ingress` entry and its square must not overlap a `pillars` rect, or no ranged line reaches it and the port sweep can never be completed. QUARANTINE shipped two ports inside pillars and BUILD ROOT was unwinnable because of it. `spawnCampaignPorts` nudges a buried port to the nearest clear square, but content is expected to place them in the open; keep new ports clear of cover and re-check with `.tmp/port-sweep-check.ts`. Rooms only
 draw floor plates, labels and dressing; the matching `traverse.chasms` are the body blockers and the
 `traverse.bridges` are the walkable spans. A room arena stays local-only (`isOnlineArena` skips `rooms`)
 and never enters host/guest room selection. See D41.
@@ -604,10 +604,11 @@ link is a `portal`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   completed level. Slots are local only and never enter `Snapshot`. Do not turn this stage into a
   sector-select screen. The blueprint archive is parked and unlinked while this flow is built; do not
   reattach it to the campaign stage without a decision.
-- The first playable node is **BUILD ROOT** (`src/game/campaign.ts`) on `QUARANTINE`; see D17 and D41. It
-  is a scripted gauntlet-mode world, saves the slot on clear, and returns to the slot stage. **REBOOT** on
-  `GRID ZERO` is the second playable node (v0.1.152): a kitty briefing, a four-kill assault, then the
-  Mega Worm as the level's final encounter.
+- The first playable node is **BUILD ROOT** (`src/game/campaign.ts`) across the four split `QUARANTINE`
+  rooms: INTAKE -> HOLDING -> MAINBOARD -> ROUTER. Each is a scripted gauntlet-mode world, saves the slot
+  on clear, and portals to the next; see D17 and D41. **REBOOT** on `GRID ZERO` is the first network node
+  after the quarantine sequence (v0.1.152): a kitty briefing, a four-kill assault, then the Mega Worm as the
+  level's final encounter.
 - **A level may end on a mini-boss (2026-11-02).** `CampaignLevel.boss` names the `MINIBOSS` id; `World`
   takes it as `campaignBoss` and spawns it once the assault kills are met (`campaignBossSpawned`). A boss
   node ignores the port sweep and the bare kill count: it clears only after the staged intro and when no
@@ -754,7 +755,7 @@ All numbers live in `tuning/programs.json` under `KABOOM`.
 
 ### D17 — First campaign node: BUILD ROOT; REBOOT parked (built 2026-10-30)
 
-The campaign's live route is `BUILD ROOT` on `QUARANTINE` and `REBOOT` on `GRID ZERO`
+The campaign's live route is four `QUARANTINE` rooms (INTAKE, HOLDING, MAINBOARD, ROUTER) followed by `REBOOT` on `GRID ZERO`
 (`src/game/campaign.ts`); the remaining blueprint nodes stay parked until later segments ship. They run in a
 `World('gauntlet')` with `campaign = true`, so it reuses the threat simulation and stays local-only; the
 mode string stays `gauntlet` so no threat branch forks. The script lives in `World`, not in `main.ts`.
@@ -783,9 +784,9 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
   The six reuse sentry kinds 4-8 so every player weapon already hits them, but calibration kills pay no score or
   pickups, no parents wake the assault counter, and arena emitters stay parked for the whole prologue.
   Everything lives in `CALIBRATION` in `tuning/campaign.json`.
-- **Tutorial route**: `QUARANTINE` stages the basic lesson, the dormant-class reveal and the cell release
-  across four linked rooms; see D41. The six subjects wait in the holding office, not in the player's
-  opening circle, and script_kitty is behind the middle cell bars.
+- **Tutorial route**: `INTAKE` stages the Warden lesson and portals to `HOLDING`, where the dormant-class
+  reveal and the cell release run; see D41. The six subjects wait in the holding room, not in the player's
+  opening circle, and script_kitty is behind the middle cell bars. HOLDING opens on kitty's first-hop line.
 - **Drill**: 18 s of sparring against the run's bot squad, using the same `BotBrain` inputs as training and
   VS BOTS. A `NO BOTS` run still gets one instructor so the drill has a partner. Death on either side
   respawns on the training timer. The squad forms an arc `CAMPAIGN.drillRing` in front of the player and
@@ -1908,43 +1909,33 @@ coordinates, page cards or hit masks; they can drift or bloat the packet.
   +5.8 KB/s per guest, or +40.3 KB/s of host upload with seven guests (about 7% of the measured 0.59 MiB/s
   host baseline at 8P/48 projectiles). A quiet arena pays one `null`.
 
-### D41 — QUARANTINE is the connected tutorial level (built 2026-11-01)
+### D41 — QUARANTINE is four portal-fed rooms (built 2026-11-01; split 2026-11-04)
 
-`BUILD ROOT` opens on `QUARANTINE` (arena id 14), one local-only arena with four authored rooms on one
-continuous floor: the circular **INTAKE** office, the square **HOLDING** office with a three-cell block,
-the **MAINBOARD** rectangle, and the larger **ROUTER** room ending at a **NETWORK PORT**. This is one
-device, not four campaign nodes and not four islands; the camera and lesson follow the player room to room
-without a bridge or a separate transition system.
+`BUILD ROOT` is four local-only arena records, one per quarantine room: **INTAKE** (id 14), **HOLDING**
+(id 34), **MAINBOARD** (id 35) and **ROUTER** (id 36). Each room owns its bounds, cover, spawns and
+presentation. There is no combined floor, no walk between rooms and no party-port prop: the only way
+between them is script_kitty's portal.
 
-- `ArenaDef.rooms` (shape, theme, label, sub) are presentation data. There is no `traverse` record and no
-  bridge gate on this arena: the holding cell block is the only local body barrier. Do not add room
-  collision to `World` or the guest predictor.
-- The room renderer (`drawTutorialRooms`) paints the circle/rect plates, intake carpet/lamp cones, holding
-  cell block and bars, mainboard traces/chip pads, router port banks/LEDs and the final port. `ROOM_THEME_COLORS` is shared with the picker preview. No `shadowBlur`, filters or per-frame
-  gradients.
-- `BUILD ROOT` starts at spawn 6 in the intake circle. The Warden's move/dash/fire/lock/cycle/melee/
-  reflect lesson runs there. `spawnCalibrationShapes` places the six dormant subjects in two columns in
-  the `holding` room's lower half when the arena has rooms, leaving the centre lane open.
-  The walk into holding is the reveal. Keep the anchor generic; do not hard-code an arena id.
-- The holding room owns the scripted set piece: three civilian monitors (TICKET, PATCH, CACHE), three cells,
-  and script_kitty in the middle cell. On wake the civilians are hidden and a short red/orange burst is
-  emitted at each monitor anchor; any carried files drop. They remain decorative; no `Player` bodies, hits,
-  health, AI or snapshot rows are added for them. The kitty is a render-only cameo in the cell block, not
-  an `ArenaDef.regular`.
-- The holding cell block is solid body collision while it is sealed; `holdingCellLayout` owns the shared
-  geometry. The wave-2 worm and viruses are created with the level and wait behind the bars with `held`
-  set: AI, damage and target lock are skipped, and the caged silhouettes are their presentation. No
-  replacement body is created on release.
-- `CALIBRATION_SKILL_TUTORIAL` starts on wake and asks for the skill while wave 1 (the six subjects) is
-  live. After the class is down and the skill beat is done, `beginCellRelease` removes the cell-block
-  solid, flashes the bars, marks them open, releases the existing held bodies, and gives the player 1.2 s
-  of iframes for the cut. `CALIBRATION_POWER_TUTORIAL` then asks for the heavy while wave 2 is live.
-  `campaignPhase === 'release'` updates only those viruses/worms; the gauntlet timers stay parked.
-  Clear wave 2 and finish the heavy beat to start the drill. The bars stay open for the rest of the node.
-- Data crates are spread through the four rooms. The port is a visual endpoint for now: the node still
-  clears on the assault kill count, and no room, cell or port state enters `Snapshot`.
-- Room arenas are local-only: `isOnlineArena` skips `rooms`, like the pipe and firewall fixtures. The
-  tutorial geometry is not a versus map and must not be selected into a hosted room or online series.
+- Campaign order is data, not a `World` branch: `CAMPAIGN_LEVELS` lists INTAKE -> HOLDING -> MAINBOARD ->
+  ROUTER -> REBOOT. Each clear saves the slot and auto-hops. The Warden lesson ends INTAKE, the cell wave
+  ends HOLDING, and the last feed in MAINBOARD or ROUTER ends that room.
+- Portals are right-wall exits and left-wall entries. `World.beginCampaignPortal` opens the right wall and
+  `tickCampaignPortal` writes player positions directly for about 1.15 s, so cover, cell bars and hazards
+  cannot stop the pull. The step consumes no other simulation while it runs. Do not turn this back into a
+  walk to a party port or a collision-resolved drag.
+- The first hop is the story beat: HOLDING opens with `KITTY_FIRST_HOP` over play ("IT WORKED! ... clear
+  this infection and get me out of here"). It is local presentation only and never gates the fight.
+- `ArenaDef.rooms` is still presentation. HOLDING's block is the only local body barrier and
+  `holdingCellLayout` is shared by bars and collision. No room collision enters `World` or the guest
+  predictor.
+- `spawnCalibrationShapes` places the six dormant subjects in HOLDING; the wave-2 worm and viruses wait
+  behind the bars with `held`. Clearing wave 1 opens the block; clearing wave 2 starts the portal.
+- MAINBOARD authors two ingress ports, ROUTER one. Closing the last port starts the pull; there is no
+  party-port prop and no stand-in-the-exit check. `portTotal` still owns the objective strip.
+- Room arenas are local-only: `isOnlineArena` skips `rooms`. The four tutorial devices never enter a hosted
+  room or online series.
+- Probes: `.tmp/quarantine-check.ts` covers the split, route and first pull; `holding-layout-check`,
+  `port-sweep-check`, `exit-route-check` and `islands-ports-check` cover the room-level contracts.
 
 ### D42 — Ordinary programs are floating CRT monitors, not roster hulls (built 2026-11-01)
 
@@ -2411,28 +2402,29 @@ the party on the next device. There are no bridge decks between islands, no `clo
 `World.openBridge`, no `bridgeOpen`/`bridgeMask`, and no port that releases a bridge. Do not reintroduce a
 spatial connector as a progression gate; the hop is the connector.
 
-- `QUARANTINE` is one continuous device floor. Its four rooms are painted plates with their own furniture
-  and labels, not islands: a body can walk from intake to holding to the mainboard to the router, and the
-  sealed cell block is the only local barrier. The player never has to earn a deck before the exit.
+- `QUARANTINE` is four portal-fed arenas: INTAKE (14), HOLDING (34), MAINBOARD (35) and ROUTER (36).
+  Each is one room with its own furniture, spawns and bounds; there is no walk between rooms and no deck to
+  earn. The sealed cell block is HOLDING's only local barrier.
 - An arena may still author `islands` and open `bridges` for a plate floor (CAPCOM, and `traverse.bridges`
   on TRANSIT). Those decks are **floor, always walkable**, never a gate: a deck is a way across a device,
   not a way between devices. A new campaign node should not use them for progression.
-- The three BUILD ROOT ingress ports are now the whole gate: close all three and the white party port
-  opens. `closePort` increments `portsClosed` and calls `openCampaignExit`; it must not look up a bridge
-  index. `.tmp/plate-flow-check.ts` checks the flat floor, `.tmp/port-sweep-check.ts` clears it, and
+- The feed rooms own the gate: MAINBOARD has two ingress ports and ROUTER one. Closing the last port calls
+  `openCampaignExit`, which starts the right-wall portal pull; there is no party-port prop to stand in.
+  `closePort` increments `portsClosed` and must not look up a bridge index. `.tmp/plate-flow-check.ts`
+  checks the four portal-fed rooms, `.tmp/port-sweep-check.ts` clears both feed rooms, and
   `.tmp/islands-ports-check.ts` covers the port and replicator contract.
 - Campaign clears save the slot and **auto-hop** to the next node after the clear beat. There is no
   `NEXT ARENA` menu between devices; only the final node parks on a result overlay. A failed node still
   parks on RETRY/SLOTS.
-- Every round-based mode (`bots`, `local`, `host`) hops too: the round-end portal opens at the arena centre,
+- Every round-based mode (`bots`, `local`, `host`) hops too: the round-end portal opens on the right wall,
   `World.tickRoundHopPull` drags every standing body into it, and the main thread rebuilds the world on the
-  next arena while carrying scores and the next round. The host broadcasts `MSG.HOP`; a guest rebuilds its
-  `NetView` from that message and never chooses an arena itself. Campaign and match hops share the
-  renderer's square portal wipe (`beginPortalHop`).
+  next arena while carrying scores and the next round. The next round enters on the left wall. The host
+  broadcasts `MSG.HOP`; a guest rebuilds its `NetView` from that message and never chooses an arena itself.
+  Campaign and match hops share the renderer's square portal wipe (`beginPortalHop`).
 - The wipe is presentation only. It must not gate input, change `Snapshot`, or become a second round clock;
   `World` owns the pull and the round state, the renderer owns the closing square.
-- Off a plate is still a death on arenas that author `islands`; keep spawns away from rims. On the flat
-  campaign floor there is no rim to fall from.
+- Off a plate is still a death on arenas that author `islands`; keep spawns away from rims. The four
+  quarantine rooms are flat devices, so there is no rim to fall from inside them.
 
 ### D60 — Replicators are the second ingress (decided 2026-11-02, built v0.1.127)
 

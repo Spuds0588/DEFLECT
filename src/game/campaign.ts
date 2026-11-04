@@ -49,34 +49,63 @@ export interface CampaignLevel {
   dataCrates: readonly CampaignDataCrate[];
 }
 
-export type CampaignIntro = 'none' | 'warden' | 'kitty';
+export type CampaignIntro = 'none' | 'warden' | 'holding' | 'assault' | 'kitty';
 
 export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
   {
     id: 0,
     sector: 0,
     nodeId: 'build-root',
-    name: 'BUILD ROOT',
-    code: 'FIRST BOOT',
+    name: 'BUILD ROOT // INTAKE',
+    code: 'ORIENTATION',
     arenaId: 14,
     intro: 'warden',
-    clearKills: 10,
-    // Holding-cell rules: worms only until the block opens. Viruses arrive in later nodes.
-    primitivesOnly: true,
-    // Spread through the tutorial rooms: the intake files, the board's packets and the
-    // router's uplink crates. The clean-sweep pay is lost when any one is broken.
-    // One plate each: the intake desks, the holding office and the two far islands.
-    dataCrates: [
-      { x: 342, y: -78, kind: PROP.DOC },
-      { x: -32, y: 326, kind: PROP.ZIP },
-      { x: 552, y: 806, kind: PROP.AUDIO },
-      { x: 1752, y: 1076, kind: PROP.VIDEO },
-      { x: 2128, y: 866, kind: PROP.DOC },
-      { x: 1528, y: -4, kind: PROP.ZIP },
-    ],
+    clearKills: 0,
+    // The Warden lesson is the whole beat. The first portal opens when it ends.
+    dataCrates: [],
   },
   {
     id: 1,
+    sector: 0,
+    nodeId: 'build-root',
+    name: 'BUILD ROOT // HOLDING',
+    code: 'CONTAINMENT',
+    arenaId: 34,
+    intro: 'holding',
+    clearKills: 0,
+    // The six calibration subjects and the cell release; no ports, no data crates.
+    dataCrates: [],
+  },
+  {
+    id: 2,
+    sector: 0,
+    nodeId: 'build-root',
+    name: 'BUILD ROOT // MAINBOARD',
+    code: 'DATA PLANE',
+    arenaId: 35,
+    intro: 'assault',
+    clearKills: 8,
+    dataCrates: [
+      { x: 1280, y: 740, kind: PROP.DOC },
+      { x: 1840, y: 780, kind: PROP.AUDIO },
+    ],
+  },
+  {
+    id: 3,
+    sector: 0,
+    nodeId: 'build-root',
+    name: 'BUILD ROOT // ROUTER',
+    code: 'UPLINK',
+    arenaId: 36,
+    intro: 'assault',
+    clearKills: 6,
+    dataCrates: [
+      { x: 1240, y: 380, kind: PROP.ZIP },
+      { x: 1870, y: 110, kind: PROP.VIDEO },
+    ],
+  },
+  {
+    id: 4,
     sector: 0,
     nodeId: 'script-kitty',
     name: 'REBOOT',

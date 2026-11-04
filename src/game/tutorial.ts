@@ -170,6 +170,25 @@ export const KITTY_UPLINK_TUTORIAL: readonly TutorialStep[] = [
 ];
 
 /**
+ * The first portal worked. Kitty talks over play as the player lands in holding: this is
+ * the moment the escape stops being a plan and becomes a route through the infection.
+ */
+export const KITTY_FIRST_HOP: readonly TutorialStep[] = [
+  {
+    id: 'kitty-worked',
+    speaker: 'SCRIPT_KITTY',
+    line: "IT WORKED! I CAN'T BELIEVE IT WORKED.",
+    readTime: 2.8,
+  },
+  {
+    id: 'kitty-clear',
+    speaker: 'SCRIPT_KITTY',
+    line: 'OKAY. I NEED YOU TO CLEAR THIS INFECTION AND GET ME OUT OF HERE.',
+    readTime: 4.0,
+  },
+];
+
+/**
  * The quarantine orientation. The Warden keeps the subjects dormant until the player has
  * actually moved, dashed, fired, locked, cycled, swung and caught a shot. Keyboard
  * lock is toggled with `Q`; cycling is `R` / `F` while it is active.

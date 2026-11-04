@@ -2,7 +2,20 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Quarantine split + portal suction (2026-11-04)
+
+- [x] Split QUARANTINE into four arena records: INTAKE (14), HOLDING (34), MAINBOARD (35), ROUTER (36)
+- [x] Campaign route is INTAKE -> HOLDING -> MAINBOARD -> ROUTER -> REBOOT; each clear saves and hops
+- [x] Right-wall exit portals, left-wall entry portals; direct collision-free ~1.15 s suction, then wipe
+- [x] First hop plays script_kitty's "IT WORKED! ... clear this infection" beat on HOLDING arrival
+- [x] Feed rooms open in live fire: MAINBOARD two ports, ROUTER one, no party-port prop
+- [x] Split probes green: `quarantine-check`, `holding-layout-check`, `port-sweep-check`, `exit-route-check`, `islands-ports-check`, `round-hop-check`
+- [x] Headed dev pass: INTAKE -> portal -> HOLDING, `VIA PORTAL`, kitty line on screen, no console errors
+- [ ] Published campaign pass on 0.1.180 (the user will run this)
+
 ## Island hops (2026-11-04)
+
+- [x] Superseded 2026-11-04: QUARANTINE is now four portal-fed arenas, not one flattened floor
 
 - [x] Retire the campaign bridge system: no `closed` decks, `openBridge`, `bridgeMask` or `portalBridge`
 - [x] Flatten QUARANTINE into one continuous device floor; its four rooms are painted plates
@@ -16,7 +29,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] Production check: Pages run `41752976683` succeeded; the live page logs `Build 0.1.179`, serves `sw.js` `deflect-0.1.179`, and its bundles return 200
 - [ ] Headed campaign auto-hop and a published-build playthrough
 
-Last updated: 2026-11-04 (ISLAND HOPS)
+Last updated: 2026-11-04 (QUARANTINE SPLIT + PORTAL SUCTION)
 Formerly: 2026-11-04 (EXIT-FRAME VARIANTS FALSIFIED)
 Formerly: 2026-11-03 (CAMPAIGN PLAYTHROUGH PASS)
 Formerly: 2026-11-02 (BOSS SWEEP + CAMPAIGN LEVEL 2)

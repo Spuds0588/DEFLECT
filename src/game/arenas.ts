@@ -2209,32 +2209,22 @@ const ARENAS_BASE: readonly ArenaDef[] = [
   },
   {
     id: 14,
-    name: 'QUARANTINE',
-    tagline: 'Intake, holding, mainboard, uplink. One device. Kitty opens the way out.',
-    hudLabel: 'ARENA // QUARANTINE',
+    name: 'QUARANTINE // INTAKE',
+    tagline: 'Booking, orientation, and a cat with a plan.',
+    hudLabel: 'ARENA // QUARANTINE INTAKE',
     accent: '#ffcf6a',
     accentSoft: 'rgba(255, 207, 106, 0.32)',
     accentFaint: 'rgba(255, 207, 106, 0.032)',
     signature: 0,
-    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
-    // One continuous device floor. The four rooms are painted plates, not islands: no
-    // bridge has to be earned and no body can be stranded on the wrong side of a gate.
-    // Island-to-island travel is the campaign's script_kitty portal hop.
+    // Intake is its own device now. The old four-room floor is four arena records, and
+    // the only way between them is script_kitty's portal. The Warden's orientation is
+    // the whole of this room; the exit portal opens on the right wall when it ends.
+    bounds: { left: 48, top: 48, right: 858, bottom: 444 },
     pillars: [
       { x: 130, y: 130, w: 150, h: 56 },
       { x: 430, y: 130, w: 150, h: 56 },
       { x: 130, y: 320, w: 150, h: 56 },
       { x: 430, y: 320, w: 150, h: 56 },
-      { x: 120, y: 900, w: 150, h: 54 },
-      { x: 590, y: 900, w: 150, h: 54 },
-      { x: 1160, y: 720, w: 110, h: 76 },
-      { x: 1420, y: 780, w: 100, h: 70 },
-      { x: 1700, y: 710, w: 120, h: 80 },
-      { x: 1400, y: 930, w: 120, h: 60 },
-      { x: 1160, y: 120, w: 110, h: 70 },
-      { x: 1460, y: 130, w: 110, h: 66 },
-      { x: 1160, y: 330, w: 120, h: 60 },
-      { x: 1720, y: 320, w: 100, h: 60 },
     ],
     // All eight sit in the intake room, clear of the desks. Spawn 6 is the campaign's
     // opening slot: the Warden lesson runs here before the first portal hop.
@@ -2259,86 +2249,13 @@ const ARENAS_BASE: readonly ArenaDef[] = [
         label: 'INTAKE 01',
         sub: 'BOOKING // ORIENTATION',
       },
-      {
-        shape: 'rect',
-        x: 48,
-        y: 664,
-        w: 810,
-        h: 382,
-        theme: 'holding',
-        label: 'HOLDING 02',
-        sub: 'CELL BLOCK // CONTAINMENT',
-      },
-      {
-        shape: 'rect',
-        x: 1084,
-        y: 664,
-        w: 858,
-        h: 382,
-        theme: 'board',
-        label: 'MAINBOARD 03',
-        sub: 'BUS 02 // DATA PLANE',
-      },
-      {
-        shape: 'rect',
-        x: 1084,
-        y: 48,
-        w: 858,
-        h: 396,
-        theme: 'router',
-        label: 'ROUTER 04',
-        sub: 'PORT 03 // UPLINK',
-      },
     ],
-    // Two open ports on the mainboard and one on the router. Closing all three opens the
-    // white party port on the router uplink; there is no bridge between them to release.
-    // Every damaging action closes one, so the health is set to survive a couple of
-    // engages while the cadence keeps the plate busy: a port that is ignored refills the
-    // floor. Every port stands on open floor with a clear ranged line to at least three
-    // sides. Port A used to sit inside the mainboard's first pillar and the router port
-    // inside the router's first pillar: a body can never shoot what is buried in cover,
-    // so the sweep could not be completed at all. Keep new ports clear of `pillars`.
-    ingress: [
-      { x: 1330, y: 900, size: 78, hp: 20, family: 0, interval: 2.6 },
-      { x: 1780, y: 940, size: 78, hp: 20, family: 1, interval: 3 },
-      { x: 1350, y: 230, size: 78, hp: 26, family: 0, interval: 2.8 },
-    ],
-    port: {
-      x: 1886,
-      y: 210,
-      radius: 38,
-      label: 'NETWORK PORT',
-      sub: 'WWW // OUTBOUND',
-    },
-    // Three civilians work the holding office. They are painted in the arena pass; the
-    // campaign script hides them after the calibration class wakes. No bodies, no hits.
-    regulars: [
-      { id: 'ticket', x: 200, y: 820, scale: 0.82, phase: 0.4, carry: 1 },
-      { id: 'patch', x: 660, y: 820, scale: 0.82, phase: 2.1 },
-      { id: 'cache', x: 430, y: 880, scale: 0.78, phase: 4.2, carry: 2 },
-    ],
-    // The office gets breakable intake files. The board adds data packets; the router's
-    // lit ports and two wall emitters are the last, busiest room before the exit.
+    // Breakable intake files. The room has no ports: the campaign portal owns the exit.
     props: [
       { x: 200, y: 200, w: 38, h: 28, kind: PROP.DOC },
       { x: 560, y: 200, w: 38, h: 28, kind: PROP.ZIP },
       { x: 200, y: 400, w: 38, h: 28, kind: PROP.AUDIO },
       { x: 560, y: 400, w: 38, h: 28, kind: PROP.VIDEO },
-      { x: 700, y: 950, w: 38, h: 28, kind: PROP.ZIP },
-      { x: 1300, y: 850, w: 38, h: 28, kind: PROP.DOC },
-      { x: 1650, y: 880, w: 42, h: 30, kind: PROP.AUDIO },
-      { x: 1250, y: 1000, w: 36, h: 26, kind: PROP.VIDEO },
-      { x: 1300, y: 220, w: 42, h: 30, kind: PROP.DOC },
-      { x: 1800, y: 140, w: 42, h: 30, kind: PROP.ZIP },
-    ],
-    emitters: [
-      { x: 1104, y: 250, angle: 0, offset: 0.2 },
-      { x: 1104, y: 330, angle: 0, offset: 0.65 },
-    ],
-    bumpers: [
-      { x: 1200, y: 900, radius: 28, kind: 0 },
-      { x: 1620, y: 760, radius: 32, kind: 1 },
-      { x: 1880, y: 1000, radius: 28, kind: 0 },
     ],
   },
   {
@@ -3346,6 +3263,161 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     },
   },
 
+  {
+    id: 34,
+    name: 'QUARANTINE // HOLDING',
+    tagline: 'Three cells. Six subjects. One cat.',
+    hudLabel: 'ARENA // QUARANTINE HOLDING',
+    accent: '#ffbd66',
+    accentSoft: 'rgba(255, 189, 102, 0.32)',
+    accentFaint: 'rgba(255, 189, 102, 0.032)',
+    signature: 2,
+    // The holding office is a separate device. The cell block is the only body barrier;
+    // the six calibration subjects form two columns in front of it. A portal enters on
+    // the open left side and exits on the right once the cell wave is down.
+    bounds: { left: 48, top: 664, right: 858, bottom: 1046 },
+    pillars: [],
+    spawns: [
+      { x: 140, y: 740 },
+      { x: 140, y: 840 },
+      { x: 140, y: 940 },
+      { x: 230, y: 740 },
+      { x: 230, y: 880 },
+      { x: 230, y: 990 },
+      { x: 330, y: 760 },
+      { x: 330, y: 990 },
+    ],
+    rooms: [
+      {
+        shape: 'rect',
+        x: 48,
+        y: 664,
+        w: 810,
+        h: 382,
+        theme: 'holding',
+        label: 'HOLDING 02',
+        sub: 'CELL BLOCK // CONTAINMENT',
+      },
+    ],
+    // Three civilians work the holding office. They are painted in the arena pass; the
+    // campaign script hides them after the calibration class wakes. No bodies, no hits.
+    regulars: [
+      { id: 'ticket', x: 200, y: 820, scale: 0.82, phase: 0.4, carry: 1 },
+      { id: 'patch', x: 80, y: 820, scale: 0.82, phase: 2.1 },
+      { id: 'cache', x: 330, y: 820, scale: 0.78, phase: 4.2, carry: 2 },
+    ],
+    props: [
+      { x: 150, y: 700, w: 38, h: 28, kind: PROP.ZIP },
+      { x: 300, y: 700, w: 38, h: 28, kind: PROP.DOC },
+      { x: 120, y: 1000, w: 38, h: 28, kind: PROP.AUDIO },
+    ],
+  },
+  {
+    id: 35,
+    name: 'QUARANTINE // MAINBOARD',
+    tagline: 'The bus is hot. Two feeds are open.',
+    hudLabel: 'ARENA // QUARANTINE MAINBOARD',
+    accent: '#63ffc4',
+    accentSoft: 'rgba(99, 255, 196, 0.32)',
+    accentFaint: 'rgba(99, 255, 196, 0.032)',
+    signature: 1,
+    // The mainboard is a feed room: two ingress ports, bumper posts and rack cover.
+    // Close both ports and the right-wall portal opens; the room never asks a body to
+    // walk back across the device.
+    bounds: { left: 1084, top: 664, right: 1942, bottom: 1046 },
+    pillars: [
+      { x: 1160, y: 720, w: 110, h: 76 },
+      { x: 1420, y: 780, w: 100, h: 70 },
+      { x: 1700, y: 710, w: 120, h: 80 },
+      { x: 1400, y: 930, w: 120, h: 60 },
+    ],
+    spawns: [
+      { x: 1120, y: 740 },
+      { x: 1120, y: 850 },
+      { x: 1120, y: 960 },
+      { x: 1210, y: 740 },
+      { x: 1210, y: 850 },
+      { x: 1210, y: 960 },
+      { x: 1300, y: 740 },
+      { x: 1300, y: 1010 },
+    ],
+    rooms: [
+      {
+        shape: 'rect',
+        x: 1084,
+        y: 664,
+        w: 858,
+        h: 382,
+        theme: 'board',
+        label: 'MAINBOARD 03',
+        sub: 'BUS 02 // DATA PLANE',
+      },
+    ],
+    ingress: [
+      { x: 1330, y: 900, size: 78, hp: 20, family: 0, interval: 2.6 },
+      { x: 1780, y: 940, size: 78, hp: 20, family: 1, interval: 3 },
+    ],
+    props: [
+      { x: 1300, y: 850, w: 38, h: 28, kind: PROP.DOC },
+      { x: 1650, y: 880, w: 42, h: 30, kind: PROP.AUDIO },
+      { x: 1250, y: 1000, w: 36, h: 26, kind: PROP.VIDEO },
+    ],
+    bumpers: [
+      { x: 1200, y: 900, radius: 28, kind: 0 },
+      { x: 1620, y: 760, radius: 32, kind: 1 },
+      { x: 1880, y: 1000, radius: 28, kind: 0 },
+    ],
+  },
+  {
+    id: 36,
+    name: 'QUARANTINE // ROUTER',
+    tagline: 'Last feed. Last wall. Kitty has the door.',
+    hudLabel: 'ARENA // QUARANTINE ROUTER',
+    accent: '#66c8ff',
+    accentSoft: 'rgba(102, 200, 255, 0.32)',
+    accentFaint: 'rgba(102, 200, 255, 0.032)',
+    signature: 3,
+    // The router is the last quarantine device. One feed remains and two wall emitters
+    // sweep the uplink lane. Closing the feed opens the right-wall portal to REBOOT.
+    bounds: { left: 1084, top: 48, right: 1942, bottom: 444 },
+    pillars: [
+      { x: 1160, y: 120, w: 110, h: 70 },
+      { x: 1460, y: 130, w: 110, h: 66 },
+      { x: 1160, y: 330, w: 120, h: 60 },
+      { x: 1720, y: 320, w: 100, h: 60 },
+    ],
+    spawns: [
+      { x: 1120, y: 220 },
+      { x: 1120, y: 300 },
+      { x: 1120, y: 380 },
+      { x: 1260, y: 220 },
+      { x: 1260, y: 300 },
+      { x: 1260, y: 400 },
+      { x: 1350, y: 100 },
+      { x: 1350, y: 400 },
+    ],
+    rooms: [
+      {
+        shape: 'rect',
+        x: 1084,
+        y: 48,
+        w: 858,
+        h: 396,
+        theme: 'router',
+        label: 'ROUTER 04',
+        sub: 'PORT 03 // UPLINK',
+      },
+    ],
+    ingress: [{ x: 1350, y: 230, size: 78, hp: 26, family: 0, interval: 2.8 }],
+    props: [
+      { x: 1300, y: 220, w: 42, h: 30, kind: PROP.DOC },
+      { x: 1800, y: 140, w: 42, h: 30, kind: PROP.ZIP },
+    ],
+    emitters: [
+      { x: 1104, y: 250, angle: 0, offset: 0.2 },
+      { x: 1104, y: 330, angle: 0, offset: 0.65 },
+    ],
+  },
   {
     id: 90,
     qa: true,
@@ -4923,18 +4995,4 @@ function scaleArena(base: ArenaDef, k: number): ArenaDef {
   return out as ArenaDef;
 }
 
-/** Level 1's floor is authored at 1.5x: the plates were reading as small rooms. */
-/** Build Root's ingress ports stand on floor a body can reach while bridge 2 is shut. */
-const BUILD_ROOT_PORTS: readonly ArenaIngressDef[] = [
-  { x: 49, y: 1031, size: 117, hp: 20, family: 0, interval: 2.6 },
-  { x: 529, y: 839, size: 117, hp: 20, family: 1, interval: 3 },
-  { x: -303, y: 999, size: 117, hp: 26, family: 0, interval: 2.8 },
-];
-
-export const ARENAS: readonly ArenaDef[] = ARENAS_BASE.map((a) => {
-  if (a.id !== 14) return a;
-  const scaled = scaleArena(a, 1.5);
-  // The party port stays on the uplink side right of the entry. It is reachable on the
-  // open floor once every ingress port closes; there is no bridge milestone in between.
-  return { ...scaled, ingress: BUILD_ROOT_PORTS };
-});
+export const ARENAS: readonly ArenaDef[] = ARENAS_BASE;

@@ -75,18 +75,25 @@ retraining is the tutorial: it is where the run teaches movement, the four actio
 dashing. The existing BUILD ROOT beats (calibration subjects, drill squad, breach, assault) are the
 mechanics of the session; its fiction becomes the quarantine stop rather than a neutral sandbox.
 
-The opening blockout is **QUARANTINE**: one continuous arena with a round **INTAKE** office, a square
-**HOLDING** office with three jail cells, a rectangular **MAINBOARD**, and a larger **ROUTER** rectangle.
-The rooms are painted plates, not islands; there is no bridge and no floor gap between them. The holding floor is staffed by floating CRT-monitor ordinary programs (TICKET, PATCH and
-CACHE); they are civilian dressing, not combatants, and are destroyed when the calibration class wakes.
-script_kitty waits behind the middle cell bars. The Warden's basic lesson runs in the intake; the six
-calibration subjects wake in holding as **wave 1** and carry the skill lesson. The sealed cell block is a
-body solid while it is powered. Clearing all six and finishing the skill beat makes the block
-fail: the bars retract unexpectedly and release **wave 2**, two viruses and a worm, for the power-attack
-lesson. The bodies are already in the cells, frozen and untargetable while the block is powered; the
-power-down wakes them instead of spawning replacements. Clear that wave and the heavy beat before the drill. The router is the visual approach to a
-**NETWORK PORT**. The port is not a gate yet: BUILD ROOT still clears on the assault kill count. The
-level is local-only and its room data never enters `Snapshot` (see AGENTS D41).
+The opening blockout is **QUARANTINE**, now four separate arenas traversed by script_kitty's portal: the
+round **INTAKE** office, the square **HOLDING** office with three jail cells, the **MAINBOARD** feed room,
+and the **ROUTER** uplink. Each room is its own device with a right-wall exit portal; the next room throws
+the party in from its left wall. There is no walk between rooms. The holding floor is staffed by floating
+CRT-monitor ordinary programs (TICKET, PATCH and CACHE); they are civilian dressing, not combatants, and
+are destroyed when the calibration class wakes. script_kitty waits behind the middle cell bars.
+
+The Warden's basic lesson runs in INTAKE; finishing it opens the first portal. HOLDING opens on kitty's
+first-hop line: "IT WORKED! I CAN'T BELIEVE IT WORKED." then "OKAY. I NEED YOU TO CLEAR THIS INFECTION AND
+GET ME OUT OF HERE." The six calibration subjects wake in HOLDING as **wave 1** and carry the skill
+lesson. The sealed cell block is a body solid while it is powered. Clearing all six and finishing the
+skill beat makes the block fail: the bars retract unexpectedly and release **wave 2**, two viruses and a
+worm, for the power-attack lesson. The bodies are already in the cells, frozen and untargetable while the
+block is powered; the power-down wakes them instead of spawning replacements. Clear that wave and the heavy
+beat to open the portal to MAINBOARD.
+
+MAINBOARD has two ingress feeds; ROUTER has one feed and two wall emitters. Closing the last feed in a room
+starts the right-wall pull. The rooms are local-only and their state never enters `Snapshot` (see AGENTS
+D41).
 
 **Inciting incident.** The infection breaks out of quarantine and spreads through the dev system. The
 friendly program gets the players out, and that escape carries the route through LOCALHOST and onto the

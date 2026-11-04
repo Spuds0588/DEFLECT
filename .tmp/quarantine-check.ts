@@ -1,14 +1,14 @@
 /**
- * QUARANTINE tutorial layout check.
+ * QUARANTINE split check.
  *
- * Verifies the campaign's first node boots into the new arena, the player starts in the
- * round intake room, the calibration class is staged in the mainboard room, and the two
- * bridges are the only body crossings between the rooms.
+ * The device is four arenas now, entered and left through script_kitty's portal:
+ * INTAKE -> HOLDING -> MAINBOARD -> ROUTER -> REBOOT. This probe verifies the arena
+ * records, the campaign order, the first portal pull, the kitty arrival line, the
+ * holding class, and the feed-room live starts.
  */
-import { ARENAS, arenaSolids, getArena } from '../src/game/arenas';
-import { CAMPAIGN_LEVELS } from '../src/game/campaign';
+import { ARENAS, getArena, holdingCellLayout } from '../src/game/arenas';
+import { CAMPAIGN_LEVELS, PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
 import { MAX_PLAYERS, SIM_DT } from '../src/game/config';
-import type { InputFrame } from '../src/game/types';
 import { World } from '../src/game/world';
 
 let failures = 0;
@@ -21,83 +21,118 @@ function check(name: string, ok: boolean, detail = ''): void {
   }
 }
 
-const level = CAMPAIGN_LEVELS[0];
-const arena = getArena(level.arenaId);
-check('BUILD ROOT uses QUARANTINE', arena.id === 14 && arena.name === 'QUARANTINE', `${arena.id} ${arena.name}`);
-check('arena index and id agree', ARENAS[14] === arena && arena.id === 14);
-check('rooms are circle, rect, larger rect', !!arena.rooms && arena.rooms.length === 3 && arena.rooms[0].shape === 'circle' && arena.rooms[1].shape === 'rect' && arena.rooms[2].shape === 'rect');
-check('third room is larger than second', !!arena.rooms && arena.rooms[2].w * arena.rooms[2].h > arena.rooms[1].w * arena.rooms[1].h);
-check('two real bridge spans', !!arena.traverse && arena.traverse.bridges.length === 2);
-check('four chasm halves', !!arena.traverse && arena.traverse.chasms.length === 4);
-check('solids include each chasm', arenaSolids(arena).length === arena.pillars.length + (arena.traverse?.chasms.length ?? 0), `${arenaSolids(arena).length}`);
+const intake = getArena(14);
+const holding = getArena(34);
+const board = getArena(35);
+const router = getArena(36);
+check('four split quarantine arenas exist', [intake, holding, board, router].every((a) => !!a));
+check(
+  'each split arena has exactly one painted room',
+  [intake, holding, board, router].every((a) => a.rooms?.length === 1),
+  [intake, holding, board, router].map((a) => a.rooms?.length ?? 0).join(','),
+);
+check(
+  'each split arena is a distinct device id',
+  new Set([intake.id, holding.id, board.id, router.id]).size === 4,
+);
+check(
+  'each split arena bounds match its room',
+  [intake, holding, board, router].every((a) => {
+    const r = a.rooms![0];
+    return a.bounds.left === r.x && a.bounds.top === r.y && a.bounds.right === r.x + r.w && a.bounds.bottom === r.y + r.h;
+  }),
+);
+check('arena ids resolve through the arena table', ARENAS[14] === intake && ARENAS[34] === holding && ARENAS[35] === board && ARENAS[36] === router);
 
-const names = new Array(MAX_PLAYERS).fill('');
+const route = PLAYABLE_CAMPAIGN_LEVELS.map((level) => level.arenaId);
+check(
+  'campaign route is intake -> holding -> mainboard -> router -> reboot',
+  route.length === 5 && route[0] === 14 && route[1] === 34 && route[2] === 35 && route[3] === 36 && route[4] === 1,
+  route.join(' -> '),
+);
+check(
+  'first four campaign beats share the build-root node',
+  CAMPAIGN_LEVELS.slice(0, 4).every((level) => level.nodeId === 'build-root'),
+);
+check('intake and holding author no ingress ports', !intake.ingress && !holding.ingress);
+check('mainboard authors two feeds', board.ingress?.length === 2, String(board.ingress?.length ?? 0));
+check('router authors one feed', router.ingress?.length === 1, String(router.ingress?.length ?? 0));
+
+const names = new Array<string>(MAX_PLAYERS).fill('');
 names[0] = 'QA';
-const world = new World(
-  'gauntlet',
-  names,
-  0,
-  arena,
-  false,
-  0,
-  0,
-  null,
-  true,
-  level.dataCrates,
-  false,
-  level.intro,
-  level.clearKills,
-);
-const p = world.players[0];
-check('campaign starts in the intake office', Math.abs(p.x - 310) < 1 && Math.abs(p.y - 547) < 1, `${p.x},${p.y}`);
+const idle = new Array(MAX_PLAYERS).fill(null);
 
-const shapes = world.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <= 6);
-check('six calibration subjects', shapes.length === 6, String(shapes.length));
+// 1. Intake orientation ends into the right-wall portal with no walk-out step.
+const first = new World(
+  'gauntlet', names, 0, intake, false, 0, 0, null, true, [], false, 'warden', 0, false, -1, false,
+);
+first.skipTutorial();
+let sawPortal = false;
+for (let i = 0; i < 420; i++) {
+  first.step(SIM_DT, idle);
+  if (first.campaignPortalT >= 0) sawPortal = true;
+}
+check('intake opens a portal after the Warden lesson', sawPortal);
+check('intake clears through the portal', first.campaignPhase === 'cleared', first.campaignPhase);
 check(
-  'all subjects staged in the mainboard room',
-  shapes.every((s) => s.x > 730 && s.x < 1270 && s.y > 260 && s.y < 840),
-  shapes.map((s) => `${s.kind}@${s.x.toFixed(0)},${s.y.toFixed(0)}`).join(' '),
+  'the pull carries the body across the room to the right wall',
+  first.players[0].x > intake.bounds.right - 48,
+  `${first.players[0].x.toFixed(1)} / right ${intake.bounds.right}`,
+);
+check('intake camp close does not need a white exit prop', !first.props.some((p) => p.portalExit));
+
+// 2. Holding lands on kitty's first line and has the six-subject class.
+const second = new World(
+  'gauntlet', names, 0, holding, false, 0, 0, null, true, [], false, 'holding', 0, false, -1, false,
 );
 check(
-  'subjects are clear of cover',
+  'holding opens on kitty saying the portal worked',
+  second.tutorial?.current?.speaker === 'SCRIPT_KITTY' && second.tutorial?.current?.id === 'kitty-worked',
+  second.tutorial?.current?.id ?? 'no tutorial',
+);
+const shapes = second.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <= 6);
+check('six calibration subjects stage in holding', shapes.length === 6, String(shapes.length));
+const cells = holdingCellLayout(holding.rooms![0]);
+check(
+  'holding entry side is open, cell block stays back-right',
+  cells.left > holding.bounds.left + 300 && cells.bottom < holding.bounds.bottom,
+  `${cells.left.toFixed(0)} / ${cells.bottom}`,
+);
+check(
+  'all subjects are inside holding and clear of the cell block',
   shapes.every(
     (s) =>
-      !arena.pillars.some(
-        (r) => s.x + s.radius > r.x && s.x - s.radius < r.x + r.w && s.y + s.radius > r.y && s.y - s.radius < r.y + r.h,
-      ),
-  ),
-);
-check(
-  'subjects are inside the room, not over a chasm',
-  shapes.every(
-    (s) =>
-      !arena.traverse?.chasms.some(
-        (r) => s.x > r.x && s.x < r.x + r.w && s.y > r.y && s.y < r.y + r.h,
-      ),
+      s.x > holding.bounds.left &&
+      s.x < holding.bounds.right &&
+      s.y > holding.bounds.top &&
+      s.y < holding.bounds.bottom &&
+      !(s.x > cells.left && s.x < cells.left + cells.cellW * 3 && s.y > cells.top && s.y < cells.bottom),
   ),
 );
 
-// The bridge at y 547 is the way east. Three seconds of held movement should put the
-// player inside the mainboard room, not against the chasm lip.
-world.skipTutorial();
-const east: InputFrame = { mx: 1, my: 0, held: 0, pressed: 0 };
-for (let i = 0; i < 180; i++) world.step(SIM_DT, [east]);
-check('player crosses bridge A into the mainboard', p.x > 800 && p.y > 492 && p.y < 602, `${p.x.toFixed(0)},${p.y.toFixed(0)}`);
+// 3. Feed rooms open live, with their authored port counts and crates.
+const third = new World(
+  'gauntlet', names, 0, board, false, 0, 0, null, true,
+  PLAYABLE_CAMPAIGN_LEVELS[2].dataCrates, false, 'assault', PLAYABLE_CAMPAIGN_LEVELS[2].clearKills, false, -1, false,
+);
+check('mainboard opens in live fire', third.campaignPhase === 'assault', third.campaignPhase);
+check('mainboard counts two feeds', third.portTotal === 2, String(third.portTotal));
+check('mainboard loads its data crates', third.dataTotal === PLAYABLE_CAMPAIGN_LEVELS[2].dataCrates.length, String(third.dataTotal));
+check('mainboard slams shut the drill squad', !third.players[1].active);
 
-// Below the bridge the chasm is solid to bodies. Walk east from the office's south
-// floor and confirm the lip stops the body instead of letting it fall or phase through.
-const blocked = new World('gauntlet', ['QA'], 0, arena, false, 0);
-const b = blocked.players[0];
-b.x = 500;
-b.y = 700;
-for (let i = 0; i < 120; i++) blocked.step(SIM_DT, [east]);
-check('chasm blocks a body outside the bridge', b.x < 545, `${b.x.toFixed(0)},${b.y.toFixed(0)}`);
+const fourth = new World(
+  'gauntlet', names, 0, router, false, 0, 0, null, true,
+  PLAYABLE_CAMPAIGN_LEVELS[3].dataCrates, false, 'assault', PLAYABLE_CAMPAIGN_LEVELS[3].clearKills, false, -1, false,
+);
+check('router opens in live fire', fourth.campaignPhase === 'assault', fourth.campaignPhase);
+check('router counts one feed', fourth.portTotal === 1, String(fourth.portTotal));
+check('router loads its data crates', fourth.dataTotal === PLAYABLE_CAMPAIGN_LEVELS[3].dataCrates.length, String(fourth.dataTotal));
 
-// And the second bridge carries the same body into the router room.
-blocked.players[0].x = 1200;
-blocked.players[0].y = 547;
-for (let i = 0; i < 180; i++) blocked.step(SIM_DT, [east]);
-check('player crosses bridge B into the router', b.x > 1440, `${b.x.toFixed(0)},${b.y.toFixed(0)}`);
+// 4. A hopped round enters on the next arena's left wall.
+const match = new World('match', names, 0, getArena(0));
+match.beginRound(true);
+check('a hopped round enters from the left wall', match.players[0].x < getArena(0).bounds.left + 70, `${match.players[0].x.toFixed(1)}`);
+check('a hopped round leaves an entry portal clock', match.entryPortalT > 0, String(match.entryPortalT));
 
-console.log(failures === 0 ? '\nALL QUARANTINE CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);
+console.log(failures === 0 ? '\nALL QUARANTINE SPLIT CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);
