@@ -7399,7 +7399,10 @@ hazards, and put script_kitty's first-hop line on the landing in HOLDING.
   no console or network errors.
 - Not tested: a headed clear of HOLDING -> MAINBOARD -> ROUTER. The port closures and pulls are covered
   headlessly, but a human pass through both feed rooms is still open.
-- Production: pending Pages run for 0.1.180.
+- Production: Pages run `41761845073` succeeded; the live page logs `Build 0.1.180 ready`, serves `sw.js`
+  `deflect-0.1.180`, and both bundles return 200. A production browser pass started BUILD ROOT, skipped the
+  Warden lesson, landed in HOLDING `VIA PORTAL`, and rendered script_kitty's first-hop lines; no console or
+  network errors. The full four-room published pass is left to the user.
 
 **Next:** run the published campaign through the four rooms, judge the suction speed and the entry throw,
 then record any tuning in TODO/HISTORY.

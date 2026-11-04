@@ -11,6 +11,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] Feed rooms open in live fire: MAINBOARD two ports, ROUTER one, no party-port prop
 - [x] Split probes green: `quarantine-check`, `holding-layout-check`, `port-sweep-check`, `exit-route-check`, `islands-ports-check`, `round-hop-check`
 - [x] Headed dev pass: INTAKE -> portal -> HOLDING, `VIA PORTAL`, kitty line on screen, no console errors
+- [x] Production check: Pages run `41761845073` succeeded; live 0.1.180, INTAKE -> HOLDING portal hop and kitty line confirmed in the browser, no console errors
 - [ ] Published campaign pass on 0.1.180 (the user will run this)
 
 ## Island hops (2026-11-04)
