@@ -7508,4 +7508,7 @@ of parking them under it.
 - Not tested: a fresh human campaign playthrough of the INTAKE wake fight, the Warden-to-system handoff at
   couch distance, or the thrown landing on arena 2.
 
+**Production.** Pages run `41773099571` succeeded at `7dcbfa4`. The live page reports HTML `v0.1.183`,
+serves `sw.js` `deflect-0.1.183`, and returns 200 for the `assets/index-5wHFbTE3.js` bundle.
+
 **Next:** play INTAKE through HOLDING and judge the wake pace, the story-box handoff and the landing throw.
