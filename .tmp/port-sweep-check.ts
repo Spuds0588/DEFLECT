@@ -111,20 +111,25 @@ for (const index of [2, 3]) {
 
   if (!world.campaignExitReady) {
     const floorClear = (world as unknown as { campaignFloorClear: () => boolean }).campaignFloorClear.bind(world);
-    if (floorClear()) throw new Error(`${level.name}: cleared floor did not open the exit portal`);
-    // The old contract opened on the last port hit. Retire the remaining squad the way a
-    // completed sweep would, then confirm the portal waits for that floor.
-    const retired = world as unknown as {
-      sentries: { active: boolean }[];
-      viruses: { active: boolean }[];
-      worms: { active: boolean }[];
-      errors: { active: boolean }[];
-    };
-    for (const s of retired.sentries) s.active = false;
-    for (const v of retired.viruses) v.active = false;
-    for (const w of retired.worms) w.active = false;
-    for (const e of retired.errors) e.active = false;
-    for (let i = 0; i < 120 && !world.campaignExitReady; i++) world.step(SIM_DT, idle);
+    if (!floorClear()) {
+      // The old contract opened on the last port hit. Retire the remaining squad the way a
+      // completed sweep would, then confirm the portal waits for that floor.
+      const retired = world as unknown as {
+        sentries: { active: boolean }[];
+        viruses: { active: boolean }[];
+        worms: { active: boolean }[];
+        errors: { active: boolean }[];
+      };
+      for (const s of retired.sentries) s.active = false;
+      for (const v of retired.viruses) v.active = false;
+      for (const w of retired.worms) w.active = false;
+      for (const e of retired.errors) e.active = false;
+    }
+    // New rule: the room holds for two quiet seconds so the last de-rez can finish. One
+    // second of idle is not enough; the portal must open only after the hold expires.
+    for (let i = 0; i < 60 && !world.campaignExitReady; i++) world.step(SIM_DT, idle);
+    if (world.campaignExitReady) throw new Error(`${level.name}: exit portal opened before the clear hold elapsed`);
+    for (let i = 0; i < 90 && !world.campaignExitReady; i++) world.step(SIM_DT, idle);
   }
   if (!world.campaignExitReady) throw new Error(`${level.name}: last port and clear floor did not open the exit portal`);
   if (world.campaignPortalT < 0) throw new Error(`${level.name}: portal pull did not start`);

@@ -7554,3 +7554,220 @@ serves `sw.js` `deflect-0.1.184`, and returns 200 `application/javascript` for t
 
 **Next:** play the published 0.1.184 build through INTAKE and HOLDING; confirm the fight attacks, the shock
 line reads, and the throw is visible on arena 2.
+
+## 2026-11-04 — INTAKE calibration wake crash diagnosed (local fix, not shipped)
+
+**Goal:** diagnose `deflect-campaign-debug-0.1.184-2026-11-04T14-30-35-721Z.json` and make the first campaign
+levels playable under the local debug session. The report's cover says `0.1.180 // GRID ZERO // 1:21`, but
+its JSON is a 0.1.184 INTAKE session: `final` is live calibration at 47.2 s with no failure overlay, and the
+reported 121 shots / 0 kills does not match its own `HIT` / `ELIMINATED` events.
+
+**Changes.**
+- Added the query-gated local campaign recorder (`src/game/campaignDebug.ts`, wired from `src/main.ts`, HUD
+  styles in `styles.css`). It samples state and events only when `?campaignDebug=1` is present, stores under
+  `deflect.campaignDebug.last` / `.prev`, and never enters `World` or `Snapshot`.
+- Fixed the 40 `IndexSizeError` events from `Renderer.drawCalibrationShape`: staggered subjects start with
+  `shapeT > wakeTime`, so the old raw wake progress was negative and the wake ring radius
+  `r + 6 + awake * 22` went negative. Wake progress is now clamped to `0..1` in `src/game/render.ts`.
+- Fixed the recorder's `player-eliminated` milestone to require the local player's slot. Enemy eliminations
+  use slot `-1` and were being mislabeled as player deaths.
+- Fixed the demo boss leak in `World.updateGauntlet`: attract mode now skips the scheduled mini-boss gates.
+  The kiosk's fixed `ATTRACT.wave` 72 is File Blob's repeat gate (wave 24 + 48), so every demo session was
+  landing one; `?boss=1` still spawns its explicit showcase directly.
+- Added a dev-only silent capture sink for campaign runs: `?campaignDebug=1` posts a compact report every
+  5 s and an automatic JPEG canvas frame every 10 s to Vite, which writes
+  `.tmp/campaign-debug/latest.json`, `report-<sessionId>.json`, `screenshots/<sessionId>/` and
+  `latest.jpg`. The endpoint exists only in the dev server; F8/F9 remain manual fallbacks.
+
+**Verification.**
+- `npx tsc --noEmit` 0; `npm run build` 0 (existing >500 kB chunk warning only); `git diff --check` 0.
+- Synthetic 18-case wake matrix (circle/triangle/rectangle × six stagger orders): old formula produced 12
+  negative radii; clamped formula produced 0. Direct renderer calls returned 0 errors and 0 negative `arc`
+  radii.
+- Live `?campaignDebug=1` HUD and `window.__campaignDebug` verified; no console errors from the recorder.
+- `?demo=1&debug=1`: attract stays at wave 72 with `minibossAlive()` false. `?boss=1&debug=1`: the first
+  manual showcase (Mega Worm) is alive, with no scheduled File Blob added.
+- Capture sink smoke: report and screenshot POSTs returned 204 and wrote the expected files. A synthetic
+  campaign recorder produced `auto` and `campaign-start` frames, a report, and the localStorage copy.
+- `npm run bench` 0: 8P bot swarm 0.173 ms avg / 0.521 ms p99; gauntlet max 0.277 ms avg / 0.848 ms p99.
+- Not tested: a fresh human INTAKE wake fight after the clamp. No version bump, commit or push while this
+  stays a local diagnosis.
+
+**Next:** replay INTAKE with `?campaignDebug=1`; confirm the wake rings render and the calibration class wakes,
+can be damaged and opens the portal. Then ship through the normal version-doc-build-push workflow.
+
+## 2026-11-04 — Campaign fix batch (local, unshipped)
+
+**Goal:** act on the level-1 report: make the triangle primitives readable and reflectable, let death
+animations finish before a portal pull, throw the party out of the arrival mouth, stop repeated lessons,
+add a gamepad tutorial skip, keep the Mega Worm entrance live, hold the boss camera on the arena, add a
+low-health rage pass, and make the campaign recorder silent.
+
+**Changes.**
+- Triangle subjects now fire a three-round fan of slow `type 3` / `variant 1` missiles (155 speed, 5.5 s
+  life) instead of a swarm of shard enemies. The rounds use the ordinary guard/lash reflection path.
+- Campaign clear gates hold for `CAMPAIGN.clearDelay` (2.0 s) after the last port or hostile dies before
+  the right-wall portal opens and suctions the party.
+- Campaign arrivals wait `CAMPAIGN.campaignEntryThrowDelay` (2.15 s), spawn under the left mouth, and then
+  take the decaying eastward throw. Round hops keep the shorter default.
+- `KITTY_TUTORIAL` is narration only. Skill stays in HOLDING's wave-1 lesson and the heavy in its wave-2
+  lesson; neither is replayed. Campaign save slots expose a persisted **SKIP TUTORIALS** switch with
+  gamepad navigation, and a live sync skips lessons created later in the run.
+- The Mega Worm entrance no longer freezes the squad. Its campaign camera rig stays centered on the wide
+  arena through the intro and fight instead of tracking the boss offscreen.
+- At 35% health the Mega Worm screams again (`MEGA_CRY`) and its flyby speed and pass cadence increase.
+- The campaign debug recorder still samples state, posts reports and captures frames when
+  `?campaignDebug=1`, but builds no HUD and removes any stale `#campaign-debug` node.
+- Campaign bots keep a non-zero approach vector on a feed (so facing stays on it) and use A* when cover
+  blocks the direct line.
+
+**Verification.**
+- `triangle-missile-check`: 3-round fan, 155 speed, 5.5 s life, all type 3, no shard cloud.
+- `bossintro-check`, `quarantine-check`, `port-sweep-check` (3 ports), `megaworm-check` (rage included),
+  `reboot-check` (6/6 feeds) and `campaign2-check` (3/3 boss runs) pass.
+- `campaign-playthrough-check`: 3/3 continuous BUILD ROOT -> REBOOT runs cleared; slowest 964.9 s.
+- `check-reflect-all`: 26/26 programs and actions.
+- `npm run build` 0 (`tsc --noEmit` + Vite); `npm run bench` 0. 8P bot swarm 0.171 ms avg / 0.501 ms p99;
+  gauntlet max 0.292 ms avg / 0.939 ms p99.
+- Level-1 report (`0.1.184`, session `mw28vqhg-yeysx8`): 684 samples / 19,911 perf samples, average 60
+  FPS (min 57.1), average frame 16.78 ms (max 19.63), sim average 0.078 ms (max 0.362), 0 errors. Four
+  `visual-flat` alerts at 104.91, 158.66, 183.98 and 204.26 s are transition wipes, not stuck frames.
+  Route: INTAKE 22.68 s, HOLDING 104.93 s, MAINBOARD 158.58 s, ROUTER 183.82 s, REBOOT 204.02 s, clear
+  352.07 s.
+
+- Live `?campaignDebug=1` preview: canvas visible, no `#campaign-debug` node, recorder object present, no
+  console errors.
+
+**Next:** fresh human campaign run from INTAKE through the Mega Worm; judge the fan reflect, the 2 s death
+beat, the thrown landing, the one-time lessons, and the centered rage fight. No commit or push.
+
+## 2026-11-04 — Campaign level 1 polish (local, unshipped)
+
+**Goal:** act on the second level-1 report: fill the feed rooms and the final arena at the start, make
+portals and the Mega Worm death read as red-square breaks, close level 1 on Kitty's infection-source beat,
+make HOLDING's cells a full shallow north-wall row, enlarge the civilians, speed up and slow down the
+triangle's volley, and let Probe cancel his beam.
+
+**Changes.**
+- `CampaignLevel.opening` posts authored squads on the first frame: MAINBOARD 3 sentries / 1 virus, ROUTER
+  3 / 1 / 1, REBOOT 4 / 2 / 1. Single open arenas now seed around their spawn; GRID ZERO previously had no
+  island or room zone and silently seeded nothing.
+- INTAKE places three subjects, one of each primary, only at the Warden's target-lock step. Its clear plays
+  `INTAKE_CLEAR` ("did you just defeat those things / we need you here") before the portal.
+- HOLDING's ten shallow cells span the entire north wall. Its six-subject class wakes at setup and chases
+  the civilian staff; Kitty's arrival line covers the opening and the skill briefing follows it. Civilians
+  are drawn at 2.0–2.1× their old silhouette and are lost after 8.5 s.
+- Campaign and assault portals draw a pulsing red fill; closing one emits `PORTAL_BREAK`, a red-square burst
+  and ring. Mega Worm death emits `MEGA_DEATH` per body plate plus one `MEGA_CRY`, then a dense square burst.
+- Triangle missiles are 260 speed on a 4.2 s cadence instead of 155 on the old faster cycle.
+- Probe's heavy beam now burns only while `CANDLE` is held; release cuts it immediately and starts the
+  cooldown. A release before full charge still cancels.
+- REBOOT's final clear plays `CAMPAIGN_FINALE`: the infection entered the network here, follow its path to
+  the source, then the portal pull, clear stats and `MORE LEVELS COMING SOON`.
+
+**Verification.**
+- `campaign-finale-check`: INTAKE three-subject lock spawn, Kitty exit, portal clear; REBOOT opening 4/2/1,
+  Mega clear, finale line, portal clear.
+- `quarantine-check`, `holding-layout-check`, `campaign-rules-check`, `reboot-boss-check`,
+  `boss-warning-check`, `triangle-missile-check`, `plate-flow-check` pass.
+- `campaign2-check`: 3/3 REBOOT runs cleared (131.2 / 165.6 / 204.1 s).
+- `campaign-playthrough-check`: 3/3 continuous BUILD ROOT -> REBOOT runs cleared (slowest 704.7 s).
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only); `npm run bench` 0.
+  8P bot swarm 0.121 ms avg / 0.329 ms p99; gauntlet max 0.203 ms avg / 0.705 ms p99.
+- Live `?campaignDebug=1` preview: build 0.1.185, canvas running, no console errors.
+
+**Next:** human replay of campaign level 1 with `?campaignDebug=1`; then the level 2 NETWORK SWITCH pass.
+No commit or push.
+
+## 2026-11-04 — Campaign save-slot clearing and overwrite (local, unshipped, v0.1.186)
+
+**Goal:** let a player delete a campaign save, and let `START NEW GAME` replace a chosen slot when all
+three are full.
+
+**Changes.**
+- Each filled save row now carries a separate `CLEAR` action. Both clearing and overwriting ask for
+  confirmation; `CANCEL`, Esc or the back action leaves the stored slots untouched.
+- `START NEW GAME` still takes the first empty slot. When all three slots are full, the action reads
+  `OVERRIDE A SLOT` and opens a target picker with each save's level, followed by a second confirmation.
+- Confirming an overwrite clears the chosen slot immediately, before the bot setup stage, so the old run's
+  best score and clean sweeps cannot leak into the new campaign.
+- Removed the unused clear-picker state so clearing exists only through the per-row confirmed action.
+- Updated `saves.ts` ownership comments, `AGENTS.md`, `README.md`, `GAME_GUIDE.md`, `CAMPAIGN.md` and
+  `TODO.md`; bumped the build to 0.1.186.
+
+**Verification.**
+- Isolated browser profile with three seeded saves: normal rows and clear buttons render; overwrite and
+  clear confirmations cancel without changing localStorage; clearing slot 2 writes `null` and the row reads
+  `EMPTY SLOT`; `START NEW GAME` then selects that empty slot; after reseeding, an overwrite confirmation
+  clears slot 2 and reaches the bot setup stage.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only). No simulation or netcode
+  changed, so `npm run bench` was not rerun.
+
+**Next:** human replay of campaign level 1 with `?campaignDebug=1`; then the level 2 NETWORK SWITCH pass.
+No commit or push.
+
+## 2026-11-04 — Gauntlet ingress bursts (local, unshipped, v0.1.187)
+
+**Goal:** stop gauntlet threats materialising around the player; every automatic arrival should come from
+an arena-edge portal, release its group at once, then close.
+
+**Changes.**
+- `AssaultPortal` now carries `burstHold` instead of `emitDur`/`emitT`/`emitInterval`. `tickAssault` opens
+  for `openTime`, releases every request assigned to the portal in one frame, holds `burstHold`, then
+  closes over `closeTime`.
+- `emitAssault` fans the group inward and across the portal mouth, with tighter jitter for error blocks,
+  so a burst reads as one arrival rather than a single-file trickle.
+- Sentry packs queue as a pair when `sentryLimit()` has room; three-dart flocks keep `SENTRY.flockSize`.
+  The queue still stops at the live cap.
+- Cascading-error colonies queue as assault family 4 with `GAUNTLET.errorBurst` (3) blocks. `spawnErrorAt`
+  places them at the portal mouth; the normal gauntlet no longer falls back to an arena spawn point or the
+  centre. Kiosk/campaign direct seeding still uses `spawnErrorColony`, also without the centre fallback.
+- Tuning: `burstMax` 12, `openTime` 0.3, `burstHold` 0.2, `closeTime` 0.5, `cooldown` 0.8, `spread` 6;
+  removed unused `SENTRY.packStagger`. The portal renderer closes on `openDur + burstHold`.
+- Updated `AGENTS.md` D9, `GAME_GUIDE.md`, `README.md`, `CAMPAIGN.md` and `TODO.md`; bumped to 0.1.187.
+
+**Verification.**
+- `.tmp/assault-check.ts` OK: four queued sentries opened on a far edge (819 units from the centre player),
+  all four were live on the burst frame, then the portal closed; the sentry pack queued two; a worm
+  arrived through the ingress; three error blocks arrived at the error portal mouth and none within 300
+  units of the player; the error portal closed.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only).
+- `npm run bench` 0: 8P bot swarm 0.096 ms avg / 0.256 ms p99; gauntlet max 0.164 ms avg / 0.515 ms p99,
+  30.5 live threats. Under the 4 ms budget.
+- `git diff --check` clean.
+- Campaign regression checks after the ingress change: `campaign-playthrough-check` cleared 3/3 continuous
+  BUILD ROOT -> REBOOT runs (524.9 / 562.9 / 704.7 s); `campaign-rules-check` and
+  `campaign-finale-check` pass.
+- Not yet tested: a human gauntlet pass on a wide arena and a human campaign playthrough.
+- No commit or push.
+
+## 2026-11-04 — Campaign playtest round 2 (v0.1.188)
+
+**Goal:** apply the second campaign feedback pass: opaque red ingress, red-square portal deaths, Mega Worm
+lane and minimap reads, reflectable side volleys, beam stopping and contact sparks, a portal camera pull,
+and a real HOLDING cell breakout.
+
+**Changes.**
+- Enemy portals and authored campaign ports now draw as fully opaque `#ff2338` red squares. A closed port
+  emits `EV.PORTAL_BREAK`; its FX is a red-square-only burst instead of generic debris.
+- Mega Worm lane changes are shortened from 2.8 s to 0.65 s (rage 1.7 s to 0.45 s). The minimap draws its
+  real segmented chain and a larger head. Each pass fires two jagged red balls to opposite sides (type 20);
+  they are reflectable and a returned ball damages the Worm. Probe's beam stops at the near capsule edge,
+  and hits emit a wider triangle spray at the contact point.
+- Campaign exit portals use a camera lead (`CAMPAIGN.portalLead`) at `CAMERA.portalArenaZoom` before the
+  mouth opens, then the existing pull. HOLDING's powered cell block now holds two worms and eight viruses;
+  the release gives every body open-floor roam/patrol waypoints so they leave the cells.
+- `0.1.188` stamps in `package.json`, `package-lock.json`, `index.html`, `src/main.ts` and `public/sw.js`.
+- Updated `AGENTS.md`, `README.md`, `GAME_GUIDE.md`, `CAMPAIGN.md`, `TODO.md` and `HISTORY.md`.
+
+**Verification.**
+- `megaworm-check` OK: 13 plates/206 hp capsule pool, fixed flight, two-ball volley with 1 returned damage,
+  beam stop at 379.6, contact damage, 0.45 s rage delay, 5 boss registry entries.
+- `reboot-boss-check` 4/4 static passes, `assault-check`, `campaign-playthrough-check` 3/3 continuous runs
+  and `campaign-finale-check` pass.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only); `npm run bench` 0. 8P bot
+  swarm 0.141 ms avg / 0.490 ms p99; gauntlet max 0.284 ms avg / 0.884 ms p99 at 30.5 live threats.
+- Human playtest pending on the published 0.1.188 build.
+
+**Next:** human campaign replay with the new portal camera and Mega Worm volleys; watch HOLDING's cell
+breakout and report any remaining lane or readability issues. Committed and pushed with this entry.

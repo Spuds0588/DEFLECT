@@ -34,7 +34,7 @@ function cellBlocks(arena: ArenaDef): Rect[] {
   const room = arena.rooms?.find((r) => r.theme === 'holding');
   if (!room) return [];
   const l = holdingCellLayout(room);
-  return [{ x: l.left, y: l.top, w: l.cellW * 3, h: l.bottom - l.top }];
+  return [{ x: l.left, y: l.top, w: l.cellW * l.cellCount, h: l.bottom - l.top }];
 }
 
 function plateOf(arena: ArenaDef): Rect[] {

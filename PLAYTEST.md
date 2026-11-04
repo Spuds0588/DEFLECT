@@ -138,3 +138,19 @@ megabyte), so that is not a constraint.
 
 Related files: `src/main.ts` (the tour), `src/game/world.ts` (`deflectTelemetry` counters),
 `src/game/arenas.ts` (rotation order), `AGENTS.md` §D6 and §8.
+
+## 4. Silent campaign capture (`?campaignDebug=1`)
+
+Run the campaign at `http://127.0.0.1:5173/?campaignDebug=1`. While the Vite dev server is up, the
+recorder captures without prompting or downloading:
+
+- a compact report every 5 seconds to `.tmp/campaign-debug/latest.json`, with a per-session copy at
+  `report-<sessionId>.json`;
+- a JPEG of the game canvas every 10 seconds while a campaign is live, under
+  `.tmp/campaign-debug/screenshots/<sessionId>/`, plus a stable `.tmp/campaign-debug/latest.jpg`;
+- event-triggered frames (hits, explosions, eliminations, errors) and the existing F8 snapshot on demand.
+
+The report still contains samples, events, milestones, errors and final state; screenshots are separate files
+and are not embedded in the JSON. `F9` remains the manual download fallback, and localStorage still survives a
+reload. The endpoint lives only in the Vite dev server: production builds have no capture route and upload
+nothing to a third party.

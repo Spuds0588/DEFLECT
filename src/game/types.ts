@@ -6,7 +6,18 @@ export type GameMode = 'match' | 'training' | 'gauntlet';
  * Campaign script inside a gauntlet-mode world. `cleared` and `failed` set
  * `gauntletOver`, which freezes the arena under the DOM result overlay.
  */
-export type CampaignPhase = 'none' | 'calibration' | 'release' | 'briefing' | 'drill' | 'breach' | 'assault' | 'cleared' | 'failed';
+export type CampaignPhase =
+  | 'none'
+  | 'calibration'
+  | 'release'
+  | 'briefing'
+  | 'drill'
+  | 'breach'
+  | 'assault'
+  | 'exit'
+  | 'finale'
+  | 'cleared'
+  | 'failed';
 
 export interface InputFrame {
   /** Movement / facing vector, magnitude <= 1. */
@@ -154,6 +165,12 @@ export const EV = {
   COMPRESS: 42,
   /** A mini-boss let out its arrival cry; `power` is the body radius. */
   MEGA_CRY: 43,
+  /** A campaign ingress port collapsed; `power` is its size. Local-only. */
+  PORTAL_BREAK: 44,
+  /** One Mega Worm body node de-rezzed into red squares; `power` is the burst scale. */
+  MEGA_DEATH: 45,
+  /** A hit landed on the Mega Worm; `x`/`y` are the impact point. */
+  MEGA_HIT: 46,
 } as const;
 
 /** Breakable file boxes. The renderer maps each to one glyph. */
@@ -394,6 +411,8 @@ export interface Player {
   laserTickT: number;
   /** Facing committed when the beam begins. */
   laserFacing: number;
+  /** Where the live beam stopped last tick. 0 means no beam-specific stop was recorded. */
+  laserStopDist: number;
   /**
    * Overcharge ranged fire: seconds left in the short spin-up before the beam exists,
    * and seconds left of the cooling afterglow after it switches off. Both local only;
@@ -635,9 +654,11 @@ export interface Projectile {
    * 1-5 damage over five bodies. Type 15 is the huge super ball: walls bounce it,
    * bodies do not, and it rolls through cover. Type 17 is Aim Bot's rail round: no
    * practical flight limit, no bounce, and it dies on the first body or cover hit.
+   * Type 20 is the Mega Worm's jagged side volley; once reflected it is an ordinary
+   * player bolt with the usual deflection damage.
    */
   /** 16 is Copy Pasta's file; its `variant` is 0 for the parent and 1 for the child. */
-  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19;
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20;
   owner: number; // slot, -1 for drone
   x: number;
   y: number;
@@ -927,6 +948,10 @@ export interface Worm {
   roarT: number;
   /** Index into the Mega Worm's fixed fly-by pattern; absent only before its first pass. */
   megaPass?: number;
+  /** Low-health phase: one extra roar, then a faster pass cycle. */
+  megaRage: boolean;
+  /** Seconds until the next jagged side volley during a fly-by. */
+  volleyT: number;
   /** Per-node health. Index 0 is the head, index k is segment k-1. */
   segHp: Float32Array;
   segMaxHp: Float32Array;
@@ -1222,11 +1247,10 @@ export interface AssaultPortal {
   /** Seconds since it opened. */
   t: number;
   openDur: number;
-  emitDur: number;
+  /** How long the open mouth holds after releasing the whole group. */
+  burstHold: number;
   closeDur: number;
   /** Requests assigned to this burst, and how many it has emitted. */
   count: number;
   emitted: number;
-  emitT: number;
-  emitInterval: number;
 }

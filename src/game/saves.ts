@@ -1,9 +1,9 @@
 /**
  * Local story-mode save slots for SECTORS.
  *
- * The campaign is not playable yet, so nothing writes a save during a run. This module
- * owns the slot format and storage so the menu can list slots and the first playable
- * sector only has to call `saveStoryProgress` after a level completes.
+ * Three local slots back the campaign. A completed level calls `saveStoryProgress`, and
+ * the save screen can `clearStorySlot` after its own confirmation. This module owns the
+ * slot format and storage; it does not decide when a run starts or resumes.
  */
 export const STORY_SLOT_COUNT = 3;
 export const STORY_SAVE_VERSION = 1;
@@ -101,6 +101,7 @@ export function saveStoryProgress(slot: number, save: Omit<StorySave, 'version' 
   writeStorySlots(slots);
 }
 
+/** Remove one slot. The menu confirms before calling; an empty slot is a no-op. */
 export function clearStorySlot(slot: number): void {
   if (slot < 0 || slot >= STORY_SLOT_COUNT) return;
   const slots = loadStorySlots();

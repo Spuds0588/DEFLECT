@@ -49,12 +49,29 @@ for (let run = 0; run < 3; run++) {
     level.clearKills,
     false,
     level.boss ?? -1,
+    false,
+    level.opening ?? null,
+    level.finale === true,
   );
   const priv = world as any;
   priv.tutorial = null;
   priv.campaignPhase = 'assault';
   priv.beginAssault();
   priv.gauntletKills = world.campaignKillsToClear;
+  // REBOOT is a boss node: its six authored feeds are the run-up. This probe is about the
+  // boss fight, so retire the feeds and any body they already delivered. Leaving the feeds
+  // live keeps `campaignFloorClear()` false forever and the Mega Worm never arrives.
+  for (const b of world.props as any[]) {
+    if (b.portal && !b.portalExit) {
+      b.active = false;
+      b.hp = 0;
+    }
+  }
+  priv.portsClosed = world.portTotal;
+  for (const s of world.sentries) s.active = false;
+  for (const v of world.viruses) v.active = false;
+  for (const w of world.worms) w.active = false;
+  for (const e of world.errors) e.active = false;
   const frames = new Array(MAX_PLAYERS).fill(null).map(frame);
   const p = world.players[0];
   const cx = (arena.bounds.left + arena.bounds.right) * 0.5;
@@ -63,7 +80,9 @@ for (let run = 0; run < 3; run++) {
   let bossSeen = false;
   let ticks = 0;
   let nextLog = 30 / SIM_DT;
-  const maxTicks = Math.round(180 / SIM_DT);
+  // A solo pilot with iframes can take a while to chew the single 206 HP pool; the seed
+  // that used to time out at 180 s was still landing hits at 6 HP.
+  const maxTicks = Math.round(240 / SIM_DT);
   while (ticks++ < maxTicks && world.campaignPhase !== 'cleared') {
     p.iframes = 999;
     const boss = world.worms.find((w) => w.active && w.bossKind === level.boss) as Worm | undefined;
@@ -115,7 +134,7 @@ for (let run = 0; run < 3; run++) {
     }
   }
   if (!bossSeen) fail(`run ${run + 1} never spawned the campaign boss`);
-  if (world.campaignPhase !== 'cleared') fail(`run ${run + 1} did not clear in 180s`);
+  if (world.campaignPhase !== 'cleared') fail(`run ${run + 1} did not clear in 240s`);
   if (!world.gauntletOver) fail(`run ${run + 1} cleared without freezing the arena`);
   console.log(JSON.stringify({ run: run + 1, seconds: +(ticks * SIM_DT).toFixed(1), phase: world.campaignPhase }));
 }

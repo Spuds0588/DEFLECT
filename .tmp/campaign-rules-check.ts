@@ -42,14 +42,17 @@ if (intake.props.some((p) => p.portal && !p.portalExit)) throw new Error('intake
 intake.skipTutorial();
 const intakeIdle = new Array(MAX_PLAYERS).fill(null);
 for (let i = 0; i < 90; i++) intake.step(SIM_DT, intakeIdle);
-if (!intake.calibrationAwake) throw new Error('intake did not wake the six subjects after the lesson');
+if (!intake.calibrationAwake) throw new Error('intake did not wake the three subjects after the lesson');
+if (intake.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <= 6).length !== 3) {
+  throw new Error('intake did not place exactly three subjects at the lock lesson');
+}
 if (intake.campaignPortalT >= 0) throw new Error('intake opened its portal before the subjects woke');
 if (intake.tutorial?.current?.id !== 'warden-shock') throw new Error('intake skipped the Warden shock line');
 intake.skipTutorial();
 for (let i = 0; i < 90; i++) intake.step(SIM_DT, intakeIdle);
 if (intake.campaignPortalT >= 0) throw new Error('intake opened its portal with the class still alive');
 for (const s of intake.sentries) if (s.kind >= 4 && s.kind <= 6) s.active = false;
-for (let i = 0; i < 240 && intake.campaignPhase !== 'cleared'; i++) intake.step(SIM_DT, intakeIdle);
+for (let i = 0; i < 900 && intake.campaignPhase !== 'cleared'; i++) intake.step(SIM_DT, intakeIdle);
 if (intake.campaignPhase !== 'cleared') throw new Error(`intake portal did not clear (${intake.campaignPhase})`);
 
 // 4. Holding lands on kitty's line and owns the six-subject class plus the cell wave.

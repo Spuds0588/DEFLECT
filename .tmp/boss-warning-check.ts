@@ -17,7 +17,8 @@ const names = new Array<string>(MAX_PLAYERS).fill('');
 names[0] = 'PILOT';
 for (let i = 1; i < MAX_PLAYERS; i++) names[i] = `BOT${i}`;
 const world = new World('gauntlet', names, 0, arena, false, 0, 3, null, true,
-  level.dataCrates, false, level.intro, level.clearKills, false, level.boss ?? -1);
+  level.dataCrates, false, level.intro, level.clearKills, false, level.boss ?? -1, false,
+  level.opening ?? null, level.finale === true);
 const priv = world as any;
 priv.tutorial = null;
 priv.campaignPhase = 'assault';
@@ -28,6 +29,11 @@ priv.gauntletKills = world.campaignKillsToClear;
 for (const portal of world.props.filter((prop) => prop.portal && !prop.portalExit)) {
   priv.damageProp(portal, portal.hp, 0, 0);
 }
+// The authored opening squad is on the floor now; the warning waits on the whole room.
+for (const s of world.sentries) s.active = false;
+for (const v of world.viruses) v.active = false;
+for (const w of world.worms) w.active = false;
+for (const e of world.errors) e.active = false;
 
 const frames = new Array(MAX_PLAYERS).fill(null).map(() => ({ mx: 0, my: 0, held: 0, pressed: 0 }));
 const p = world.players[0];

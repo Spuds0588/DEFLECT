@@ -485,6 +485,8 @@ export class Renderer {
   /** One entrance rig per assembled boss, not one per frame. */
   private bossCueLive = false;
   private bossCueKind = -1;
+  /** One wide arena frame for the campaign exit portal and its pull. */
+  private portalCueLive = false;
   /** Campaign Mega Worm keeps the whole arena in frame until the boss dies. */
   private megaFightCue = false;
   /** Campaign-only presentation state for the holding room's scripted beats. */
@@ -608,6 +610,7 @@ export class Renderer {
     this.lastCampaignKind = -1;
     this.bossCueLive = false;
     this.bossCueKind = -1;
+    this.portalCueLive = false;
     this.megaFightCue = false;
     this.lastViewCount = 0;
     this.layoutChanged = false;
@@ -899,6 +902,9 @@ export class Renderer {
    * accelerating into it. No gradients and no shadow blur.
    */
   private drawExitPortal(state: RenderState, t: number, pullT: number): void {
+    // The campaign lead is the zoom-out beat. The mouth itself appears only after
+    // that wide frame has landed, so the player reads the room before the pull.
+    if (state.campaign && pullT <= 0) return;
     const b = state.arena.bounds;
     const x = b.right - 36;
     const y = (b.top + b.bottom) * 0.5;
@@ -1004,6 +1010,25 @@ export class Renderer {
    * `playCameraRig` directly for a bespoke entrance.
    */
   private updateCameraCues(state: RenderState): void {
+    const portalOpen = state.campaign === true && state.portalOpen === true;
+    if (portalOpen && !this.portalCueLive) {
+      this.portalCueLive = true;
+      const b = state.arena.bounds;
+      this.director.play({
+        x: (b.left + b.right) * 0.5,
+        y: (b.top + b.bottom) * 0.5,
+        followSlot: -1,
+        zoom: CAMERA.portalArenaZoom,
+        hold: 100000,
+        blendIn: 0.5,
+        blendOut: 0.45,
+        weight: 1,
+        priority: 7,
+      });
+    } else if (!portalOpen && this.portalCueLive) {
+      this.portalCueLive = false;
+      this.director.clear();
+    }
     if (state.campaign) {
       const kind = (state.campaignBannerT ?? 0) > 0 ? (state.campaignBannerKind ?? -1) : -1;
       if (kind !== this.lastCampaignKind) {
@@ -1051,19 +1076,26 @@ export class Renderer {
         this.director.track(intro.x, intro.y, 5);
       }
     } else {
-      // Non-staged bosses (Storm Cloud) keep the short combat cue.
+      // Non-staged bosses (Storm Cloud) keep the short combat cue. The campaign Mega
+      // Worm keeps one wide arena rig for the whole encounter, including the offstage
+      // beats between passes: a staged pass parks it with `spawnT > 0`, and treating
+      // that as "no boss" used to clear the rig and send the camera back to the player.
       let boss: Worm | null = null;
+      let megaBossActive = false;
       if (state.worms) {
         for (let i = 0; i < state.worms.length; i++) {
           const w = state.worms[i];
-          if (!w.active || w.bossKind < 0 || w.armState || w.spawnT > 0) continue;
+          if (!w.active || w.bossKind < 0 || w.armState) continue;
+          if (w.bossKind === MINIBOSS.MEGA_WORM) {
+            megaBossActive = true;
+            continue;
+          }
+          if (w.spawnT > 0) continue;
           boss = w;
           break;
         }
       }
-      if (boss && state.campaign && boss.mega) {
-        // A campaign Mega Worm fight stays wide for the whole encounter. Its passes are
-        // fixed lanes, so the player needs the arena edge, not a close chase camera.
+      if (state.campaign && megaBossActive) {
         if (!this.megaFightCue) {
           this.megaFightCue = true;
           const ab = state.arena.bounds;
@@ -1082,8 +1114,6 @@ export class Renderer {
       } else if (boss && (!this.bossCueLive || this.bossCueKind !== boss.bossKind)) {
         this.bossCueLive = true;
         this.bossCueKind = boss.bossKind;
-        // Center between the head and the last plate so a long Mega Worm body reads as
-        // one silhouette instead of the rig hanging on its face.
         let cueX = boss.x;
         let cueY = boss.y;
         if (boss.mega && boss.segCount > 0) {
@@ -1102,7 +1132,7 @@ export class Renderer {
           weight: 1,
           priority: 4,
         });
-      } else if (!boss) {
+      } else if (!boss && !megaBossActive) {
         this.bossCueLive = false;
         this.bossCueKind = -1;
         if (this.megaFightCue) {
@@ -7354,23 +7384,22 @@ export class Renderer {
       const portal = portals[i];
       if (!portal.active) continue;
       const open = Math.min(1, portal.t / Math.max(0.001, portal.openDur));
-      const emitEnd = portal.openDur + portal.emitDur;
+      const emitEnd = portal.openDur + portal.burstHold;
       const closing = portal.t > emitEnd ? Math.min(1, (portal.t - emitEnd) / Math.max(0.001, portal.closeDur)) : 0;
       const scale = Math.max(0, Math.min(open, 1 - closing));
       const half = portal.half * (0.35 + scale * 0.65);
       const cx = portal.x;
       const cy = portal.y;
-      const pulse = 0.6 + Math.sin(t * 14) * 0.3;
-
       ctx.save();
-      ctx.globalAlpha = 0.22 * scale;
-      ctx.fillStyle = 'rgba(255, 77, 77, 0.5)';
-      ctx.fillRect(cx - half - 22, cy - half - 22, (half + 22) * 2, (half + 22) * 2);
       ctx.globalAlpha = scale;
-      ctx.fillStyle = '#0a0305';
+      // One solid red mouth. No dark inner box and no translucent fill: a live ingress
+      // is a hole in the floor, not a tinted window onto it.
+      ctx.fillStyle = '#ff2338';
       ctx.fillRect(cx - half, cy - half, half * 2, half * 2);
+      ctx.fillStyle = '#e3172c';
+      ctx.fillRect(cx - half + 5, cy - half + 5, Math.max(1, half * 2 - 10), Math.max(1, half * 2 - 10));
       // Inward chevrons: the mouth is pulling, not pushing.
-      ctx.strokeStyle = `rgba(255, 120, 90, ${0.85 * scale})`;
+      ctx.strokeStyle = '#7d0715';
       ctx.lineWidth = 2;
       ctx.beginPath();
       for (let side = 0; side < 4; side++) {
@@ -7383,12 +7412,12 @@ export class Renderer {
       }
       ctx.stroke();
       ctx.globalAlpha = scale;
-      ctx.strokeStyle = '#ff4d4d';
+      ctx.strokeStyle = '#ff5a63';
       ctx.lineWidth = Math.max(2, 5 * scale);
       ctx.strokeRect(cx - half + 1.5, cy - half + 1.5, half * 2 - 3, half * 2 - 3);
-      // Corner brackets flash while the mouth is live.
-      ctx.globalAlpha = 0.55 + pulse * 0.45;
-      ctx.strokeStyle = '#ffd0b8';
+      // Corner brackets stay on the same red family as the mouth.
+      ctx.globalAlpha = scale;
+      ctx.strokeStyle = '#ff8a95';
       ctx.lineWidth = 3;
       const arm = Math.max(6, half * 0.34);
       ctx.beginPath();
@@ -7420,14 +7449,10 @@ export class Renderer {
       const cx = b.x + b.w * 0.5;
       const cy = b.y + b.h * 0.5;
       const half = b.w * 0.5 * close;
-      const color = exit ? '#eafcff' : '#ff4d4d';
-      const soft = exit ? 'rgba(234, 252, 255, 0.36)' : 'rgba(255, 77, 77, 0.34)';
+      const color = exit ? '#eafcff' : '#ff2338';
+
       const r = b.w * 0.5;
       ctx.save();
-      // Halo: the port lights the floor around its own frame.
-      ctx.globalAlpha = (exit ? 0.18 : 0.24) * close;
-      ctx.fillStyle = soft;
-      ctx.fillRect(cx - r - 18, cy - r - 18, (r + 18) * 2, (r + 18) * 2);
       // Square particles leak out of the mouth and drift back toward the rim.
       ctx.globalAlpha = (exit ? 0.55 : 0.85) * close;
       ctx.fillStyle = color;
@@ -7438,10 +7463,18 @@ export class Renderer {
         const size = 2 + (1 - phase) * 4;
         ctx.fillRect(cx + Math.cos(a) * dist - size * 0.5, cy + Math.sin(a) * dist - size * 0.5, size, size);
       }
-      // Frame: thick bright square, dark mouth, rotating inner brackets.
+      // Frame: a solid mouth with no floor showing through.
       ctx.globalAlpha = close;
-      ctx.fillStyle = '#0a0305';
+      ctx.fillStyle = color;
       ctx.fillRect(cx - half, cy - half, half * 2, half * 2);
+      if (!exit) {
+        ctx.fillStyle = '#e3172c';
+        ctx.fillRect(cx - half + 5, cy - half + 5, Math.max(1, half * 2 - 10), Math.max(1, half * 2 - 10));
+      }
+      ctx.strokeStyle = exit ? 'rgba(234, 252, 255, 0.8)' : '#7d0715';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(cx - half + 7.5, cy - half + 7.5, Math.max(1, half * 2 - 15), Math.max(1, half * 2 - 15));
+      ctx.globalAlpha = close;
       ctx.strokeStyle = color;
       ctx.lineWidth = Math.max(2, 5 * close);
       ctx.strokeRect(cx - half + 1.5, cy - half + 1.5, half * 2 - 3, half * 2 - 3);
@@ -7846,9 +7879,9 @@ export class Renderer {
   }
 
   /**
-   * Holding office: a square floor with a three-cell block along the back wall. Script
-   * Kitty waits in the middle cell. When the calibration class is cleared the bars flash
-   * amber, retract, and the released threats take over the office floor.
+   * Holding office: a square floor with a shallow ten-cell block along the whole north
+   * wall. Script Kitty waits in the middle cell. When the calibration class is cleared
+   * the bars flash amber, retract, and the released threats take over the office floor.
    */
   private drawHoldingRoom(room: ArenaRoomDef, t: number, alpha: number): void {
     const ctx = this.ctx;
@@ -7859,9 +7892,9 @@ export class Renderer {
     const cellTop = layout.top;
     const cellBottom = layout.bottom;
     const cx = room.x + room.w * 0.5;
-    // Kitty and her cell label follow the block, not the plate centre: the block sits on
-    // the back-right so the intake bridge can land on open floor at the left.
-    const cellMidX = left + cellW * 1.5;
+    // Kitty and her cell label follow the block. She sits in the middle cell so the long
+    // north wall reads as one continuous containment row.
+    const cellMidX = left + cellW * (Math.floor(layout.cellCount * 0.5) + 0.5);
 
     // Two office desks sit at the front of the room, clear of the cell block and the
     // central wake arc. They are visual furniture, not cover pillars.
@@ -7883,7 +7916,7 @@ export class Renderer {
     }
 
     // Cell block: dark recesses, bunks and a small service label per cell.
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < layout.cellCount; i++) {
       const x = left + i * cellW;
       ctx.globalAlpha = 0.62 * alpha;
       ctx.fillStyle = theme.deep;
@@ -7901,7 +7934,7 @@ export class Renderer {
       ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
-      ctx.fillText(`CELL 0${i + 1}`, x + cellW * 0.5, cellTop + 13);
+      ctx.fillText(`CELL ${String(i + 1).padStart(2, '0')}`, x + cellW * 0.5, cellTop + 13);
     }
 
     // Kitty is inside the middle cell, drawn before the bars so the bars occlude her.
@@ -7913,8 +7946,8 @@ export class Renderer {
     ctx.textBaseline = 'alphabetic';
     ctx.fillText('KITTY', cellMidX, cellBottom + 13);
 
-    // Wave 2 waits behind the bars: the worm in the left cell, the virus pair in the
-    // right. The real bodies exist already but are hidden from the normal threat pass;
+    // Wave 2 waits behind the bars: the worm in an early cell, the virus pair in a late
+    // one. The real bodies exist already but are hidden from the normal threat pass;
     // these silhouettes are their caged presentation until the power-down releases them.
     if (this.campaignActive && !this.campaignBarsOpen) {
       this.drawHoldingCagedThreats(layout, t, alpha);
@@ -7928,7 +7961,7 @@ export class Renderer {
     ctx.globalAlpha = (flash ? 0.85 + 0.15 * pulse : 0.58) * alpha;
     ctx.strokeStyle = flash ? '#ffd27a' : '#d5e5ea';
     ctx.lineWidth = 2;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < layout.cellCount; i++) {
       const x = left + i * cellW;
       ctx.strokeRect(x + 2, cellTop + 1, cellW - 4, cellBottom - cellTop - 2);
       ctx.beginPath();
@@ -7959,36 +7992,41 @@ export class Renderer {
     ctx.fillText('CELL BLOCK // CONTAINMENT', cx, room.y + room.h - 12);
   }
 
-  /** Painted wave-2 silhouettes behind the sealed cell bars. */
+  /** Painted cell silhouettes behind the sealed bars; they mirror the live breakout. */
   private drawHoldingCagedThreats(layout: HoldingCellLayout, t: number, alpha: number): void {
     const ctx = this.ctx;
     ctx.save();
-    // Worm: a short red chain with a dark eye, moving just enough to read as alive.
-    const wx = layout.left + layout.cellW * 0.5;
-    const wy = layout.top + 58;
-    ctx.globalAlpha = 0.9 * alpha;
-    ctx.fillStyle = THREAT_COLORS.worm;
-    ctx.strokeStyle = 'rgba(17, 9, 12, 0.9)';
-    ctx.lineWidth = 1.2;
-    for (let i = 0; i < 4; i++) {
-      const s = i === 0 ? 10 : 8 - i * 0.4;
-      const x = wx + Math.sin(t * 1.8 + i * 0.65) * 2.5 - i * 1.5;
-      const y = wy + i * 8 - 8;
-      ctx.fillRect(x - s * 0.5, y - s * 0.5, s, s);
-      ctx.strokeRect(x - s * 0.5, y - s * 0.5, s, s);
+    // Two full chains at the end cells. The painted body is deliberately longer than
+    // the old four-block stub so the block reads as crowded before it opens.
+    for (let w = 0; w < 2; w++) {
+      const cell = w === 0 ? 0 : layout.cellCount - 1;
+      const wx = layout.left + layout.cellW * (cell + 0.5);
+      const wy = layout.top + 52;
+      ctx.globalAlpha = 0.9 * alpha;
+      ctx.fillStyle = THREAT_COLORS.worm;
+      ctx.strokeStyle = 'rgba(17, 9, 12, 0.9)';
+      ctx.lineWidth = 1.2;
+      for (let i = 0; i < 7; i++) {
+        const s = i === 0 ? 10 : 8 - i * 0.32;
+        const x = wx + Math.sin(t * 1.8 + i * 0.65 + w) * 2.5;
+        const y = wy + i * 9;
+        ctx.fillRect(x - s * 0.5, y - s * 0.5, s, s);
+        ctx.strokeRect(x - s * 0.5, y - s * 0.5, s, s);
+      }
+      ctx.fillStyle = '#241217';
+      ctx.fillRect(wx - 3, wy - 2, 2, 2);
+      ctx.fillRect(wx + 1, wy - 2, 2, 2);
     }
-    ctx.fillStyle = '#241217';
-    ctx.fillRect(wx - 3, wy - 10, 2, 2);
-    ctx.fillRect(wx + 1, wy - 10, 2, 2);
 
-    // Viruses: a pair of magenta diamonds in the right cell.
-    const vx = layout.left + layout.cellW * 2.5;
-    const vy = layout.top + 59;
+    // Eight magenta diamonds across the middle cells: the same count the breakout
+    // actually releases.
     ctx.strokeStyle = 'rgba(34, 8, 30, 0.9)';
-    for (let i = 0; i < 2; i++) {
-      const x = vx + (i === 0 ? -15 : 15) + Math.sin(t * 1.5 + i * 2.1) * 2.5;
-      const y = vy + (i === 0 ? -2 : 12) + Math.cos(t * 1.2 + i) * 2;
-      const r = i === 0 ? 7 : 6;
+    ctx.fillStyle = THREAT_COLORS.virus;
+    for (let i = 0; i < 8; i++) {
+      const cell = (i + 1) % layout.cellCount;
+      const x = layout.left + layout.cellW * (cell + 0.5) + Math.sin(t * 1.5 + i * 2.1) * 2.5;
+      const y = layout.top + 52 + (i % 3) * 17 + Math.cos(t * 1.2 + i) * 2;
+      const r = i % 2 === 0 ? 6.5 : 5.5;
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(t * 1.2 + i * 0.9);
@@ -7998,7 +8036,6 @@ export class Renderer {
       ctx.lineTo(0, r);
       ctx.lineTo(-r * 0.72, 0);
       ctx.closePath();
-      ctx.fillStyle = THREAT_COLORS.virus;
       ctx.globalAlpha = 0.9 * alpha;
       ctx.fill();
       ctx.globalAlpha = 0.65 * alpha;
@@ -10478,7 +10515,11 @@ export class Renderer {
   private drawCalibrationShape(s: Sentry, t: number, sentries: readonly Sentry[]): void {
     const ctx = this.ctx;
     const r = s.radius;
-    const awake = s.shapeState === 1 ? 1 - Math.max(0, s.shapeT) / CALIBRATION.wakeTime : s.shapeState === 0 ? 0 : 1;
+    // Later subjects are staggered by starting `shapeT` above `wakeTime`, which makes
+    // raw progress negative before their turn. Clamp it or the wake ring radius
+    // `r + 6 + awake * 22` can go negative and `arc()` throws every frame.
+    const rawAwake = s.shapeState === 1 ? 1 - Math.max(0, s.shapeT) / CALIBRATION.wakeTime : s.shapeState === 0 ? 0 : 1;
+    const awake = Math.max(0, Math.min(1, rawAwake));
     const color =
       s.kind === 4
         ? THREAT_COLORS.shapeCircle
@@ -10775,9 +10816,10 @@ export class Renderer {
     const ax = Math.cos(p.laserFacing);
     const ay = Math.sin(p.laserFacing);
     const origin = PLAYER.radius + 12;
+      const solidReach = beamReach(state.arena, state.barriers, state.pusherActive === true, state.pusherY ?? 0, x, y, ax, ay, PLAYER.laserRange);
     const reach = Math.max(
       origin + 8,
-      beamReach(state.arena, state.barriers, state.pusherActive === true, state.pusherY ?? 0, x, y, ax, ay, PLAYER.laserRange),
+        p.laserStopDist > 0 ? Math.min(solidReach, p.laserStopDist) : solidReach,
     );
     const color = playerColor(state, p);
     const x0 = x + ax * PLAYER.radius;
@@ -10977,11 +11019,12 @@ export class Renderer {
       const ax = Math.cos(p.laserFacing);
       const ay = Math.sin(p.laserFacing);
       const origin = PLAYER.radius + 12;
+      const solidReach = beamReach(state.arena, state.barriers, state.pusherActive === true, state.pusherY ?? 0, x, y, ax, ay, PLAYER.laserRange);
       // The drawing and the damage test share one reach, so the shaft visibly stops on
       // pillars, deployed walls, the compactor plate and a walled arena's bounds.
       const reach = Math.max(
         origin + 8,
-        beamReach(state.arena, state.barriers, state.pusherActive === true, state.pusherY ?? 0, x, y, ax, ay, PLAYER.laserRange),
+        p.laserStopDist > 0 ? Math.min(solidReach, p.laserStopDist) : solidReach,
       );
       const flicker = 0.85 + 0.15 * Math.sin(t * 44 + i);
       const width = PLAYER.laserHalfWidth * 2;
@@ -11356,9 +11399,10 @@ export class Renderer {
       const y = lerp(p.prevY, p.y, alpha);
       const ax = Math.cos(p.laserFacing);
       const ay = Math.sin(p.laserFacing);
+      const solidReach = beamReach(state.arena, state.barriers, state.pusherActive === true, state.pusherY ?? 0, x, y, ax, ay, PLAYER.laserRange);
       const reach = Math.max(
         PLAYER.radius + 20,
-        beamReach(state.arena, state.barriers, state.pusherActive === true, state.pusherY ?? 0, x, y, ax, ay, PLAYER.laserRange),
+        p.laserStopDist > 0 ? Math.min(solidReach, p.laserStopDist) : solidReach,
       );
       const sideX = -ay;
       const sideY = ax;
@@ -11469,7 +11513,13 @@ export class Renderer {
       const hostile = p.owner < 0 && p.type >= 3;
       const ownerPlayer = p.owner >= 0 ? state.players[p.owner] : null;
       const color = hostile
-        ? p.type === 4 ? THREAT_COLORS.homing : THREAT_COLORS.sentry
+        ? p.type === 20
+          ? '#ff2338'
+          : p.type === 4
+            ? THREAT_COLORS.homing
+            : p.type === 3 && p.variant > 0
+              ? THREAT_COLORS.shapeTriangle
+              : THREAT_COLORS.sentry
         : ownerPlayer
           ? playerColor(state, ownerPlayer)
           : particleColor(P_COLOR_ICE);
@@ -11899,7 +11949,13 @@ export class Renderer {
       const ownerPlayer = p.owner >= 0 ? state.players[p.owner] : null;
       const ownerProgram = ownerPlayer ? ownerPlayer.program : -1;
       const color = hostile
-        ? p.type === 4 ? THREAT_COLORS.homing : THREAT_COLORS.sentry
+        ? p.type === 20
+          ? '#ff2338'
+          : p.type === 4
+            ? THREAT_COLORS.homing
+            : p.type === 3 && p.variant > 0
+              ? THREAT_COLORS.shapeTriangle
+              : THREAT_COLORS.sentry
         : ownerPlayer
           ? playerColor(state, ownerPlayer)
           : particleColor(P_COLOR_ICE);
@@ -12293,6 +12349,51 @@ export class Renderer {
         ctx.arc(p.radius * 1.1, 0, p.radius * 0.28, 0, TWO_PI);
         ctx.fill();
         ctx.restore();
+      } else if (p.type === 3 && p.variant > 0) {
+        // Triangle fire missile: a broad, slow dart with a short flame tail. It exists
+        // to be read and caught, not to swarm; the guard cone gets a clear target.
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        const r = p.radius;
+        ctx.fillStyle = '#ff8a5a';
+        ctx.globalAlpha = 0.16;
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.7, 0);
+        ctx.lineTo(-r * 3.4, -r * 0.9);
+        ctx.lineTo(-r * 3.9, 0);
+        ctx.lineTo(-r * 3.4, r * 0.9);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(r * 1.9, 0);
+        ctx.lineTo(-r * 0.9, -r);
+        ctx.lineTo(-r * 0.35, 0);
+        ctx.lineTo(-r * 0.9, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = '#fff1e2';
+        ctx.beginPath();
+        ctx.moveTo(r * 0.9, 0);
+        ctx.lineTo(-r * 0.25, -r * 0.28);
+        ctx.lineTo(-r * 0.25, r * 0.28);
+        ctx.closePath();
+        ctx.fill();
+        const flame = 0.55 + 0.35 * Math.sin(t * 19 + p.serial);
+        ctx.globalAlpha = flame;
+        ctx.fillStyle = '#ffd28a';
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.8, 0);
+        ctx.lineTo(-r * (2.4 + flame), -r * 0.42);
+        ctx.lineTo(-r * (2.1 + flame), 0);
+        ctx.lineTo(-r * (2.4 + flame), r * 0.42);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
       } else if (p.type >= 3) {
         const angle = Math.atan2(p.vy, p.vx);
         ctx.save();
@@ -12300,7 +12401,32 @@ export class Renderer {
         ctx.rotate(angle);
         ctx.fillStyle = color;
         ctx.strokeStyle = color;
-        if (p.type === 4) {
+        if (p.type === 20) {
+          // Jagged red side-volley: a spiked ball with a hot core. The hostile colour
+          // is always red, and a reflected one becomes a normal player bolt.
+          const r = p.radius;
+          const spin = t * 2.6 + p.serial;
+          ctx.globalAlpha = 0.2;
+          ctx.beginPath();
+          ctx.arc(0, 0, r * 1.8, 0, TWO_PI);
+          ctx.fill();
+          ctx.globalAlpha = 0.95;
+          ctx.beginPath();
+          for (let k = 0; k < 12; k++) {
+            const a = (k / 12) * Math.PI * 2 + spin;
+            const rr = k % 2 === 0 ? r * 1.35 : r * 0.78;
+            if (k === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+            else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#ffe3df';
+          ctx.beginPath();
+          ctx.arc(0, 0, r * 0.28, 0, TWO_PI);
+          ctx.fill();
+          ctx.fillStyle = color;
+        } else if (p.type === 4) {
           // Trapezoid missile pod, deliberately slower and fatter than a bolt.
           const body = p.radius * 1.45;
           const tail = p.radius * 1.2;
@@ -15356,10 +15482,36 @@ export class Renderer {
       }
     }
     if (state.worms) {
-      ctx.fillStyle = THREAT_COLORS.worm;
       for (let i = 0; i < state.worms.length; i++) {
         const e = state.worms[i];
-        if (e.active) ctx.fillRect(x0 + (e.x - b.left) * sx - 2, y0 + (e.y - b.top) * sy - 2, 4, 4);
+        if (!e.active) continue;
+        const mx = x0 + (e.x - b.left) * sx;
+        const my = y0 + (e.y - b.top) * sy;
+        if (e.mega) {
+          // The boss is a body, not a dot: one thick segmented line from head to tail,
+          // with a larger head so it cannot be mistaken for a normal worm.
+          const tail = Math.max(0, e.segCount - 1);
+          const tx = x0 + ((e.segCount > 0 ? e.segX[tail] : e.x) - b.left) * sx;
+          const ty = y0 + ((e.segCount > 0 ? e.segY[tail] : e.y) - b.top) * sy;
+          ctx.save();
+          ctx.globalAlpha = 0.95;
+          ctx.strokeStyle = THREAT_COLORS.worm;
+          ctx.fillStyle = THREAT_COLORS.worm;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.lineWidth = Math.max(4, e.segR * Math.min(sx, sy) * 0.55);
+          ctx.beginPath();
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(mx, my);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(mx, my, Math.max(4, e.hitR * Math.min(sx, sy) * 0.4), 0, TWO_PI);
+          ctx.fill();
+          ctx.restore();
+        } else {
+          ctx.fillStyle = THREAT_COLORS.worm;
+          ctx.fillRect(mx - 2, my - 2, 4, 4);
+        }
       }
     }
     if (state.viruses) {

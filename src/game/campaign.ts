@@ -17,6 +17,13 @@ export interface CampaignDataCrate {
   kind: number;
 }
 
+/** Immediate bodies placed on an assault floor before the first port emission. */
+export interface CampaignOpening {
+  sentries: number;
+  viruses: number;
+  worms: number;
+}
+
 export interface CampaignLevel {
   id: number;
   /** Index into `SECTORS`. */
@@ -36,6 +43,10 @@ export interface CampaignLevel {
   primitivesOnly?: boolean;
   /** False keeps an authored level out of the live campaign route until it ships. */
   playable?: boolean;
+  /** Bodies already fighting when the assault starts, instead of waiting on the ports. */
+  opening?: CampaignOpening;
+  /** This node ends the authored route with the scripted finale and result card. */
+  finale?: boolean;
   /**
    * Mini-boss that ends the level. It arrives after the assault kills are met and the
    * level clears when that boss leaves the floor; a level with a boss ignores the port
@@ -85,6 +96,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     arenaId: 35,
     intro: 'assault',
     clearKills: 8,
+    opening: { sentries: 3, viruses: 1, worms: 0 },
     dataCrates: [
       { x: 1250, y: 620, kind: PROP.DOC },
       { x: 1700, y: 680, kind: PROP.AUDIO },
@@ -99,6 +111,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     arenaId: 36,
     intro: 'assault',
     clearKills: 6,
+    opening: { sentries: 3, viruses: 1, worms: 1 },
     dataCrates: [
       { x: 1240, y: 400, kind: PROP.ZIP },
       { x: 1760, y: 900, kind: PROP.VIDEO },
@@ -113,9 +126,12 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     arenaId: 1,
     intro: 'kitty',
     playable: true,
-    // Six corner feeds fill the arena; the Mega Worm arrives only after every port
-    // and every body is gone, then its death is the level's clear.
+    finale: true,
+    // Six corner feeds fill the arena; a full opening squad fights from the first
+    // frame. The Mega Worm arrives only after every port and every body is gone, then
+    // its death opens the scripted finale portal.
     clearKills: 0,
+    opening: { sentries: 4, viruses: 2, worms: 1 },
     boss: MINIBOSS.MEGA_WORM,
     dataCrates: [],
   },

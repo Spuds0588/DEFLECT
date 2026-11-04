@@ -259,7 +259,7 @@ same definition. The room host selects one and sends the id in `START`; snapshot
 Do not reintroduce a global `PILLARS` constant or branch collision on map names. New arenas are content
 entries, not new systems.
 
-**Arena flow reads left to right (revised 2026-11-04).** Enter a plate on its left side and leave on its right wherever the layout allows; vertical links are the exception, not the default. QUARANTINE is four portal-fed arenas now: INTAKE (14), HOLDING (34), MAINBOARD (35) and ROUTER (36), each one room with its own bounds. The holding block still sits back-right through `holdingCellLayout`; the open left side and the front stay walkable. Painted bars and bar collision both read that one layout, so they cannot drift apart; `.tmp/holding-layout-check.ts` asserts the entry is left of the block and the front is reachable. **Plate inventory (2026-11-04):** only CAPCOM is a plate arena. The four quarantine rooms are checked as portal-fed flat devices by `.tmp/plate-flow-check.ts` (one room each, right-wall portal, no party port). Two deliberate non-left-to-right routes are recorded in that check: CAPCOM is a four-plate ring with every deck open by design, so it has no single exit, and TRANSIT is a chasm arena crossed by pads in the west and lifts in the east. Adding a plate arena means adding it to `plate-flow-check`, not just drawing it. `rooms` and `port` are tutorial presentation data; `bridges` on a plate arena are always-open floor, never a progression gate. **Ingress ports must stand clear of cover (2026-11-03):** a port is an arena `ingress` entry and its square must not overlap a `pillars` rect, or no ranged line reaches it and the port sweep can never be completed. QUARANTINE shipped two ports inside pillars and BUILD ROOT was unwinnable because of it. `spawnCampaignPorts` nudges a buried port to the nearest clear square, but content is expected to place them in the open; keep new ports clear of cover and re-check with `.tmp/port-sweep-check.ts`. Rooms only
+**Arena flow reads left to right (revised 2026-11-04).** Enter a plate on its left side and leave on its right wherever the layout allows; vertical links are the exception, not the default. QUARANTINE is four portal-fed arenas now: INTAKE (14), HOLDING (34), MAINBOARD (35) and ROUTER (36), each one room with its own bounds. `holdingCellLayout` now runs a ten-cell row across the whole north wall at only 170 units deep, so the held threats read from the floor in front. The open floor is south of that row; painted bars and bar collision both read the same layout, so they cannot drift apart. `.tmp/holding-layout-check.ts` asserts the entry is in front (south) of the block and the right-wall portal is reachable. Do not restore the old back-right three-cell block. **Plate inventory (2026-11-04):** only CAPCOM is a plate arena. The four quarantine rooms are checked as portal-fed flat devices by `.tmp/plate-flow-check.ts` (one room each, right-wall portal, no party port). Two deliberate non-left-to-right routes are recorded in that check: CAPCOM is a four-plate ring with every deck open by design, so it has no single exit, and TRANSIT is a chasm arena crossed by pads in the west and lifts in the east. Adding a plate arena means adding it to `plate-flow-check`, not just drawing it. `rooms` and `port` are tutorial presentation data; `bridges` on a plate arena are always-open floor, never a progression gate. **Ingress ports must stand clear of cover (2026-11-03):** a port is an arena `ingress` entry and its square must not overlap a `pillars` rect, or no ranged line reaches it and the port sweep can never be completed. QUARANTINE shipped two ports inside pillars and BUILD ROOT was unwinnable because of it. `spawnCampaignPorts` nudges a buried port to the nearest clear square, but content is expected to place them in the open; keep new ports clear of cover and re-check with `.tmp/port-sweep-check.ts`. Rooms only
 draw floor plates, labels and dressing; the matching `traverse.chasms` are the body blockers and the
 `traverse.bridges` are the walkable spans. A room arena stays local-only (`isOnlineArena` skips `rooms`)
 and never enters host/guest room selection. See D41.
@@ -330,18 +330,22 @@ solo and host-authoritative online co-op (D32); every other gauntlet threat stay
   sweep from the opposite wall and begins a three-minute rearm. Setting `GAUNTLET.autoFirewalls` back to
   true is still the only ambient firewall source.
 - **Cascading errors** are yellow blocks with red exclamation marks. They spread outward block by block,
-  damage on contact, and take three hits to delete one block. They are part of the threat pool, not
-  arena geometry.
+  damage on contact, and take three hits to delete one block. A new colony queues `GAUNTLET.errorBurst`
+  blocks through the same edge ingress (assault family 4), so the first blocks arrive together at the
+  portal mouth. They are part of the threat pool, not arena geometry.
 - **Sentries** are the shooting family: pulse squares, nested triplex shotguns, trapezoid homing pods
   whose missiles can be shot down or deflected, and three-dart flocks. They **hold a landing zone** with
   a per-silhouette `leash`; they do not follow the player across the arena. Heavier triplex and homing
   silhouettes move much slower than pulse squares and flocks. They respect cover and line of sight. Packs
-  are queued and drop one silhouette every `SENTRY.packStagger` seconds; never dump a whole firing squad
-  into the room on one frame. The queue stops at the current wave cap, so a pack cannot push the live
-  shooter count past it. The opening pack is two pulse squares through wave 3, placed inside the camera
-  window; the cap starts at two and reaches five. Their first shots and repeat cadence are slower for
-  those opening waves. Their low-tier bolts are short-lived and **disperse on geometry** instead of
-  bouncing. A pulse square or a flock with a player inside `SENTRY.ram.range` breaks its firing cycle for a
+  are queued into the shared edge ingress: the portal opens on a far arena edge, releases the whole group
+  across its mouth in **one simulation frame**, holds for `GAUNTLET.assault.burstHold`, then closes.
+  Never dump a whole firing squad into the room around the player, and never trickle a pack one silhouette
+  at a time. A pack arrives as a pair when the live cap has room; a three-dart flock still arrives as its
+  full flock. The queue stops at the current wave cap, so a pack cannot push the live shooter count past
+  it. The opening pack is two pulse squares through wave 3, arriving from the edge rather than at the
+  camera frame around the player; the cap starts at two and reaches five. Their first shots and repeat
+  cadence are slower for those opening waves. Their low-tier bolts are short-lived and **disperse on
+  geometry** instead of bouncing. A pulse square or a flock with a player inside `SENTRY.ram.range` breaks its firing cycle for a
   telegraphed **ram** (`windup`, `active`, `recovery`, `damage`, `knockback`). Only one sentry ram
   commits at a time; a three-dart flock must never stack three melee hits on one frame. Triplex and homing
   silhouettes do not ram; they keep their firing band. Cover ends both the travel and the hit.
@@ -363,11 +367,11 @@ solo and host-authoritative online co-op (D32); every other gauntlet threat stay
   (worms 3, viruses 6, triplex 9, cascading errors 12, homing pods 15, flocks 18) and spawn intervals
   taper across `fullPressureWave` = 120. A new wave does **not** force every threat timer to zero, so there
   is no synchronized dump. Live caps grow with the wave: 2 to 5 sentries, 1 to 2 worms, 4 to 10 viruses,
-  4 to 14 error blocks. The opening pack is two pulse squares through wave 3, placed inside the camera
-  window around the player so a wide arena does not look empty behind the camera. They hold fire longer
-  and cycle slower during those opening waves. Later packs return to one silhouette until their families
-  unlock. The mode is a one-life survive-as-long-as-you-can sandbox; there is no final win and no in-run
-  respawn. Enemy health is deliberately low; firewalls do extra damage to enemy factions
+  4 to 14 error blocks. The opening pack is two pulse squares through wave 3, arriving through the
+  opening edge portal so a wide arena does not look empty behind the camera. They hold fire longer and
+  cycle slower during those opening waves. Later packs arrive in pairs, or one silhouette only when the
+  live cap has no room for a second. The mode is a one-life survive-as-long-as-you-can sandbox; there is
+  no final win and no in-run respawn. Enemy health is deliberately low; firewalls do extra damage to enemy factions
   (`FIREWALL.enemyDamage`).
 - Gauntlet and campaign entities are deliberately absent from `Snapshot` and `NetView`. INFECTION is the
   one exception: a co-op snapshot carries only the shared infection readout and the virus colony. Guests
@@ -438,11 +442,13 @@ bolt:
   skipped (see D26). Pinball plants a flipper arm for 16 s that punts hostile fire and swats bodies at
   other enemies (see D31). Aim Bot raises a visible laser sight for 7 s and loads a three-shot clip that
   bypasses the normal reload (see D34).
-- **Power attack (`Y` hold)**: program-specific heavy. Probe charges for 0.45 s, then **auto-fires**
-  without waiting for release for 3 s, rooted, sweeping at `PLAYER.laserTurnRate` (0.55 rad/s), piercing
-  every enemy in the line. The shaft stops on the first solid surface (see D22), and a raised guard
-  glances it away at an angle instead of letting it pass. Releasing `CANDLE` after the beam is live cuts it
-  short, ends the root and starts the full cooldown; this is Probe only. Wedge plows forward with a bracket; Fisher draws a
+- **Power attack (`Y` hold)**: program-specific heavy. Probe charges for 0.45 s, then fires **only while
+  `CANDLE` is held** (up to 3 s), rooted, sweeping at `PLAYER.laserTurnRate` (0.55 rad/s), piercing every
+  enemy in the line. The shaft stops on the first solid surface (see D22) and at the near edge of the Mega
+  Worm's capsule body (see D9), and a raised guard glances it
+  away at an angle instead of letting it pass. Releasing at any point after the beam is live cuts it
+  immediately, ends the root and starts the full cooldown, so Probe can cancel early and dodge. The beam
+  never latches; do not restore a release-independent 3 s burn. Wedge plows forward with a bracket; Fisher draws a
   **freeform web**; Sweep materializes a giant broom head by sweeping the lane from the side he faces,
   shoving bodies out of the way before the stroke starts, then damages every body the stroke crosses;
   Bad Lag dilates time; Atomize opens a moving orbit field instead of a beam; Ghost arms a jump-scare,
@@ -610,6 +616,12 @@ link is a `portal`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   completed level. Slots are local only and never enter `Snapshot`. Do not turn this stage into a
   sector-select screen. The blueprint archive is parked and unlinked while this flow is built; do not
   reattach it to the campaign stage without a decision.
+- **Slot management (v0.1.186)**: each filled slot row carries a separate `CLEAR` action. Every delete and
+  every overwrite asks for confirmation first, and `CANCEL` or Esc leaves storage untouched. `START NEW
+  GAME` takes the first empty slot; when all three are full it becomes `OVERRIDE A SLOT` and opens the
+  overwrite picker. Confirming an overwrite clears that slot immediately before the bot setup, so the old
+  run's `bestScore` and `cleanSweeps` cannot carry into the new one. Do not make an overwrite silent, reuse
+  an old run's stats, or delete a save without confirmation.
 - The first playable node is **BUILD ROOT** (`src/game/campaign.ts`) across the four split `QUARANTINE`
   rooms: INTAKE -> HOLDING -> MAINBOARD -> ROUTER. Each is a scripted gauntlet-mode world, saves the slot
   on clear, and portals to the next; see D17 and D41. **REBOOT** on `GRID ZERO` is the first network node
@@ -633,23 +645,40 @@ link is a `portal`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   hulls, hitboxes, `World` bodies or `Snapshot` fields.
 - **Orientation (built v0.1.92)**: `src/game/tutorial.ts` owns a reusable `TutorialRunner` and the first
   two lessons. `BUILD ROOT` opens with `WARDEN_TUTORIAL`: move, dash, fire, lock, cycle (`R`/`F` on
-  keyboard, `RB`/right stick on pad), melee, then catching one harmless test shot. The six calibration
-  subjects stay dormant in holding until the player arrives, then wake as wave 1; `CALIBRATION_SKILL_TUTORIAL`
-  teaches the skill. Clearing wave 1 powers the sealed cell block down and
-  `CALIBRATION_POWER_TUTORIAL` teaches the heavy over wave 2 (two viruses and a worm). `REBOOT` opens
-  with `KITTY_TUTORIAL`: tap skill, then hold the power attack. Narration lines auto-advance; action
-  steps wait for the input; `SKIP TUTORIAL` ends the lesson and the level continues on the same beat.
+  keyboard, `RB`/right stick on pad), melee, then catching one harmless test shot. INTAKE places three
+  subjects (one of each primary) only when the lock step runs. HOLDING's six subjects are already awake
+  when the party lands and chase the civilian staff; Kitty's arrival line plays over that opening, then
+  `CALIBRATION_SKILL_TUTORIAL` teaches the skill. Clearing wave 1 powers the sealed cell block down and
+  `CALIBRATION_POWER_TUTORIAL` teaches the heavy over wave 2 (two worms and eight viruses). `REBOOT` opens
+  with `KITTY_TUTORIAL`, a narration-only briefing; skill and heavy lessons live only in HOLDING and are
+  not repeated. Narration lines auto-advance; action steps wait for the input; `SKIP TUTORIAL` ends the
+  lesson and the level continues on the same beat. Campaign setup carries `SKIP TUTORIALS`, a persisted
+  run rule applied to every later lesson, and the save-slot screen exposes it to gamepad and click.
   The story box is DOM, live over play, and local-only; it never pauses `World` and never enters `Snapshot`.
-- **Calibration wake ownership (v0.1.184)**: the six INTAKE subjects are inert during the Warden
-  lesson. Any hit on a dormant subject is absorbed, the whole class is untouchable while any subject is
-  still opening (`shapeState === 1`), and only the campaign script calls `wakeCalibration()`. The lesson's
-  own fire step otherwise wakes the class early, and a held burst can delete all six before the shock line
-  or the exit gate runs. Do not restore damage-on-hit wake.
-- **Portal arrival (v0.1.184)**: `enterAtPortal` places the party at the left mouth with entry protection,
-  waits `CAMPAIGN.portalThrowDelay` so the hop wipe has begun to open, then applies
-  `CAMPAIGN.portalThrowSpeed` as a decaying eastward `kx`. Arming the impulse on the swap frame spent the
-  throw behind the wipe and read as the body sitting under the mouth. Landing lanes must stay clear of
-  authored hostiles; the `quarantine-check` probe asserts the lane and the delayed throw.
+- **Calibration wake ownership (v0.1.185)**: INTAKE's three subjects (one circle, one triangle, one
+  rectangle) are placed only at the lock step and are inert during the rest of the Warden lesson. Any hit
+  on a dormant subject is absorbed, the whole class is untouchable while any subject is still opening
+  (`shapeState === 1`), and only the campaign script calls `wakeCalibration()`. The lesson's own fire step
+  otherwise wakes the class early, and a held burst can delete all three before the shock line or the exit
+  gate runs. Do not restore damage-on-hit wake. HOLDING calls `wakeCalibration(true)` at setup so its six
+  are live on arrival; `keepTutorial` preserves Kitty's line, and the skill briefing follows it.
+- **Opening squads and finale (v0.1.185)**: `CampaignLevel.opening` is authored data, not a room-name
+  branch. `seedAssaultFloor` posts that squad on islands, painted rooms or, for a single open arena like
+  GRID ZERO, around its spawn/centre. MAINBOARD is `3/1/0`, ROUTER `3/1/1` and REBOOT `4/2/1`
+  (sentries/viruses/worms). A final node carries `finale: true`; killing its boss plays `CAMPAIGN_FINALE`,
+  waits for that narration, pulls the party through the portal, and only then shows the result overlay with
+  `MORE LEVELS COMING SOON`. A boss node's opening squad is part of its clear run-up; do not make the boss
+  wait for an empty floor that still contains authored bodies.
+- **Portal arrival (revised 2026-11-04)**: `enterAtPortal` places the party at the left mouth with entry
+  protection, waits `CAMPAIGN.campaignEntryThrowDelay` (2.15 s) so the previous fight's death animations
+  and the hop wipe finish, then applies `CAMPAIGN.portalThrowSpeed` as a decaying eastward `kx`. Campaign
+  clear gates also hold `CAMPAIGN.clearDelay` (2.0 s) after the last port/hostile dies before the portal
+  opens. Round hops keep the shorter default delay. Landing lanes must stay clear of authored hostiles;
+  `quarantine-check` asserts the lane, the delayed throw and the clear hold.
+- **Triangle subjects fire a reflectable fan (2026-11-04)**: the triangle primitive fires three slow
+  `type 3` / `variant 1` hostile missiles (155 speed, 5.5 s life) in a fan instead of spawning a shard
+  cloud. They use the ordinary guard/lash catch path; do not restore the shard swarm or make the volley
+  unreflectable.
 - **Campaign spine (decided 2026-11-02)**: the run is **island hopping**, one network at a time. Land, clear
 every infection you can find on that island, and the uplink opens the crossing to the next network. The
 infection is the enemy's footprint; the campaign's objective is to find and delete the **rogue AI agent**
@@ -776,37 +805,39 @@ The campaign's live route is four `QUARANTINE` rooms (INTAKE, HOLDING, MAINBOARD
 `World('gauntlet')` with `campaign = true`, so it reuses the threat simulation and stays local-only; the
 mode string stays `gauntlet` so no threat branch forks. The script lives in `World`, not in `main.ts`.
 
-- **Calibration**: INTAKE stages six dormant lock-target shapes on its bare plate. The Warden lesson ends
-  by waking them: `INTAKE_WAKE` gives the Warden one shocked line, then a SYSTEM objective
-  (`DESTROY ALL AWAKENED PRIMITIVES`); the first portal opens only after `trainingParentsActive()` is
-  false. The square **HOLDING** office holds its own six attack subjects, two each of a blue circle, a red
-  triangle and a yellow rectangle. HOLDING's class wakes on `CALIBRATION.wakeStagger` clocks (0.85 s apart) when the player
-  reaches holding (or after `CALIBRATION.entryWait` 18 s, so a player who ignores the prompt cannot soft-lock
-  the node), on a node without an intro after `CALIBRATION.wakeDelay` (6 s), inside
-  `CALIBRATION.wakeRadius`, or on the first hit; killing them while dormant is deliberately not allowed,
-  because the eye opening is the lesson. The class forms two columns
+- **Calibration**: INTAKE places three dormant lock-target shapes (one circle, one triangle and one
+  rectangle) only when the Warden lesson reaches target lock. The Warden lesson ends by waking them:
+  `INTAKE_WAKE` gives the Warden one shocked line, then a SYSTEM objective (`DESTROY ALL AWAKENED
+  PRIMITIVES`); the first portal opens only after `trainingParentsActive()` is false. The square **HOLDING**
+  office holds its own six attack subjects, two each of a blue circle, a red triangle and a yellow
+  rectangle. HOLDING's class is already awake when the party lands (`wakeCalibration(true)` in setup), so
+  it moves and fires at the civilian staff during Kitty's arrival line; `keepTutorial` leaves that line in
+  the box and the skill briefing follows it. The class forms two columns
   in the holding office's lower half, leaving the centre lane open. Waking also hides the
   three holding civilians, marks their loss with a short burst, and starts `CALIBRATION_SKILL_TUTORIAL`:
   tap the skill while wave 1 is live. A dormant shape is plain geometry; awake, it
   carries a small red eye and each primary owns one attack: the circle dashes and bounces off walls and
   cover; the triangle never holds still, drifting on a wandering heading at `floatSpeed` while it keeps a
   loose `floatRing` band around the player and turns off a wall before the clamp catches it, so it reads as
-  a watchful parent behind its cloud of sixteen tiny seeking triangles, which churn around the player and
-  bite on contact (do not anchor it to one loop: an anchored float becomes a stationary target as soon as
-  the fight moves); the rectangle does not spin, bobs
+  a watchful parent; it fires a fast three-round fan of hostile missiles on a long cadence (do not anchor it
+  to one loop: an anchored float becomes a stationary target as soon as the fight moves); the rectangle does
+  not spin, bobs
   lightly, clones itself directly left and right into an axis-aligned row, then the whole row commits to
   one very fast shared dash. This pack is deliberately **untelegraphed**: no lane, arrow or link lines,
   because the switch from passive to attacking is the fear beat. The cell block is a solid body while
   it is sealed. Clear all six and finish the skill beat to make the block fail: `beginCellRelease`
-  removes the bar solid, retracts the bars and spawns wave 2, two viruses and a worm, in the cells.
+  removes the bar solid, retracts the bars and spawns wave 2, two worms and eight viruses, in the cells.
+  The released bodies get open-floor roam/patrol waypoints on the same frame, so they walk out instead of
+  waiting behind the bars to be shot in a barrel.
   `CALIBRATION_POWER_TUTORIAL` then asks for the heavy; clear wave 2 and finish that lesson before the drill.
-  The six reuse sentry kinds 4-8 so every player weapon already hits them, but calibration kills pay no score or
+  The subjects reuse sentry kinds 4-8 so every player weapon already hits them, but calibration kills pay no score or
   pickups, no parents wake the assault counter, and arena emitters stay parked for the whole prologue.
   Everything lives in `CALIBRATION` in `tuning/campaign.json`.
-- **Tutorial route**: `INTAKE` stages the Warden lesson, wakes its class, and portals only after that class
-  is down. `HOLDING` opens on kitty's first-hop line and runs its own dormant-class reveal and cell release;
-  see D41. HOLDING's subjects wait in the holding room, not in the player's opening circle, and script_kitty
-  is behind the middle cell bars.
+- **Tutorial route**: `INTAKE` stages the Warden lesson, places three subjects at target lock, wakes them,
+  and portals only after that class is down. `HOLDING` opens on Kitty's first-hop line over an already-live
+  six-subject class; the skill briefing follows the line, then the cell release; see D41. HOLDING's subjects
+  wait in the holding room, not in the player's opening circle, and script_kitty is behind the middle cell
+  bars.
 - **Drill**: 18 s of sparring against the run's bot squad, using the same `BotBrain` inputs as training and
   VS BOTS. A `NO BOTS` run still gets one instructor so the drill has a partner. Death on either side
   respawns on the training timer. The squad forms an arc `CAMPAIGN.drillRing` in front of the player and
@@ -815,17 +846,25 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
   keeps the gauntlet spawn so a drill knockdown respawns inside the spar. No threats exist yet.
 - **Breach**: a 3.4 s `SYSTEM BREACH` warning. The squad de-rezzes, live projectiles clear, and the local
   player is healed to full for the assault. The squad is gone for the rest of the node.
-- **Assault**: a feed room posts one opening silhouette on the breach beat and lets its authored ports add
-  the rest. Campaign nodes do not run the gauntlet's wave ramp or automatic packs; `updateGauntlet` takes a
-  campaign branch that only updates the authored portals and bodies. A room clears when every port is shut
-  and `campaignFloorClear` finds no live sentry, virus, worm or error; one death fails it.
+- **Assault**: every node opens with its authored `CampaignLevel.opening` squad from the first frame; its
+  authored ports add the rest. Campaign nodes do not run the gauntlet's wave ramp or automatic packs;
+  `updateGauntlet` takes a campaign branch that only updates the authored portals and bodies. A room clears
+  when every port is shut and `campaignFloorClear` finds no live sentry, virus, worm or error; one death
+  fails it. The opening squad counts toward that clear and is never bypassed by a boss branch.
 - **Completion**: a clear writes the save slot (`level` = completed count, `program`, `players`, `bots`,
-  seconds) and shows the clear overlay. BUILD ROOT and REBOOT are both live; a completed run reports the end
-  of the authored route and keeps the slot. Nothing is saved mid-level. A failed node offers RETRY and
-  SLOTS. `PLAYABLE_CAMPAIGN_LEVELS` is the live list.
-- **REBOOT (live)**: script_kitty's briefing on `GRID ZERO`. It opens with `KITTY_TUTORIAL` (tap skill,
-  then hold the power attack) with no threats in the room, then starts the breach. Six corner feeds are the
-  level's only spawners: clear all six ports and every delivered body before the Mega Worm is announced.
+  seconds) and shows the clear overlay. BUILD ROOT and REBOOT are both live. The final node's clear plays
+  `CAMPAIGN_FINALE` (the infection entered the network here; follow its path to the source), pulls the party
+  through the portal, then shows the level stats with `MORE LEVELS COMING SOON`; it keeps the slot so a
+  replay can resume. Nothing is saved mid-level. A failed node offers RETRY and SLOTS.
+  `PLAYABLE_CAMPAIGN_LEVELS` is the live list.
+- **REBOOT (live)**: script_kitty's narration-only briefing on `GRID ZERO`. The arena opens with its
+  authored squad (four sentries, two viruses and one worm) while six corner feeds keep adding pressure.
+  Clear all six ports and every body before the Mega Worm is announced. Between passes the Worm spends
+  only a short beat offscreen; do not turn that into a multi-second geometry wait. Each pass fires jagged
+  red balls to both sides (`flyby.volley`), which are ordinary reflectable shots and damage the Worm when
+  returned. The heavy beam stops at the near edge of its capsule body, and every hit emits a wide triangle
+  spray at the actual contact point. The minimap draws the full segmented chain. Its death is one final
+  scream plus a dense red-square burst; then the finale narration and pull run before the result.
 - **Bots are the drill squad, not allies.** `World` has no team model for bot companions yet, so do not
   fake allies by disabling friendly fire. Team ownership is the prerequisite for bots that fight beside
   the player after the breach.
@@ -1936,6 +1975,9 @@ coordinates, page cards or hit masks; they can drift or bloat the packet.
 
 ### D41 — QUARANTINE is four portal-fed rooms (built 2026-11-01; split 2026-11-04)
 
+Campaign ports draw as fully opaque red squares; a closed port bursts into red squares, not generic debris.
+The exit portal's camera pull-back is presentation only and stays out of `Snapshot`.
+
 `BUILD ROOT` is four local-only arena records, one per quarantine room: **INTAKE** (id 14), **HOLDING**
 (id 34), **MAINBOARD** (id 35) and **ROUTER** (id 36). Each room owns its bounds, cover, spawns and
 presentation. There is no combined floor, no walk between rooms and no party-port prop: the only way
@@ -1948,21 +1990,23 @@ between them is script_kitty's portal.
 - Portals are right-wall exits and left-wall entries. `World.beginCampaignPortal` opens the right wall and
   `tickCampaignPortal` writes player positions directly for about 1.15 s, so cover, cell bars and hazards
   cannot stop the pull. The step consumes no other simulation while it runs. Do not turn this back into a
-  walk to a party port or a collision-resolved drag.
+  walk to a party port or a collision-resolved drag. The camera lead (`CAMPAIGN.portalLead`) pulls back to
+  `CAMERA.portalArenaZoom` before the mouth opens; the lead, open and pull timings are one presentation
+  sequence, and the zoom must not become a gameplay gate or enter `Snapshot`.
 - Entries are a **throw**, not a placement. `World.enterAtPortal` starts each body at the left-wall mouth,
   applies `CAMPAIGN.portalThrowSpeed` as a decaying `kx`, and grants `CAMPAIGN.portalEntryIframes`. Do not
   park the body under the mouth. Campaign content keeps authored threats out of the landing lane; the entry
   protection is the second guard, not a licence to spawn into the throw.
 - The first hop is the story beat: HOLDING opens with `KITTY_FIRST_HOP` over play ("IT WORKED! ... clear
   this infection and get me out of here"). It is local presentation only and never gates the fight.
-- `ArenaDef.rooms` is still presentation. HOLDING's block is the only local body barrier and
-  `holdingCellLayout` is shared by bars and collision. No room collision enters `World` or the guest
-  predictor.
-- `spawnCalibrationShapes` stages six dormant lock targets on the INTAKE plate, then six attack subjects in
-  HOLDING. INTAKE's set wakes after the Warden lesson and clearing it opens the first portal; HOLDING's class
-  carries the skill lesson. The wave-2 worm and viruses wait behind the HOLDING bars with `held`. Clearing
-  wave 1 opens the block; clearing wave 2 starts the portal. HOLDING's wake clocks are staggered by
-  `CALIBRATION.wakeStagger`.
+- `ArenaDef.rooms` is still presentation. HOLDING's ten shallow cells line the whole north wall and are
+  the only local body barrier; `holdingCellLayout` is shared by bars and collision. No room collision enters
+  `World` or the guest predictor.
+- `spawnCalibrationShapes` places three dormant lock targets in INTAKE only at the lock lesson, then six
+  already-awake attack subjects in HOLDING. INTAKE's set wakes after the Warden lesson and clearing it
+  opens the first portal; HOLDING's class carries the skill lesson. The wave-2 worm and viruses wait behind
+  the HOLDING bars with `held`. Clearing wave 1 opens the block; clearing wave 2 starts the portal.
+  HOLDING's wake clocks are staggered by `CALIBRATION.wakeStagger`.
 - MAINBOARD authors two ingress ports, ROUTER one. Closing the last port does **not** open the pull while any
   sentry, virus, worm or error is live; the portal waits for `campaignFloorClear`. There is no party-port
   prop and no stand-in-the-exit check. `portTotal` still owns the objective strip.
@@ -2412,10 +2456,10 @@ behind the same data.
 - The clear condition replaces the bare kill count. `CAMPAIGN.killsToClear` (`tuning/campaign.json`, 10) and
 the one-pip-per-delete objective strip in `render.ts` are today's gate; they become **ports remaining plus
 live threats**. Do not ship a kill counter and a port counter as two competing objectives.
-- Replace the existing spawn paths instead of layering on them: `spawnSentryPack` (a ring around the
-player), `spawnVirusCluster` (a far arena spawn point) and the `setupInfection` opening flood all become port
-emission. Keep the existing pools, live caps, `packStagger`, interval tapering and wave gates; do not add a
-second spawn clock.
+- Automatic gauntlet arrivals already use the shared edge ingress in D9. `spawnVirusCluster` still seeds
+at a far arena spawn point and `setupInfection` spreads the opening flood around player spawns; any
+campaign-port pass should route those through authored ports instead of layering a second system. Keep the
+per-family pools, live caps, interval tapering and wave gates.
 - Ports are **authored per arena** on `ArenaDef`, not rolled at runtime. A fair lane, a readable boss room
 and a route plate all need known positions; randomness belongs to emission timing and a small offset.
 - A port must read as damaged before it closes: give it health, a cracked or dim state and a close beat.
@@ -2641,9 +2685,11 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
   parks the head offscreen on the lane and `updateMegaWorm` runs the line at `flyby.speed`; it never reads
   the player's position after the entrance. The pass ends only after the trailing body has cleared the floor
   (`flyby.leaveTime`), then waits `repeatDelay` before the next lane. The entrance is one slow, harmless
-  cross-arena fly-past with the roar; the arena camera holds a fixed wide frame at
-  `CAMERA.megaArenaZoom` through the intro and the whole fight. Keep the lanes static: the boss is a
-  pattern to read and dodge, not a homing worm. Do not spawn little families between passes.
+  cross-arena fly-past with the roar; the arena camera holds the arena center at a fixed wide frame
+  (`CAMERA.megaArenaZoom`) through the intro and the whole fight, and never pans off to track the boss.
+  At `MEGA_WORM.rageAt` (35% health) it screams again and shortens its pass cadence; the rage is a
+  one-time threshold, not a second phase or new attack. Keep the lanes static: the boss is a pattern to
+  read and dodge, not a homing worm. Do not spawn little families between passes.
 - **Bosses cannot be infected (2026-11-02).** `infectWorm` refills health because a converted worm becomes
   a thrall. A virus touching the Mega Worm healed it to full mid-fight and made the level unkillable, so
   both the virus host scan and its contact test skip `w.bossKind >= 0`.
@@ -2678,8 +2724,11 @@ The four staged bosses — File Blob, Mega Worm, Idle Hands and Starfish — own
 cut-in before their normal fight. `World.spawnMiniboss` starts `World.bossIntro` only for the initial arrival;
 Starfish hatches use the ordinary spawn path and never replay it. `World.step` returns after
 advancing the intro, so players, threats, hazards and the round clock are frozen while the reveal runs.
-`bossIntro` is local presentation state and never enters a snapshot. The freeze is part of the read: do not
-trim these timings back to combat pace without checking the entrance on screen.
+`bossIntro` is local presentation state and never enters a snapshot. The freeze is part of the read for
+File Blob, Idle Hands and Starfish: do not trim those timings back to combat pace without checking the
+entrance on screen. **The Mega Worm is the exception (2026-11-04):** its entrance is a harmless fly-past
+over live play, so players keep moving and fighting during it; only the boss's own attacks are held until
+the entrance ends. Do not restore the room freeze for the Mega Worm.
 
 - **Camera and title.** `Renderer.updateCameraCues` handles the intro before the ordinary boss cue, plays a
   `CAMERA.bossIntroZoom` rig at priority 5 and tracks the live `bossIntro.x/y` each frame (the Mega Worm

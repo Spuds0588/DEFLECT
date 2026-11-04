@@ -161,6 +161,29 @@ export class ParticleSystem {
     }
   }
 
+  /**
+   * Square-only burst. A port's death and the Mega Worm's de-rez are both machine
+   * debris, so these particles never become the triangular shards a body leaves.
+   */
+  squares(x: number, y: number, count: number, color: number, minSpeed: number, maxSpeed: number): void {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const speed = minSpeed + Math.random() * (maxSpeed - minSpeed);
+      this.spawn(
+        4,
+        x,
+        y,
+        Math.cos(a) * speed,
+        Math.sin(a) * speed,
+        0.28 + Math.random() * 0.5,
+        2.5 + Math.random() * 5.5,
+        color,
+        2.1,
+        0,
+      );
+    }
+  }
+
   cone(x: number, y: number, angle: number, count: number, color: number, speed: number, spread: number): void {
     for (let i = 0; i < count; i++) {
       const a = angle + (Math.random() - 0.5) * spread;

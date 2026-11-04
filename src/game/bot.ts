@@ -1205,7 +1205,20 @@ export class BotBrain {
     const target = (b: any) => {
       const cx = b.x + b.w * 0.5; const cy = b.y + b.h * 0.5;
       const dx = cx - me.x; const dy = cy - me.y; const d = Math.hypot(dx, dy) || 1;
-      if (d > 190) { out.mx = dx / d; out.my = dy / d; } else { out.mx = 0; out.my = 0; }
+      // Keep a non-zero move vector all the way in. One-stick facing comes from movement:
+      // stopping at a standoff let `floorSweep` substitute a nearest-floor step, which turned
+      // the body away from the feed and sent every bolt past it. Pressing the port keeps the
+      // face on the target (and a solid prop just stops the body in place). Cover in the
+      // direct line gets the same A* detour the combat objective uses.
+      const covered = this.lineBlocked(me, cx, cy, world.arena.pillars)
+        || this.gapBlocked(me, cx, cy, world.arena);
+      if (covered && this.followPath(me, cx, cy, world.arena)) {
+        out.mx = this.detourX;
+        out.my = this.detourY;
+      } else {
+        out.mx = dx / d;
+        out.my = dy / d;
+      }
       out.held |= ACTION.BOLT;
       if (threatD < 340) out.held |= ACTION.SWING;
       this.steerBranch = 'port';

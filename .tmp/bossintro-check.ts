@@ -35,7 +35,13 @@ for (const kind of cases) {
 
   const startX = p.x;
   world.step(SIM_DT, [{ mx: 1, my: 0, held: 0, pressed: 0 }]);
-  if (p.x !== startX) fail(`gameplay moved during the ${intro.label} entrance`);
+  // The Mega Worm entrance is a fly-past, not a cutscene freeze: the squad keeps its feet.
+  // Every other staged boss still owns the room until its camera beat finishes.
+  if (kind === MINIBOSS.MEGA_WORM) {
+    if (p.x === startX) fail(`the ${intro.label} entrance still froze the squad`);
+  } else if (p.x !== startX) {
+    fail(`gameplay moved during the ${intro.label} entrance`);
+  }
   if (!world.bossIntro) fail(`the ${intro.label} entrance ended after one tick`);
   if (!boss.active) fail(`the ${intro.label} body vanished during its entrance`);
 

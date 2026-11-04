@@ -1,9 +1,10 @@
 /**
  * REBOOT boss staging.
  *
- * The node must open empty, light six corner feeds, and refuse the Mega Worm until all
- * six ports are down and every body is gone. Once the worm is in, the campaign branch
- * must not run the gauntlet's automatic packs during or between its passes.
+ * The node must open with its authored squad, light six corner feeds, and refuse the
+ * Mega Worm until all six ports are down and every body is gone. Once the worm is in,
+ * the campaign branch must not run the gauntlet's automatic packs during or between its
+ * passes.
  *
  * Run with `npx tsx .tmp/reboot-boss-check.ts`.
  */
@@ -25,6 +26,7 @@ const idle = new Array(MAX_PLAYERS).fill(null);
 const world = new World(
   'gauntlet', names, 0, arena, false, 0, 0, null, true,
   level.dataCrates, false, 'assault', level.clearKills, false, level.boss ?? -1, false,
+  level.opening ?? null, level.finale === true,
 );
 const player = world.players[0];
 player.iframes = 1e9;
@@ -54,9 +56,15 @@ if (arena.walls === 'open') fail('GRID ZERO must keep its body floor bounded');
 if (MEGA_WORM.spacing >= MEGA_WORM.segmentRadius * 1.6) {
   fail(`Mega Worm spacing ${MEGA_WORM.spacing} leaves visible seams between plates`);
 }
-if (liveSentryCount() !== 0 || liveVirusCount() !== 0 || liveErrorCount() !== 0 || liveWorms() !== 0) {
-  fail('the boss node opened with pre-placed enemies');
+if (liveSentryCount() !== 4 || liveVirusCount() !== 2 || liveWorms() !== 1) {
+  fail(`the boss node opening squad is ${liveSentryCount()} sentries / ${liveVirusCount()} viruses / ${liveWorms()} worms`);
 }
+// The warning is about the live floor, not the opening squad. Clear the authored bodies
+// the way the player must before the feeds can finish the run-up.
+for (const s of internal.sentries) s.active = false;
+for (const v of internal.viruses) v.active = false;
+for (const e of internal.errors) e.active = false;
+for (const w of world.worms) w.active = false;
 
 const portals = world.props.filter((p) => p.portal && !p.portalExit);
 if (portals.length !== 6) fail(`expected six portal props, got ${portals.length}`);
@@ -151,5 +159,5 @@ if (!shot.active) fail('a shot died on GRID ZERO\'s missing outer wall');
 shot.active = false;
 
 console.log(
-  `reboot-boss-check: OK (six feeds, ${warnedFor.toFixed(1)}s warning, ${passMarks} static passes, one straight hittable body, open shot edge, no little enemies)`,
+  `reboot-boss-check: OK (opening squad cleared, six feeds, ${warnedFor.toFixed(1)}s warning, ${passMarks} static passes, one straight hittable body, open shot edge, no little enemies)`,
 );

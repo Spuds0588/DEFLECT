@@ -67,26 +67,15 @@ const first = new World(
   'gauntlet', names, 0, intake, false, 0, 0, null, true, [], false, 'warden', 0, false, -1, false,
 );
 const intakeShapes = first.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <= 6);
-check('intake stages six dormant lock targets', intakeShapes.length === 6, String(intakeShapes.length));
-check(
-  'intake lock targets stay dormant during the lesson',
-  intakeShapes.every((s) => s.shapeState === 0),
-  intakeShapes.map((s) => s.shapeState).join(','),
-);
-// The Warden's own fire lesson points the player at these targets. A hit must not
-// wake or damage the class early; the script owns the wake beat.
-const dorm = intakeShapes[0];
-const dormHp = dorm.hp;
-(first as unknown as { damageSentry: (s: typeof dorm, amount: number, slot: number, dx: number, dy: number) => void })
-  .damageSentry(dorm, 1, 0, 1, 0);
-check(
-  'the Warden lesson cannot wake or damage the dormant class',
-  !first.calibrationAwake && dorm.hp === dormHp && first.campaignPortalT < 0,
-  `awake=${first.calibrationAwake} hp=${dorm.hp}/${dormHp} portal=${first.campaignPortalT}`,
-);
+check('intake loads no subjects before the lock lesson', intakeShapes.length === 0, String(intakeShapes.length));
 first.skipTutorial();
 let sawPortal = false;
 for (let i = 0; i < 90; i++) first.step(SIM_DT, idle);
+check(
+  'intake stages three subjects (one of each shape) when the lock lesson arrives',
+  first.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <= 6).length === 3 &&
+    new Set(first.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <= 6).map((s) => s.kind)).size === 3,
+);
 check('intake wakes its class after the Warden lesson', first.calibrationAwake && first.campaignBannerKind === 8);
 check('intake does not portal before the class fight', first.campaignPortalT < 0 && first.campaignPhase === 'calibration');
 check(
@@ -129,7 +118,7 @@ check('an awakened subject actually starts an attack', sawAwakeAttack);
 first.skipTutorial();
 for (let i = 0; i < 90; i++) first.step(SIM_DT, idle);
 for (const s of first.sentries) if (s.kind >= 4 && s.kind <= 6) s.active = false;
-for (let i = 0; i < 240; i++) {
+for (let i = 0; i < 900; i++) {
   first.step(SIM_DT, idle);
   if (first.campaignPortalT >= 0) sawPortal = true;
 }
@@ -155,9 +144,9 @@ const shapes = second.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <
 check('six calibration subjects stage in holding', shapes.length === 6, String(shapes.length));
 const cells = holdingCellLayout(holding.rooms![0]);
 check(
-  'holding entry side is open, cell block stays back-right',
-  cells.left > holding.bounds.left + 300 && cells.bottom < holding.bounds.bottom,
-  `${cells.left.toFixed(0)} / ${cells.bottom}`,
+  'holding cells span the north wall and leave the floor in front open',
+  cells.left < holding.bounds.left + 24 && cells.cellCount === 10 && cells.bottom < holding.bounds.top + 220,
+  `${cells.left.toFixed(0)} / ${cells.cellCount} cells / bottom ${cells.bottom}`,
 );
 check(
   'all subjects are inside holding and clear of the cell block',
@@ -167,7 +156,7 @@ check(
       s.x < holding.bounds.right &&
       s.y > holding.bounds.top &&
       s.y < holding.bounds.bottom &&
-      !(s.x > cells.left && s.x < cells.left + cells.cellW * 3 && s.y > cells.top && s.y < cells.bottom),
+      !(s.x > cells.left && s.x < cells.left + cells.cellW * cells.cellCount && s.y > cells.top && s.y < cells.bottom),
   ),
 );
 second.skipTutorial();

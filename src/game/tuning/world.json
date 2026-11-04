@@ -11,6 +11,7 @@
     "bossZoomMin": 0.55,
     "bossIntroZoom": 0.36,
     "megaArenaZoom": 0.52,
+    "portalArenaZoom": 0.3,
     "zoomFollow": 3.4,
     "splitZoom": 0.8,
     "splitGap": 4,

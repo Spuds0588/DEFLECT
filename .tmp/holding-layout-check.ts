@@ -1,7 +1,7 @@
 /**
- * QUARANTINE // HOLDING is its own arena now. The room still has to admit a body on the
- * open left side of the cell block, and the right-wall portal has to be reachable by
- * ordinary walking after the cell wave clears.
+ * QUARANTINE // HOLDING is its own arena now. The north wall is a shallow ten-cell row;
+ * the floor in front of it has to admit a body from the left and reach the right-wall
+ * portal by ordinary walking after the cell wave clears.
  */
 import { ARENAS, holdingCellLayout, type Rect } from '../src/game/arenas';
 import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
@@ -17,7 +17,7 @@ if (arena.bridges) problems.push('QUARANTINE still declares bridge decks');
 const room = arena.rooms?.find((r) => r.theme === 'holding');
 if (!room) throw new Error('QUARANTINE has no holding room');
 const cells = holdingCellLayout(room);
-const block: Rect = { x: cells.left, y: cells.top, w: cells.cellW * 3, h: cells.bottom - cells.top };
+const block: Rect = { x: cells.left, y: cells.top, w: cells.cellW * cells.cellCount, h: cells.bottom - cells.top };
 
 const names = new Array<string>(MAX_PLAYERS).fill('');
 names[0] = 'INMATE';
@@ -83,7 +83,7 @@ const portalY = (arena.bounds.top + arena.bounds.bottom) * 0.5;
 if (!reach(left.x, left.y)) problems.push('the open left side of the holding room is not reachable from spawn');
 if (!reach(front.x, front.y)) problems.push('the front of the cell block is not reachable from spawn');
 if (!reach(portalX, portalY)) problems.push('the right-wall portal is not reachable from spawn');
-if (left.x >= block.x) problems.push('the holding entry point is not left of the cell block');
+if (left.y <= block.y + block.h) problems.push('the holding entry point is not in front of the cell block');
 
 console.log(
   `flat floor: ${seen.size} cells // cells x ${Math.round(block.x)}..${Math.round(block.x + block.w)} y ${Math.round(

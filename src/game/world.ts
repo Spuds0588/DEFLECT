@@ -128,10 +128,12 @@ import {
   type ArenaUsbDef,
   type DiscDef,
 } from './arenas';
-import type { CampaignDataCrate, CampaignIntro } from './campaign';
+import type { CampaignDataCrate, CampaignIntro, CampaignOpening } from './campaign';
 import {
   CALIBRATION_POWER_TUTORIAL,
   CALIBRATION_SKILL_TUTORIAL,
+  CAMPAIGN_FINALE,
+  INTAKE_CLEAR,
   INTAKE_WAKE,
   KITTY_TUTORIAL,
   KITTY_FIRST_HOP,
@@ -213,7 +215,7 @@ function campaignCellBarRects(arena: ArenaDef): Rect[] {
     {
       x: layout.left,
       y: layout.top,
-      w: layout.cellW * 3,
+      w: layout.cellW * layout.cellCount,
       h: layout.bottom - layout.top,
     },
   ];
@@ -226,11 +228,11 @@ function campaignCellBarRects(arena: ArenaDef): Rect[] {
 export class World {
   /** Gauntlet ingress bursts. Local-only and transient: edge portals, not campaign ports. */
   readonly assaultPortals: AssaultPortal[] = [
-    { active: false, x: 0, y: 0, half: 44, t: 0, openDur: 0.32, emitDur: 0, closeDur: 0.55, count: 0, emitted: 0, emitT: 0, emitInterval: 0.13 },
-    { active: false, x: 0, y: 0, half: 44, t: 0, openDur: 0.32, emitDur: 0, closeDur: 0.55, count: 0, emitted: 0, emitT: 0, emitInterval: 0.13 },
-    { active: false, x: 0, y: 0, half: 44, t: 0, openDur: 0.32, emitDur: 0, closeDur: 0.55, count: 0, emitted: 0, emitT: 0, emitInterval: 0.13 },
+    { active: false, x: 0, y: 0, half: 44, t: 0, openDur: 0.3, burstHold: 0.2, closeDur: 0.5, count: 0, emitted: 0 },
+    { active: false, x: 0, y: 0, half: 44, t: 0, openDur: 0.3, burstHold: 0.2, closeDur: 0.5, count: 0, emitted: 0 },
+    { active: false, x: 0, y: 0, half: 44, t: 0, openDur: 0.3, burstHold: 0.2, closeDur: 0.5, count: 0, emitted: 0 },
   ];
-  /** Pending gauntlet arrivals: family (0 sentry, 1 worm, 2 virus) and kind. */
+  /** Pending gauntlet arrivals: 0 sentry, 1 worm, 2 virus, 3 mini-boss, 4 cascading error. */
   private assaultFamily: number[] = new Array(32).fill(0);
   private assaultKind: number[] = new Array(32).fill(0);
   private assaultQueueCount = 0;
@@ -345,6 +347,14 @@ export class World {
   /** Mini-boss that ends the node, or -1 for a port/kill clear. */
   campaignBoss: number;
   private campaignBossSpawned = false;
+  /** Bodies already on the floor when a feed room's assault starts. */
+  private campaignOpening: CampaignOpening | null = null;
+  /** This node is the authored route's end, so a boss clear plays the finale. */
+  private campaignFinale = false;
+  /** True once the calibration class has been placed in this world. */
+  private campaignShapesSpawned = false;
+  /** Holding's live skill briefing has been handed to the player. */
+  private campaignSkillLessonTaught = false;
   /** True once the mini-boss has been announced; the spawn waits out the warning. */
   private campaignBossWarned = false;
   /** Seconds left before the announced mini-boss arrives. */
@@ -389,6 +399,10 @@ export class World {
   campaignExitReady = false;
   /** Seconds into the campaign portal pull; negative means idle. */
   campaignPortalT = -1;
+  /** Quiet lead-in: the camera can show the whole floor before the mouth pulls. */
+  private campaignPortalLead = 0;
+  /** Grace after the last live body/port before the exit portal is allowed to open. */
+  private campaignClearWait = 0;
   /** Seconds left on the left-wall entry portal after a hop. Presentation only. */
   entryPortalT = 0;
   /** Delay before the portal throw arms, so the impulse lands after the wipe opens. */
@@ -397,7 +411,7 @@ export class World {
 
   /** Exit portal is live: campaign pull or match roundover. Read by the renderer. */
   get portalOpen(): boolean {
-    return this.campaignPortalT >= 0 || (this.mode === 'match' && this.phase === 'roundover');
+    return this.campaignPortalT >= 0 || this.campaignPortalLead > 0 || (this.mode === 'match' && this.phase === 'roundover');
   }
 
   /** Seconds into the live exit portal's animation. */
@@ -815,6 +829,8 @@ export class World {
     bossRush = false,
     campaignBoss = -1,
     primitivesOnly = false,
+    campaignOpening: CampaignOpening | null = null,
+    campaignFinale = false,
   ) {
     this.mode = mode;
     this.campaignIntro = campaignIntro;
@@ -824,6 +840,8 @@ export class World {
     this.bossRush = bossRush;
     this.campaignBoss = campaignBoss;
     this.campaignPrimitivesOnly = primitivesOnly;
+    this.campaignOpening = campaignOpening;
+    this.campaignFinale = campaignFinale;
     this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.arena = arena;
@@ -1343,9 +1361,9 @@ export class World {
   }
 
   /**
-   * First campaign node. The level opens on a calibration prologue: six dormant
-   * geometric subjects that wake together, then the sparring drill, breach and assault.
-   * The subjects are local-only; the host/guest snapshot has no campaign state.
+   * First campaign node. INTAKE opens on the Warden lesson and places three dormant
+   * subjects at target lock; HOLDING lands on an already-awake six-subject class. The
+   * subjects are local-only; the host/guest snapshot has no campaign state.
    */
   private setupCampaign(): void {
     this.setupGauntlet();
@@ -1362,7 +1380,10 @@ export class World {
     this.campaignBossSpawned = false;
     this.campaignBossWarned = false;
     this.campaignBossWarnT = 0;
+    this.campaignClearWait = 0;
     this.campaignWarnStep = null;
+    this.campaignShapesSpawned = false;
+    this.campaignSkillLessonTaught = false;
     // The kitty node is a quiet briefing room: no subjects, no threats, just the lesson.
     if (this.campaignIntro === 'kitty') {
       this.campaignPhase = 'briefing';
@@ -1394,14 +1415,17 @@ export class World {
     this.campaignBannerDur = CALIBRATION.bannerTime;
     // Bots stay parked until the calibration subjects are cleared. The drill squad
     // then logs in on the existing ring with the player, before the breach removes it.
-    // Intake carries the same six subjects as dormant lock targets. The Warden lesson
-    // ends by waking them, and clearing the class is what opens the first portal.
-    if (this.campaignIntro === 'warden') this.spawnCalibrationShapes();
+    // Intake does not place its three subjects until the target-lock lesson asks for a
+    // subject to lock; loading them at setup gave the player five idle targets first.
     if (this.arena.rooms?.some((room) => room.theme === 'holding')) {
-      this.spawnCalibrationShapes();
+      this.spawnCalibrationShapes(6);
       // Wave 2 is already alive in the cells. These are the same bodies release wakes;
       // nothing is spawned on the power-down beat.
       this.spawnHeldCellThreats();
+      // Holding is the escalation: its class is already awake and moving when the
+      // player lands. `keepTutorial` leaves Kitty's arrival line in the box; the
+      // skill briefing follows it once that line finishes.
+      this.wakeCalibration(true);
     }
   }
 
@@ -1592,7 +1616,8 @@ export class World {
     b.portalCloseT = 0.9;
     b.hp = 0;
     b.hazard = false;
-    this.emit(EV.PROP_BREAK, 0, x, y, Math.max(b.w, b.h));
+    // The red-square burst is the port's own death, distinct from a file box's dust.
+    this.emit(EV.PORTAL_BREAK, 0, x, y, Math.max(b.w, b.h));
     // A replicator is not a network port: it never counts toward the campaign tally, so
     // closing one cannot open the exit by itself.
     if (b.replicator) return;
@@ -1616,6 +1641,20 @@ export class World {
   }
 
   /**
+   * Two seconds of quiet after the last live port or body. The final de-rez and the
+   * port collapse get to finish before the exit mouth opens; without the hold the
+   * suction yanked the room out from under the death animation.
+   */
+  private campaignClearHold(dt: number, clear: boolean): boolean {
+    if (!clear) {
+      this.campaignClearWait = 0;
+      return false;
+    }
+    this.campaignClearWait += dt;
+    return this.campaignClearWait >= CAMPAIGN.clearDelay;
+  }
+
+  /**
    * Opens the right-wall exit portal and starts the pull. This is the only campaign
    * exit: the room closes into a white square on its right side, every body is dragged
    * into it without collision, and the level clears when the pull finishes.
@@ -1623,8 +1662,23 @@ export class World {
   private beginCampaignPortal(): void {
     if (this.campaignPortalT >= 0 || this.campaignPhase === 'cleared' || this.campaignPhase === 'failed') return;
     this.campaignPortalT = 0;
+    this.campaignPortalLead = CAMPAIGN.portalLead;
     this.campaignExitReady = true;
-    this.emit(EV.PROP_BREAK, 0, this.arena.bounds.right - 36, this.centerY, 150);
+  }
+
+  /**
+   * The room is clear, but the story gets the last word before the pull. This is a live
+   * narration beat over the quiet floor, never a pause in the simulation.
+   */
+  private beginCampaignExit(steps: readonly TutorialStep[], finale = false): void {
+    this.campaignPhase = finale ? 'finale' : 'exit';
+    this.campaignT = 0;
+    this.campaignClearWait = 0;
+    this.campaignBannerT = 0;
+    this.tutorial = new TutorialRunner(steps);
+    this.tutorialFinished = false;
+    this.tutorialGrace = 0;
+    this.tutorialCatchSeen = this.tutorialCatchTotal();
   }
 
   /**
@@ -1636,8 +1690,8 @@ export class World {
     this.campaignPortalT += dt;
     const t = this.campaignPortalT;
     // A short open beat shows the mouth before the yank, then the pull is immediate.
-    if (t < 0.32) return;
-    const pull = t - 0.32;
+    if (t < CAMPAIGN.portalOpenTime) return;
+    const pull = t - CAMPAIGN.portalOpenTime;
     const targetX = this.arena.bounds.right - 36;
     const targetY = this.centerY;
     const k = Math.min(1, dt * (6 + pull * 18));
@@ -1666,12 +1720,13 @@ export class World {
       p.ocChargeT = 0;
       p.ocFadeT = 0;
     }
-    if (t >= 1.15) this.clearCampaign();
+    if (t >= CAMPAIGN.portalPullTime) this.clearCampaign();
   }
 
   /**
-   * A feed room opens with one posted silhouette and its authored ports. The old
-   * multi-family opening squad is gone: it buried the player before the first port read.
+   * A feed room opens with the level's authored opening squad plus its ports. The
+   * opening is data on the level, not a room-name branch, so a node that wants a full
+   * floor gets one immediately and a boss node is not left empty.
    */
   private seedAssaultFloor(): void {
     // A plate arena posts a squad on every plate beyond intake. A flat device posts the
@@ -1692,16 +1747,61 @@ export class World {
         zones.push({ cx: room.x + room.w * 0.42, cy: room.y + room.h * 0.5 });
       }
     } else {
-      return;
+      // A single open arena (GRID ZERO) has neither islands nor painted rooms. Seed
+      // around its working centre so its authored opening squad still lands on frame
+      // one instead of waiting for the feed portals to fill the floor.
+      const b = this.arena.bounds;
+      const spawn = this.arena.spawns[0];
+      zones.push({ cx: spawn?.x ?? (b.left + b.right) * 0.5, cy: spawn?.y ?? (b.top + b.bottom) * 0.5 });
     }
+    const opening = this.campaignOpening;
+    const sentryCount = opening?.sentries ?? 1;
+    const virusCount = opening?.viruses ?? 0;
+    const wormCount = opening?.worms ?? 0;
     for (let i = 0; i < zones.length; i++) {
       const { cx, cy } = zones[i];
-      // One posted silhouette per room. The enlarged floors and the live ports supply the
-      // pressure; the old two-shooter + two-virus + worm opening buried the player before
-      // the first port could even be read.
-      const sentries = this.sentryLiveCount();
-      if (sentries < this.sentryLimit()) this.spawnSentry(0, cx, cy);
+      const spot = this.clearPortSpot(cx, cy, 80);
+      // Sentries ring the room's working centre so they read as a squad, not a stack.
+      for (let n = 0; n < sentryCount; n++) {
+        if (this.sentryLiveCount() >= this.sentryPoolSize()) break;
+        const angle = -Math.PI * 0.5 + (n - (sentryCount - 1) * 0.5) * 0.72;
+        const dist = 78 + n * 22;
+        let px = spot.x + Math.cos(angle) * dist;
+        let py = spot.y + Math.sin(angle) * dist;
+        if (!this.pointClearOfCover(px, py, 34)) {
+          px = spot.x;
+          py = spot.y;
+        }
+        this.spawnSentry(0, px, py);
+      }
+      for (let n = 0; n < virusCount; n++) {
+        const angle = Math.PI * 0.5 + (n - (virusCount - 1) * 0.5) * 1.1;
+        const dist = 96 + n * 30;
+        let px = spot.x + Math.cos(angle) * dist;
+        let py = spot.y + Math.sin(angle) * dist;
+        if (!this.pointClearOfCover(px, py, 26)) {
+          px = spot.x;
+          py = spot.y;
+        }
+        this.spawnVirus(px, py);
+      }
+      for (let n = 0; n < wormCount; n++) {
+        const angle = Math.PI + (n - (wormCount - 1) * 0.5) * 0.9;
+        const dist = 118 + n * 30;
+        let px = spot.x + Math.cos(angle) * dist;
+        let py = spot.y + Math.sin(angle) * dist;
+        if (!this.pointClearOfCover(px, py, 34)) {
+          px = spot.x;
+          py = spot.y;
+        }
+        this.spawnWorm(px, py);
+      }
     }
+  }
+
+  /** Sentry pool size, used by the opening squad without reading a private array. */
+  private sentryPoolSize(): number {
+    return this.sentries.length;
   }
 
   private sentryLiveCount(): number {
@@ -1807,8 +1907,12 @@ export class World {
       this.spawnVirus(player.x + 90, player.y, true);
       return;
     }
-    const worm = this.spawnWorm(cells.left + cells.cellW * 0.5, cells.top + 50, true);
-    if (worm) {
+    // Two full chains and eight viruses. The cell wave used to be three bodies, so the
+    // bars opened onto a nearly empty block; this is a breakout, not a trickle.
+    for (let k = 0; k < 2; k++) {
+      const cell = k === 0 ? 0 : cells.cellCount - 1;
+      const worm = this.spawnWorm(cells.left + cells.cellW * (cell + 0.5), cells.top + 52, true);
+      if (!worm) continue;
       // Face up so the chain runs down the cell behind the painted caged silhouette.
       worm.angle = -Math.PI / 2;
       worm.biteDirX = 0;
@@ -1825,13 +1929,22 @@ export class World {
         worm.segAngle[i] = worm.angle;
       }
     }
-    const vx = cells.left + cells.cellW * 2.5;
-    this.spawnVirus(vx - 15, cells.top + 57, true);
-    this.spawnVirus(vx + 15, cells.top + 71, true);
+    for (let k = 1; k <= 8; k++) {
+      const cell = k % cells.cellCount;
+      this.spawnVirus(cells.left + cells.cellW * (cell + 0.5), cells.top + 52 + (k % 3) * 17, true);
+    }
   }
 
   /** Wakes the existing wave-2 bodies; it never creates replacements. */
   private releaseHeldCellThreats(): void {
+    const room = this.arena.rooms?.find((candidate) => candidate.theme === 'holding');
+    const cells = room ? holdingCellLayout(room) : null;
+    const b = this.arena.bounds;
+    // The open floor south of the shallow cell row is the release lane. Every body gets
+    // a waypoint there, so none of them stay behind the bars as a stationary target.
+    const exitX = cells ? cells.left + cells.cellW * cells.cellCount * 0.5 : this.centerX;
+    const exitY = cells ? Math.min(b.bottom - 72, cells.bottom + 210) : b.bottom - 160;
+    let index = 0;
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
       if (!v.active || !v.held) continue;
@@ -1844,7 +1957,12 @@ export class World {
       v.chargeT = 0;
       v.pinT = 0;
       v.contactCd = 0.4;
-      this.pickVirusRoam(v);
+      v.targetWorm = -1;
+      v.targetPlayer = false;
+      v.roamX = exitX + (index - 3.5) * 54;
+      v.roamY = exitY + (index % 2) * 28;
+      v.retargetT = CAMPAIGN.holdingEmergeTime;
+      index++;
     }
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
@@ -1859,7 +1977,12 @@ export class World {
       w.biteT = 0;
       w.biteCd = WORM.biteCooldown * 0.5;
       w.pinT = 0;
-      this.pickWormPatrol(w);
+      w.anchorX = exitX + (index % 2 === 0 ? -70 : 70);
+      w.anchorY = exitY;
+      w.patrolX = w.anchorX;
+      w.patrolY = w.anchorY;
+      w.retargetT = CAMPAIGN.holdingEmergeTime;
+      index++;
     }
   }
 
@@ -1880,32 +2003,36 @@ export class World {
     this.dashSolids = [...this.baseDashSolids, ...this.campaignBarSolids];
   }
 
-  /** Six calibration subjects, two of each primary, laid out in front of the player. */
-  private spawnCalibrationShapes(): void {
-    const focus = this.arena.rooms?.find((room) => room.theme === 'holding');
+  /**
+   * Places the calibration class. Intake asks for three (one of each primary) at the
+   * lock lesson; holding asks for the full six in front of its cell block.
+   */
+  private spawnCalibrationShapes(count = 6): void {
+    const total = Math.max(1, Math.min(6, count));
+    const kinds: (4 | 5 | 6)[] = total === 3 ? [4, 5, 6] : [4, 5, 6, 4, 5, 6];
+    const focus = total >= 6 ? this.arena.rooms?.find((room) => room.theme === 'holding') : undefined;
     if (focus) {
       // The holding room gets a fixed two-column class formation. The centre lane stays
       // clear for the player entering from the bridge, and all six remain in front of the
       // sealed cell block instead of falling back to arena spawns elsewhere.
-      const kinds = [4, 5, 6, 4, 5, 6] as const;
       const columns = [focus.x + focus.w * 0.24, focus.x + focus.w * 0.76];
       const rows = [
         focus.y + focus.h * 0.52,
         focus.y + focus.h * 0.70,
         focus.y + focus.h * 0.88,
       ];
-      for (let i = 0; i < kinds.length; i++) {
-        this.spawnCalibrationShape(kinds[i], columns[i >= 3 ? 1 : 0], rows[i % 3]);
+      for (let i = 0; i < total; i++) {
+        this.spawnCalibrationShape(kinds[i], columns[i % 2], rows[i % 3]);
       }
+      this.campaignShapesSpawned = true;
       return;
     }
 
     const player = this.players[0];
     const base = Math.atan2(this.centerY - player.y, this.centerX - player.x);
-    const kinds = [4, 5, 6, 4, 5, 6] as const;
-    for (let i = 0; i < kinds.length; i++) {
+    for (let i = 0; i < total; i++) {
       const kind = kinds[i];
-      const angle = base + (i - (kinds.length - 1) * 0.5) * CALIBRATION.layoutSpread;
+      const angle = base + (i - (total - 1) * 0.5) * CALIBRATION.layoutSpread;
       const baseDist = CALIBRATION.layoutRadius + (i % 2) * CALIBRATION.layoutLift;
       let x = player.x + Math.cos(angle) * baseDist;
       let y = player.y + Math.sin(angle) * baseDist;
@@ -1944,6 +2071,7 @@ export class World {
       }
       this.spawnCalibrationShape(kind, x, y);
     }
+    this.campaignShapesSpawned = true;
   }
 
   private calibrationRadius(kind: 4 | 5 | 6): number {
@@ -2043,8 +2171,13 @@ export class World {
   }
 
   /** Opens every dormant eye together and starts the spin. */
-  private wakeCalibration(): void {
+  private wakeCalibration(keepTutorial = false): void {
     if (this.calibrationAwake) return;
+    // A skipped lock lesson can reach the wake without the class existing. Spawn it
+    // here so the wake never produces an empty arena that instantly counts as clear.
+    if (!this.campaignShapesSpawned && !this.trainingParentsActive()) {
+      this.spawnCalibrationShapes(this.campaignIntro === 'warden' ? 3 : 6);
+    }
     this.calibrationAwake = true;
     let order = 0;
     for (let i = 0; i < this.sentries.length; i++) {
@@ -2063,16 +2196,16 @@ export class World {
     this.campaignBannerKind = this.campaignIntro === 'warden' ? 8 : 5;
     this.campaignBannerT = CALIBRATION.wakeBannerTime;
     this.campaignBannerDur = CALIBRATION.wakeBannerTime;
-    // The class wakes in the holding office. The civilians are gone a beat later, and
-    // the player gets the skill/heavy lesson while the subjects are live. Intake has
-    // its own shocked-Warden beat and a system objective instead of the skill lesson.
+    // The class wakes in the holding office and turns on the civilian workers. Give
+    // them a visible chase before the loss burst so the room reads as an attack, not
+    // as scenery disappearing. Intake has its own shocked-Warden beat instead.
     this.campaignHoldingWait = 0;
-    this.campaignCivilianLossT = 0.65;
-    if (this.campaignIntro === 'warden') {
+    this.campaignCivilianLossT = this.campaignIntro === 'holding' ? 8.5 : 0.65;
+    if (!keepTutorial && this.campaignIntro === 'warden') {
       this.tutorial = new TutorialRunner(INTAKE_WAKE);
       this.tutorialFinished = false;
       this.tutorialGrace = 0;
-    } else if (this.campaignIntro === 'holding') {
+    } else if (!keepTutorial && this.campaignIntro === 'holding') {
       this.tutorial = new TutorialRunner(CALIBRATION_SKILL_TUTORIAL);
       this.tutorialFinished = false;
       this.tutorialGrace = 0;
@@ -2098,6 +2231,13 @@ export class World {
    * then show one primary's attack. The gauntlet AI stays off until the drill.
    */
   private updateTrainingShapes(dt: number): void {
+    // The holding class is awake during Kitty's short arrival beat. It can chase and
+    // fire, but the beat itself cannot spend the player's health before control lands.
+    if (this.campaignIntro === 'holding' && this.tutorial && !this.tutorial.done) {
+      for (let i = 0; i < this.players.length; i++) {
+        if (this.players[i].active) this.players[i].iframes = Math.max(this.players[i].iframes, 0.2);
+      }
+    }
     for (let i = 0; i < this.sentries.length; i++) {
       const s = this.sentries[i];
       if (!s.active) continue;
@@ -2186,8 +2326,8 @@ export class World {
   }
 
   /**
-   * Red triangle: the parent drifts around the fight and releases waves of tiny seekers.
-   * It is the watchful mother behind the swarm, never a stationary turret.
+   * Red triangle: the parent drifts around the fight and fires a slow fan of fire
+   * missiles. It is a readable ranged subject, never a swarm spawner.
    */
   private updateTriangleSubject(s: Sentry, dt: number, p: Player): void {
     const cfg = CALIBRATION.triangle;
@@ -2236,25 +2376,32 @@ export class World {
       s.y = Math.max(b.top + s.radius, Math.min(b.bottom - s.radius, s.y));
     }
     this.pushOutOfCover(s, s.radius);
-    let live = 0;
-    for (let i = 0; i < this.sentries.length; i++) {
-      const child = this.sentries[i];
-      if (child.active && child.shapeParent === self) live++;
-    }
-    if (live > 0) return;
     s.shapeAtkCd -= dt;
-    if (s.shapeAtkCd > 0 || !p.alive) return;
-    s.shapeAtkCd = cfg.spawnDelay;
-    const around = Math.atan2(this.centerY - s.y, this.centerX - s.x);
-    for (let i = 0; i < cfg.shards; i++) {
-      const a = around + (i / cfg.shards) * Math.PI * 2;
-      const dist = s.radius + 16 + (i % 3) * 6;
-      const x = s.x + Math.cos(a) * dist;
-      const y = s.y + Math.sin(a) * dist;
-      if (!this.pointClearOfCover(x, y, cfg.shardRadius)) continue;
-      this.spawnShapeChild(self, 7, x, y, a, i);
+    if (s.shapeAtkCd > 0 || !p.alive || p.cloakT > 0) return;
+    s.shapeAtkCd = cfg.cooldown;
+    // The triangle used to release a cloud of tiny seeker bodies. A short, readable
+    // fan of slow fire missiles is the whole attack now: each one is a normal hostile
+    // projectile, so the guard and the lash can send it back without chasing a swarm.
+    const aim = Math.atan2(p.y - s.y, p.x - s.x);
+    const shots = Math.max(1, cfg.volley);
+    for (let i = 0; i < shots; i++) {
+      const offset = (i - (shots - 1) * 0.5) * cfg.volleySpread;
+      const angle = aim + offset;
+      const x = s.x + Math.cos(angle) * (s.radius + 18);
+      const y = s.y + Math.sin(angle) * (s.radius + 18);
+      this.spawnHostileProjectile(
+        x,
+        y,
+        angle,
+        cfg.missileSpeed,
+        cfg.missileRadius,
+        cfg.missileDamage,
+        3,
+        cfg.missileLife,
+        self,
+        1,
+      );
     }
-    this.emit(EV.SENTRY_SHOOT, -1, s.x, s.y, Math.atan2(p.y - s.y, p.x - s.x));
   }
 
   /**
@@ -2646,6 +2793,10 @@ export class World {
 
   /** Advances the campaign script. The threat simulation waits for the assault phase. */
   private updateCampaign(dt: number, inputs: (InputFrame | null)[]): void {
+    if (this.campaignPortalLead > 0) {
+      this.campaignPortalLead = Math.max(0, this.campaignPortalLead - dt);
+      return;
+    }
     // The portal owns the room once it starts. No collision, hit or hazard tick runs
     // under the pull; updateCampaign is the only thing the step consumes.
     if (this.campaignPortalT >= 0) {
@@ -2661,6 +2812,20 @@ export class World {
     this.updateTutorial(dt, inputs[0] ?? null);
     if (this.campaignPhase === 'calibration') {
       this.campaignT += dt;
+      // Holding's Kitty arrival line runs over an already-live class. Once it closes,
+      // hand the skill briefing over without asking the player to perform it.
+      if (
+        this.campaignIntro === 'holding' &&
+        this.calibrationAwake &&
+        !this.campaignSkillLessonTaught &&
+        this.tutorial?.done &&
+        this.tutorialGrace <= 0
+      ) {
+        this.tutorial = new TutorialRunner(CALIBRATION_SKILL_TUTORIAL);
+        this.tutorialFinished = false;
+        this.tutorialGrace = 0;
+        this.campaignSkillLessonTaught = true;
+      }
       if (this.tutorial) {
         // The Warden holds the subjects dormant until the orientation is finished, so
         // the lesson is never interrupted by the pack waking on the old six-second timer.
@@ -2699,23 +2864,39 @@ export class World {
         if (nearSubject || this.campaignT >= CALIBRATION.wakeDelay) this.wakeCalibration();
       }
       if (
-        this.calibrationAwake &&
-        !this.trainingParentsActive() &&
-        (!this.tutorial || this.tutorial.done)
+        this.campaignClearHold(
+          dt,
+          this.calibrationAwake &&
+            !this.trainingParentsActive() &&
+            (!this.tutorial || this.tutorial.done),
+        )
       ) {
-        // Intake's fight is the whole orientation: clearing the class opens the first
-        // portal. HOLDING still runs the cell release and its second wave.
-        if (this.campaignIntro === 'warden') this.beginCampaignPortal();
+        // Intake's fight is the whole orientation: Kitty gets one line in before the
+        // first portal. HOLDING still runs the cell release and its second wave.
+        if (this.campaignIntro === 'warden') this.beginCampaignExit(INTAKE_CLEAR);
         else this.beginCellRelease();
       }
+      return;
+    }
+    if (this.campaignPhase === 'exit' || this.campaignPhase === 'finale') {
+      this.campaignT += dt;
+      if (this.tutorial && !this.tutorial.done) return;
+      if (this.tutorialGrace > 0) {
+        this.tutorialGrace = Math.max(0, this.tutorialGrace - dt);
+        return;
+      }
+      this.beginCampaignPortal();
       return;
     }
     if (this.campaignPhase === 'release') {
       this.campaignT += dt;
       if (
-        this.campaignT > 0.9 &&
-        !this.campaignThreatsActive() &&
-        (!this.tutorial || this.tutorial.done)
+        this.campaignClearHold(
+          dt,
+          this.campaignT > 0.9 &&
+            !this.campaignThreatsActive() &&
+            (!this.tutorial || this.tutorial.done),
+        )
       ) {
         // The cell wave is down. HOLDING clears into the next portal; a combined node
         // keeps the old drill path for any future level that still authors one room.
@@ -2775,13 +2956,23 @@ export class World {
           !this.bossIntro &&
           this.minibossLiveCount(this.campaignBoss) === 0
         ) {
-          this.clearCampaign();
+          // The boss's own death burst plays out before the result overlay. This is
+          // also the only path that clears a boss node, so a port or fodder kill can
+          // never end the fight. The final node gets Kitty's send-off first.
+          if (this.campaignClearHold(dt, true)) {
+            if (this.campaignFinale) this.beginCampaignExit(CAMPAIGN_FINALE, true);
+            else this.clearCampaign();
+          }
+        } else {
+          this.campaignClearWait = 0;
         }
         return;
       }
       if (this.portTotal > 0) {
-        if (this.campaignFloorClear()) this.beginCampaignPortal();
-      } else if (this.gauntletKills >= this.campaignKillsToClear) {
+        if (this.campaignClearHold(dt, this.campaignFloorClear())) this.beginCampaignPortal();
+      } else if (
+        this.campaignClearHold(dt, this.gauntletKills >= this.campaignKillsToClear)
+      ) {
         this.clearCampaign();
       }
     }
@@ -2813,6 +3004,15 @@ export class World {
     const runner = this.tutorial;
     if (!runner || runner.done) return;
     const player = this.players[0];
+    // Intake's three subjects arrive exactly when the lock lesson asks for a target.
+    if (
+      this.campaignPhase === 'calibration' &&
+      this.campaignIntro === 'warden' &&
+      !this.campaignShapesSpawned &&
+      runner.current?.action === 'lock'
+    ) {
+      this.spawnCalibrationShapes(3);
+    }
     if (runner.current?.action === 'reflect') {
       this.tutorialBoltT -= dt;
       if (this.tutorialBoltT <= 0) {
@@ -2857,8 +3057,20 @@ export class World {
   /** Skips the rest of the lesson. The level still continues in the same order. */
   skipTutorial(): void {
     if (!this.tutorial || this.tutorial.done) return;
+    // Skipping before the lock lesson must still arm the class the lesson would have
+    // placed, or the skipped calibration has no floor to clear.
+    if (
+      this.campaignPhase === 'calibration' &&
+      !this.campaignShapesSpawned &&
+      !this.trainingParentsActive()
+    ) {
+      this.spawnCalibrationShapes(this.campaignIntro === 'warden' ? 3 : 6);
+    }
     this.tutorial.skip();
     this.finishTutorial();
+    // A skipped holding lesson must not sit out the entry wait before waking the
+    // class. One short tick lets the normal calibration branch open the subjects.
+    if (this.campaignHoldingWait <= 0) this.campaignHoldingWait = 0.01;
   }
 
   /** One slow hostile shot that cannot spend a health segment, for the reflect lesson. */
@@ -3003,12 +3215,12 @@ export class World {
     this.wormSpawnT = CAMPAIGN.openingWormDelay;
     // A node that opens straight into live fire still loads its crates.
     this.spawnCampaignData();
-    // A boss node opens empty on purpose: the six authored corner feeds are the only
-    // source. The ordinary feed rooms still open on a squad plus their ports.
+    // Every node opens with its authored squad, boss included. Waiting on the ports
+    // left the first half-minute of the final arena empty.
+    this.seedAssaultFloor();
     if (this.campaignBoss < 0) {
       this.spawnSentryPack();
       this.sentrySpawnT = CAMPAIGN.sentryInterval;
-      this.seedAssaultFloor();
     }
   }
 
@@ -3310,19 +3522,18 @@ export class World {
    * by a hopped round, so the wipe opens on the room being entered rather than on a
    * spawn ring behind the player.
    */
-  enterAtPortal(): void {
+  enterAtPortal(throwDelay = CAMPAIGN.portalThrowDelay): void {
     const b = this.arena.bounds;
     const active: Player[] = [];
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
       if (p.active) active.push(p);
     }
-    // Start at the mouth, not in front of it, and carry a decaying eastward impulse.
-    // The throw arms after the hop wipe has begun to open; applying it on the same
-    // frame as the arena swap spent the whole impulse behind the wipe, so the body
-    // arrived looking parked under the mouth. Input still steers once the throw is
-    // live, and entry protection covers the delay and the flight.
-    const x = b.left + 44;
+    // Start under the mouth, not in front of it, and carry a decaying eastward impulse.
+    // The campaign passes a longer delay so the body is visible in the entry square
+    // before the throw; a round hop keeps the short default. Input still steers once
+    // the throw is live, and entry protection covers the delay and the flight.
+    const x = b.left + 36;
     const span = Math.min((b.bottom - b.top) * 0.5, Math.max(0, active.length - 1) * 62);
     for (let i = 0; i < active.length; i++) {
       const p = active[i];
@@ -3330,7 +3541,7 @@ export class World {
       clearPlayerForSpawn(p, x, y, 0);
       p.iframes = Math.max(p.iframes, CAMPAIGN.portalEntryIframes);
     }
-    this.entryThrowT = CAMPAIGN.portalThrowDelay;
+    this.entryThrowT = Math.max(0, throwDelay);
     this.entryThrowPending = true;
     this.entryPortalT = 3.4;
   }
@@ -3345,11 +3556,17 @@ export class World {
       this.clearPressed(inputs);
       return;
     }
-    // A boss entrance owns the room until its camera beat and reveal finish.
+    // A staged boss entrance owns the room until its camera beat and reveal finish.
+    // The Mega Worm is the exception: the squad keeps its feet and can move while the
+    // body crosses the arena. The simulation below runs with the boss's own update
+    // gated by `bossIntro`, so the entrance is not advanced twice.
+    const megaEntrance = this.bossIntro?.kind === MINIBOSS.MEGA_WORM;
     if (this.bossIntro) {
       this.updateBossIntro(dt);
-      this.clearPressed(inputs);
-      return;
+      if (!megaEntrance) {
+        this.clearPressed(inputs);
+        return;
+      }
     }
     if (this.entryPortalT > 0) this.entryPortalT = Math.max(0, this.entryPortalT - dt);
     if (this.entryThrowPending) {
@@ -3889,15 +4106,13 @@ export class World {
             p.facing = Math.atan2(input.my, input.mx);
           }
           p.laserFacing = p.facing;
-          // The beam commits itself the moment the charge completes. The player does
-          // not have to release the button; that would add an unreadable extra beat.
+          // Probe's beam is a held channel. It starts at full charge, but the release
+          // branch below cuts it instead of committing it, so he can cancel and dodge.
           if (p.laserChargeT >= PLAYER.laserChargeTime) this.fireLaser(p);
         } else {
-          if (canAct && p.laserChargeT >= PLAYER.laserChargeTime) {
-            this.fireLaser(p);
-          } else if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) {
-            this.useBug(p);
-          }
+          if (canAct && p.laserChargeT <= PLAYER.heavyTapMax) this.useBug(p);
+          // Releasing before full charge cancels the wind-up and never fires.
+          else if (p.laserT > 0) laserBusy = true;
           p.laserChargeHeld = false;
           p.laserChargeT = 0;
           p.chargeT = 0;
@@ -4154,7 +4369,11 @@ export class World {
     // front of it this frame instead of last frame's position.
     this.updatePinballArms(dt);
     // Campaign threats stay parked until the breach warning hands the room over.
-    if (this.mode === 'gauntlet' && (!this.campaign || this.campaignPhase === 'assault')) {
+    if (
+      this.mode === 'gauntlet' &&
+      (!this.campaign || this.campaignPhase === 'assault') &&
+      !this.bossIntro
+    ) {
       this.updateGauntlet(threatDt);
     } else if (this.campaign && this.campaignPhase === 'release') {
       this.updateCampaignThreats(threatDt);
@@ -4670,6 +4889,7 @@ export class World {
     p.laserChargeHeld = false;
     p.laserChargeT = 0;
     p.laserT = PLAYER.laserDuration;
+    p.laserStopDist = 0;
     p.laserTickT = PLAYER.laserTick;
     p.laserFacing = p.facing;
     p.chargeT = 0;
@@ -4706,6 +4926,54 @@ export class World {
       browserReach,
       laptopReach,
     );
+  }
+
+  /**
+   * First point where the heavy beam meets the Mega Worm. The body is a chain of
+   * overlapping circles, so every node is tested; the smallest entry wins.
+   */
+  private megaBeamReach(ox: number, oy: number, dx: number, dy: number, max: number): number {
+    let best = max;
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active || !w.mega) continue;
+      const t = this.megaBeamEntry(w, ox, oy, dx, dy, best, PLAYER.laserHalfWidth);
+      if (t < best) best = t;
+    }
+    return best;
+  }
+
+  /** Ray entry into one Mega Worm body, with the head treated as the first node. */
+  private megaBeamEntry(
+    w: Worm,
+    ox: number,
+    oy: number,
+    dx: number,
+    dy: number,
+    max: number,
+    pad: number,
+  ): number {
+    let best = max;
+    const head = this.rayCircleEntry(ox, oy, dx, dy, w.x, w.y, w.hitR + pad);
+    if (head < best) best = head;
+    for (let s = 0; s < w.segCount; s++) {
+      const t = this.rayCircleEntry(ox, oy, dx, dy, w.segX[s], w.segY[s], w.segR + pad);
+      if (t < best) best = t;
+    }
+    return best;
+  }
+
+  /** Distance along a unit ray to a circle, or Infinity when the ray misses. */
+  private rayCircleEntry(ox: number, oy: number, dx: number, dy: number, cx: number, cy: number, r: number): number {
+    const fx = ox - cx;
+    const fy = oy - cy;
+    const c = fx * fx + fy * fy - r * r;
+    if (c <= 0) return 0;
+    const b = fx * dx + fy * dy;
+    const disc = b * b - c;
+    if (disc < 0) return Infinity;
+    const t = -b - Math.sqrt(disc);
+    return t >= 0 ? t : Infinity;
   }
 
   /**
@@ -4826,17 +5094,32 @@ export class World {
       if (!w.active) continue;
       // The whole chain is a target. Checking only the head made beams that crossed a
       // worm's body look like they passed through without damage.
-      let hit = this.beamLineHits(ox, oy, dx, dy, reach, w.x, w.y, w.hitR);
-      if (!hit) {
-        for (let s = 0; s < w.segCount; s++) {
-          if (this.beamLineHits(ox, oy, dx, dy, reach, w.segX[s], w.segY[s], w.segR)) {
-            hit = true;
-            break;
+      let hitX = w.x;
+      let hitY = w.y;
+      let hit = false;
+      if (w.mega) {
+        // The beam stops at the body's near edge, which can be short of every node
+        // centre. Test the entry point, not just the plate centres, or a beam that
+        // visibly stops on the worm would deal no damage at all.
+        const t = this.megaBeamEntry(w, ox, oy, dx, dy, reach, PLAYER.laserHalfWidth);
+        if (t <= reach + 0.001) {
+          hit = true;
+          hitX = ox + dx * t;
+          hitY = oy + dy * t;
+        }
+      } else {
+        hit = this.beamLineHits(ox, oy, dx, dy, reach, w.x, w.y, w.hitR);
+        if (!hit) {
+          for (let s = 0; s < w.segCount; s++) {
+            if (this.beamLineHits(ox, oy, dx, dy, reach, w.segX[s], w.segY[s], w.segR)) {
+              hit = true;
+              break;
+            }
           }
         }
       }
       if (!hit) continue;
-      this.damageWorm(w, damage, ownerSlot, dx, dy);
+      this.damageWorm(w, damage, ownerSlot, dx, dy, force, hitX, hitY);
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
@@ -4872,10 +5155,16 @@ export class World {
     const dirX = Math.cos(p.laserFacing);
     const dirY = Math.sin(p.laserFacing);
     const solidReach = this.laserReach(p);
-    const reach = this.reflectLaser(p, solidReach);
+    const bossReach = this.megaBeamReach(p.x, p.y, dirX, dirY, solidReach);
+    const blockedReach = Math.min(solidReach, bossReach);
+    p.laserStopDist = blockedReach;
+    const reach = this.reflectLaser(p, blockedReach);
     // A guard caught the beam: its line ends there and the deflected shaft was already
     // resolved by the reflection.
-    if (reach < solidReach) return;
+    if (reach < blockedReach) {
+      p.laserStopDist = reach;
+      return;
+    }
     this.damageBeamLine(p.slot, p.x, p.y, dirX, dirY, reach, p.slot, -1);
   }
 
@@ -14432,7 +14721,9 @@ export class World {
     // Mini-boss gates. The schedule is data, so a harder level or a later wave can ask
     // for any registered mini-boss. Every gate uses the same edge ingress as the other
     // families: a boss is announced by a portal on the rim, never beside a body.
-    if (!this.campaign && !this.infectionMode && !this.gauntletPractice) {
+    // Attract starts at wave 72, which is the File Blob's repeat gate; the kiosk is
+    // deliberately boss-free, and `?boss=1` spawns its chosen showcase directly.
+    if (!this.campaign && !this.infectionMode && !this.gauntletPractice && !this.attractMode) {
       for (let i = 0; i < GAUNTLET.bossSchedule.length; i++) {
         const gate = GAUNTLET.bossSchedule[i];
         const since = this.wave - gate.wave;
@@ -14994,10 +15285,6 @@ export class World {
     }
   }
 
-  /**
-   * Queue one pack. The silhouettes land one at a time over the next few seconds so a
-   * new wave never dumps a full firing squad into the room on the same frame.
-   */
   /** Queue one family member for the next edge burst. */
   private queueAssault(family: number, kind: number, count: number): void {
     for (let i = 0; i < count && this.assaultQueueCount < this.assaultFamily.length; i++) {
@@ -15050,20 +15337,32 @@ export class World {
     return bestD < 0 ? null : { x: bestX, y: bestY };
   }
 
-  /** Spawn one queued request at a portal mouth with a little scatter. */
+  /** Spawn one queued request at an edge portal, fanned across its mouth. */
   private emitAssault(portal: AssaultPortal): void {
     if (this.assaultQueueIndex >= this.assaultQueueCount) return;
     const family = this.assaultFamily[this.assaultQueueIndex];
     const kind = this.assaultKind[this.assaultQueueIndex];
+    const lane = portal.emitted;
     this.assaultQueueIndex++;
     portal.emitted++;
-    const spread = GAUNTLET.assault.spread;
-    const x = portal.x + this.rng.range(-spread, spread);
-    const y = portal.y + this.rng.range(-spread, spread);
+    const b = this.arena.bounds;
+    let ux = (b.left + b.right) * 0.5 - portal.x;
+    let uy = (b.top + b.bottom) * 0.5 - portal.y;
+    const len = Math.hypot(ux, uy) || 1;
+    ux /= len;
+    uy /= len;
+    const fan = portal.count > 1
+      ? ((lane + 0.5) / portal.count - 0.5) * portal.half * 2.4
+      : 0;
+    const inward = 20 + (lane % 2) * 10;
+    const jitter = family === 4 ? 2 : GAUNTLET.assault.spread;
+    const x = portal.x + ux * inward - uy * fan + this.rng.range(-jitter, jitter);
+    const y = portal.y + uy * inward + ux * fan + this.rng.range(-jitter, jitter);
     if (family === 0) this.spawnSentry(kind as 0 | 1 | 2 | 3, x, y, true);
     else if (family === 1) this.spawnWorm(x, y);
     else if (family === 2) this.spawnVirus(x, y);
     else if (family === 3) this.spawnMiniboss(kind, x, y);
+    else if (family === 4) this.spawnErrorAt(x, y);
     this.emit(EV.PROP_HIT, 0, portal.x, portal.y, 1);
   }
 
@@ -15075,21 +15374,13 @@ export class World {
       if (!portal.active) continue;
       live++;
       portal.t += dt;
-      const emitStart = portal.openDur;
-      const emitEnd = emitStart + portal.emitDur;
-      if (
-        portal.t >= emitStart &&
-        portal.t < emitEnd &&
-        portal.emitted < portal.count &&
-        this.assaultQueueIndex < this.assaultQueueCount
-      ) {
-        portal.emitT -= dt;
-        if (portal.emitT <= 0) {
-          portal.emitT = portal.emitInterval;
+      // The whole group leaves together. A portal is a burst, not a dispenser.
+      if (portal.t >= portal.openDur && portal.emitted < portal.count) {
+        while (portal.emitted < portal.count && this.assaultQueueIndex < this.assaultQueueCount) {
           this.emitAssault(portal);
         }
       }
-      if (portal.t >= emitEnd + portal.closeDur) {
+      if (portal.t >= portal.openDur + portal.burstHold + portal.closeDur) {
         portal.active = false;
         live--;
       }
@@ -15123,12 +15414,10 @@ export class World {
     slot.half = cfg.half;
     slot.t = 0;
     slot.openDur = cfg.openTime;
+    slot.burstHold = cfg.burstHold;
     slot.closeDur = cfg.closeTime;
     slot.count = batch;
     slot.emitted = 0;
-    slot.emitInterval = cfg.emitInterval;
-    slot.emitT = cfg.firstDelay;
-    slot.emitDur = cfg.firstDelay + cfg.emitInterval * Math.max(1, batch);
     this.assaultCooldown = cfg.cooldown;
   }
 
@@ -15137,21 +15426,24 @@ export class World {
    * portal mouth, so a new wave never dumps a firing squad around the player.
    */
   private spawnSentryPack(): void {
+    const room = Math.max(0, this.sentryLimit() - this.sentryLiveCount());
+    if (room <= 0) return;
+    const group = Math.min(2, room);
     const pack = this.sentryPack++;
     if (!this.gauntletPractice && this.wave <= SENTRY.openingWaves) {
       // Two pulse squares open the run, so a wide arena does not read as empty.
-      this.queueAssault(0, 0, 2);
+      this.queueAssault(0, 0, group);
     } else if (!this.gauntletPractice && this.wave < GAUNTLET.triplexWave) {
-      this.queueAssault(0, 0, 1);
+      this.queueAssault(0, 0, group);
     } else if (!this.gauntletPractice && this.wave < GAUNTLET.homingWave) {
-      this.queueAssault(0, (pack & 1) === 0 ? 0 : 1, 1);
+      this.queueAssault(0, (pack & 1) === 0 ? 0 : 1, group);
     } else if (!this.gauntletPractice && this.wave < GAUNTLET.flockWave) {
       const lane = pack % 3;
-      this.queueAssault(0, lane === 0 ? 0 : lane === 1 ? 1 : 2, 1);
+      this.queueAssault(0, lane === 0 ? 0 : lane === 1 ? 1 : 2, group);
     } else {
       const lane = pack & 3;
-      if (lane === 3) this.queueAssault(0, 3, SENTRY.flockSize);
-      else this.queueAssault(0, lane, 1);
+      if (lane === 3) this.queueAssault(0, 3, Math.min(SENTRY.flockSize, room));
+      else this.queueAssault(0, lane, group);
     }
   }
 
@@ -15573,9 +15865,11 @@ export class World {
     speed: number,
     radius: number,
     damage: number,
-    type: 3 | 4 | 18 | 19,
+    type: 3 | 4 | 18 | 19 | 20,
     ttl: number,
     srcId = -1,
+    variant = 0,
+    srcKind: number = SRC.SENTRY,
   ): void {
     let proj: Projectile | null = null;
     for (let i = 0; i < this.projectiles.length; i++) {
@@ -15589,7 +15883,7 @@ export class World {
     proj.serial = ++this.serial;
     proj.type = type;
     proj.owner = -1;
-    proj.srcKind = SRC.SENTRY;
+    proj.srcKind = srcKind;
     proj.srcId = srcId;
     proj.x = proj.prevX = x;
     proj.y = proj.prevY = y;
@@ -15612,7 +15906,7 @@ export class World {
     proj.hitDrone = false;
     proj.trailHead = 0;
     proj.trailCount = 0;
-    proj.variant = 0;
+    proj.variant = variant;
     proj.orbOwner = -1;
     proj.orbA = 0;
     proj.orbR = 0;
@@ -15691,7 +15985,10 @@ export class World {
     if (active === 0) {
       if (!this.gauntletPractice && this.wave < GAUNTLET.errorWave) return;
       this.errorSpawnT -= dt;
-      if (this.errorSpawnT <= 0) this.spawnErrorColony();
+      if (this.errorSpawnT <= 0) {
+        if (this.campaign || this.attractMode) this.spawnErrorColony();
+        else this.queueErrorColony();
+      }
       return;
     }
 
@@ -15734,9 +16031,17 @@ export class World {
     return null;
   }
 
+  /** Queue a cascading-error colony for the next edge burst. */
+  private queueErrorColony(): void {
+    this.errorSpawnT = CASCADING_ERROR.reseedDelay;
+    this.queueAssault(4, 0, Math.max(1, Math.min(GAUNTLET.errorBurst, this.errorLimit())));
+  }
+
+  /**
+   * Direct seed for the kiosk demo and authored campaign. The normal gauntlet queues
+   * `queueErrorColony`, so its first blocks come out of an edge portal instead.
+   */
   private spawnErrorColony(): void {
-    const e = this.firstFreeError();
-    if (!e) return;
     const anchor = this.arena.spawns[this.farSpawnIndex()];
     let x = anchor.x;
     let y = anchor.y;
@@ -15745,28 +16050,51 @@ export class World {
       y = anchor.y + this.rng.range(-CASCADING_ERROR.seedJitter, CASCADING_ERROR.seedJitter);
       if (this.errorFree(x, y)) break;
     }
-    if (!this.errorFree(x, y)) {
-      x = (this.arena.bounds.left + this.arena.bounds.right) * 0.5;
-      y = (this.arena.bounds.top + this.arena.bounds.bottom) * 0.5;
-      if (!this.errorFree(x, y)) return;
+    if (!this.spawnErrorAt(x, y)) return;
+    this.errorSpawnT = CASCADING_ERROR.reseedDelay;
+    this.errorGrowT = this.gauntletInterval(
+      CASCADING_ERROR.growthInterval,
+      CASCADING_ERROR.growthMinInterval,
+    );
+  }
+
+  /** Place one error block at an ingress point. Never falls back to the arena centre. */
+  private spawnErrorAt(x: number, y: number): boolean {
+    const e = this.firstFreeError();
+    if (!e) return false;
+    let px = x;
+    let py = y;
+    if (!this.errorFree(px, py)) {
+      let clear = false;
+      for (let attempt = 0; attempt < 16; attempt++) {
+        const angle = (attempt / 16) * Math.PI * 2;
+        const dist = CASCADING_ERROR.cell * (0.55 + Math.floor(attempt / 8) * 0.55);
+        px = x + Math.cos(angle) * dist;
+        py = y + Math.sin(angle) * dist;
+        if (this.errorFree(px, py)) {
+          clear = true;
+          break;
+        }
+      }
+      if (!clear) return false;
     }
     e.active = true;
-    e.x = e.prevX = x;
-    e.y = e.prevY = y;
-    e.originX = e.targetX = x;
-    e.originY = e.targetY = y;
+    e.x = e.prevX = px;
+    e.y = e.prevY = py;
+    e.originX = e.targetX = px;
+    e.originY = e.targetY = py;
     e.growT = 0;
     e.hp = e.maxHp = CASCADING_ERROR.hp;
     e.hitFlash = 0;
     e.touchCd = 0;
     e.phase = this.rng.range(0, Math.PI * 2);
     e.spawnT = CASCADING_ERROR.spawnTime;
-    this.errorSpawnT = CASCADING_ERROR.reseedDelay;
     this.errorGrowT = this.gauntletInterval(
       CASCADING_ERROR.growthInterval,
       CASCADING_ERROR.growthMinInterval,
     );
-    this.emit(EV.ERROR_SPAWN, -1, x, y, CASCADING_ERROR.blockSize);
+    this.emit(EV.ERROR_SPAWN, -1, px, py, CASCADING_ERROR.blockSize);
+    return true;
   }
 
   private growError(): void {
@@ -17193,6 +17521,22 @@ export class World {
     return node === 0 ? w.y : w.segY[node - 1];
   }
 
+  /** Two jagged bolts peel off opposite sides of the body during a straight pass. */
+  private fireMegaVolley(w: Worm): void {
+    const cfg = MEGA_WORM.flyby.volley;
+    const node = Math.min(4, w.segCount);
+    const ox = this.megaNodeX(w, node);
+    const oy = this.megaNodeY(w, node);
+    const srcId = this.worms.indexOf(w);
+    for (let side = -1; side <= 1; side += 2) {
+      const normal = w.angle + side * Math.PI * 0.5;
+      const aim = normal + this.rng.range(-cfg.spread, cfg.spread);
+      const sx = ox + Math.cos(normal) * w.segR * 0.72;
+      const sy = oy + Math.sin(normal) * w.segR * 0.72;
+      this.spawnHostileProjectile(sx, sy, aim, cfg.speed, cfg.radius, cfg.damage, 20, cfg.ttl, srcId, 0, SRC.WORM);
+    }
+  }
+
   /**
    * The Mega Worm's body is one straight capsule, not a row of independent circles.
    * Its head keeps the larger radius; the rest is a single line to the tail plate.
@@ -17419,6 +17763,8 @@ export class World {
     w.flyDY = Math.sin(w.angle);
     w.roarT = 0;
     w.megaPass = 0;
+    w.megaRage = false;
+    w.volleyT = 0.4;
     w.anchorX = w.x;
     w.anchorY = w.y;
     w.patrolX = w.x;
@@ -17464,9 +17810,9 @@ export class World {
     sourceSlot: number,
     dirX: number,
     dirY: number,
-    _force: number,
-    _hitX: number,
-    _hitY: number,
+    force: number,
+    hitX: number,
+    hitY: number,
   ): void {
     if (!w.active) return;
     w.hp -= amount;
@@ -17474,15 +17820,34 @@ export class World {
     if (sourceSlot >= 0) w.aggroT = MEGA_WORM.aggroTime;
     // A hit sparks, but it never shoves the flight line: the Worm is a straight-line
     // body, so damage must not turn a pass into a drift.
-    this.emit(EV.WORM_HIT, sourceSlot, w.x, w.y, amount, dirX, dirY);
-    if (w.hp <= 0) this.killMegaWorm(w, sourceSlot);
+    const hx = Number.isFinite(hitX) ? hitX : w.x;
+    const hy = Number.isFinite(hitY) ? hitY : w.y;
+    this.emit(EV.MEGA_HIT, sourceSlot, hx, hy, amount, dirX, dirY);
+    if (w.hp <= 0) {
+      this.killMegaWorm(w, sourceSlot);
+      return;
+    }
+    // The low-health turn is one extra scream, then every staged pass is quicker.
+    // The threshold is data so a future boss can keep the same rule at a new HP pool.
+    if (!w.megaRage && w.hp <= w.maxHp * MEGA_WORM.flyby.rageAt) {
+      w.megaRage = true;
+      w.roarT = MEGA_WORM.entrance.roar;
+      this.emit(EV.MEGA_CRY, -1, w.x, w.y, w.hitR);
+    }
   }
 
   private killMegaWorm(w: Worm, sourceSlot: number): void {
     const nodes = w.segCount + 1;
     for (let k = 0; k < nodes; k++) {
-      this.emit(EV.WORM_KILL, sourceSlot, this.megaNodeX(w, k), this.megaNodeY(w, k), 120, 0, 0);
+      const x = this.megaNodeX(w, k);
+      const y = this.megaNodeY(w, k);
+      this.emit(EV.WORM_KILL, sourceSlot, x, y, 120, 0, 0);
+      // Every node de-rezzes into its own red square burst, so the whole length of the
+      // worm goes at once instead of only the head producing a puff.
+      this.emit(EV.MEGA_DEATH, sourceSlot, x, y, 64, 0, 0);
     }
+    // One last call over the burst; the rage cry is a separate threshold earlier.
+    this.emit(EV.MEGA_CRY, sourceSlot, w.x, w.y, w.hitR);
     w.active = false;
     w.segCount = 0;
     if (sourceSlot === 0) {
@@ -17492,6 +17857,9 @@ export class World {
   }
 
   private updateMegaWorm(w: Worm, dt: number): void {
+    // The entrance cut owns the body. `step` deliberately keeps the squad live during
+    // this beat, but the worm must not advance twice through the normal threat loop.
+    if (this.bossIntro?.kind === MINIBOSS.MEGA_WORM) return;
     w.prevX = w.x;
     w.prevY = w.y;
     w.phase += dt;
@@ -17536,12 +17904,17 @@ export class World {
       // One straight pass along the latched line. The pattern never changes; only the speed
       // does, ramping with the segments already lost so the last third arrives much faster.
       const missing = 1 - Math.max(0, Math.min(1, w.hp / Math.max(1, w.maxHp)));
-      const speed = fly.speed * (1 + missing * fly.rageSpeed);
+      const speed = fly.speed * (1 + missing * fly.rageSpeed + (w.megaRage ? fly.rageBoost : 0));
       w.vx = Math.cos(w.angle) * speed;
       w.vy = Math.sin(w.angle) * speed;
       w.x += w.vx * dt;
       w.y += w.vy * dt;
       this.followMegaChain(w, dt);
+      w.volleyT -= dt;
+      if (w.volleyT <= 0 && w.flyT > 0.18) {
+        this.fireMegaVolley(w);
+        w.volleyT = fly.volley.interval;
+      }
       // Contact is the whole attack: the body is a sponge that flies over the floor.
       this.megaTouch(w, p);
       const past = (w.x - w.anchorX) * Math.cos(w.angle) + (w.y - w.anchorY) * Math.sin(w.angle);
@@ -17555,8 +17928,11 @@ export class World {
       // Run clear of the floor, then leave. The body is parked beyond the lip and comes back
       // on a fresh line, which is what lines the next pass up instead of a wide turn.
       w.flyT += dt;
-      w.vx = Math.cos(w.angle) * fly.speed;
-      w.vy = Math.sin(w.angle) * fly.speed;
+      const missing = 1 - Math.max(0, Math.min(1, w.hp / Math.max(1, w.maxHp)));
+      const leaveSpeed =
+        fly.speed * (1 + missing * fly.rageSpeed + (w.megaRage ? fly.rageBoost : 0));
+      w.vx = Math.cos(w.angle) * leaveSpeed;
+      w.vy = Math.sin(w.angle) * leaveSpeed;
       w.x += w.vx * dt;
       w.y += w.vy * dt;
       this.followMegaChain(w, dt);
@@ -17593,10 +17969,11 @@ export class World {
     w.ky = 0;
     w.angle = lane.angle;
     w.aggroT = MEGA_WORM.aggroTime;
-    w.spawnT = cfg.repeatDelay;
+    w.spawnT = w.megaRage ? cfg.rageRepeatDelay : cfg.repeatDelay;
+    w.volleyT = 0.3;
     w.flyPhase = 2;
     w.flyT = 0;
-    w.touchCd = cfg.repeatDelay;
+    w.touchCd = w.spawnT;
     for (let i = 0; i < w.segCount; i++) {
       w.segX[i] = w.x - Math.cos(w.angle) * MEGA_WORM.spacing * (i + 1);
       w.segY[i] = w.y - Math.sin(w.angle) * MEGA_WORM.spacing * (i + 1);
@@ -17729,6 +18106,7 @@ export class World {
     w.flyT = 0;
     w.touchCd = Math.min(w.touchCd, 0.15);
     w.aggroT = MEGA_WORM.aggroTime;
+    w.volleyT = 0.3;
     this.followMegaChain(w, 0);
   }
 

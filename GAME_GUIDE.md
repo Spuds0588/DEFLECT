@@ -112,11 +112,13 @@ threats hold.
   homing silhouettes are much slower than the pulse and flock. A pulse square or a flock that finds you
   inside 92 units stops shooting and **rams** instead: a short wind-up, a 0.16 s dash, 1 damage and a 620
   shove, then a recovery beat. Only one sentry commits at a time, so a dart flock cannot stack three hits
-  on one frame. Packs arrive one at a time, low-tier shots are short-ranged and disperse on cover, and
-  enemy fire damages other enemies too while `FRIENDLY FIRE` is on.
+  on one frame. Packs arrive in pairs through an edge portal when the live cap has room; a dart flock
+  still arrives as three. Low-tier shots are short-ranged and disperse on cover, and enemy fire damages
+  other enemies too while `FRIENDLY FIRE` is on.
 - **CASCADING ERRORS:** yellow blocks stamped with red exclamation marks. They spread outward like a
   plant, one block every 4.0 s early and 2.0 s at full pressure, hurt on contact, and take three hits to
-  delete a single block. The first colony starts at four blocks and the live cap grows over many waves.
+  delete a single block. A new colony enters through an edge portal as a three-block burst, then grows
+  outward; the live cap grows over many waves.
 - **FIREWALLS:** orange beams that warn, then sweep across the arena burning players, worms and viruses.
   Pillars cut both the visible beam and the damage. Automatic firewalls are **off**. `NETWORK SWITCH`
   carries one manual starter at its west end: stand on the plate to launch a sweep, then wait three
@@ -162,23 +164,33 @@ room from the result screen; guests can leave. The host records the clear time l
 
 `SINGLE PLAYER > CAMPAIGN` opens three local save slots first. An empty slot starts a new run: pick the
 bot count (none to three), then your program. A filled slot shows the level and player count and resumes
-the run, skipping both steps. Bots take the programs you leave unused.
+the run, skipping both steps. Bots take the programs you leave unused. A filled row also carries `CLEAR`,
+which asks for confirmation before deleting the save. `START NEW GAME` takes the first empty slot; when all
+three are full it asks which save to replace. Replacing a slot deletes its old run before the new setup
+starts.
+
+A new run carries a **SKIP TUTORIALS** switch on the save-slot screen; once on, every lesson is skipped
+without changing the fight. The Warden's moves are in INTAKE, the skill and power lessons in HOLDING, and
+REBOOT's kitty briefing is narration only.
 
 `BUILD ROOT` opens in quarantine. The Warden talks you through move, dash, ranged attack, lock and target
-cycling, melee, and reflection on the bare intake plate. Six dormant shapes sit there as lock targets.
-When the lesson ends (or you skip it), they wake together: the Warden gets one shocked line, drops out of
-the story box, and the system orders **DESTROY ALL AWAKENED PRIMITIVES**. The class is inert during the
-Warden's lesson: shots and melee are absorbed until the script wakes them, and they cannot be damaged while
-any of them is still opening. That is deliberate, so the shock beat and the fight both happen. Clear all
-six to open the right-wall portal. The holding office stages its own six for **wave 1**, one at a time: a bouncing
-blue circle, a floating red mother with a shard cloud, and a yellow row of clones that charges together.
-The cell block stays solid while it is sealed, so the held wave cannot leave early and you cannot walk
-into the cells. The three civilian monitors in that office are destroyed in the breakout, dropping
-any files they carry, and script_kitty watches from the middle cell. The Warden teaches your **skill**
+cycling, melee, and reflection on the bare intake plate. Three dormant shapes (one of each primary) are
+placed only when the lesson reaches target lock. When the lesson ends (or you skip it), they wake together:
+the Warden gets one shocked line, drops out of the story box, and the system orders **DESTROY ALL AWAKENED
+PRIMITIVES**. The class is inert during the Warden's lesson: shots and melee are absorbed until the script
+wakes them, and they cannot be damaged while any of them is still opening. That is deliberate, so the shock
+beat and the fight both happen. Clear all three to open the right-wall portal. The holding office starts
+with its own six already awake for **wave 1**, on staggered clocks: a bouncing blue circle, a triangle
+mother that fires a fast three-round fan you can reflect on a longer cadence, and a yellow row of clones
+that charges together. They chase the civilian staff from the first frame.
+The ten shallow cells line the whole north wall, so you can see the held wave inside them. The block stays
+solid while it is sealed, so the held wave cannot leave early and you cannot walk into the cells. The three
+civilian monitors in that office are lost in the breakout, dropping any files they carry, and script_kitty
+watches from the middle cell. The Warden teaches your **skill**
 while wave 1 is live. Clear all six and finish that lesson to make the cell block lose power: the bars
-retract unexpectedly and release **wave 2**, two viruses and a worm, while the Warden teaches your
-**power attack**. They are already in the cells behind the bars; the power-down releases them instead of
-spawning replacements. Clear wave 2 and finish the heavy lesson to open the next portal. The quarantine
+retract unexpectedly and release **wave 2**, two worms and eight viruses, while the Warden teaches your
+**power attack**. They are already in the cells behind the bars and spill out toward open-floor waypoints,
+so the release is a breakout rather than a row of targets waiting to be shot through the bars. Clear wave 2 and finish the heavy lesson to open the next portal. The quarantine
 route is four rooms: `INTAKE` (the Warden lesson), `HOLDING` (the cells), `MAINBOARD` (two feeds) and
 `ROUTER` (one feed plus two wall emitters). Every room ends through script_kitty's portal; there is no
 sparring-drill or breach beat on the feed rooms now, so their floor is already live when you arrive. Two
@@ -188,9 +200,11 @@ port — ranged shots, the lash, a damaging skill or a damaging heavy — so bri
 for good. A room is clear only when every feed is shut **and** every hostile it delivered is gone; then its
 white right-wall portal opens and the suction pulls you in. There is no white party port to walk into and
 no bridge to earn. The entry mouth is the same pulsing white square on the left wall, so the crossing reads
-from both ends. The next room holds you at the mouth for a beat while the wipe opens, then throws you out
-with a real decaying impulse and a short entry protection window; campaign landing lanes are kept clear of
-authored hostiles.
+from both ends. A cleared room waits 2 seconds after the last port or body falls, so the death animation finishes, before
+the right-wall portal opens and pulls you in. Before its mouth opens, the camera pulls back far enough to
+show the whole room, so you can watch the party cross the floor and get taken. The next room holds you under
+the left mouth for the wipe, then throws you out to the right with a real decaying impulse and a short entry
+protection window; campaign landing lanes are kept clear of authored hostiles.
 The clear reports
 kills, time, damage taken, data crates preserved and a score; losing no crates is a clean sweep and pays a
 bonus, and the best score and sweep count stay in the slot.
@@ -198,12 +212,16 @@ bonus, and the best score and sweep count stay in the slot.
 Clearing writes the slot and opens the portal. `BUILD ROOT` hops straight to `REBOOT` on `GRID ZERO`: the
 cat gets you out of quarantine, then six corner feeds fill the arena with sentries, viruses, worms and
 errors. Clear all six feeds and every body before the **Mega Worm** is announced. Its entrance is a slow,
-harmless fly-past with a roar; the camera stays wide for the whole fight. It then repeats four fixed
-straight lanes with a pause between passes, and no little enemies spawn between runs. GRID ZERO has no
+harmless fly-past with a roar; you keep moving and fighting during it, and the camera stays centered on
+the wide arena rather than chasing it offscreen. It then repeats four fixed straight lanes with a pause
+between passes, and no little enemies spawn between runs. At 35% health it screams again and its passes
+speed up. Its death spends one last scream and bursts into a lot of little red squares. GRID ZERO has no
 outer wall: your shots and beams leave the plate, so you can open fire before the Worm crosses the lip;
 your body is still held on the floor. That node does not
-end on a kill count or a port sweep; it ends when the boss is dead. A completed `REBOOT` slot reports the
-end of the authored route. A run is never saved mid-level.
+end on a kill count or a port sweep; it ends when the boss is dead. After the kill, Kitty says the infection
+got into the network here and to follow its path back to the source. Her portal pulls the party through,
+the level result shows the clear stats, and the card ends on **MORE LEVELS COMING SOON**. A run is never
+saved mid-level.
 Everything before the assault is practice: if you fall off a plate or get caught during orientation or
 the drill, you come back on the training timer and the lesson keeps its place, so a bad start costs time
 rather than the run. **The assault is one life** — going down once the fight starts ends the node, and
@@ -299,7 +317,7 @@ no health or readiness telemetry yet.
 | **RANGED ATTACK** | `X` / right mouse / `K` | Your program's basic fire. Probe sends a five-shot stream, Wedge a three-shot string, Fisher a piercing spear, Sweep throws a dust-trailing broom that shoves on contact, Toxic fires a venom needle, Kaboom lobs a slow bomb, Bad Lag throws a heavy hourglass, Atomize fires an alternating electron that curves toward a target, Ghost throws a wide chomping mouth that hits for two and dazes, Compress fires a slow pressure orb that shrinks the victim and permanently lowers their health cap, Pinball throws a long-lived ricochet ball that gains speed on every bounce or body and climbs from 1 to 5 damage across five hits, Copy Pasta throws a file that tears into two smaller files when it hits a body, and Aim Bot fires a 2000-speed rail round for 5 damage that never bounces and reloads slowly. Holding keeps the fire coming at the program's cadence. |
 | **MELEE ATTACK** | `B` / left mouse / `J` | **Tap** for a fast spiked lash across the 180° arc in front of you. It shoves what it hits sideways and reflects shots it catches. Aim Bot carries a combat knife instead: a longer, wider sweep with a much harder shove. |
 | **GUARD** | Hold `B` / left mouse / `J` | A 180° shield that reflects every shot in front for up to 1 s. Every caught shot burns shield time; a broken guard enters a 0.28 s cooldown. A catch refills the shot's lifetime and adds 1 damage, so repeat catches become lethal. Every program can do this; reflection is not a Probe-only rule. Lock on to flatten caught shots toward the target. Pinball's shield is wider and lasts longer. |
-| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam in 0.45 s; releasing the heavy while it fires cuts it short, Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear, Compress fires a pressure burst that halves the size and health cap of everything in the ring, crushing anything on its last point, Pinball launches one giant ball that bounces off arena walls only and rolls over bodies for 3 damage, and Copy Pasta seeds every enemy in a ring with a growing stack of red file icons that detonates after a beat. Aim Bot paints up to six red crosshairs in front of himself and fires a 12-damage shot at each in a quick sequence. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
+| **POWER ATTACK** | Hold `Y` / `E` / `L` / middle mouse | The program's heavy. Probe charges a piercing beam in 0.45 s, then fires only while the button is held (up to 3 s); releasing cancels it at once so he can dodge, and starting the heavy again pays the full cooldown. Wedge plows forward with a bracket, Fisher draws a freeform web behind himself that reflects shots and holds anything that touches it until it fades, Sweep builds a giant broom and sweeps it across the room, Kaboom throws a row of bombs, Bad Lag dilates time, Atomize opens an orbit field that captures shots and small enemies and flings them outward, Ghost arms a jump-scare that fires on any action press (or expires) for a burst that damages everything in the ring and throws every body in it clear, Compress fires a pressure burst that halves the size and health cap of everything in the ring, crushing anything on its last point, Pinball launches one giant ball that bounces off arena walls only and rolls over bodies for 3 damage, and Copy Pasta seeds every enemy in a ring with a growing stack of red file icons that detonates after a beat. Aim Bot paints up to six red crosshairs in front of himself and fires a 12-damage shot at each in a quick sequence. Most heavies commit you: you cannot move freely while they run. Atomize's field lets you walk. Every heavy has a long cooldown. |
 | **SKILL** | Tap `Y` / `E` / `L` / middle mouse | The program's assigned skill. Probe plants a persistent trap mine that waits until stepped on and detonates in a wide blast (three live max), Wedge plants a solid bracket wall behind himself, Fisher drops a lure beacon, Sweep splits two brooms outward to clear a lane, Kaboom lobs a heavy shell, Bad Lag fast-forwards, Atomize raises two orbiting shield balls, Ghost cloaks for a few seconds, Compress folds small and runs fast for 3.5 seconds, Pinball plants a flipper arm for 16 seconds that punts hostile shots and swats bodies toward other enemies, Copy Pasta summons a bot-driven copy of itself that fights for nine seconds, and Aim Bot raises a visible laser sight for 7 seconds and loads a three-shot clip that ignores his normal reload. Every Copy Pasta dash also leaves a one-hit, 1.5-second afterimage that pulls enemy attention. Its mark in the readiness dock shows when the skill is ready. |
 | **DASH** | `A` / `Shift` / `Space` | Two charges, one shared recharge. Tap to pass through enemies and clear floor gaps in your last movement direction; solid cover and deployed walls stop the dash. Hold for a charged triangle dash that damages everything crossed and leaves a fading square trail. Pinball carries three charges. |
 
@@ -345,7 +363,7 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `KEYPAD` | The entire arena is a ten-key phone pad. There is no outside floor: spawns stand on the bezel. Each 680×528 key warns for 4 s, sinks for 1.2 s, holds as solid cover for 8 s, then rises for 1.6 s. A slam crushes threats instantly; a player caught under one loses three segments. Online: the key clock is synced and the host resolves the crush. |
 | `DOCUMENT SCANNER` | A large glass platen where documents load from a floor slot, a read line scans top to bottom, snaps back, and the sheet is replaced. Hop the line or dash over it. Online: the scan clock/page is synced and the host resolves the line. |
 | `BROWSER` | A browser window showing a forum. A giant cursor travels to the page link, hovers, and click-slams the floor before the forum navigates deeper and the cover layout changes. Online: the page/clock is synced and the host resolves the click. |
-| `QUARANTINE` | Four campaign tutorial arenas, one room each: INTAKE (booking counter, desk cover, chains), HOLDING (three jail cells), MAINBOARD (two feeds) and ROUTER (one feed and two wall emitters). There is no walk between rooms; script_kitty's portal is the only route. Each room exits through a portal on its right wall and the next room throws you in from the left. Closing the last feed in MAINBOARD or ROUTER starts the pull. HOLDING's sealed block is the only local body barrier. Local-only tutorial staging. |
+| `QUARANTINE` | Four campaign tutorial arenas, one room each: INTAKE (booking counter, desk cover, chains), HOLDING (ten shallow cells across the north wall), MAINBOARD (two feeds) and ROUTER (one feed and two wall emitters). There is no walk between rooms; script_kitty's portal is the only route. Each room exits through a portal on its right wall and the next room throws you in from the left. Closing the last feed in MAINBOARD or ROUTER starts the pull. HOLDING's sealed block is the only local body barrier. Local-only tutorial staging. |
 | `USB HUB` | A round hub with four thumb-drive islands pushing out on a shared cycle. Only the hub and drives are floor; the gap grows to 230 units, so a dash can cross while the drives are travelling but not at full extension. While a drive extends, its current pushes outward; while it retracts, the current pulls inward, carrying players and threats off or onto the islands. Online: the drive clock is synced and the host resolves the ride. |
 | `SWIPE RIGHT` | A tall phone touchscreen showing a dating deck. Every 4.6 s the card swipes left or right and the whole floor slides 108 units that way, carrying every fighter and live shot toward the wall. A `YOU GOT A MATCH` popup rises from the center of the screen for a few seconds as real cover: it blocks bodies and shots, displaces anyone caught under it, then drops back into the floor. Online: the swipe and popup clocks are synced and the host owns the carry and collision. |
 | `ROCKET NAVIGATION` | A launch-control floor under a nav display. The rocket lifts from below the bottom lip while speed, altitude and trajectory count up. Its growing arc is a real barrier: a 24 s launch lays a continuous curved wall across the arena that bodies, dashes and shots cannot cross. The finished line splits the room for the rest of the round. Booster and fairing separation marks drift off the arc as presentation only. Local-only: the launch clock and barrier are not in the snapshot. |
@@ -380,9 +398,10 @@ cat face and sits in the middle holding cell.
 ### Portals, pads and lifts
 
 `QUARANTINE` is four tutorial arenas, not one floor. `INTAKE` is the Warden's lesson room, with a booking
-counter, desk blocks and chains. Its six dormant subjects wake when the lesson ends; clearing them opens
-the right-wall portal into `HOLDING`, where the three jail cells and the next six-subject class wait;
-kitty's first line there is "IT WORKED! I CAN'T BELIEVE IT WORKED." `MAINBOARD` has two feeds; `ROUTER` has one feed and two wall emitters. There is
+counter, desk blocks and chains. Its three dormant subjects (one of each shape) wake when the lesson ends;
+clearing them opens the right-wall portal into `HOLDING`, where ten shallow cells line the north wall and
+the next six-subject class is already awake and chasing the civilian staff; kitty's first line there is
+"IT WORKED! I CAN'T BELIEVE IT WORKED." `MAINBOARD` has two feeds; `ROUTER` has one feed and two wall emitters. There is
 no walk between rooms and no floor gap to cross: the cell block is HOLDING's only local barrier.
 
 Every exit portal sits on the right wall; every entry portal sits on the left. The pull is deliberately
@@ -573,16 +592,18 @@ This build is a test rig as much as a game. A useful pass:
 - Leave endless training and return. The arena choice persists and a fresh session starts cleanly; there
   is no round or match overlay to clear.
 - Enter the gauntlet on each arena. Confirm the setup screen shows the arena, one-life note and local top
-  runs. On the large arenas the first 20 seconds should contain two slow pulse shooters that land inside
-  the camera window, not one distant shooter or a wave of threats. On `SWITCHBACK`, watch a worm route
-  around the bars instead of passing through them. Automatic firewalls should never appear.
+  runs. On the large arenas the first 20 seconds should contain two slow pulse shooters that arrive
+  together from an edge portal well away from you, not one distant shooter or a squad around you. On
+  `SWITCHBACK`, watch a worm route around the bars instead of passing through them. Automatic firewalls
+  should never appear.
 - Finish a gauntlet run. Losing the last segment should freeze the arena and open the result card with
   wave, time and kills; the run should appear in the setup table and update the title menu's `BEST W`
   value. There should be no respawn or practice choice in the gauntlet setup.
 - Let a sentry miss you and hit a worm, virus or error block. Enemy fire should damage other factions
   instead of passing through them.
-- Watch a sentry pack arrive. The silhouettes should land one at a time over several seconds, not all at
-  once, and the opening minute should stay survivable.
+- Watch a sentry pack arrive. The portal should open on a far edge, release the whole pair together, hold
+  for a beat and close; the silhouettes should walk in from there, and the opening minute should stay
+  survivable.
 - Let a worm eat a few viruses. Its chain should grow and its health should recover; cut it down with the
   beam before it reaches the cap.
 - Let viruses stack on you until the infection bar fills. A thrall should spawn nearby, chase you, swing
@@ -605,11 +626,12 @@ This build is a test rig as much as a game. A useful pass:
 
 ### Gauntlet ingress
 
-New threats arrive through red square portals that open on the arena edge, spit out a whole group in about a
-second, and slam shut. The mouth is always an edge lane and always well away from your body, so you get a
-readable side to watch instead of a squad appearing on top of you. Sentries, worms and virus clusters all
-use the same ingress. If every edge point is blocked or too close, the burst waits rather than spawning
-next to you.
+New threats arrive through red square portals that open on the arena edge, spit out the whole group in one
+simulation frame, hold for a beat, and slam shut. The mouth is always an edge lane and always well away
+from your body, so you get a readable side to watch instead of a squad appearing on top of you. Sentry
+pairs, worms, virus clusters and cascading-error colonies all use the same ingress. If every edge point is
+blocked or too close, the burst waits rather than spawning next to you. Campaign opening squads and
+authored campaign ports are separate content, not this automatic ingress.
 
 ### Boss entrances
 
@@ -632,13 +654,19 @@ creature: every hit anywhere on the body drains the same bar, and nothing breaks
   second worm to split off; keep shooting the body and it dies.
 - **Straight runs, offscreen reset.** It picks the last place it saw you, flies one straight line through
   it, then clears the floor and resets offscreen for the next run. Touching any plate hurts. It only
-  re-aims between runs, so a pass is fixed once it begins; step off the line and it misses.
+  re-aims between runs, so a pass is fixed once it begins; step off the line and it misses. The reset is a
+  short beat; the Worm should not sit pinned on arena geometry.
+- **Side volleys.** During a pass it spits a jagged red ball to each side. They are ordinary hostile shots:
+  catch one with guard or the lash and send it back into the body to damage the boss.
+- **Beam stop.** Probe's heavy beam ends at the Worm's near edge; it does not draw through the body. Every
+  hit raises a wide triangle spray at the contact point.
 - **One solid body.** The head and every plate are one continuous hit surface. A shot that lands in the
   seam between two plates still counts, and the plate chain never stretches open in a pass.
 - **Arrival cry.** The approach ends with a bird-like call that shakes the screen. That is the handoff, not the
   end of the fight: the first pass follows right after it, so keep moving through the cry.
 - Damage reads as cracks spreading across the plates and loose code drifting off the body. All plates
-  show the same damage. There is no health bar.
+  show the same damage. There is no health bar. On the minimap the boss is a long segmented body, not a
+  single point.
 - It flies above the floor: cover does not stop it, and it leaves the arena bounds on every pass. On
   GRID ZERO, fire can follow it out; the plate has no outer wall, though your body still stops at the edge.
   The pressure is the lane and the collision, not a chase.

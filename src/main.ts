@@ -26,7 +26,7 @@ import {
 import { Input, type MenuEdges } from './game/input';
 import { Renderer, type RenderState } from './game/render';
 import { PROGRAM_ID, PROGRAMS, clampProgram, programDef } from './game/programs';
-import { STORY_SLOT_COUNT, loadStorySlots, saveStoryProgress, type StorySave } from './game/saves';
+import { STORY_SLOT_COUNT, clearStorySlot, loadStorySlots, saveStoryProgress, type StorySave } from './game/saves';
 import {
   SERIES_LENGTHS,
   normalizeSeriesGames,
@@ -47,6 +47,7 @@ import {
   type SessionReport,
   type SessionResult,
 } from './game/sessionReport';
+import { CampaignDebugRecorder, type CampaignDebugView } from './game/campaignDebug';
 import { World } from './game/world';
 import { GuestNet, HostNet, NetView, type Snapshot } from './net/net';
 import { clearChildren, drawAvatar, el, toast } from './ui/dom';
@@ -59,7 +60,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.184';
+const BUILD = '0.1.188';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -259,9 +260,13 @@ const programStageLabel = el('program-stage-label');
 const programBackBtn = el<HTMLButtonElement>('btn-program-back');
 const menuSolo = el('menu-solo');
 const menuStory = el('menu-story');
+const storyStageLabel = el('story-stage-label');
 const storySlotsEl = el('story-slots');
 const storyStatusLine = el('story-status');
 const storyBackBtn = el<HTMLButtonElement>('btn-story-back');
+const storyNewBtn = el<HTMLButtonElement>('btn-story-new');
+const storyNewValue = el('story-new-value');
+const storyRulesEl = el('story-rules');
 const menuStoryBots = el('menu-story-bots');
 const storyBotsLabel = el('story-bots-label');
 const storyBotsBackBtn = el<HTMLButtonElement>('btn-story-bots-back');
@@ -279,6 +284,8 @@ const menuLocal = el('menu-local');
 const campaignBotsEl = el('campaign-bots');
 const campaignFriendlyBtn = el<HTMLButtonElement>('btn-campaign-friendly-fire');
 const campaignFriendlyValue = el('campaign-friendly-fire-value');
+const campaignSkipTutorialBtn = el<HTMLButtonElement>('btn-campaign-skip-tutorial');
+const campaignSkipTutorialValue = el('campaign-skip-tutorial-value');
 const soloCampaignBtn = el<HTMLButtonElement>('btn-solo-campaign');
 
 const modeSoloBtn = el<HTMLButtonElement>('btn-mode-solo');
@@ -399,10 +406,18 @@ let infectionRecorded = false;
 let infectionBests: InfectionBest[] = [];
 /** Campaign drill squad size (0-3). A NO BOTS run still drills against one instructor. */
 let campaignBots = 0;
+/** Menu-owned skip for every lesson in a campaign run; persisted locally. */
+let campaignSkipTutorials = false;
 /** Index into the playable campaign levels for the live node. */
 let campaignLevelIndex = 0;
 /** Save-slot index being set up on the campaign stage; -1 when none is selected. */
 let storySlot = -1;
+type StoryPrompt =
+  | { kind: 'clear-confirm'; slot: number }
+  | { kind: 'overwrite-pick' }
+  | { kind: 'overwrite-confirm'; slot: number };
+/** A save-slot action waiting for a target or confirmation. Null is the normal list. */
+let storyPrompt: StoryPrompt | null = null;
 /** Save slot of the live campaign run, and the run state a clear needs to persist. */
 let campaignSlot = -1;
 let campaignPlayers = 1;
@@ -476,6 +491,8 @@ let playtestBotCount = 3;
 /** Normal-play session capture behind the opt-in SHARE FEEDBACK action. */
 let sessionLog: SessionTracker | null = null;
 let sessionPerfAt = 0;
+/** Local-only campaign QA capture, enabled by `?campaignDebug=1`. */
+let campaignDebug: CampaignDebugRecorder | null = null;
 
 let acc = 0;
 let snapTimer = 0;
@@ -529,6 +546,8 @@ function boot(): void {
   registerServiceWorker();
 
   const params = new URLSearchParams(location.search);
+  const campaignDebugParam =
+    params.get('campaignDebug') === '1' || params.get('campaigndebug') === '1';
   // `?ui=0` hides the canvas UI for a clean capture without changing the saved setting.
   const uiParam = params.get('ui');
   if (uiParam === '0' || uiParam === 'off' || uiParam === 'false') applyUi(false, false);
@@ -573,6 +592,10 @@ function boot(): void {
   bossRush = params.get('bossrush') === '1';
   const infectionParam = params.get('infection') === '1';
   const gauntletBot = Number(params.get('bot') ?? '0') >= 1;
+  if (campaignDebugParam) {
+    campaignDebug = new CampaignDebugRecorder(canvas, BUILD, campaignDebugView);
+    campaignDebug.start();
+  }
   // QA-only inspection handle. Nothing in normal play reads it; it keeps split and
   // grouping tests scriptable without a separate debug build.
   if (params.get('debug') === '1') {
@@ -656,7 +679,8 @@ function bindUi(): void {
   gauntletBtn.addEventListener('click', () => openProgramSelect('gauntlet'));
   infectionBtn.addEventListener('click', () => openProgramSelect('infection'));
   soloCampaignBtn.addEventListener('click', openStory);
-  storyBackBtn.addEventListener('click', () => showMenuStage('solo'));
+  storyBackBtn.addEventListener('click', storyBack);
+  storyNewBtn.addEventListener('click', startNewStory);
   storyBotsBackBtn.addEventListener('click', () => showMenuStage('story'));
   el<HTMLButtonElement>('btn-arena-back').addEventListener('click', () => showMenuStage('soloProgram'));
   el<HTMLButtonElement>('btn-gauntlet-back').addEventListener('click', () => showMenuStage('soloArena'));
@@ -669,6 +693,7 @@ function bindUi(): void {
   gauntletRushBtn.addEventListener('click', toggleBossRush);
   localRushBtn.addEventListener('click', toggleLocalBossRush);
   campaignFriendlyBtn.addEventListener('click', toggleFriendlyFire);
+  campaignSkipTutorialBtn.addEventListener('click', toggleCampaignSkipTutorials);
   el<HTMLButtonElement>('btn-bots-back').addEventListener('click', () => showMenuStage('soloArena'));
   el<HTMLButtonElement>('btn-tier-back').addEventListener('click', () => showMenuStage('soloBots'));
   createBtn.addEventListener('click', () => void createRoom());
@@ -943,6 +968,10 @@ function markPointerLive(): void {
 
 function menuBack(): void {
   if (screen !== 'title') return;
+  if (menuStage === 'story' && storyPrompt) {
+    cancelStoryPrompt();
+    return;
+  }
   if (menuStage === 'soloSeries') showMenuStage('soloTier');
   else if (menuStage === 'soloTier') showMenuStage('soloBots');
   else if (menuStage === 'soloBots') showMenuStage('soloArena');
@@ -1551,6 +1580,23 @@ function renderFriendlyFire(): void {
   campaignFriendlyValue.textContent = label;
 }
 
+function renderCampaignSkipTutorials(): void {
+  const label = campaignSkipTutorials ? 'ON' : 'OFF';
+  campaignSkipTutorialBtn.setAttribute('aria-pressed', String(campaignSkipTutorials));
+  campaignSkipTutorialValue.textContent = label;
+}
+
+function toggleCampaignSkipTutorials(): void {
+  campaignSkipTutorials = !campaignSkipTutorials;
+  try {
+    localStorage.setItem('deflect.campaignSkipTutorials', campaignSkipTutorials ? '1' : '0');
+  } catch {
+    /* storage disabled: the setting still applies to this session */
+  }
+  renderCampaignSkipTutorials();
+  toast(`SKIP TUTORIALS // ${campaignSkipTutorials ? 'ON' : 'OFF'}`);
+}
+
 function toggleFriendlyFire(): void {
   friendlyFire = !friendlyFire;
   persistArenaPrefs();
@@ -1590,12 +1636,15 @@ function toggleLocalBossRush(): void {
 function openStory(): void {
   soloProgram = 'campaign';
   storySlot = -1;
+  storyPrompt = null;
   storyStatusLine.textContent = '';
   showMenuStage('story');
 }
 
 function renderStorySetup(): void {
+  loadCampaignPrefs();
   renderFriendlyFire();
+  renderCampaignSkipTutorials();
   renderStorySlots();
 }
 
@@ -1624,6 +1673,7 @@ function startNewCampaign(): void {
   campaignPlaySeconds = 0;
   campaignMemory = new Array(MAX_PLAYERS).fill(0);
   campaignShards = [];
+  campaignDebug?.mark('new-campaign', `slot ${campaignSlot + 1}`);
   startCampaignLevel();
 }
 
@@ -1648,6 +1698,7 @@ function resumeCampaign(index: number, save: StorySave): void {
     return;
   }
   campaignLevelIndex = Math.max(0, save.level);
+  campaignDebug?.mark('resume-campaign', `slot ${index + 1} // level ${save.level + 1}`);
   startCampaignLevel();
 }
 
@@ -1685,14 +1736,20 @@ function startCampaignLevel(viaPortal = false): void {
     level.intro,
     level.clearKills,
     false,
-    level.boss ?? -1, level.primitivesOnly === true,
+    level.boss ?? -1,
+    level.primitivesOnly === true,
+    level.opening ?? null,
+    level.finale === true,
   );
   world.friendlyFire = friendlyFire;
   for (let i = 0; i < MAX_PLAYERS; i++) world.setMemoryStacks(i, campaignMemory[i] ?? 0);
   world.restoreFragments(campaignShards);
+  // The menu rule skips the lesson for the whole run. New tutorials created later
+  // (holding's skill and heavy beats) are skipped by the live sync below.
+  if (campaignSkipTutorials) world.skipTutorial();
   // A portal hop drops the squad on the new room's left wall. A fresh node keeps the
   // authored spawn so the player still starts where the room expects them.
-  if (viaPortal) world.enterAtPortal();
+  if (viaPortal) world.enterAtPortal(CAMPAIGN.campaignEntryThrowDelay);
   botInputs = new Array(MAX_PLAYERS);
   for (let i = 0; i < MAX_PLAYERS; i++) botInputs[i] = { mx: 0, my: 0, held: 0, pressed: 0 };
   botBrains = new Array(MAX_PLAYERS).fill(null);
@@ -1729,6 +1786,12 @@ function startCampaignLevel(viaPortal = false): void {
     friendlyFire ? 'on' : 'off',
     viaPortal ? 'VIA PORTAL' : '',
   );
+  campaignDebug?.mark(
+    'level-start',
+    `${level.name} // ${level.code} // slot ${campaignSlot + 1} // ${drill} drill // ${
+      viaPortal ? 'via portal' : 'fresh spawn'
+    }`,
+  );
 }
 
 /** Back to the save-slot stage, abandoning the live node. */
@@ -1736,6 +1799,7 @@ function returnToStory(): void {
   teardownSession();
   campaignSlot = -1;
   storySlot = -1;
+  storyPrompt = null;
   soloProgram = 'campaign';
   showMenuStage('story');
   setScreen('title');
@@ -1748,14 +1812,155 @@ function programStageBack(): void {
   showMenuStage(soloProgram === 'campaign' ? 'storyBots' : 'solo');
 }
 
+function storySlotSummary(save: StorySave): { label: string; value: string } {
+  const sector = SECTORS[save.sector];
+  const where = sector ? sector.name : `CAMPAIGN ${save.sector + 1}`;
+  const complete = save.level >= PLAYABLE_CAMPAIGN_LEVELS.length;
+  return {
+    label: complete ? `${where} // COMPLETE` : save.level > 0 ? `${where} // LV ${save.level}` : where,
+    value: complete ? 'MORE LEVELS SOON' : `${save.players} PLAYER${save.players === 1 ? '' : 'S'}`,
+  };
+}
+
+function storyBack(): void {
+  if (storyPrompt) {
+    cancelStoryPrompt();
+    return;
+  }
+  showMenuStage('solo');
+}
+
+function cancelStoryPrompt(): void {
+  storyPrompt = null;
+  storyStatusLine.textContent = '';
+  renderStorySlots();
+}
+
+function startNewStory(): void {
+  const slots = loadStorySlots();
+  const empty = slots.findIndex((save) => !save);
+  if (empty >= 0) {
+    storySlot = empty;
+    storyPrompt = null;
+    storyStatusLine.textContent = '';
+    showMenuStage('storyBots');
+    return;
+  }
+  storyPrompt = { kind: 'overwrite-pick' };
+  renderStorySlots();
+}
+
+function storyPromptRow(slot: number, action: 'OVERWRITE' | 'USE'): HTMLButtonElement {
+  const save = loadStorySlots()[slot];
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'console-option';
+  button.dataset.nav = '';
+  const key = document.createElement('span');
+  key.className = 'option-key option-key-wide';
+  key.textContent = `SLOT ${slot + 1}`;
+  const label = document.createElement('span');
+  label.className = 'option-label';
+  label.textContent = save ? storySlotSummary(save).label : 'EMPTY SLOT';
+  const value = document.createElement('span');
+  value.className = 'option-value';
+  value.textContent = action;
+  button.append(key, label, value);
+  button.setAttribute(
+    'aria-label',
+    save
+      ? `Slot ${slot + 1}, ${storySlotSummary(save).label}, ${action.toLowerCase()}`
+      : `Slot ${slot + 1}, empty, start a new game`,
+  );
+  button.addEventListener('click', () => {
+    if (!save) {
+      storySlot = slot;
+      storyPrompt = null;
+      storyStatusLine.textContent = '';
+      showMenuStage('storyBots');
+      return;
+    }
+    storyPrompt = { kind: 'overwrite-confirm', slot };
+    renderStorySlots();
+  });
+  return button;
+}
+
+function storyPromptCancel(): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'console-option console-back';
+  button.dataset.nav = '';
+  button.innerHTML = '<span class="option-key">ESC</span><span class="option-label">CANCEL</span>';
+  button.addEventListener('click', cancelStoryPrompt);
+  return button;
+}
+
 function renderStorySlots(): void {
   const slots = loadStorySlots();
   clearChildren(storySlotsEl);
+  storyNewBtn.hidden = storyPrompt !== null;
+  storyRulesEl.hidden = storyPrompt !== null;
+  storyNewValue.textContent = slots.some((save) => !save) ? 'FIRST OPEN SLOT' : 'OVERRIDE A SLOT';
+
+  if (storyPrompt?.kind === 'overwrite-pick') {
+    storyStageLabel.textContent = 'CAMPAIGN // OVERWRITE SAVE SLOT';
+    storyStatusLine.textContent = 'ALL THREE SLOTS ARE FULL. CHOOSE THE SLOT THE NEW RUN WILL REPLACE.';
+    for (let i = 0; i < STORY_SLOT_COUNT; i++) {
+      storySlotsEl.appendChild(storyPromptRow(i, slots[i] ? 'OVERWRITE' : 'USE'));
+    }
+    storySlotsEl.appendChild(storyPromptCancel());
+    clearMenuSelection();
+    return;
+  }
+
+  if (storyPrompt?.kind === 'clear-confirm' || storyPrompt?.kind === 'overwrite-confirm') {
+    const overwrite = storyPrompt.kind === 'overwrite-confirm';
+    const slot = storyPrompt.slot;
+    const save = slots[slot];
+    const summary = save ? storySlotSummary(save) : null;
+    storyStageLabel.textContent = overwrite ? 'CAMPAIGN // CONFIRM OVERWRITE' : 'CAMPAIGN // CONFIRM CLEAR';
+    storyStatusLine.textContent = overwrite
+      ? `SLOT ${slot + 1}${summary ? ` // ${summary.label}` : ''} WILL BE REPLACED BY A NEW RUN.`
+      : `SLOT ${slot + 1}${summary ? ` // ${summary.label}` : ''} WILL BE DELETED.`;
+
+    const confirm = document.createElement('button');
+    confirm.type = 'button';
+    confirm.className = 'console-option';
+    confirm.dataset.nav = '';
+    confirm.innerHTML = `<span class="option-key option-key-wide">SLOT ${slot + 1}</span><span class="option-label">${
+      overwrite ? 'START NEW GAME' : 'DELETE THIS SAVE'
+    }</span><span class="option-value">${overwrite ? 'REPLACE' : 'DELETE'}</span>`;
+    confirm.addEventListener('click', () => {
+      if (overwrite) {
+        if (save) clearStorySlot(slot);
+        storySlot = slot;
+        storyPrompt = null;
+        storyStatusLine.textContent = '';
+        showMenuStage('storyBots');
+        toast(`NEW CAMPAIGN // SLOT ${slot + 1}`, 'warn');
+        return;
+      }
+      clearStorySlot(slot);
+      storySlot = -1;
+      storyPrompt = null;
+      renderStorySlots();
+      storyStatusLine.textContent = `SLOT ${slot + 1} CLEARED.`;
+      toast(`SAVE SLOT ${slot + 1} CLEARED`, 'warn');
+    });
+    storySlotsEl.append(confirm, storyPromptCancel());
+    clearMenuSelection();
+    return;
+  }
+
+  storyStageLabel.textContent = 'CAMPAIGN // SAVE SLOTS';
   for (let i = 0; i < STORY_SLOT_COUNT; i++) {
     const save = slots[i];
+    const row = document.createElement('div');
+    row.className = 'story-slot-row';
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'console-option';
+    button.className = 'console-option story-slot-main';
     button.dataset.nav = '';
 
     const key = document.createElement('span');
@@ -1767,15 +1972,14 @@ function renderStorySlots(): void {
     value.className = 'option-value';
 
     if (save) {
-      const sector = SECTORS[save.sector];
-      const where = sector ? sector.name : `CAMPAIGN ${save.sector + 1}`;
-      const complete = save.level >= PLAYABLE_CAMPAIGN_LEVELS.length;
-      label.textContent = complete ? `${where} // COMPLETE` : save.level > 0 ? `${where} // LV ${save.level}` : where;
-      value.textContent = complete ? 'MORE LEVELS SOON' : `${save.players} PLAYER${save.players === 1 ? '' : 'S'}`;
+      const summary = storySlotSummary(save);
+      label.textContent = summary.label;
+      value.textContent = summary.value;
       button.setAttribute('aria-label', `Slot ${i + 1}, ${label.textContent}, ${value.textContent}, resume`);
     } else {
-      label.textContent = 'START NEW GAME';
-      button.setAttribute('aria-label', `Slot ${i + 1}, start a new game`);
+      label.textContent = 'EMPTY SLOT';
+      value.textContent = 'START NEW GAME';
+      button.setAttribute('aria-label', `Slot ${i + 1}, empty, start a new game`);
     }
 
     button.append(key, label, value);
@@ -1788,16 +1992,34 @@ function renderStorySlots(): void {
       storyStatusLine.textContent = '';
       showMenuStage('storyBots');
     });
-    storySlotsEl.appendChild(button);
+    row.appendChild(button);
+
+    if (save) {
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'console-option story-slot-clear';
+      clear.dataset.nav = '';
+      clear.textContent = 'CLEAR';
+      clear.setAttribute('aria-label', `Clear slot ${i + 1}, ${label.textContent}`);
+      clear.addEventListener('click', () => {
+        storyPrompt = { kind: 'clear-confirm', slot: i };
+        renderStorySlots();
+      });
+      row.appendChild(clear);
+    }
+
+    storySlotsEl.appendChild(row);
   }
+  clearMenuSelection();
 }
 
 function loadCampaignPrefs(): void {
   try {
     const saved = Number(localStorage.getItem('deflect.campaignBots') ?? '0');
     if (Number.isFinite(saved) && saved >= 0 && saved <= 3) campaignBots = Math.round(saved);
+    campaignSkipTutorials = localStorage.getItem('deflect.campaignSkipTutorials') === '1';
   } catch {
-    /* storage disabled: no companions */
+    /* storage disabled: no companions and no stored skip rule */
   }
 }
 
@@ -2082,6 +2304,111 @@ function applyInputAssist(frame: InputFrame): void {
   }
 }
 
+// Campaign debug view ------------------------------------------------------------------------
+
+function activeCount(items: readonly { active: boolean }[] | null | undefined): number {
+  if (!items) return 0;
+  let count = 0;
+  for (let i = 0; i < items.length; i++) if (items[i].active) count++;
+  return count;
+}
+
+/** The stable subset of live state the campaign QA recorder may read. */
+function campaignDebugView(): CampaignDebugView {
+  const state = guestView ?? world;
+  const campaign = mode === 'campaign' ? PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex] ?? null : null;
+  const player = state?.players[localSlot] ?? null;
+  const warn = mode === 'campaign' && world ? world.campaignWarnStep : null;
+  const runner = mode === 'campaign' && world ? world.tutorial : null;
+  const step = warn ?? runner?.current ?? null;
+  const tutorial = step
+    ? {
+        speaker: step.speaker,
+        line: step.line,
+        prompt: step.prompt ?? '',
+        stepId: step.id,
+        index: warn ? 1 : Math.min(runner!.index + 1, runner!.steps.length),
+        total: warn ? 1 : runner!.steps.length,
+        warn: !!warn,
+        done: runner?.done ?? false,
+      }
+    : null;
+  const counts = {
+    players: activeCount(state?.players),
+    bots: Math.max(0, activeCount(state?.players) - 1),
+    projectiles: activeCount(world?.projectiles),
+    worms: activeCount(world?.worms),
+    viruses: activeCount(world?.viruses),
+    sentries: activeCount(world?.sentries),
+    errors: activeCount(world?.errors),
+    firewalls: activeCount(world?.firewalls),
+    props: activeCount(world?.props),
+    pickups: activeCount(world?.pickups),
+    fragments: activeCount(world?.fragments),
+    barriers: activeCount(world?.barriers),
+  };
+  return {
+    screen,
+    mode,
+    menuStage,
+    overlay: overlayKind,
+    loading,
+    campaignLevel: campaign ? campaignLevelIndex + 1 : 0,
+    campaignLevelName: campaign?.name ?? '',
+    campaignNode: campaign?.nodeId ?? '',
+    campaignPhase: mode === 'campaign' ? world?.campaignPhase ?? 'none' : 'none',
+    phase: state?.phase ?? 'none',
+    arenaId: state?.arena.id ?? -1,
+    arenaName: state?.arena.name ?? '',
+    program: programDef(player?.program ?? selectedProgram).name,
+    tutorial,
+    player: player
+      ? {
+          slot: player.slot,
+          program: programDef(player.program).name,
+          x: Number(player.x.toFixed(1)),
+          y: Number(player.y.toFixed(1)),
+          facing: Number(player.facing.toFixed(3)),
+          hp: Number(player.hp.toFixed(2)),
+          maxHp: player.maxHp,
+          energy: Number(player.energy.toFixed(1)),
+          alive: player.alive,
+          active: player.active,
+          travelT: Number(player.travelT.toFixed(2)),
+          dashCharges: player.dashCharges,
+          score: player.score,
+        }
+      : null,
+    counts,
+    campaign:
+      world && campaign
+        ? {
+            slot: campaignSlot,
+            level: campaignLevelIndex + 1,
+            name: campaign.name,
+            node: campaign.nodeId,
+            phase: world.campaignPhase,
+            playSeconds: Number(campaignPlaySeconds.toFixed(1)),
+            saved: campaignSaved,
+            kills: world.gauntletKills,
+            killsToClear: world.campaignKillsToClear,
+            exitReady: world.campaignExitReady,
+            portalT: Number(world.campaignPortalT.toFixed(2)),
+            portalOpen: world.portalOpen,
+            calibrationAwake: world.calibrationAwake,
+            barsOpen: world.campaignBarsOpen,
+            civiliansLost: world.campaignCiviliansLost,
+            dataKept: world.dataKept,
+            dataTotal: world.dataTotal,
+            damage: Number(world.campaignDamage.toFixed(1)),
+            wave: world.wave,
+            bannerKind: world.campaignBannerKind,
+            bannerT: Number(world.campaignBannerT.toFixed(2)),
+          }
+        : null,
+  };
+}
+
 // Loop -------------------------------------------------------------------------------------
 
 function loop(now: number): void {
@@ -2193,6 +2520,7 @@ function loop(now: number): void {
   sampleSessionPerformance(now);
 
   updatePerf(dt);
+  campaignDebug?.tick(localFrame, fps, frameMs, simMs);
 }
 
 function trackLocalHit(state: RenderState): void {
@@ -2387,6 +2715,7 @@ function processWorldEvents(w: World): void {
 }
 
 function handleGameEvent(e: GameEvent, remote: boolean): void {
+  campaignDebug?.event(e, remote);
   if (sessionLog) sessionLog.recordEvent(e);
   if (playtestActive && playtestRound && !remote) recordPlaytestEvent(e);
   fx.handle(e);
@@ -2496,6 +2825,17 @@ function handleGameEvent(e: GameEvent, remote: boolean): void {
       }
       break;
     }
+    case EV.MEGA_HIT: {
+      const now = performance.now();
+      if (now - lastThreatSound > 45) {
+        lastThreatSound = now;
+        audio.hit();
+      }
+      break;
+    }
+    case EV.PORTAL_BREAK:
+      audio.eliminate();
+      break;
     case EV.SENTRY_KILL:
     case EV.WORM_KILL:
     case EV.VIRUS_KILL:
@@ -4312,6 +4652,11 @@ let tutorialUiKey = '';
 
 /** Draws the live story box. Hidden by the pause/result overlay, never paused itself. */
 function syncTutorialUi(): void {
+  // A run-level skip also catches lessons created after the node starts, such as the
+  // holding skill/heavy beats and the final briefing.
+  if (campaignSkipTutorials && mode === 'campaign' && world?.tutorial && !world.tutorial.done) {
+    world.skipTutorial();
+  }
   const warn = mode === 'campaign' && world ? world.campaignWarnStep : null;
   const runner = mode === 'campaign' && world ? world.tutorial : null;
   const step = warn ?? runner?.current ?? null;
@@ -4722,6 +5067,12 @@ function handleCampaignClear(w: World): void {
   const { score, clean } = scoreCampaign(w);
   const cleared = PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex] ?? FIRST_CAMPAIGN_LEVEL;
   const next = PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex + 1] ?? null;
+  campaignDebug?.mark(
+    'level-clear',
+    `${cleared.name} // score ${score} // ${w.gauntletKills} kills // ${campaignPlaySeconds.toFixed(1)}s // ${
+      clean ? 'clean sweep' : 'data or damage penalty'
+    }`,
+  );
   const complete = next === null;
   let bestLine = '';
   if (!campaignSaved && campaignSlot >= 0) {
@@ -4776,6 +5127,12 @@ function handleCampaignClear(w: World): void {
 
 function showCampaignFailOverlay(w: World): void {
   if (overlayKind === 'leave' || overlayKind === 'runover') return;
+  campaignDebug?.mark(
+    'level-failed',
+    `${w.gauntletKills}/${w.campaignKillsToClear} kills // ${campaignPlaySeconds.toFixed(1)}s // ${
+      (PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex] ?? FIRST_CAMPAIGN_LEVEL).name
+    }`,
+  );
   setOverlay(
     'runover',
     'CAMPAIGN // SIGNAL LOST',

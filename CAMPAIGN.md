@@ -55,11 +55,13 @@ tracks which island is next and coordinates the hopping while the player tries t
 the big bad from taking the world. That is narration in the existing bottom box, so it stays cosmetic,
 skippable and local-only (see **Narration rules**).
 
-**Existing spawn paths this replaces** (nothing is built yet): `World.spawnSentryPack` drops a pack in a
-ring around the player, `World.spawnVirusCluster` seeds a cluster at a far arena spawn point, and
-`setupInfection` spreads the opening flood around the player spawns. A port pass should author ports in
-the arena data and emit through them, keeping the existing per-family pools, live caps, `packStagger`,
-interval tapering and wave gates rather than adding a second spawn system.
+**Shared ingress and ports.** Automatic gauntlet arrivals already use the transient edge ingress: a fully
+opaque red portal opens on the arena edge, releases its whole group in one frame, and closes. Campaign ports
+are separate authored content (`ArenaDef.ingress`) with their own damage and emission clock; a destroyed
+port throws red squares. `World.spawnVirusCluster`
+and `setupInfection` still seed directly; a port pass should route those through the authored ports,
+keeping the existing per-family pools, live caps, interval tapering and wave gates rather than adding a
+second spawn system.
 
 Settled in `World`: every damaging action closes a port; a shut port never reopens in that level; a room
 cannot be left with a port still open; port health and cadence are authored per arena. Open question: how
@@ -75,35 +77,44 @@ dashing. The existing BUILD ROOT beats (calibration subjects, drill squad, breac
 mechanics of the session; its fiction becomes the quarantine stop rather than a neutral sandbox.
 
 The opening blockout is **QUARANTINE**, now four full-size separate arenas traversed by script_kitty's
-portal: the round **INTAKE** office, the square **HOLDING** office with three jail cells, the **MAINBOARD**
-feed room, and the **ROUTER** uplink. All four use the `48,48 -> 1942,1046` playfield. INTAKE is bare, with
-six dormant lock targets and no cover. Each room is its own device with a right-wall exit portal; the next
-room throws the party in from its left wall. There is no walk between rooms. The holding floor is staffed
+portal: the round **INTAKE** office, the square **HOLDING** office with ten shallow north-wall cells, the
+**MAINBOARD** feed room, and the **ROUTER** uplink. All four use the `48,48 -> 1942,1046` playfield. INTAKE
+is bare, with three dormant lock targets (one of each primary) and no cover; they are placed only at the
+lock lesson. Each room is its own device with a right-wall exit portal; the next room throws the party in
+from its left wall. There is no walk between rooms. The holding floor is staffed
 by floating CRT-monitor ordinary programs (TICKET, PATCH and CACHE); they are civilian dressing, not
 combatants, and are destroyed when the calibration class wakes. script_kitty waits behind the middle cell
 bars.
 
-The Warden's basic lesson runs in INTAKE. Finishing it does not open the portal: the six dormant
+The Warden's basic lesson runs in INTAKE. Finishing it does not open the portal: the three dormant
 subjects wake, the Warden gets one shocked line and leaves the story box, and a system objective orders
 the player to destroy all awakened primitives. Clearing that class opens the first portal. The class
 absorbs hits during the lesson and while any subject is still opening, so the lesson's own fire step cannot
 wake them early and a held burst cannot delete the fight before the shock line. An arrival is held at the
 left mouth while the hop wipe opens, then thrown east with a decaying impulse and entry protection. HOLDING opens
 on kitty's first-hop line: "IT WORKED! I CAN'T BELIEVE IT WORKED." then "OKAY. I NEED YOU TO CLEAR THIS
-INFECTION AND GET ME OUT OF HERE." The six calibration subjects wake in HOLDING as **wave 1** and carry the skill
-lesson. The sealed cell block is a body solid while it is powered. Clearing all six and finishing the
-skill beat makes the block fail: the bars retract unexpectedly and release **wave 2**, two viruses and a
-worm, for the power-attack lesson. The bodies are already in the cells, frozen and untargetable while the
-block is powered; the power-down wakes them instead of spawning replacements. Clear that wave and the heavy
+INFECTION AND GET ME OUT OF HERE." HOLDING's six subjects are already awake as **wave 1** and carry the
+skill lesson. The ten shallow cells line the whole north wall, so the held wave reads from the floor. The
+block is a body solid while it is powered. Clearing all six and finishing the
+skill beat makes the block fail: the bars retract unexpectedly and release **wave 2**, two worms and eight
+viruses, for the power-attack lesson. The bodies are already in the cells, frozen and untargetable while the
+block is powered; the power-down wakes them and gives them open-floor waypoints, so they walk out instead of
+waiting behind the bars to be shot in a barrel. Clear that wave and the heavy
 beat to open the portal to MAINBOARD.
 
 MAINBOARD has two ingress feeds; ROUTER has one feed and two wall emitters. A room's right-wall pull starts
 only after every feed is shut and every live threat is gone. The rooms are local-only and their state never
 enters `Snapshot` (see AGENTS D41). REBOOT is the exception to the feed counts: six corner feeds fill
 `GRID ZERO`, then the Mega Worm is announced only after all six and their delivered bodies are cleared. Its
-fight is four fixed fly-by lanes with a wide arena camera and no small-enemy spawns between passes. The arena
-has no outer shot wall, so fire can reach the Worm before it crosses the lip; the player's body stays on the
-floor. The Worm is one rigid straight chain with a capsule body hit test, and its plates overlap by design.
+fight is four fixed fly-by lanes with a wide arena camera and no small-enemy spawns between passes. The lane
+change is a short beat, not a geometry stall. Each pass spits jagged red balls to both sides; they are
+reflectable, and a returned ball damages the Worm. The arena has no outer shot wall, so fire can reach the
+Worm before it crosses the lip; the player's body stays on the floor. The Worm is one rigid straight chain
+with a capsule body hit test, and its plates overlap by design. The heavy beam stops at its body, and hits
+spark at the actual contact point with a wide triangle spray. The minimap draws the full chain.
+
+Before an exit portal opens, the camera pulls back to show the room and holds while the mouth opens and the
+party is drawn across it. The lead, open and pull timings live in `CAMPAIGN`; the zoom lives in `CAMERA`.
 
 **Inciting incident.** The infection breaks out of quarantine and spreads through the dev system. The
 friendly program gets the players out, and that escape carries the route through LOCALHOST and onto the
@@ -190,8 +201,10 @@ node link: the route itself is now a script_kitty portal hop. Nothing about this
 `SINGLE PLAYER > CAMPAIGN` opens three save slots. An empty slot starts a new run and continues to the bot
 count (`NO BOTS` to 3, saved as `deflect.campaignBots`) and player select; bots take the programs the
 players leave unused. A filled slot resumes the run stored there and skips both steps. Slots show the
-level and player count. The first two nodes are playable; the blueprint archive remains parked until the flow is
-wired.
+level and player count. A filled row's `CLEAR` action deletes that save after confirmation. `START NEW
+GAME` takes the first empty slot; when all three are full it asks which slot to replace, and the old save
+is cleared before setup starts. The first two nodes are playable; the blueprint archive remains parked
+until the flow is wired.
 
 The illustrated route plate (`src/game/road.ts`) is built for the **between-level transition**: one wide
 picture of the whole run at a single scale, each stop drawn as the device that sector lives in (build box,

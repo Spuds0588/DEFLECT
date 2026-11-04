@@ -1,5 +1,5 @@
 /** Mega Worm probe: one straight body, one health pool, off-map lane staging and contact-only damage. */
-import { GAUNTLET, MEGA_WORM, SIM_DT } from '../src/game/config';
+import { GAUNTLET, MEGA_WORM, PLAYER, SIM_DT } from '../src/game/config';
 import { MINIBOSS, MINIBOSSES } from '../src/game/minibosses';
 import { ARENAS } from '../src/game/arenas';
 import { World } from '../src/game/world';
@@ -102,7 +102,10 @@ const outsideArena = (x: number, y: number) =>
   for (let i = 0; i < 1600; i++) {
     const wasTurn = boss.flyPhase === 1;
     priv.updateWorm(boss, SIM_DT);
-    maxStep = Math.max(maxStep, Math.hypot(boss.x - prevX, boss.y - prevY));
+    // A finished pass is staged by teleporting the head to the next off-map lane. That one
+    // jump is the designed reset; every other tick must be continuous flight.
+    const staged = wasTurn && boss.flyPhase === 2;
+    if (!staged) maxStep = Math.max(maxStep, Math.hypot(boss.x - prevX, boss.y - prevY));
     prevX = boss.x;
     prevY = boss.y;
     if (boss.flyPhase === 0) {
@@ -124,6 +127,68 @@ const outsideArena = (x: number, y: number) =>
   console.log(JSON.stringify({ flight: { runs: true, turns, straight, maxStep: +maxStep.toFixed(1) } }));
 }
 
+// --- jagged side volley: two directions, and a returned shot hurts the boss -----
+{
+  const { world, priv } = freshWorld();
+  const p = world.players[0];
+  const boss: Worm = priv.spawnMegaWorm(p.x, p.y) ?? fail('the boss never spawned');
+  boss.spawnT = 0;
+  boss.entryT = 0;
+  boss.flyPhase = 0;
+  boss.flyT = 0.25;
+  boss.volleyT = 0;
+  boss.x = p.x - 420;
+  boss.y = p.y;
+  boss.angle = 0;
+  priv.followMegaChain(boss, 0);
+  for (const pr of world.projectiles) pr.active = false;
+  priv.updateMegaWorm(boss, SIM_DT);
+  const volley = world.projectiles.filter((pr: any) => pr.active && pr.type === 20 && pr.owner === -1);
+  if (volley.length !== 2) fail(`the fly-by fired ${volley.length} jagged balls, expected one per side`);
+  if (!volley.some((pr: any) => pr.vy < 0) || !volley.some((pr: any) => pr.vy > 0)) {
+    fail('the jagged volley did not leave both sides of the body');
+  }
+  const returned = volley[0];
+  returned.owner = 0;
+  returned.type = 0;
+  returned.x = boss.segX[3];
+  returned.y = boss.segY[3];
+  returned.vx = 100;
+  returned.vy = 0;
+  returned.radius = 10;
+  returned.damage = 1;
+  const hpBefore = boss.hp;
+  if (!priv.projectileHitsGauntlet(returned)) fail('a returned jagged ball missed the boss');
+  if (boss.hp >= hpBefore) fail('a returned jagged ball did not damage the boss');
+  console.log(JSON.stringify({ volley: { count: volley.length, returnedDamage: hpBefore - boss.hp } }));
+}
+
+// --- heavy beam stops on the boss, not behind it ----------------------------
+{
+  const { world, priv } = freshWorld();
+  const p = world.players[0];
+  const boss: Worm = priv.spawnMegaWorm(p.x, p.y) ?? fail('the boss never spawned');
+  boss.spawnT = 0;
+  boss.entryT = 0;
+  boss.x = p.x + 500;
+  // Keep the long body vertical and beside the player: a horizontal boss at this
+  // distance would cover the player with its tail, making the beam start inside it.
+  boss.y = p.y - 500;
+  boss.angle = -Math.PI / 2;
+  priv.followMegaChain(boss, 0);
+  p.laserFacing = 0;
+  p.laserT = 1;
+  p.laserStopDist = 0;
+  const hpBefore = boss.hp;
+  priv.applyLaserDamage(p);
+  if (!(boss.hp < hpBefore)) fail('the heavy beam did not damage the Mega Worm');
+  if (!(p.laserStopDist > 0 && p.laserStopDist < PLAYER.laserRange)) {
+    fail(`the beam stop distance is ${p.laserStopDist}, expected a boss hit inside its range`);
+  }
+  if (p.laserStopDist > 500) fail('the heavy beam drew past the Mega Worm body');
+  console.log(JSON.stringify({ beamStop: +p.laserStopDist.toFixed(1) }));
+}
+
 // --- contact on the run ----------------------------------------------------
 {
   const { world, priv } = freshWorld();
@@ -140,6 +205,29 @@ const outsideArena = (x: number, y: number) =>
   for (let i = 0; i < 240; i++) priv.updateWorm(boss, SIM_DT);
   if (!(p.hp < 40)) fail('the straight run never touched a player on its lane');
   console.log(JSON.stringify({ contact: { hp: p.hp } }));
+}
+
+// --- low-health rage: one extra scream, then faster staged passes ----------
+{
+  const { world, priv } = freshWorld();
+  const p = world.players[0];
+  const boss: Worm = priv.spawnMegaWorm(p.x + 320, p.y - 60) ?? fail('the boss never spawned');
+  boss.spawnT = 0;
+  boss.entryT = 0;
+  priv.beginMegaPass(boss);
+  boss.hp = boss.maxHp * MEGA_WORM.flyby.rageAt + 1;
+  priv.damageWorm(boss, 2, 0, 0, 0, 0, boss.x, boss.y);
+  if (!boss.megaRage) fail('crossing the low-health threshold did not trigger rage');
+  if (!(boss.roarT > 0)) fail('the rage turn did not reset the roar timer');
+  // Finish a pass and let it stage: the next arrival uses the short rage delay.
+  boss.flyPhase = 1;
+  boss.flyT = MEGA_WORM.flyby.leaveTime;
+  priv.updateWorm(boss, SIM_DT);
+  if (boss.flyPhase !== 2) fail('the rage pass did not stage');
+  if (Math.abs(boss.spawnT - MEGA_WORM.flyby.rageRepeatDelay) > SIM_DT) {
+    fail(`the rage pass spawn delay is ${boss.spawnT}, expected ${MEGA_WORM.flyby.rageRepeatDelay}`);
+  }
+  console.log(JSON.stringify({ rage: { threshold: MEGA_WORM.flyby.rageAt, spawnT: +boss.spawnT.toFixed(2) } }));
 }
 
 // --- mini-boss registry, ingress family and wave gate ----------------------

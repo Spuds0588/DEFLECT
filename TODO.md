@@ -2,9 +2,79 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Campaign playtest round 2 (2026-11-04, v0.1.188)
+
+- [x] Enemy portals and authored ports are fully opaque red; a destroyed port bursts into red squares only
+- [x] Mega Worm lane changes are a short beat instead of a multi-second geometry stall; minimap draws the
+      whole segmented chain at its real footprint
+- [x] Each Mega Worm pass fires jagged red balls to both sides; they are reflectable and a returned ball
+      damages the boss
+- [x] Probe's heavy beam stops at the Worm body and every hit sparks at the contact point
+- [x] Campaign exit portal pulls the camera back to the room before the mouth opens and the party is drawn in
+- [x] HOLDING's cell block releases two worms and eight viruses that walk out to open-floor waypoints
+- [x] Probes green: `megaworm-check`, `reboot-boss-check`, `assault-check`, `campaign-playthrough-check`
+      (3/3), `campaign-finale-check`; `npm run build`; `npm run bench`
+- [ ] User playtest of the campaign build (0.1.188) and feedback pass
+
+## Gauntlet edge-portal bursts (2026-11-04, v0.1.187)
+
+- [x] Every automatic gauntlet arrival queues into a transient portal on an arena edge; the mouth must be
+      clear of cover and at least `playerClear` units from the local player
+- [x] The portal releases the whole assigned group on one simulation frame, holds for `burstHold`, then
+      closes; bodies fan inward across the mouth instead of trickling out
+- [x] Sentry packs queue as a pair when the live cap has room, while a dart flock keeps `SENTRY.flockSize`
+- [x] Cascading-error colonies use ingress family 4 as a three-block burst; the normal gauntlet has no
+      direct edge-spawn or arena-centre fallback
+- [x] `assault-check` verifies the one-frame sentry burst, portal closure, worm ingress, pair queue and
+      error-colony edge arrival away from the player
+- [x] `npm run build` 0; `npm run bench` 0
+- [ ] Human gauntlet pass on a wide arena: watch the first portal release both opening shooters together,
+      then confirm a worm or error colony enters from another edge without spawning on the player
+
+## Campaign save-slot management (2026-11-04, v0.1.186)
+
+- [x] Each filled slot row carries a separate `CLEAR` action; clear and overwrite both require confirmation,
+      and `CANCEL`/Esc leaves storage untouched
+- [x] `START NEW GAME` uses the first empty slot; when all three are full it becomes `OVERRIDE A SLOT` and
+      asks which save to replace
+- [x] Confirming an overwrite clears the old slot before bot setup, so old score and clean-sweep stats
+      cannot carry into the new run
+- [x] A cleared row immediately reads `EMPTY SLOT // START NEW GAME`, and the new-game row switches back
+      from `OVERRIDE A SLOT` to `FIRST OPEN SLOT`
+- [x] Isolated browser pass: three seeded saves, cancel both dialogs, clear slot 2, new game on the empty
+      slot, reseed all three and confirm an overwrite
+- [x] `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only)
+
+## Campaign level 1 polish (2026-11-04, v0.1.185)
+
+- [x] INTAKE stages three dormant subjects (one of each shape) only when the Warden lesson reaches target lock; clearing them plays Kitty's "did you just defeat those things / we need you here" beat before the portal
+- [x] HOLDING starts its six-subject class awake, chasing the civilian staff; its ten shallow cells run the whole north wall
+- [x] MAINBOARD and ROUTER post authored opening squads; REBOOT opens with 4 sentries / 2 viruses / 1 worm instead of an empty floor
+- [x] Campaign and assault portals pulse with a red glowing fill; a closed portal bursts into red squares
+- [x] Mega Worm death plays one final scream and a dense red-square burst
+- [x] Triangle subjects fire a faster three-round fan on a longer cadence
+- [x] Probe's heavy beam fires only while `CANDLE` is held; release cancels it and starts the cooldown
+- [x] Level 1 ends on Kitty's infection-source lines, a portal pull, clear stats and `MORE LEVELS COMING SOON`
+- [x] Probes green: `quarantine-check`, `holding-layout-check`, `campaign-rules-check`, `reboot-boss-check`, `boss-warning-check`, `campaign-finale-check`, `triangle-missile-check`, `campaign2-check`, `campaign-playthrough-check`
+- [ ] Published 0.1.185 playthrough with `?campaignDebug=1` (the user will run this)
+
+## Campaign roadmap after level 1 (2026-11-04)
+
+> Forward notes from the designer, not scheduled work. Level 1 is the quarantine / REBOOT run above.
+
+- **Level 2 — NETWORK SWITCH:** the switch arena, business-laptop variants, the scanner, the fax,
+  `SWIPE RIGHT`, then `SMART WATCH`; File Blob is the mini-boss.
+- **Level 3 — AIRPORT:** the airport devices and security flow built around the existing air-traffic and
+  flip-board work.
+- **Level 4 — SPACE:** the space devices plus new space-station systems; reuse SATELLITE as the blockout
+  base where it fits.
+- **Level 5 — SPEAK & SPELL:** the Speak & Spell, disk-drive and home-server-video devices.
+- **Level 6 — “KISSINGFACE”:** the server infrastructure (a riff on the Hugging Face/AI-agent hack), working
+  up to the rogue AI agent as the final boss.
+
 ## Campaign playtest fixes (2026-11-04, v0.1.181)
 
-- [x] INTAKE stages six dormant lock targets and no cover; the Warden lock/cycle step is completable
+- [x] INTAKE stages six dormant lock targets and no cover; the Warden lock/cycle step is completable (superseded 0.1.185: three subjects at target lock)
 - [x] All four QUARANTINE arenas use the full `48,48 -> 1942,1046` playfield
 - [x] HOLDING wakes its six subjects on `CALIBRATION.wakeStagger` clocks
 - [x] Feed rooms wait for every port **and** every live threat before opening the exit
@@ -43,7 +113,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] Production check: Pages run `41752976683` succeeded; the live page logs `Build 0.1.179`, serves `sw.js` `deflect-0.1.179`, and its bundles return 200
 - [ ] Headed campaign auto-hop and a published-build playthrough
 
-Last updated: 2026-11-04 (CAMPAIGN PLAYTEST FIXES)
+Last updated: 2026-11-04 (CAMPAIGN LEVEL 1 POLISH + LEVEL 2–6 ROADMAP)
 Formerly: 2026-11-04 (EXIT-FRAME VARIANTS FALSIFIED)
 Formerly: 2026-11-03 (CAMPAIGN PLAYTHROUGH PASS)
 Formerly: 2026-11-02 (BOSS SWEEP + CAMPAIGN LEVEL 2)
@@ -3262,7 +3332,8 @@ The plan is written into `CAMPAIGN.md`; no runtime work has started.
 - [ ] Wire CONTINUE: restore the slot's program, sector and node, and skip the menu program pick on resume
 - [ ] Write the save at the end of every completed level (`saveStoryProgress`), then define the death rule
       (last level or last sector checkpoint)
-- [ ] Slot management: overwrite/delete confirmation and a visible last-played timestamp
+- [~] Slot management: delete/overwrite confirmation is in (v0.1.186); a visible last-played timestamp
+      is still open
 - [ ] Decide whether a resume that picks a different program is refused or rewrites the slot
 
 ### Verification
@@ -3689,3 +3760,43 @@ arrive.
       `assets/index-D9rue8n9.js` 200 `application/javascript`.
 - [ ] Fresh human INTAKE -> HOLDING pass: confirm the class visibly attacks, the shock line reads, and the
       arena-2 throw is visible after the wipe.
+
+## CAMPAIGN FIX BATCH (v0.1.184, 2026-11-04)
+
+- [x] Triangle primitives fire a slow three-round fan of reflectable missiles instead of a shard cloud.
+- [x] Campaign clear waits 2.0 s after the last port/hostile before opening the portal and pulling.
+- [x] Campaign arrivals spawn under the portal and are thrown east after a 2.15 s wipe beat.
+- [x] Tutorials play once: Warden basics in INTAKE, skill and heavy in HOLDING; REBOOT is narration only.
+- [x] Persisted `SKIP TUTORIALS` switch on the campaign save-slot screen, reachable by gamepad.
+- [x] Mega Worm entrance no longer freezes players; the camera stays on the wide arena.
+- [x] Mega Worm screams again at 35% health and its passovers speed up.
+- [x] Campaign debug capture is silent; no HUD or overlay is built.
+- [x] Campaign bots hold facing on a feed and route around cover.
+- [ ] Fresh human run: INTAKE -> HOLDING -> MAINBOARD -> ROUTER -> REBOOT, judge the fan, clear beat,
+      thrown landing, single-pass lessons and the rage fight.
+
+## ARENA IDEAS — AIRPORT SECURITY (2026-11-04, unscoped)
+
+Two local arena concepts from the level-1 test. Do not start either until the campaign re-test is done.
+Neither is a network arena; if one becomes a campaign node it follows D13/D41 and stays local-only.
+
+### X-RAY BAG
+- The stage is the X-ray viewer looking at the contents of one bag. The whole stage shifts **right** as
+  the old luggage leaves and the next bag arrives, pushing every body toward the right side.
+- The bag and its dark internal shapes change every cycle. Those shapes are solid cover: they block shots
+  and bodies, and cannot be moved through or destroyed.
+- Occasionally one shape gets a red outline and a `FLAG FOR MANUAL CHECK` message, then the whole stage
+  shifts **up** as the bag leaves the top of the screen.
+- Keep a static perimeter band clear so ingress/exit portals never sit inside a changing shape.
+- Open decisions: shift timing and warning, whether the shift carries or shoves bodies, red-flag rate and
+  duration, how the X-ray palette stays readable against every program colour, and how local-only shift
+  state is stored. A moving stage needs its own local arena layer, not static `pillars` pretending to move.
+
+### TICKET MACHINE
+- A kiosk screen cycles through 3-4 screens: ticket-number entry, seat selection, luggage count, then a
+  printed ticket sliding down the screen.
+- Each screen has its own obstacles that block or reflect shots, so the room's cover changes as the
+  screens advance.
+- Reserve a static band around the screen edge for enemy portals; no screen element may intrude on it.
+- Open decisions: cycle trigger/time per screen, whether the ticket print is a live safe window or a
+  hazard, whether the ticket itself is cover, and how the screen phase is stored and reset.

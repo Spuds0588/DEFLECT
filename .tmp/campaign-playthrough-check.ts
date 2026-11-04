@@ -34,7 +34,7 @@ function buildFloor(arena: ArenaDef) {
   const room = arena.rooms?.find((r) => r.theme === 'holding');
   if (room) {
     const l = holdingCellLayout(room);
-    blocks.push({ x: l.left, y: l.top, w: l.cellW * 3, h: l.bottom - l.top });
+    blocks.push({ x: l.left, y: l.top, w: l.cellW * l.cellCount, h: l.bottom - l.top });
   }
   const b = arena.bounds;
   // Match World.inVoid exactly (inclusive edges, no inset). An inset reads every plate/deck
@@ -202,7 +202,10 @@ function playLevel(level: CampaignLevel, run: number) {
   let bossSpawn: any = null;
   let hpBeforeStep = p.hp;
   let lastDir = 'none';
-  const maxTicks = Math.round(420 / SIM_DT);
+  // The Mega Worm is a single 206 HP pool and the bot pilot spends a lot of the fight
+  // orbiting. Two seeds were still landing hits at 420 s; the check is about reaching a
+  // clear, not about a speedrun time.
+  const maxTicks = Math.round(1200 / SIM_DT);
   const portsAtStart = world.portsClosed;
 
   // Per-frame fall forensics: what the body was doing on the frames that ended it.

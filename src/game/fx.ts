@@ -108,6 +108,37 @@ export class Fx {
         this.flashColor = '#ffb27a';
         break;
       }
+      case EV.PORTAL_BREAK: {
+        // An enemy port is a red machine; every piece it throws is a red square. No
+        // triangular shards, no dust tint, no white flash.
+        const scale = Math.max(0.6, Math.min(2.4, ev.power / 100));
+        this.particles.ring(ev.x, ev.y, P_COLOR_BLAST_RED, 8, ev.power * 2.6, 0.4);
+        this.particles.squares(ev.x, ev.y, Math.round(34 + 18 * scale), P_COLOR_BLAST_RED, 90, 620 * scale);
+        this.shake = Math.max(this.shake, 7 + 3 * scale);
+        break;
+      }
+      case EV.MEGA_HIT: {
+        // The physical impact point, not the head: the boss body is long, and a hit on
+        // the tail has to look like it landed there. A deliberately wider spray than
+        // a normal threat hit so the boss's huge silhouette still shows the tick.
+        const power = Math.max(1, ev.power);
+        const count = Math.round(20 + Math.min(28, power * 4));
+        this.particles.shards(ev.x, ev.y, count, P_COLOR_BLAST_RED, 150, 760);
+        this.particles.shards(ev.x, ev.y, Math.round(count * 0.4), P_COLOR_WORM, 110, 560);
+        this.particles.burst(ev.x, ev.y, 8, P_COLOR_WHITE, 90, 420);
+        this.particles.ring(ev.x, ev.y, P_COLOR_BLAST_RED, 10, 130, 0.34);
+        this.shake = Math.max(this.shake, 5);
+        break;
+      }
+      case EV.MEGA_DEATH: {
+        // Each body node calls this, so the whole worm dissolves as a field of red
+        // squares rather than a single burst at the head.
+        this.particles.shards(ev.x, ev.y, 22, P_COLOR_BLAST_RED, 70, 470);
+        this.particles.shards(ev.x, ev.y, 8, P_COLOR_WORM, 50, 320);
+        this.particles.ring(ev.x, ev.y, P_COLOR_BLAST_RED, 8, 80, 0.34);
+        this.shake = Math.max(this.shake, 6);
+        break;
+      }
       case EV.MEGA_CRY: {
         // The arrival call: a long pressure ring and a solid shake, so the screen move
         // lands with the sound instead of a frame later.

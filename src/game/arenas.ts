@@ -63,27 +63,31 @@ export interface ArenaRoomDef {
   sub: string;
 }
 
-/** Shared geometry for the holding room's three-cell block. The renderer and the
+/** Shared geometry for the holding room's north-wall cell block. The renderer and the
  *  campaign's bar collision both read this, so the painted bars and the solid front
  *  cannot drift apart. */
 export interface HoldingCellLayout {
   left: number;
   cellW: number;
+  cellCount: number;
   top: number;
   bottom: number;
 }
 
 export function holdingCellLayout(room: ArenaRoomDef): HoldingCellLayout {
-  // The block sits on the back-right of the plate and leaves the left side open. The intake
-  // bridge lands on that open side, so a body walks in beside the cells and then reads the
-  // block from the front as it heads right: arriving over the top of the plate dropped the
-  // player behind the sealed bars, in a strip too thin to escape while they were powered.
-  const blockW = Math.min(680, room.w * 0.36);
+  // The block spans the whole north wall as a row of shallow cells. The office floor
+  // below stays open for the intake bridge, the calibration formation and the civilians.
+  // Depth is deliberately short: the front bars must not hide the held silhouettes.
+  const cellCount = 10;
+  const inset = 18;
+  const left = room.x + inset;
+  const blockW = room.w - inset * 2;
   return {
-    left: room.x + room.w - blockW - 12,
-    cellW: (blockW - 12) / 3,
+    left,
+    cellW: blockW / cellCount,
+    cellCount,
     top: room.y + 16,
-    bottom: room.y + Math.round(room.h * 0.46),
+    bottom: room.y + 186,
   };
 }
 
@@ -3274,15 +3278,16 @@ const ARENAS_BASE: readonly ArenaDef[] = [
   {
     id: 34,
     name: 'QUARANTINE // HOLDING',
-    tagline: 'Three cells. Six subjects. One cat.',
+    tagline: 'Ten cells. Six subjects. One cat.',
     hudLabel: 'ARENA // QUARANTINE HOLDING',
     accent: '#ffbd66',
     accentSoft: 'rgba(255, 189, 102, 0.32)',
     accentFaint: 'rgba(255, 189, 102, 0.032)',
     signature: 2,
-    // The holding office is a full device floor. The cell block is the only body
-    // barrier; the six calibration subjects form two columns in front of it. A portal
-    // enters on the open left side and exits on the right once both waves are down.
+    // The holding office is a full device floor. Ten shallow cells run the whole
+    // north wall; the six awake calibration subjects form two columns in front of
+    // them. A portal enters on the open left side and exits on the right once both
+    // waves are down.
     bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
     pillars: [],
     spawns: [
@@ -3308,11 +3313,12 @@ const ARENAS_BASE: readonly ArenaDef[] = [
       },
     ],
     // Three civilians work the holding office. They are painted in the arena pass; the
-    // campaign script hides them after the calibration class wakes. No bodies, no hits.
+    // campaign script hides them after the calibration class turns on them. No bodies,
+    // no hits. They are roughly twice the old silhouette so the chase reads at a glance.
     regulars: [
-      { id: 'ticket', x: 200, y: 900, scale: 0.82, phase: 0.4, carry: 1 },
-      { id: 'patch', x: 90, y: 900, scale: 0.82, phase: 2.1 },
-      { id: 'cache', x: 330, y: 900, scale: 0.78, phase: 4.2, carry: 2 },
+      { id: 'ticket', x: 200, y: 900, scale: 2.1, phase: 0.4, carry: 1 },
+      { id: 'patch', x: 90, y: 900, scale: 2.05, phase: 2.1 },
+      { id: 'cache', x: 330, y: 900, scale: 2.0, phase: 4.2, carry: 2 },
     ],
     props: [
       { x: 150, y: 980, w: 38, h: 28, kind: PROP.ZIP },

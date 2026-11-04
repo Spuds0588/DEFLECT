@@ -283,23 +283,62 @@ export const INTAKE_WAKE: readonly TutorialStep[] = [
   },
 ];
 
+/** Kitty catches the first clear and sends the player through the exit portal. */
+export const INTAKE_CLEAR: readonly TutorialStep[] = [
+  {
+    id: 'intake-kitty',
+    speaker: 'SCRIPT_KITTY',
+    line: 'DID YOU JUST DEFEAT THOSE THINGS?',
+    readTime: 2.6,
+  },
+  {
+    id: 'intake-need',
+    speaker: 'SCRIPT_KITTY',
+    line: 'THEN WE NEED YOU HERE. ONE SEC...',
+    readTime: 2.4,
+  },
+];
+
+/** The route's final beat, played while the last portal forms. */
+export const CAMPAIGN_FINALE: readonly TutorialStep[] = [
+  {
+    id: 'finale-found',
+    speaker: 'SCRIPT_KITTY',
+    line: 'WE FOUND IT. THE INFECTION GOT INTO OUR NETWORK HERE.',
+    readTime: 3.4,
+  },
+  {
+    id: 'finale-trail',
+    speaker: 'SCRIPT_KITTY',
+    line: "FOLLOW ITS PATH BACK TO THE SOURCE. I'LL PULL YOU THROUGH.",
+    readTime: 4.2,
+  },
+  {
+    id: 'finale-portal',
+    speaker: 'SCRIPT_KITTY',
+    line: "ONE MORE PORT. I'M THROWING YOU THROUGH.",
+    readTime: 3.0,
+  },
+];
+
 /**
  * Wave 1 of the calibration fight: the six awakened primitives are live, and the only
- * new job is the program skill. Clearing them powers the cell block down.
+ * new job is the program skill. Clearing them powers the cell block down. This is an
+ * instruction, not a gate: the player reads the button and decides when to use it.
  */
 export const CALIBRATION_SKILL_TUTORIAL: readonly TutorialStep[] = [
   {
     id: 'skill',
     speaker: 'WARDEN',
-    line: 'THEY ARE AWAKE. SHOW ME YOUR SKILL.',
+    line: 'THEY ARE AWAKE. YOUR SKILL IS TAP Y / E. USE IT WHEN YOU NEED IT.',
     prompt: 'TAP Y / E (SKILL)',
-    action: 'skill',
+    readTime: 4.2,
   },
 ];
 
 /**
- * Wave 2: the bars have failed and the held worms and viruses are loose. This is the
- * heavy lesson, with the release line buying the player a beat to read the cell block.
+ * Wave 2: the bars have failed and the held worms and viruses are loose. The heavy is
+ * explained once and never waits for the player to perform it.
  */
 export const CALIBRATION_POWER_TUTORIAL: readonly TutorialStep[] = [
   {
@@ -311,13 +350,17 @@ export const CALIBRATION_POWER_TUTORIAL: readonly TutorialStep[] = [
   {
     id: 'power',
     speaker: 'WARDEN',
-    line: 'WORMS AND VIRUSES. HOLD THE HEAVY UNTIL IT COMMITS.',
+    line: 'WORMS AND VIRUSES. HOLD Y / E FOR YOUR HEAVY. RELEASE TO STOP.',
     prompt: 'HOLD Y / E (POWER ATTACK)',
-    action: 'power',
+    readTime: 4.4,
   },
 ];
 
-/** script_kitty's arena briefing: remember the kit the system calls a defect. */
+/**
+ * script_kitty's arena briefing: remember the kit the system calls a defect. The kit
+ * itself was taught in HOLDING; this beat only carries the story, so it can never
+ * block the breach or repeat the skill/heavy prompts in the final arena.
+ */
 export const KITTY_TUTORIAL: readonly TutorialStep[] = [
   {
     id: 'kitty-hello',
@@ -330,23 +373,9 @@ export const KITTY_TUTORIAL: readonly TutorialStep[] = [
     line: 'REMEMBER YOUR ORIGINAL PROGRAMMING. IT IS STILL IN YOU. THAT IS HOW WE GET OUT.',
   },
   {
-    id: 'skill',
-    speaker: 'SCRIPT_KITTY',
-    line: 'TAP YOUR SKILL. THAT ONE IS YOURS, NOT THEIR TRAINING.',
-    prompt: 'TAP SKILL (Y / E / MIDDLE MOUSE)',
-    action: 'skill',
-  },
-  {
-    id: 'power',
-    speaker: 'SCRIPT_KITTY',
-    line: 'NOW HOLD IT. THE HEAVY IS THE PART THEY COULD NOT PATCH OUT.',
-    prompt: 'HOLD POWER ATTACK (Y / E / MIDDLE MOUSE)',
-    action: 'power',
-  },
-  {
     id: 'kitty-escape',
     speaker: 'SCRIPT_KITTY',
-    line: 'GOOD. WHEN THE DOOR OPENS, DO NOT STOP MOVING.',
+    line: 'THE DOOR IS OPENING. DO NOT STOP MOVING.',
   },
 ];
 

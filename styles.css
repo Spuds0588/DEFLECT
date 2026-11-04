@@ -2505,6 +2505,52 @@ body.pointer-live .console-option:hover {
   font-size: clamp(16px, 1.1vw, 21px);
 }
 
+/* One save row: the whole slot remains the resume/start target, with a separate
+   destructive action that controller navigation can reach to the right. */
+.story-slot-row {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.story-slot-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.story-slot-clear {
+  flex: 0 0 auto;
+  width: clamp(82px, 6.2vw, 112px);
+  min-height: clamp(56px, 4.6vw, 72px);
+  justify-content: center;
+  padding-inline: clamp(8px, 0.8vw, 14px);
+  border-left-color: rgba(255, 91, 104, 0.22);
+  color: rgba(255, 201, 206, 0.72);
+  font-size: clamp(14px, 1vw, 19px);
+  letter-spacing: 0.1em;
+}
+
+.story-slot-clear:focus,
+.story-slot-clear.nav-focus,
+body.pointer-live .story-slot-clear:hover {
+  border-left-color: #ff7181;
+  background: rgba(255, 59, 77, 0.14);
+  color: #fff2f3;
+  box-shadow: inset 0 0 0 1px rgba(255, 91, 104, 0.28), 0 0 22px rgba(255, 59, 77, 0.12);
+}
+
+@media (max-width: 560px) {
+  .story-slot-clear {
+    width: 72px;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+  }
+
+  .story-slot-main .option-value {
+    display: none;
+  }
+}
+
 .console-stage-label {
   margin: clamp(16px, 1.8vh, 24px) 10px 8px;
   color: rgba(155, 248, 255, 0.78);
@@ -3652,4 +3698,100 @@ body.demo {
   font-size: clamp(11px, 0.85vw, 14px);
   line-height: 1.5;
   letter-spacing: 0.1em;
+}
+
+/* Local campaign QA capture (`?campaignDebug=1`). It is intentionally small and
+   collapsible so it does not cover the arena read while a run is being recorded. */
+.campaign-debug {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 95;
+  width: min(310px, calc(100vw - 24px));
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid rgba(184, 255, 58, 0.55);
+  background: rgba(3, 11, 8, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 12px 30px rgba(0, 0, 0, 0.4);
+  color: #d9ffd6;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.45;
+  letter-spacing: 0.04em;
+  pointer-events: auto;
+}
+
+.campaign-debug-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border-bottom: 1px solid rgba(184, 255, 58, 0.2);
+  color: #b8ff3a;
+  text-transform: uppercase;
+}
+
+.campaign-debug-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #b8ff3a;
+  box-shadow: 0 0 8px rgba(184, 255, 58, 0.9);
+}
+
+.campaign-debug-clock {
+  margin-left: auto;
+  color: rgba(217, 255, 214, 0.62);
+  letter-spacing: 0.02em;
+}
+
+.campaign-debug-state {
+  padding: 7px 9px 2px;
+  color: #f1ffd9;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.campaign-debug-detail {
+  padding: 0 9px 8px;
+  color: rgba(217, 255, 214, 0.68);
+  white-space: pre-line;
+}
+
+.campaign-debug-actions {
+  display: flex;
+  gap: 4px;
+  padding: 0 9px 9px;
+}
+
+.campaign-debug-actions button {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 4px;
+  border: 1px solid rgba(184, 255, 58, 0.32);
+  background: rgba(184, 255, 58, 0.07);
+  color: #d9ffd6;
+  font: inherit;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.campaign-debug-actions button:hover,
+.campaign-debug-actions button:focus-visible {
+  border-color: rgba(184, 255, 58, 0.9);
+  background: rgba(184, 255, 58, 0.16);
+  outline: none;
+}
+
+.campaign-debug.campaign-debug-collapsed .campaign-debug-detail,
+.campaign-debug.campaign-debug-collapsed .campaign-debug-actions {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .campaign-debug {
+    right: 8px;
+    bottom: 8px;
+  }
 }

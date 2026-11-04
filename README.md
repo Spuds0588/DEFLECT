@@ -188,6 +188,15 @@ charges, energy and cooldowns, and it keeps AI cost out of the physics loop.
 | Tuning | `src/game/tuning/*.json` |
 | Build tooling | `scripts/bench.ts`, `scripts/gen-icons.mjs` |
 
+### Gauntlet ingress: one edge, one burst
+
+Automatic gauntlet arrivals are queued into a transient red portal on an arena edge. The portal opens,
+releases its whole group across the mouth on one simulation frame, holds for `GAUNTLET.assault.burstHold`,
+then closes. If no edge point is both clear of cover and far enough from the player, the queue waits rather
+than dropping a body nearby. Sentry packs arrive as pairs when the live cap has room, worm and virus groups
+arrive together, and a cascading-error colony enters as a three-block burst. Campaign opening squads and
+authored campaign ports are separate content.
+
 ### Campaign levels: one device, one portal
 
 A campaign level is one arena in an ordered route, not a floor plan joined to the next. Clearing a node
@@ -196,23 +205,42 @@ bridge between islands and no `NEXT ARENA` menu between devices; only the last n
 overlay. `QUARANTINE` is four portal-fed arenas: INTAKE, HOLDING, MAINBOARD and ROUTER. Each is one room
 with its own furniture and labels; the only way between them is the portal. All four use the full
 `48,48 -> 1942,1046` playfield: the quarantine rooms were too cramped to dodge fire or make a reflect read.
-INTAKE is deliberately bare, with six dormant lock targets and no cover. The Warden's lesson ends by
-waking that class: he gets one shocked line and drops out of the story box, the system orders
-`DESTROY ALL AWAKENED PRIMITIVES`, and the first portal opens only after every subject is gone. The class
-absorbs hits during the lesson and while any subject is still opening; otherwise the lesson's own fire step
-wakes them and a held burst can delete the fight before the shock beat. HOLDING keeps its back-right cell
-block but opens the left and front; the block is a local barrier, not an island gate. An arrival holds the
-body at the left mouth for `CAMPAIGN.portalThrowDelay` (0.62 s) while the hop wipe opens, then applies the
-decaying `portalThrowSpeed` (1500) throw and 1.4 s of entry protection. Landing lanes stay clear of authored
-hostiles.
+INTAKE is deliberately bare, with three dormant lock targets (one circle, one triangle and one rectangle)
+and no cover. They are not placed until the Warden's lesson reaches target lock, so the player meets three
+subjects instead of a full class. The lesson ends by waking them: he gets one shocked line and drops out of
+the story box, the system orders `DESTROY ALL AWAKENED PRIMITIVES`, and the first portal opens only after
+all three are gone. The triangle fires a fast three-round fan rather than a shard cloud, on a longer
+cadence; the rounds are ordinary hostile shots, so guard and lash return them. The class absorbs hits
+during the lesson and while any subject is still opening; otherwise the lesson's own fire step wakes them
+and a held burst can delete the fight before the shock beat. HOLDING's ten-cell row spans the full north
+wall and is only 170 units deep, so the held threats are easy to read; the open floor is in front, and the
+cells remain a local barrier, not an island gate. Its six-subject class is already awake when the party
+lands, chasing the civilian staff; Kitty's arrival line runs over the start, then the skill briefing.
+Clearing that class powers the block down and releases two worms and eight viruses, already walking toward
+open-floor waypoints instead of waiting behind the bars to be picked off. A clear holds the room for
+`CAMPAIGN.clearDelay` (2.0 s) after the last port or hostile dies, so death animations finish before the
+right-wall portal opens. The exit camera pulls back to `CAMERA.portalArenaZoom` for `CAMPAIGN.portalLead`
+before the mouth opens, so the party can be watched crossing the room into it. An arrival holds the body at the left mouth for
+`CAMPAIGN.campaignEntryThrowDelay` (2.15 s) while the hop wipe opens, then applies the decaying
+`portalThrowSpeed` (1500) throw and 1.4 s of entry protection. Landing lanes stay clear of authored
+hostiles. Three local save slots back the run: a filled row can be cleared after confirmation, and `START
+NEW GAME` takes the first empty slot or, when all three are full, asks which save to replace before the
+bot setup starts.
 
-Threats still arrive through authored **ports** (`ArenaDef.ingress`): fixed, damageable squares that emit
-a threat family on a clock and stop when shot shut. Ports reuse the file-box damage path rather than a
-second entity type, respect the same live caps as a sentry pack, and gate the exit directly: the right-wall
-portal pull opens only when every port is shut **and** every live hostile from that room is gone. Ports are
+Threats still arrive through authored **ports** (`ArenaDef.ingress`): fixed, fully opaque red damageable
+squares that emit a threat family on a clock and stop when shot shut. Ports reuse the file-box damage path
+rather than a second entity type, respect the same live caps as a sentry pack, and gate the exit directly:
+the right-wall portal pull opens only when every port is shut **and** every live hostile from that room is
+gone. A shut port bursts into a spray of red squares, matching the enemy death language. Ports are
 local content — campaign and infection only, never in a snapshot. REBOOT is fed by six corner ports; the
-Mega Worm is announced only after all six and their delivered bodies are cleared. GRID ZERO's outer edge is
-open to shots and beams (but not bodies), so the Worm can be hit on its staged approach before it crosses the lip.
+Mega Worm is announced only after all six and their delivered bodies are cleared. REBOOT opens with its
+authored squad already on the floor (four sentries, two viruses and a worm), so the arena is never an empty
+wait. During a pass the Worm fires jagged red balls to both sides; guard or lash one back into its body to
+damage it. The heavy beam stops at the Worm instead of drawing through it, and every hit sparks at the
+contact point. Its death spends one final scream and a large red-square burst. A final-node clear plays
+Kitty's trail beat, pulls the party through the portal, then parks on the level result with
+`MORE LEVELS COMING SOON`. GRID ZERO's outer edge is open to shots and beams (but not bodies), so the Worm
+can be hit on its staged approach before it crosses the lip.
 
 Every round-based match hops the same way. When a round ends, a white portal opens on the right wall and
 pulls every standing body in; the next round is thrown out of the left-wall mouth with a decaying eastward
@@ -432,8 +460,12 @@ full-radius clamping.
 
 The Mega Worm now arrives at roughly three times its old silhouette, doubled health and a straight-line flight
 model. Campaign REBOOT gives it a slow harmless entrance pass and four fixed fly-by lanes with a wide arena
-camera; it never homes on the player after the entrance, and no small families spawn between passes. Its body is
-one rigid chain with a capsule hit test, so a shot that lands between two plates still connects.
+camera; it never homes on the player after the entrance, and no small families spawn between passes. The
+reposition between lanes is a short beat, not a stall. Each pass fires a pair of jagged red balls to the
+Worm's sides; they are ordinary reflectable shots, and a returned one damages the boss on contact. Its body is
+one rigid chain with a capsule hit test, so a shot that lands between two plates still connects, and the
+heavy beam ends at the near edge of the body. Hits spark at the actual contact point. The minimap draws the
+whole segmented chain at its real footprint, not a single dot.
 
 
 ## Demo boss rotation
