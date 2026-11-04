@@ -71,9 +71,37 @@ const outsideArena = (x: number, y: number) =>
 
   const killsBefore = world.gauntletKills;
   priv.damageWorm(boss, boss.hp, 0, 0, 0, 0, boss.x, boss.y);
-  if (boss.active) fail('the boss survived its pool reaching zero');
-  if (world.gauntletKills <= killsBefore) fail('the boss kill was not credited to the player');
-  console.log(JSON.stringify({ sponge: { hp: fullHp, plates: MEGA_WORM.segments, pool: true } }));
+  if (!boss.active) fail('the boss vanished on the lethal hit instead of starting its final pass');
+  if (boss.megaDeath !== 0) fail(`death state ${boss.megaDeath}, expected the final crossing`);
+  if (world.gauntletKills !== killsBefore) fail('the boss kill was credited before the head exploded');
+
+  let sawDeathPass = false;
+  let sawHeadSpin = false;
+  let maxHeadSpin = 0;
+  let maxBursts = 0;
+  let deathTicks = 0;
+  for (; deathTicks < 3000 && boss.active; deathTicks++) {
+    priv.updateMegaWorm(boss, SIM_DT);
+    if (boss.megaDeath === 0) sawDeathPass = true;
+    maxBursts = Math.max(maxBursts, boss.megaDeathSegs);
+    if (boss.megaDeath === 2) {
+      sawHeadSpin = true;
+      if (boss.megaDeathSegs !== boss.segCount) fail('the head spun before every plate burst');
+      maxHeadSpin = Math.max(maxHeadSpin, boss.megaDeathSpin);
+    }
+  }
+  if (boss.active) fail('the boss death animation never finished');
+  if (!sawDeathPass) fail('the boss never flew its final crossing');
+  if (!sawHeadSpin) fail('the head was not the last part to explode');
+  if (maxHeadSpin <= 0) fail('the head did not spin before exploding');
+  if (maxBursts !== MEGA_WORM.segments) fail(`only ${maxBursts} plates burst, expected ${MEGA_WORM.segments}`);
+  if (world.gauntletKills !== killsBefore + 1) fail('the boss kill was not credited after the head exploded');
+  console.log(
+    JSON.stringify({
+      sponge: { hp: fullHp, plates: MEGA_WORM.segments, pool: true },
+      death: { seconds: +(deathTicks * SIM_DT).toFixed(2), bursts: maxBursts, finalPass: sawDeathPass },
+    }),
+  );
 }
 
 // --- straight run, wide turn, no teleport ----------------------------------

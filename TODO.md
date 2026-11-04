@@ -2,6 +2,17 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Mega Worm death choreography (2026-11-04, v0.1.190)
+
+- [x] Lethal damage starts a harmless final flyover instead of deleting the whole boss immediately
+- [x] Plates burst tail-first through `MEGA_WORM.death`, then the head spins and explodes last
+- [x] The boss stays active for the camera and campaign clear gate until the head burst; kill credit and the
+      drop follow it
+- [x] Burst plates leave the collision capsule; the body renderer and minimap shorten with the tail
+- [x] Probes green: `megaworm-check`, `reboot-boss-check`, `campaign-finale-check`,
+      `campaign-playthrough-check` (3/3); `npm run build`; `npm run bench`
+- [ ] Human playtest on 0.1.190: judge final flyover length, plate cadence and head-spin readability on a couch
+
 ## Campaign playtest round 3 (2026-11-04, v0.1.189)
 
 - [x] Automatic gauntlet mouths sit at `GAUNTLET.assault.edgeInset` 60 (a 16-unit wall gap), not in the floor

@@ -7807,3 +7807,38 @@ heavy glow and particles, and destruction that disappears in the red-square burs
 - Not yet tested: couch readability of the glow and the immediate burst; the next human playtest covers it.
 
 **Next:** human campaign replay on 0.1.189. Committed and pushed with this entry.
+
+## 2026-11-04 — Mega Worm final flyover and plate-by-plate death (v0.1.190)
+
+**Goal:** extend the boss death beyond the single burst: one more flyover, then one plate at a time, with
+the head spinning and exploding last.
+
+**Changes.**
+- `Worm.megaDeath` owns the choreography: -1 alive, 0 final crossing, 1 tail-first plate bursts, 2 head
+  spin, 3 finished. `beginMegaDeath` continues a live crossing or stages one last fixed lane from off-map;
+  `updateMegaDeath` flies the pass, bursts a plate every `MEGA_WORM.death.segmentInterval`, spins the head
+  for `headSpinTime`, then `finishMegaDeath` emits the head `WORM_KILL` / `MEGA_DEATH` / `MEGA_CRY`, credits
+  the kill and drops the pickup.
+- The dying boss stays `active` but harmless: no contact, volleys or damage until the head goes. That holds
+  `campaignFloorClear` and the wide boss camera for the whole 5.9 s sequence, so the clear cannot open early.
+- `drawMegaWorm` hides burst plates, shortens the spine, spins the head plate and eyes with a dashed turnover
+  ring, and the minimap trims its body line. Burst plates leave the capsule hit test.
+- `MEGA_DEATH` FX now scales its red-square spray and ring from event power; head power 150 adds the white
+  burst. Tuning is in `MEGA_WORM.death` (speed 700, 0.14 s cadence, 1.35 s spin, 14 rad/s).
+- `.tmp/megaworm-check.ts` now asserts the final pass, 13 bursts, head-last spin, no early kill credit and
+  the boss staying active through the sequence.
+- Updated `AGENTS.md`, `README.md`, `GAME_GUIDE.md`, `CAMPAIGN.md`, `TODO.md`; bumped all version stamps to
+  0.1.190.
+
+**Verification.**
+- `megaworm-check` OK: 206 hp / 13 plates; death 5.87 s, 13 bursts, final pass true; flight, volley, beam,
+  contact, rage, registry and arrival blocks green.
+- `reboot-boss-check`, `campaign-finale-check`, `campaign-playthrough-check` 3/3 continuous runs (each
+  defeated the REBOOT Mega Worm) OK.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only); `npm run bench` 0. 8P bot
+  swarm 0.099 ms avg / 0.277 ms p99; gauntlet max 0.173 ms avg / 0.533 ms p99 at 29.6 live threats. Under
+  the 4 ms budget. `git diff --check` clean.
+- Not yet tested: couch readability of the death pass, plate cadence and head spin; next human playtest.
+
+**Next:** human campaign replay on 0.1.190, specifically the REBOOT boss death. Committed and pushed with
+this entry.

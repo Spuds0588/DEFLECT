@@ -655,6 +655,8 @@ creature: every hit anywhere on the body drains the same bar, and nothing breaks
 
 - **One health pool.** Where you hit does not matter. There is no weak plate, no head to break and no
   second worm to split off; keep shooting the body and it dies.
+- **Death flight.** A killing blow does not delete it. It makes one last pass, then its plates burst from
+  the tail forward; the head spins and explodes last. The room is not clear until the head goes.
 - **Straight runs, offscreen reset.** It picks the last place it saw you, flies one straight line through
   it, then clears the floor and resets offscreen for the next run. Touching any plate hurts. It only
   re-aims between runs, so a pass is fixed once it begins; step off the line and it misses. The reset is a

@@ -17534,8 +17534,10 @@ export class World {
     const hdx = x - w.x;
     const hdy = y - w.y;
     if (hdx * hdx + hdy * hdy <= (w.hitR + pad) ** 2) return true;
-    if (w.segCount <= 0) return false;
-    const tail = w.segCount - 1;
+    // Plates already burst no longer eat shots; the live capsule shrinks with the tail.
+    const segs = w.megaDeath >= 1 ? Math.max(0, w.segCount - w.megaDeathSegs) : w.segCount;
+    if (segs <= 0) return false;
+    const tail = segs - 1;
     return this.pointSegmentDistance2(x, y, w.x, w.y, w.segX[tail], w.segY[tail]) <= (w.segR + pad) ** 2;
   }
 
@@ -17753,6 +17755,11 @@ export class World {
     w.roarT = 0;
     w.megaPass = 0;
     w.megaRage = false;
+    w.megaDeath = -1;
+    w.megaDeathT = 0;
+    w.megaDeathSegs = 0;
+    w.megaDeathSpin = 0;
+    w.megaDeathBy = -1;
     w.volleyT = 0.4;
     w.anchorX = w.x;
     w.anchorY = w.y;
@@ -17803,7 +17810,7 @@ export class World {
     hitX: number,
     hitY: number,
   ): void {
-    if (!w.active) return;
+    if (!w.active || w.megaDeath >= 0) return;
     w.hp -= amount;
     w.hitFlash = 0.22;
     if (sourceSlot >= 0) w.aggroT = MEGA_WORM.aggroTime;
@@ -17813,7 +17820,7 @@ export class World {
     const hy = Number.isFinite(hitY) ? hitY : w.y;
     this.emit(EV.MEGA_HIT, sourceSlot, hx, hy, amount, dirX, dirY);
     if (w.hp <= 0) {
-      this.killMegaWorm(w, sourceSlot);
+      this.beginMegaDeath(w, sourceSlot);
       return;
     }
     // The low-health turn is one extra scream, then every staged pass is quicker.
@@ -17825,20 +17832,112 @@ export class World {
     }
   }
 
-  private killMegaWorm(w: Worm, sourceSlot: number): void {
-    const nodes = w.segCount + 1;
-    for (let k = 0; k < nodes; k++) {
-      const x = this.megaNodeX(w, k);
-      const y = this.megaNodeY(w, k);
-      this.emit(EV.WORM_KILL, sourceSlot, x, y, 120, 0, 0);
-      // Every node de-rezzes into its own red square burst, so the whole length of the
-      // worm goes at once instead of only the head producing a puff.
-      this.emit(EV.MEGA_DEATH, sourceSlot, x, y, 64, 0, 0);
+  /**
+   * Lethal hit starts the death choreography instead of deleting the whole body. The
+   * boss stays active but harmless so the camera and campaign clear wait for the head.
+   */
+  private beginMegaDeath(w: Worm, sourceSlot: number): void {
+    if (w.megaDeath >= 0) return;
+    w.hp = 0;
+    w.megaDeath = 0;
+    w.megaDeathT = 0;
+    w.megaDeathSegs = 0;
+    w.megaDeathSpin = 0;
+    w.megaDeathBy = sourceSlot;
+    w.aggroT = 0;
+    w.touchCd = 999;
+    w.volleyT = 999;
+    // Continue a crossing already in progress. If the body is parked off-map or already
+    // at the far lip, stage one last lane so the player still gets a full flyover.
+    if (w.flyPhase !== 0 || w.entryT > 0 || w.spawnT > 0 || this.megaDeathAtFarRim(w)) {
+      this.stageMegaPass(w);
+      w.spawnT = 0;
+      w.entryT = 0;
+      w.flyPhase = 0;
+      this.beginMegaPass(w);
+      w.touchCd = 999;
+      w.volleyT = 999;
+      w.prevX = w.x;
+      w.prevY = w.y;
     }
-    // One last call over the burst; the rage cry is a separate threshold earlier.
+    this.emit(EV.MEGA_CRY, -1, w.x, w.y, w.hitR);
+  }
+
+  /** True when the head has reached the far rim of its current straight lane. */
+  private megaDeathAtFarRim(w: Worm): boolean {
+    const b = this.arena.bounds;
+    const ux = Math.cos(w.angle);
+    const uy = Math.sin(w.angle);
+    const lip = w.hitR * 0.55;
+    if (Math.abs(ux) >= Math.abs(uy)) {
+      return ux >= 0 ? w.x >= b.right - lip : w.x <= b.left + lip;
+    }
+    return uy >= 0 ? w.y >= b.bottom - lip : w.y <= b.top + lip;
+  }
+
+  /**
+   * Death choreography: one last crossing, then the plates burst from the tail
+   * forward. The head is last: it spins in place before its final explosion.
+   */
+  private updateMegaDeath(w: Worm, dt: number): void {
+    w.prevX = w.x;
+    w.prevY = w.y;
+    w.phase += dt;
+    if (w.hitFlash > 0) w.hitFlash = Math.max(0, w.hitFlash - dt);
+    if (w.megaDeath === 0) {
+      const speed = MEGA_WORM.death.speed;
+      w.vx = Math.cos(w.angle) * speed;
+      w.vy = Math.sin(w.angle) * speed;
+      w.x += w.vx * dt;
+      w.y += w.vy * dt;
+      this.followMegaChain(w, dt);
+      if (this.megaDeathAtFarRim(w)) {
+        w.vx = 0;
+        w.vy = 0;
+        w.megaDeath = 1;
+        w.megaDeathT = 0;
+      }
+      return;
+    }
+    if (w.megaDeath === 1) {
+      w.vx = 0;
+      w.vy = 0;
+      w.megaDeathT += dt;
+      const interval = MEGA_WORM.death.segmentInterval;
+      while (w.megaDeathSegs < w.segCount && w.megaDeathT >= interval) {
+        w.megaDeathT -= interval;
+        const seg = w.segCount - 1 - w.megaDeathSegs;
+        const x = w.segX[seg];
+        const y = w.segY[seg];
+        w.megaDeathSegs++;
+        this.emit(EV.MEGA_DEATH, w.megaDeathBy, x, y, MEGA_WORM.death.segmentBurst, 0, 0);
+      }
+      if (w.megaDeathSegs >= w.segCount) {
+        w.megaDeath = 2;
+        w.megaDeathT = 0;
+        w.megaDeathSpin = 0;
+      }
+      return;
+    }
+    if (w.megaDeath === 2) {
+      w.vx = 0;
+      w.vy = 0;
+      w.megaDeathT += dt;
+      w.megaDeathSpin += dt * MEGA_WORM.death.headSpinRate;
+      if (w.megaDeathT >= MEGA_WORM.death.headSpinTime) this.finishMegaDeath(w);
+    }
+  }
+
+  private finishMegaDeath(w: Worm): void {
+    const sourceSlot = w.megaDeathBy;
+    this.emit(EV.WORM_KILL, sourceSlot, w.x, w.y, 220, 0, 0);
+    this.emit(EV.MEGA_DEATH, sourceSlot, w.x, w.y, MEGA_WORM.death.headBurst, 0, 0);
     this.emit(EV.MEGA_CRY, sourceSlot, w.x, w.y, w.hitR);
     w.active = false;
     w.segCount = 0;
+    w.megaDeath = 3;
+    w.vx = 0;
+    w.vy = 0;
     if (sourceSlot === 0) {
       this.gauntletKills++;
       this.dropPickupFromKill(w.x, w.y, true);
@@ -17849,6 +17948,10 @@ export class World {
     // The entrance cut owns the body. `step` deliberately keeps the squad live during
     // this beat, but the worm must not advance twice through the normal threat loop.
     if (this.bossIntro?.kind === MINIBOSS.MEGA_WORM) return;
+    if (w.megaDeath >= 0) {
+      this.updateMegaDeath(w, dt);
+      return;
+    }
     w.prevX = w.x;
     w.prevY = w.y;
     w.phase += dt;
@@ -18100,7 +18203,7 @@ export class World {
   }
 
   private megaTouch(w: Worm, p: Player): void {
-    if (!p.alive || p.cloakT > 0 || w.touchCd > 0) return;
+    if (w.megaDeath >= 0 || !p.alive || p.cloakT > 0 || w.touchCd > 0) return;
     // Contact uses the same capsule as fire: head circle plus one body line. No loop
     // over thirteen plates, and no seam a body can slip through.
     let hit = false;

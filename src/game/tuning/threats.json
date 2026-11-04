@@ -183,6 +183,14 @@
         "ttl": 5.2,
         "spread": 0.08
       }
+    },
+    "death": {
+      "speed": 700,
+      "segmentInterval": 0.14,
+      "headSpinTime": 1.35,
+      "headSpinRate": 14,
+      "segmentBurst": 68,
+      "headBurst": 150
     }
   },
   "BOSS_RUSH": {

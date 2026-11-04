@@ -112,7 +112,9 @@ change is a short beat, not a geometry stall. Each pass spits jagged red balls t
 reflectable, and a returned ball damages the Worm. The arena has no outer shot wall, so fire can reach the
 Worm before it crosses the lip; the player's body stays on the floor. The Worm is one rigid straight chain
 with a capsule body hit test, and its plates overlap by design. The heavy beam stops at its body, and hits
-spark at the actual contact point with a wide triangle spray. The minimap draws the full chain.
+spark at the actual contact point with a wide triangle spray. The minimap draws the full chain. Lethal
+damage plays one last flyover: plates burst tail-first, the head spins, and the final head explosion is the
+room clear.
 
 Before an exit portal opens, the camera pulls back to show the room and holds while the mouth opens and the
 party is drawn across it. The lead, open and pull timings live in `CAMPAIGN`; the zoom lives in `CAMERA`.

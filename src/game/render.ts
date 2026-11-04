@@ -9993,7 +9993,9 @@ export class Renderer {
     const ctx = this.ctx;
     const base = THREAT_COLORS.worm;
     const build = w.spawnT > 0 ? 1 - w.spawnT / MEGA_WORM.spawnTime : 1;
-    const nodes = w.segCount + 1;
+    const removed = w.megaDeath >= 1 ? Math.min(w.segCount, w.megaDeathSegs) : 0;
+    const visibleSegs = Math.max(0, w.segCount - removed);
+    const nodes = visibleSegs + 1;
     const builtNodes = Math.max(1, Math.ceil(Math.max(0, build) * nodes));
 
     ctx.save();
@@ -10027,8 +10029,8 @@ export class Renderer {
 
     // A dark spine fills the seams under the plates, so a fast pass reads as one solid
     // body even where two hex frames meet at a shallow angle.
-    if (w.segCount > 0) {
-      const tail = w.segCount - 1;
+    if (visibleSegs > 0) {
+      const tail = visibleSegs - 1;
       const tx = lerp(w.segPrevX[tail], w.segX[tail], alpha);
       const ty = lerp(w.segPrevY[tail], w.segY[tail], alpha);
       ctx.save();
@@ -10048,7 +10050,7 @@ export class Renderer {
       ctx.restore();
     }
 
-    for (let k = nodes - 1; k >= 1; k--) {
+    for (let k = visibleSegs; k >= 1; k--) {
       if (k >= builtNodes) continue;
       const seg = k - 1;
       const x = lerp(w.segPrevX[seg], w.segX[seg], alpha);
@@ -10058,12 +10060,30 @@ export class Renderer {
       this.drawMegaPlate(x, y, w.segAngle[seg], size, frac, base, t, k);
     }
 
-    this.drawMegaPlate(hx, hy, w.angle, w.hitR, totalFrac, base, t, -1);
+    const headAngle = w.megaDeath === 2 ? w.angle + w.megaDeathSpin : w.angle;
+    this.drawMegaPlate(hx, hy, headAngle, w.hitR, totalFrac, base, t, -1);
 
-    // Eyes are the head read.
+    // A dashed ring turns with the head, so the final spin reads even where the
+    // six-sided plate is rotationally symmetric.
+    if (w.megaDeath === 2) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.42 + 0.22 * Math.sin(t * 24);
+      ctx.strokeStyle = '#ffe9e4';
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([11, 15]);
+      ctx.lineDashOffset = -w.megaDeathSpin * 16;
+      ctx.beginPath();
+      ctx.arc(hx, hy, w.hitR * 1.16, 0, TWO_PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Eyes are the head read. The whole head spins after the last plate goes.
     ctx.save();
     ctx.translate(hx, hy);
-    ctx.rotate(w.angle + Math.PI * 0.25);
+    ctx.rotate(headAngle + Math.PI * 0.25);
     ctx.globalCompositeOperation = 'source-over';
     const er = w.hitR;
     ctx.fillStyle = '#14030a';
@@ -10084,7 +10104,7 @@ export class Renderer {
       const u = 1 - w.roarT / Math.max(0.001, MEGA_WORM.entrance.roar);
       ctx.save();
       ctx.translate(hx, hy);
-      ctx.rotate(w.angle);
+      ctx.rotate(headAngle);
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 0.92 * (1 - u * 0.25);
       ctx.fillStyle = '#120309';
@@ -15444,10 +15464,12 @@ export class Renderer {
         const my = y0 + (e.y - b.top) * sy;
         if (e.mega) {
           // The boss is a body, not a dot: one thick segmented line from head to tail,
-          // with a larger head so it cannot be mistaken for a normal worm.
-          const tail = Math.max(0, e.segCount - 1);
-          const tx = x0 + ((e.segCount > 0 ? e.segX[tail] : e.x) - b.left) * sx;
-          const ty = y0 + ((e.segCount > 0 ? e.segY[tail] : e.y) - b.top) * sy;
+          // with a larger head so it cannot be mistaken for a normal worm. Burst plates
+          // leave the map as soon as they leave the body.
+          const segs = e.megaDeath >= 1 ? Math.max(0, e.segCount - e.megaDeathSegs) : e.segCount;
+          const tail = Math.max(0, segs - 1);
+          const tx = x0 + ((segs > 0 ? e.segX[tail] : e.x) - b.left) * sx;
+          const ty = y0 + ((segs > 0 ? e.segY[tail] : e.y) - b.top) * sy;
           ctx.save();
           ctx.globalAlpha = 0.95;
           ctx.strokeStyle = THREAT_COLORS.worm;

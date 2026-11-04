@@ -240,8 +240,10 @@ Mega Worm is announced only after all six and their delivered bodies are cleared
 authored squad already on the floor (four sentries, two viruses and a worm), so the arena is never an empty
 wait. During a pass the Worm fires jagged red balls to both sides; guard or lash one back into its body to
 damage it. The heavy beam stops at the Worm instead of drawing through it, and every hit sparks at the
-contact point. Its death spends one final scream and a large red-square burst. A final-node clear plays
-Kitty's trail beat, pulls the party through the portal, then parks on the level result with
+contact point. A lethal hit starts one last flyover: the body crosses the floor, bursts plate by plate from
+the tail, then spins its head before the final red-square explosion; the room clear waits for that burst.
+A final-node clear plays Kitty's trail beat, pulls the party through the portal, then parks on the level
+result with
 `MORE LEVELS COMING SOON`. GRID ZERO's outer edge is open to shots and beams (but not bodies), so the Worm
 can be hit on its staged approach before it crosses the lip.
 
@@ -468,7 +470,8 @@ reposition between lanes is a short beat, not a stall. Each pass fires a pair of
 Worm's sides; they are ordinary reflectable shots, and a returned one damages the boss on contact. Its body is
 one rigid chain with a capsule hit test, so a shot that lands between two plates still connects, and the
 heavy beam ends at the near edge of the body. Hits spark at the actual contact point. The minimap draws the
-whole segmented chain at its real footprint, not a single dot.
+whole segmented chain at its real footprint, not a single dot. A lethal hit plays one last pass, then bursts
+the plates tail-first and spins the head before the final explosion.
 
 
 ## Demo boss rotation

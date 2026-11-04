@@ -131,12 +131,17 @@ export class Fx {
         break;
       }
       case EV.MEGA_DEATH: {
-        // Each body node calls this, so the whole worm dissolves as a field of red
-        // squares rather than a single burst at the head.
-        this.particles.shards(ev.x, ev.y, 22, P_COLOR_BLAST_RED, 70, 470);
-        this.particles.shards(ev.x, ev.y, 8, P_COLOR_WORM, 50, 320);
-        this.particles.ring(ev.x, ev.y, P_COLOR_BLAST_RED, 8, 80, 0.34);
-        this.shake = Math.max(this.shake, 6);
+        // Each plate and the head call this, so the whole worm dissolves as a field of
+        // red code squares rather than a single burst. The head carries a larger power,
+        // which grows the spray and the pressure ring without changing the art style.
+        const scale = Math.max(0.7, Math.min(2.2, ev.power / 70));
+        this.particles.squares(ev.x, ev.y, Math.round(16 + 14 * scale), P_COLOR_BLAST_RED, 70, 430 + 90 * scale);
+        this.particles.shards(ev.x, ev.y, Math.round(4 + 4 * scale), P_COLOR_WORM, 50, 320);
+        this.particles.ring(ev.x, ev.y, P_COLOR_BLAST_RED, 8, 50 + ev.power * 0.55, 0.34);
+        this.shake = Math.max(this.shake, 5 + 2 * scale);
+        if (ev.power >= 120) {
+          this.particles.burst(ev.x, ev.y, 10, P_COLOR_WHITE, 120, 620);
+        }
         break;
       }
       case EV.MEGA_CRY: {

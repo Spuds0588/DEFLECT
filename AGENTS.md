@@ -2682,6 +2682,14 @@ delivered by the same edge portal as a sentry, worm or virus and can be schedule
   detach. `headHp` + `segments * hpPerSegment` only computes the total (206); the plate count is
   presentation. Do not reintroduce per-plate health or splitting: detached pieces once left a boss-rush
   stage live forever.
+- **Death is a sequence, not a delete (v0.1.190).** A lethal hit starts `Worm.megaDeath`: -1 alive, 0 final
+  crossing, 1 tail-first plate bursts, 2 head spin, 3 finished. The body stays `active` but contact, volleys
+  and damage are off, so `campaignFloorClear` and the wide boss camera wait for the whole beat. Continue a
+  crossing already in progress; if the body is staged off-map or already at the far rim, stage one more lane
+  so the player still gets a full flyover. Burst one plate every `MEGA_WORM.death.segmentInterval` from the
+  tail forward, then spin the head for `headSpinTime`, then emit the head `WORM_KILL` / `MEGA_DEATH` /
+  `MEGA_CRY`, credit the kill and drop the pickup. Burst plates leave the collision capsule. Do not credit
+  the kill at pool zero, and do not let a campaign clear open before the head explosion.
 - **Damage is contact, and nothing else.** `megaTouch` on any plate is the whole attack. There is no maw
   snap, no bite, no acid and no legs phase; the head is not a separate creature. Normal worms keep their
   own `WORM` bite in `updateWorm`, which is a different branch.

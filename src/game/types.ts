@@ -167,7 +167,7 @@ export const EV = {
   MEGA_CRY: 43,
   /** A campaign ingress port collapsed; `power` is its size. Local-only. */
   PORTAL_BREAK: 44,
-  /** One Mega Worm body node de-rezzed into red squares; `power` is the burst scale. */
+  /** One Mega Worm body node or the head de-rezzed into red squares; `power` is the burst scale. */
   MEGA_DEATH: 45,
   /** A hit landed on the Mega Worm; `x`/`y` are the impact point. */
   MEGA_HIT: 46,
@@ -948,6 +948,19 @@ export interface Worm {
   megaPass?: number;
   /** Low-health phase: one extra roar, then a faster pass cycle. */
   megaRage: boolean;
+  /**
+   * Mega Worm death choreography: -1 alive, 0 last crossing, 1 plates bursting,
+   * 2 head spin, 3 finished. The boss stays active but harmless until the head goes.
+   */
+  megaDeath: number;
+  /** Seconds inside the current death phase. */
+  megaDeathT: number;
+  /** Plates already burst, counted from the tail. */
+  megaDeathSegs: number;
+  /** Radians added to the head while it spins before the final explosion. */
+  megaDeathSpin: number;
+  /** Slot credited with the kill when the head finally bursts. */
+  megaDeathBy: number;
   /** Seconds until the next jagged side volley during a fly-by. */
   volleyT: number;
   /** Per-node health. Index 0 is the head, index k is segment k-1. */
