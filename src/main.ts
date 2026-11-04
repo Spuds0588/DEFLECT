@@ -61,7 +61,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.192';
+const BUILD = '0.1.193';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -4810,7 +4810,10 @@ function canHopRound(): boolean {
   if (attract || demo || stress || playtestActive || infectionRun) return false;
   if (overlayKind === 'leave') return false;
   if (mode !== 'bots' && mode !== 'local' && mode !== 'host') return false;
-  return !!world && world.phase === 'roundover';
+  if (!world || world.phase !== 'roundover') return false;
+  // Never open the next island over a dead party. A wipe resolves as a match end,
+  // not as a portal transition that respawns everyone at the entry mouth.
+  return world.aliveCount() > 0;
 }
 
 /** Next arena in the island route. Online rooms skip local-only devices. */
@@ -5283,10 +5286,15 @@ function showMatchOverlay(state: RenderState): void {
     return;
   }
 
-  const title = winner >= 0 ? `${nameOf(state, winner)} WINS` : 'MATCH COMPLETE';
-  const sub = `${scoreLine(state)} // FIRST TO ${ROUND.winsNeeded}${
-    mode === 'guest' ? ' // WAITING FOR HOST TO REMATCH' : ''
-  }`;
+  // A match reaches `matchend` with no winner only on a full-party wipe. Do not
+  // dress that up as a completed match; the ring is broken, not won.
+  const wiped = winner < 0;
+  const title = wiped ? 'RING BROKEN' : `${nameOf(state, winner)} WINS`;
+  const sub = wiped
+    ? `ALL OPERATORS DOWN // ${scoreLine(state)}`
+    : `${scoreLine(state)} // FIRST TO ${ROUND.winsNeeded}${
+        mode === 'guest' ? ' // WAITING FOR HOST TO REMATCH' : ''
+      }`;
   const actions: OverlayAction[] = [];
   if (mode === 'host') {
     actions.push({ label: 'REMATCH', primary: true, onClick: hostRematch });

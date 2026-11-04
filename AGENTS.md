@@ -2534,6 +2534,12 @@ spatial connector as a progression gate; the hop is the connector.
   next arena while carrying scores and the next round. The next round enters on the left wall and is thrown
   out of the mouth by `World.enterAtPortal`, never parked under it. The host broadcasts `MSG.HOP`; a guest
   rebuilds its `NetView` from that message and never chooses an arena itself.
+- **A full-party wipe ends the match (decided 2026-11-04).** When the last live body falls and nobody is
+  left standing, `World.finishMatchWipe` moves straight to `matchend`; the result plate reads `RING BROKEN
+  // ALL OPERATORS DOWN` and offers REMATCH. Do not route that round through `finishRound(-1)`: a draw stays
+  open for the island hop, and `beginRound(true)` would rebuild an arena and throw the respawned party out
+  of its entry portal, which reads as the whole arena restarting. A timer draw with a live party still
+  hops normally. `canHopRound` also refuses a roundover with `aliveCount() === 0`.
   Campaign and match hops share the renderer's square portal wipe (`beginPortalHop`).
 - The wipe is presentation only. It must not gate input, change `Snapshot`, or become a second round clock;
   `World` owns the pull and the round state, the renderer owns the closing square.

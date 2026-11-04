@@ -2,6 +2,15 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Match wipe result (2026-11-04, v0.1.193)
+
+- [x] A round with no survivor ends the match at `RING BROKEN // ALL OPERATORS DOWN`; it no longer opens
+      the island hop and respawns the party through the next arena's entry portal
+- [x] `canHopRound` refuses a roundover with no live body; a timer draw with a live party still hops
+- [x] `.tmp/match-wipe-check.ts` and `.tmp/round-hop-check.ts` green; `npm run build`; `npm run bench`
+- [ ] Human couch check: win a round normally (portal hop), then wipe the party and confirm the result
+      plate instead of a restart
+
 ## Campaign feedback pass (2026-11-04, v0.1.192)
 
 - [x] Campaign squad count honors `NO BOTS`; selected bots load on the first frame of every node

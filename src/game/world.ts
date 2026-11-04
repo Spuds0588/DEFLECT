@@ -4419,7 +4419,11 @@ export class World {
             const p = this.players[i];
             if (p.active && p.alive && !p.copyClone) survivor = p.slot;
           }
-          this.finishRound(survivor);
+          // A wipe is a result, not a round transition. `finishRound(-1)` would
+          // leave the round open for the island hop, which rebuilds the next arena
+          // and throws the respawned party out of its entry portal.
+          if (survivor < 0) this.finishMatchWipe();
+          else this.finishRound(survivor);
         } else if (this.roundTimer <= 0) {
           this.finishRound(-1);
         }
@@ -4594,6 +4598,16 @@ export class World {
       const f = inputs[i];
       if (f) f.pressed = 0;
     }
+  }
+
+  /** No body survived the round: end the match instead of opening the next island hop. */
+  private finishMatchWipe(): void {
+    this.roundWinner = -1;
+    this.phase = 'matchend';
+    this.phaseTimer = 0;
+    this.roundHopT = 0;
+    this.emit(EV.ROUND_END, -1, this.centerX, this.centerY, this.round);
+    this.emit(EV.MATCH_END, -1, this.centerX, this.centerY, -1);
   }
 
   private finishRound(winnerSlot: number): void {

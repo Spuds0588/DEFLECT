@@ -51,7 +51,9 @@ and the session continues until you leave. Training and VS BOTS remember their d
 `SINGLE PLAYER → VS BOTS` uses the same setup but runs the normal match flow: countdown, last-standing
 rounds, first to 3. Bots take the programs you leave unused, so a Wedge pick can face Probe, Fisher and
 Sweep. They use the same movement, facing, melee, dash, skill and heavy rules as you; they cannot aim
-independently of movement.
+independently of movement. If every body falls in the same round, the game ends as a result instead of
+hopping the island: a single-game match reports `RING BROKEN` with a rematch, and a multi-game series
+records that game as a draw and waits for the explicit `NEXT GAME`.
 
 After difficulty, choose a series length: `1 GAME`, `3 GAMES` or `5 GAMES`. Each game is still first to
 3 rounds; the series tracks games won, and a three-or-more-player series can end in a tie. `MAPS: RANDOM`
@@ -269,7 +271,8 @@ starts once at least one controller is seated. A disconnected controller keeps i
 moment; reconnect the same pad to take it back. Each local player gets a readiness dock and rumble on
 their own pad. Local gauntlet co-op is not built yet. Public
 room discovery is planned: it will search for game codes with a shared prefix, while private rooms keep
-an unprefixed code.
+an unprefixed code. If every seated player falls at once, the match ends at `RING BROKEN` with a rematch;
+the squad is not respawned through the next arena's entry portal.
 
 ## Controls
 

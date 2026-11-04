@@ -7912,3 +7912,33 @@ turn the level-2 blueprints into a playable, map-backed chain.
 
 **Next:** campaign debug playthrough on 0.1.192 with bots, checking the route plate, Mega side volleys,
 worm dashes/parries, pipe carry and the revised reflection lesson.
+
+## 2026-11-04 — A wiped match ends instead of hopping the island (v0.1.193)
+
+**Goal:** fix the report that when every player dies in an arena, the whole arena experience comes back
+in through the entry portal.
+
+**Changes.**
+- `World.finishMatchWipe` ends a match whose last live body falls with no survivor: `roundWinner` stays -1,
+  the phase moves straight to `matchend`, and `ROUND_END`/`MATCH_END` are emitted. A wipe no longer goes
+  through `finishRound(-1)`, which left the round open for the main-thread island hop.
+- `canHopRound` also refuses a roundover whose `aliveCount()` is zero, so no path can rebuild the next
+  arena and call `beginRound(true)` / `enterAtPortal` over a dead party.
+- `showMatchOverlay` reads a `matchend` with no winner as `RING BROKEN // ALL OPERATORS DOWN` rather than
+  `MATCH COMPLETE`. A timer draw with a live party still takes the normal portal hop. A multi-game series
+  records the wiped game as a draw and waits for the explicit `NEXT GAME`.
+- Added `.tmp/match-wipe-check.ts`; updated the AGENTS round-hop note, README and GAME_GUIDE; bumped all
+  version stamps to 0.1.193.
+
+**Verification.**
+- `match-wipe-check` OK: wipe -> `matchend`, round 1 unchanged, no entry portal or round portal, bodies
+  frozen; rematch revived both; a timer draw still rolled into round 2.
+- `round-hop-check` OK: a decided round still pulls to the right wall and enters the next arena at round 2
+  with the score carried.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only); `npm run bench` 0. 8P bot
+  swarm 0.168 ms avg / 0.468 ms p99; gauntlet max 0.312 ms avg / 0.822 ms p99 at 29.5 threats.
+- `git diff --check` clean.
+- Not yet tested: a human couch wipe; the next playtest covers it.
+
+**Next:** human couch check on 0.1.193: a normal round win still hops through the portal; a full-party
+wipe ends at RING BROKEN with no restart. Committed and pushed with this entry.

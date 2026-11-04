@@ -260,8 +260,10 @@ impulse, not placed under it. The pull writes positions directly, so cover canno
 entries keep the landing lane clear of authored hostiles and add a short entry protection window. Local and
 bot modes rebuild the `World` on the next arena, carrying scores and
 the round number; the host broadcasts `MSG.HOP` so guests rebuild their `NetView` on the same arena. The
-renderer's square portal wipe covers the swap. Open decks inside a plate arena are floor, never a
-progression gate.
+renderer's square portal wipe covers the swap. A round with no survivor does not hop: the match ends at
+`RING BROKEN // ALL OPERATORS DOWN`, so a full-party wipe cannot respawn the squad through the next arena's
+entry portal. A timer draw with the party still standing keeps the normal hop. Open decks inside a plate
+arena are floor, never a progression gate.
 
 ## Performance on low-powered hardware
 
