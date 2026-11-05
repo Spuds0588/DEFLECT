@@ -1,6 +1,6 @@
 import type { AssaultPortal, Fragment } from './types';
 import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, STARFISH, BLOB, STORM_CLOUD, USER, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
-import type { AimMark, BossIntro, CopyMark, InvaderShot } from './types';
+import type { AimMark, BossIntro, CopyMark, InvaderShot, TrafficRuntime } from './types';
 import {
   discArmAngle,
   discArmLength,
@@ -194,6 +194,8 @@ export interface RenderState {
   carProgress?: number;
   /** Food-court and arcade hazards. Local-only. */
   arcade?: ArcadeRuntime | null;
+  /** TRAFFIC CAMERA / LIGHT / CROSSWALK fixtures. Local-only. */
+  traffic?: TrafficRuntime | null;
   /** GPU-board thermal cycle clock. Local-only. */
   serverHeatT?: number;
   /** DISPATCH / LOAD BALANCER live request traffic and its switch signal. Local-only. */
@@ -7330,6 +7332,460 @@ export class Renderer {
     ctx.restore();
   }
 
+  /**
+   * The street-fixture row: one asphalt pass and a dispatch to the camera, signal or
+   * crosswalk. Everything drawn here is local state; hosted rooms never see the arenas.
+   */
+  private drawTrafficArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    ctx.save();
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#0b0d10';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    // Asphalt seams and edge dust.
+    ctx.globalAlpha = groundA * 0.2;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let y = b.top + 84; y < b.bottom; y += 96) {
+      ctx.moveTo(b.left, y + 0.5);
+      ctx.lineTo(b.right, y + 0.5);
+    }
+    ctx.stroke();
+    // Lane paint: long dashes down the middle, worn at the edges.
+    ctx.globalAlpha = frameA * 0.32;
+    ctx.strokeStyle = '#d7e6e2';
+    ctx.lineWidth = 5;
+    ctx.setLineDash([46, 48]);
+    ctx.beginPath();
+    ctx.moveTo(b.left + 150, (b.top + b.bottom) * 0.5);
+    ctx.lineTo(b.right - 150, (b.top + b.bottom) * 0.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(b.left + 2, b.top + 2, b.right - b.left - 4, b.bottom - b.top - 4);
+    if (arena.camera) this.drawCameraArena(arena, state, groundA, frameA, t);
+    else if (arena.light) this.drawTrafficLightArena(arena, state, groundA, frameA, t);
+    else if (arena.crosswalk) this.drawCrosswalkArena(arena, state, groundA, frameA, t);
+    ctx.restore();
+  }
+
+  private drawCameraArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const def = arena.camera;
+    if (!def) return;
+    const traffic = state?.traffic;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const ink = '#eaffff';
+
+    // Authored routes. Dotted lines are the read that the files have a fixed path.
+    ctx.save();
+    ctx.globalAlpha = frameA * 0.3;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 12]);
+    for (let i = 0; i < def.paths.length; i++) {
+      const path = def.paths[i];
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      for (let p = 1; p < path.length; p++) ctx.lineTo(path[p].x, path[p].y);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Feed mouths on the east wall. A tube runs back into the wall behind each ring.
+    for (let i = 0; i < def.pipes.length; i++) {
+      const pipe = def.pipes[i];
+      const flash = traffic?.pipeFlash[i] ?? 0;
+      ctx.globalAlpha = frameA * 0.8;
+      ctx.fillStyle = '#03070b';
+      ctx.fillRect(pipe.x - 8, pipe.y - 52, 30, 104);
+      ctx.strokeStyle = 'rgba(180, 220, 230, 0.28)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(pipe.x - 7, pipe.y - 50, 28, 100);
+      ctx.fillStyle = '#0b1418';
+      ctx.beginPath();
+      ctx.arc(pipe.x, pipe.y, 26, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = flash > 0 ? '#ffffff' : arena.accent;
+      ctx.lineWidth = flash > 0 ? 4 : 2.5;
+      ctx.beginPath();
+      ctx.arc(pipe.x, pipe.y, 26, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = frameA * (0.35 + flash * 1.4);
+      ctx.fillStyle = arena.accent;
+      ctx.beginPath();
+      ctx.arc(pipe.x, pipe.y, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = frameA * 0.7;
+      ctx.fillStyle = arena.accent;
+      ctx.font = '700 10px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`FEED ${String(i + 1).padStart(2, '0')}`, pipe.x, pipe.y + 46);
+    }
+
+    // Camera housing on the west wall. The lens sits just inside the floor.
+    const lens = def.lens;
+    const flashK = traffic ? Math.min(1, traffic.cameraFlashT / Math.max(0.05, def.warn)) : 0;
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#0a0f12';
+    ctx.fillRect(lens.x - 34, lens.y - 44, 66, 88);
+    ctx.strokeStyle = '#2e3d42';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(lens.x - 33, lens.y - 43, 64, 86);
+    ctx.fillStyle = '#11191d';
+    ctx.beginPath();
+    ctx.arc(lens.x + 24, lens.y, 30, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(lens.x + 24, lens.y, 30, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = flashK > 0 ? '#ffffff' : '#20343d';
+    ctx.beginPath();
+    ctx.arc(lens.x + 24, lens.y, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = flashK > 0 ? '#ffffff' : '#ff5a4a';
+    ctx.fillRect(lens.x - 28, lens.y - 36, 8, 8);
+
+    // The flash is a cone across the floor, never a full-screen wash.
+    if (flashK > 0) {
+      const grad = ctx.createLinearGradient(lens.x + 24, lens.y, b.right, lens.y);
+      grad.addColorStop(0, `rgba(255, 255, 245, ${0.34 * flashK})`);
+      grad.addColorStop(1, 'rgba(255, 255, 245, 0)');
+      ctx.globalAlpha = frameA;
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(lens.x + 40, lens.y - 18);
+      ctx.lineTo(b.right, lens.y - 310);
+      ctx.lineTo(b.right, lens.y + 310);
+      ctx.lineTo(lens.x + 40, lens.y + 18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = frameA * flashK;
+      ctx.strokeStyle = '#fffdf0';
+      ctx.lineWidth = 2;
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(lens.x + 24 + Math.cos(a) * 34, lens.y + Math.sin(a) * 34);
+        ctx.lineTo(lens.x + 24 + Math.cos(a) * 54, lens.y + Math.sin(a) * 54);
+        ctx.stroke();
+      }
+    }
+
+    // Image files in flight. The card is the hitbox read.
+    const photos = traffic?.photos;
+    if (photos) {
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        if (!photo.active) continue;
+        ctx.save();
+        ctx.translate(photo.x, photo.y);
+        ctx.rotate(photo.angle);
+        ctx.globalAlpha = frameA * 0.22;
+        ctx.strokeStyle = arena.accent;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-64, 0);
+        ctx.lineTo(-20, 0);
+        ctx.stroke();
+        ctx.globalAlpha = frameA;
+        ctx.fillStyle = '#f4ead6';
+        ctx.strokeStyle = '#1b140c';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.rect(-18, -13, 36, 26);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#c9b896';
+        ctx.beginPath();
+        ctx.moveTo(9, -13);
+        ctx.lineTo(18, -4);
+        ctx.lineTo(9, -4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#5d7d58';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-13, 8);
+        ctx.lineTo(-4, -1);
+        ctx.lineTo(3, 7);
+        ctx.stroke();
+        ctx.fillStyle = '#e0a33a';
+        ctx.beginPath();
+        ctx.arc(8, -5, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = ink;
+    ctx.font = '700 18px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(def.label, (b.left + b.right) * 0.5, b.top + 30);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.46)';
+    ctx.font = '500 11px ui-monospace, monospace';
+    ctx.fillText(def.sub, (b.left + b.right) * 0.5, b.top + 48);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = arena.accentSoft;
+    ctx.font = '600 10px ui-monospace, monospace';
+    ctx.fillText(flashK > 0 ? 'LENS FLASH // DOWNLOAD' : 'LENS ARMED // WATCH THE DOTTED LINE', b.right - 20, b.bottom - 18);
+    ctx.restore();
+  }
+
+  private drawTrafficLightArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const def = arena.light;
+    if (!def) return;
+    const traffic = state?.traffic;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const colors = ['#8dffb0', '#ffd166', '#ff5a5a'];
+    const names = ['GREEN', 'AMBER', 'RED'];
+    const stage = traffic ? def.stages[traffic.lightStage % def.stages.length] : def.stages[0];
+    const activeZone = stage.zone;
+    const activeColor = def.zones[activeZone]?.color ?? 0;
+    const warn = traffic?.lightWarnT ?? 0;
+    const active = traffic?.lightActive ?? false;
+
+    // Path guide, so the movement is readable before a circle arrives.
+    ctx.save();
+    ctx.globalAlpha = frameA * 0.18;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 10]);
+    for (const zone of def.zones) {
+      ctx.beginPath();
+      ctx.moveTo(zone.path[0].x, zone.path[0].y);
+      for (let p = 1; p < zone.path.length; p++) ctx.lineTo(zone.path[p].x, zone.path[p].y);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Signal head on the west wall. Red, amber, green from top to bottom.
+    const sx = 82;
+    const sy = 540;
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#070b0d';
+    ctx.fillRect(sx - 28, sy - 128, 56, 256);
+    ctx.strokeStyle = '#2b3438';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx - 27, sy - 127, 54, 254);
+    const lensOrder = [2, 1, 0];
+    for (let i = 0; i < lensOrder.length; i++) {
+      const color = lensOrder[i];
+      const ly = sy - 82 + i * 82;
+      const isActive = color === activeColor;
+      const blink = isActive && !active ? 0.45 + 0.55 * Math.abs(Math.sin(t * 10)) : 1;
+      ctx.globalAlpha = frameA * (isActive ? blink : 0.18);
+      ctx.fillStyle = colors[color];
+      ctx.beginPath();
+      ctx.arc(sx, ly, 21, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = frameA * 0.8;
+      ctx.strokeStyle = '#10181b';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(sx, ly, 25, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('JUNCTION 09', sx + 42, sy - 116);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.44)';
+    ctx.font = '600 10px ui-monospace, monospace';
+    ctx.fillText(names[activeColor] ?? 'GREEN', sx + 42, sy - 100);
+
+    // The three moving circles. Only the stage's zone is live; the others are ghosts.
+    for (let i = 0; i < def.zones.length; i++) {
+      const zone = def.zones[i];
+      const x = traffic?.zoneX[i] ?? zone.path[0].x;
+      const y = traffic?.zoneY[i] ?? zone.path[0].y;
+      const color = colors[zone.color] ?? arena.accent;
+      const isActive = i === activeZone;
+      const live = isActive && active;
+      const pulse = isActive ? (active ? 0.2 : 0.08 + 0.08 * Math.abs(Math.sin(t * 9))) : 0.035;
+      ctx.globalAlpha = frameA * pulse;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, zone.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = frameA * (isActive ? 0.95 : 0.28);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = live ? 5 : 2;
+      if (isActive && !active) ctx.setLineDash([14, 12]);
+      ctx.beginPath();
+      ctx.arc(x, y, zone.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // A hazard ring inside the circle: the floor is the damage, not the boundary.
+      ctx.globalAlpha = frameA * (live ? 0.5 : 0.14);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      for (let k = 0; k < 12; k++) {
+        const a0 = (k / 12) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(x, y, zone.radius * 0.72, a0, a0 + 0.18);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = frameA * 0.9;
+      ctx.fillStyle = color;
+      ctx.font = '700 13px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(names[zone.color] ?? '', x, y - 4);
+      ctx.font = '600 10px ui-monospace, monospace';
+      ctx.fillStyle = 'rgba(235, 250, 255, 0.7)';
+      ctx.fillText(live ? 'FLOOR LIVE' : isActive ? 'WARNING' : 'STANDBY', x, y + 14);
+    }
+
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#eaffff';
+    ctx.font = '700 18px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(def.label, (b.left + b.right) * 0.5, b.top + 30);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.46)';
+    ctx.font = '500 11px ui-monospace, monospace';
+    ctx.fillText(def.sub, (b.left + b.right) * 0.5, b.top + 48);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = colors[activeColor];
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.fillText(
+      active ? `${names[activeColor]} // ${warn > 0 ? 'ARMING' : 'FLOOR LIVE'}` : `${names[activeColor]} // CLEAR`,
+      b.right - 20,
+      b.bottom - 18,
+    );
+    ctx.restore();
+  }
+
+  private drawCrosswalkArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const def = arena.crosswalk;
+    if (!def) return;
+    const traffic = state?.traffic;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const walk = traffic?.crosswalkWalk ?? false;
+    const warn = (traffic?.crosswalkWarnT ?? 0) > 0;
+    const ink = walk ? '#e8fff4' : '#ff5a4a';
+
+    // Zebra paint on the south approach; the sign's blocks own the middle.
+    ctx.save();
+    ctx.globalAlpha = frameA * 0.28;
+    ctx.fillStyle = '#d7e6e2';
+    for (let i = 0; i < 9; i++) {
+      ctx.fillRect(b.left + 210 + i * 132, b.bottom - 180, 82, 132);
+    }
+
+    // Hanging sign at the top. The border blinks during the warning beat.
+    const sign = def.sign;
+    const signSize = 96;
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = 'rgba(190, 210, 215, 0.45)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(sign.x - 30, b.top);
+    ctx.lineTo(sign.x - 30, sign.y - signSize * 0.5);
+    ctx.moveTo(sign.x + 30, b.top);
+    ctx.lineTo(sign.x + 30, sign.y - signSize * 0.5);
+    ctx.stroke();
+    ctx.fillStyle = '#111518';
+    ctx.fillRect(sign.x - signSize * 0.5, sign.y - signSize * 0.5, signSize, signSize);
+    ctx.strokeStyle = warn && Math.sin(t * 14) > 0 ? '#ffffff' : ink;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(sign.x - signSize * 0.5 + 3, sign.y - signSize * 0.5 + 3, signSize - 6, signSize - 6);
+    if (walk) {
+      // White walking figure on the sign face.
+      ctx.strokeStyle = '#e8fff4';
+      ctx.fillStyle = '#e8fff4';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(sign.x, sign.y - 22, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(sign.x, sign.y - 12);
+      ctx.lineTo(sign.x - 4, sign.y + 16);
+      ctx.moveTo(sign.x - 2, sign.y - 2);
+      ctx.lineTo(sign.x + 18, sign.y + 4);
+      ctx.moveTo(sign.x - 3, sign.y + 16);
+      ctx.lineTo(sign.x - 20, sign.y + 34);
+      ctx.moveTo(sign.x - 3, sign.y + 16);
+      ctx.lineTo(sign.x + 16, sign.y + 32);
+      ctx.stroke();
+    } else {
+      // Red hand: palm plus four raised fingers.
+      ctx.fillStyle = '#ff5a4a';
+      ctx.beginPath();
+      ctx.arc(sign.x, sign.y + 8, 22, Math.PI, 0);
+      ctx.fill();
+      for (let i = 0; i < 4; i++) {
+        ctx.fillRect(sign.x - 22 + i * 12, sign.y - 24 + (i === 0 || i === 3 ? 6 : 0), 8, 34);
+      }
+      ctx.fillRect(sign.x - 26, sign.y + 20, 52, 14);
+    }
+
+    // The active layout is the cover. Paint it as lit sign ink rather than generic pillars.
+    const layout = walk ? def.walk : def.stop;
+    for (let i = 0; i < layout.length; i++) {
+      const rect = layout[i];
+      ctx.globalAlpha = frameA * 0.22;
+      ctx.fillStyle = ink;
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.globalAlpha = frameA * 0.85;
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2);
+      ctx.globalAlpha = frameA * 0.3;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(rect.x + 5, rect.y + 5, Math.max(0, rect.w - 10), 2);
+    }
+
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#eaffff';
+    ctx.font = '700 18px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(def.label, (b.left + b.right) * 0.5, b.top + 30);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.46)';
+    ctx.font = '500 11px ui-monospace, monospace';
+    ctx.fillText(def.sub, (b.left + b.right) * 0.5, b.top + 48);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = ink;
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.fillText(warn ? 'SIGN CHANGING // CLEAR THE BLOCKS' : walk ? 'WALK // FIGURE IS SOLID' : "DON'T WALK // TEXT IS SOLID", b.right - 20, b.bottom - 18);
+    ctx.restore();
+  }
+
   /** Food-court and arcade row. One renderer dispatch, one local runtime. */
   private drawArcadeArena(
     arena: ArenaDef,
@@ -8580,6 +9036,10 @@ export class Renderer {
     const frameA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 0.7) / 0.75));
     const pillarA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 1.15) / 0.8));
     const pillarDrop = (1 - pillarA) * 30;
+    if (arena.camera || arena.light || arena.crosswalk) {
+      this.drawTrafficArena(arena, satelliteState, groundA, frameA, t);
+      return;
+    }
     if (arena.requests) {
       this.drawRequestArena(arena, satelliteState, groundA, frameA, t);
       return;

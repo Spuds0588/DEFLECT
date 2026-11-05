@@ -69,7 +69,7 @@ for (const [index, name] of specs) {
   if (makeWorld(index, 'match').arcade === null) fail(`${name} is absent from a local match`);
 }
 
-if (ARENAS[49]?.id !== 90) fail(`QA arena moved: index 49 is ${ARENAS[49]?.id}`);
+if (ARENAS[52]?.id !== 90) fail(`QA arena moved: index 52 is ${ARENAS[52]?.id}`);
 
 // Snack and token drops warn, fall, and remove one segment on the way down.
 for (const index of [42, 43] as const) {

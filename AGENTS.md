@@ -353,7 +353,7 @@ food-court machines are the FOOD COURT campaign stop; the four cabinets are the 
 - `ArenaTetrisDef` is a 10×12 grid. `TETROMINO_SHAPES` is the only cell table. A landed piece is rebuilt
   into `baseSolids` and `baseDashSolids`; a full row clears and shifts the stack. Dynamic cover is
   local-only and must never enter a guest path.
-- QA `TEST RANGE` is now `ARENAS[49]`; update index assertions when adding another arena before it.
+- QA `TEST RANGE` is now `ARENAS[52]`; update index assertions when adding another arena before it.
 - `.tmp/arcade-arena-check.ts` owns spawn clearance, drops, soda shrink and isolation, race reversal,
   fighter telegraph/fireball, duck fall, Tetris landing and the local-only checks.
 
@@ -3329,6 +3329,32 @@ ladder still runs the five roaming mini-bosses, while the campaign stages USER d
   NETWORK BOARD opening squad and ports are gone, and the node clears only when `minibossLiveCount(USER)` is 0.
 - **Probe.** `.tmp/user-boss-check.ts` covers the body, fists, eyes, portals, fly-over, death and every
   campaign boss assignment. Extend it when a new USER attack is added; do not add a second boss harness.
+
+
+### D74 — The street-fixture row is one local traffic runtime (decided 2026-11-05)
+
+`TRAFFIC CAMERA` (49), `TRAFFIC LIGHT` (50) and `CROSSWALK SIGN` (51) are authored local arenas inserted
+immediately before QA `TEST RANGE` (now 52). One `TrafficRuntime` on `World`, built once and preallocated,
+owns photos, pipe flashes, the signal clock and both crosswalk layouts; none of it enters `Snapshot`.
+`isOnlineArena` skips `a.camera`, `a.light` and `a.crosswalk`, so hosted rooms never see the fixtures. A
+local bot match still runs them. `spawns` use `arcadeSpawns`, and both crosswalk layouts must stay clear of
+them. These are standalone arenas, not campaign nodes.
+
+- **Camera.** The lens warns for `warn`, then launches an image file along the next authored route in
+  round-robin order. A photo travels at `speed`, damages once per body for `damage` with `knockback`, and
+  de-rezzes into its route's feed mouth (a brief `pipeFlash`). Photos are preallocated; do not allocate
+  cards per tick. `cameraFlashT` is presentation; the photo list is the simulation.
+- **Traffic light.** Three zones ping-pong along authored paths with `trafficZoneAt`. Stages run
+  GREEN -> AMBER -> RED on their authored durations. Each stage first spends `warn` seconds as a dashed
+  warning and then becomes the live floor, ticking `damage` every `tick` while the clock is in that stage.
+  Only the live stage's zone burns; the other two are standby ghosts. The warning itself never damages.
+- **Crosswalk.** The sign alternates a stop layout (pixel `DON'T WALK` text) and a walk layout (the walking
+  figure) on `period`/`walkTime`. Both layouts are authored `Rect[]`; the active one is rebuilt into
+  `baseSolids` and `baseDashSolids`, and `pushPlayersOutOfArcade` ejects a body the new cover lands on. The
+  World clones `pillars`; never write a crosswalk layout into the shared `ARENAS` record or use
+  `arenaSolids` for it.
+- **Probe.** `.tmp/traffic-arena-check.ts` owns ids/spawn clearance, camera launch/route/pipe/damage,
+  light warning/live damage/stage advance, crosswalk swap/ejection and the local-only checks.
 
 
 ## TEST RANGE sandbox

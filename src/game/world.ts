@@ -59,6 +59,7 @@ import {
   ARENAS,
   arenaSolids,
   TETROMINO_SHAPES,
+  trafficZoneAt,
   discArmAngle,
   discArmLength,
   discArmPivotX,
@@ -199,6 +200,8 @@ import {
   type Projectile,
   type Prop,
   type RequestCar,
+  type TrafficPhoto,
+  type TrafficRuntime,
   type Sentry,
   type SmokeWave,
   type Virus,
@@ -771,6 +774,9 @@ export class World {
   private requestRouteIndex = 0;
   /** Food-court and arcade hazards. Local-only; never part of a snapshot. */
   readonly arcade: ArcadeRuntime | null;
+  /** Traffic camera, traffic light and crosswalk fixtures. Local-only. */
+  readonly traffic: TrafficRuntime | null;
+  private readonly trafficPoint = { x: 0, y: 0 };
   /** GPU-board thermal cycle clock. Local-only; never part of a snapshot. */
   serverHeatT = 0;
   private serverHeatTickT = 0;
@@ -896,7 +902,7 @@ export class World {
     // Dynamic cover (soda stacks, Tetris blocks) mutates `pillars`. Give this World
     // its own list; the arena records in ARENAS are shared by every match and preview.
     this.arena =
-      arena.soda || arena.tetris
+      arena.soda || arena.tetris || arena.crosswalk
         ? { ...arena, pillars: arena.pillars.slice(), spawns: arena.spawns.slice() }
         : arena;
     this.radar = arena.radar ?? null;
@@ -937,6 +943,7 @@ export class World {
     this.sodaStaticPillars = this.arena.soda ? this.arena.pillars.slice() : [];
     this.tetrisStaticPillars = this.arena.tetris ? this.arena.pillars.slice() : [];
     this.arcade = this.makeArcadeRuntime();
+    this.traffic = this.makeTrafficRuntime();
     const serverHeatDef = this.arena.server;
     if (serverHeatDef?.heat) {
       for (let i = 0; i < serverHeatDef.modules.length; i++) {
@@ -958,7 +965,7 @@ export class World {
     // still real geometry and keeps its body collision.
     const routeBarrierRects = [...this.carBarrierRects];
     const staticSolids =
-      arena.soda || arena.tetris
+      arena.soda || arena.tetris || arena.crosswalk
         ? [...this.arena.pillars, ...routeBarrierRects]
         : routeBarrierRects.length > 0
           ? [...arenaSolids(this.arena), ...routeBarrierRects]
@@ -1217,6 +1224,7 @@ export class World {
     // Players and pools exist now, so the first cover rebuild can safely push a body
     // out of a stack that would otherwise overlap its spawn.
     if (this.arcade) this.resetArcade();
+    if (this.traffic) this.resetTraffic();
 
     for (let i = 0; i < MAX_PLAYERS; i++) {
       const name = names[i];
@@ -1327,6 +1335,7 @@ export class World {
     if (this.satellite) this.resetSatellite();
     if (this.requests) this.resetRequests();
     if (this.arcade) this.resetArcade();
+    if (this.traffic) this.resetTraffic();
     this.resetServerHeat();
     for (let i = 0; i < this.pipes.length; i++) {
       const pipe = this.pipes[i];
@@ -3610,6 +3619,7 @@ export class World {
     if (this.pong) this.resetPong();
     if (this.requests) this.resetRequests();
     if (this.arcade) this.resetArcade();
+    if (this.traffic) this.resetTraffic();
     this.resetServerHeat();
     if (this.flip) this.resetFlip();
     if (this.invaders) this.resetInvaders();
@@ -3780,6 +3790,7 @@ export class World {
     if (this.pong && canAct) this.tickPong(dt);
     if (this.requests && canAct) this.tickRequests(dt);
     if (this.arcade && canAct) this.tickArcade(dt);
+    if (this.traffic && canAct) this.tickTraffic(dt);
     if (this.arena.server?.heat && canAct) this.tickServerHeat(dt);
     if (this.radar && canAct) this.tickRadar(dt);
     if (this.flip && canAct) this.tickFlip(dt);
@@ -10728,6 +10739,270 @@ export class World {
       // A three-car train takes ~0.74 s to clear one body; one train is one hit.
       p.iframes = Math.max(p.iframes, 0.9);
     }
+  }
+
+  /** Build the traffic fixtures once. Arrays are preallocated; ticks only mutate. */
+  private makeTrafficRuntime(): TrafficRuntime | null {
+    const camera = this.arena.camera;
+    const light = this.arena.light;
+    const crosswalk = this.arena.crosswalk;
+    if (!camera && !light && !crosswalk) return null;
+    const photos: TrafficPhoto[] = [];
+    for (let i = 0; i < 8; i++) {
+      photos.push({ active: false, path: 0, seg: 0, x: 0, y: 0, angle: 0, hitPlayers: 0 });
+    }
+    const zoneCount = light?.zones.length ?? 0;
+    const zoneX = new Float32Array(zoneCount);
+    const zoneY = new Float32Array(zoneCount);
+    if (light) {
+      for (let i = 0; i < zoneCount; i++) {
+        trafficZoneAt(light.zones[i].path, light.speed, light.zones[i].offset, 0, this.trafficPoint);
+        zoneX[i] = this.trafficPoint.x;
+        zoneY[i] = this.trafficPoint.y;
+      }
+    }
+    // A crosswalk starts on its stop layout. The two layouts are authored apart, so the
+    // World owns the active one and rebuilds solids when the sign swaps.
+    if (crosswalk) this.arena.pillars = crosswalk.stop.map((rect) => ({ ...rect }));
+    return {
+      photos,
+      photoT: camera?.interval ?? 0,
+      photoPath: 0,
+      cameraFlashT: 0,
+      cameraPending: false,
+      pipeFlash: new Float32Array(camera?.pipes.length ?? 0),
+      lightClock: 0,
+      lightStage: 0,
+      lightStageT: 0,
+      lightWarnT: light?.warn ?? 0,
+      lightActive: false,
+      lightTickT: 0,
+      zoneX,
+      zoneY,
+      crosswalkWalk: false,
+      crosswalkT: 0,
+      crosswalkWarnT: 0,
+      crosswalkFlashT: 0,
+    };
+  }
+
+  /** Put the traffic fixtures back to their opening state. */
+  private resetTraffic(): void {
+    const traffic = this.traffic;
+    if (!traffic) return;
+    const camera = this.arena.camera;
+    const light = this.arena.light;
+    for (let i = 0; i < traffic.photos.length; i++) traffic.photos[i].active = false;
+    traffic.photoT = camera?.interval ?? 0;
+    traffic.photoPath = 0;
+    traffic.cameraFlashT = 0;
+    traffic.cameraPending = false;
+    traffic.pipeFlash.fill(0);
+    traffic.lightClock = 0;
+    traffic.lightStage = 0;
+    traffic.lightStageT = 0;
+    traffic.lightWarnT = light?.warn ?? 0;
+    traffic.lightActive = false;
+    traffic.lightTickT = 0;
+    if (light) {
+      for (let i = 0; i < light.zones.length; i++) {
+        trafficZoneAt(light.zones[i].path, light.speed, light.zones[i].offset, 0, this.trafficPoint);
+        traffic.zoneX[i] = this.trafficPoint.x;
+        traffic.zoneY[i] = this.trafficPoint.y;
+      }
+    }
+    traffic.crosswalkT = 0;
+    traffic.crosswalkWarnT = 0;
+    traffic.crosswalkFlashT = 0;
+    if (this.arena.crosswalk) this.setCrosswalkLayout(false, true);
+  }
+
+  /** One traffic photo leaves the lens along the next authored route. */
+  private launchTrafficPhoto(): void {
+    const traffic = this.traffic;
+    const camera = this.arena.camera;
+    if (!traffic || !camera || camera.paths.length === 0) return;
+    const pathIndex = traffic.photoPath % camera.paths.length;
+    const path = camera.paths[pathIndex];
+    traffic.photoPath++;
+    traffic.photoT = Math.max(0.1, camera.interval);
+    for (let i = 0; i < traffic.photos.length; i++) {
+      const photo = traffic.photos[i];
+      if (photo.active) continue;
+      photo.active = true;
+      photo.path = pathIndex;
+      photo.seg = 0;
+      photo.x = path[0].x;
+      photo.y = path[0].y;
+      photo.angle = path.length > 1 ? Math.atan2(path[1].y - path[0].y, path[1].x - path[0].x) : 0;
+      photo.hitPlayers = 0;
+      return;
+    }
+  }
+
+  /**
+   * Advance the traffic fixtures. Photos follow authored routes and de-rez into their
+   * pipe; the light stage moves one circle at a time; the crosswalk swaps its cover.
+   * Every state field here is local-only and never enters a snapshot.
+   */
+  private tickTraffic(dt: number): void {
+    const traffic = this.traffic;
+    if (!traffic) return;
+    const camera = this.arena.camera;
+    if (camera) {
+      for (let i = 0; i < traffic.pipeFlash.length; i++) {
+        traffic.pipeFlash[i] = Math.max(0, traffic.pipeFlash[i] - dt);
+      }
+      if (traffic.cameraFlashT > 0) {
+        traffic.cameraFlashT = Math.max(0, traffic.cameraFlashT - dt);
+        if (traffic.cameraFlashT <= 0 && traffic.cameraPending) {
+          traffic.cameraPending = false;
+          this.launchTrafficPhoto();
+        }
+      } else {
+        traffic.photoT -= dt;
+        if (traffic.photoT <= 0) {
+          traffic.cameraFlashT = Math.max(0.05, camera.warn);
+          traffic.cameraPending = true;
+        }
+      }
+      for (let i = 0; i < traffic.photos.length; i++) {
+        const photo = traffic.photos[i];
+        if (!photo.active) continue;
+        const path = camera.paths[photo.path];
+        if (!path || path.length < 2) {
+          photo.active = false;
+          continue;
+        }
+        let remaining = camera.speed * dt;
+        while (remaining > 0 && photo.seg < path.length - 1) {
+          const target = path[photo.seg + 1];
+          const dx = target.x - photo.x;
+          const dy = target.y - photo.y;
+          const len = Math.hypot(dx, dy);
+          if (len <= remaining || len <= 0.001) {
+            photo.x = target.x;
+            photo.y = target.y;
+            photo.seg++;
+            remaining -= len;
+          } else {
+            photo.x += (dx / len) * remaining;
+            photo.y += (dy / len) * remaining;
+            photo.angle = Math.atan2(dy, dx);
+            remaining = 0;
+          }
+        }
+        if (photo.seg >= path.length - 1) {
+          photo.active = false;
+          const pipe = photo.path % traffic.pipeFlash.length;
+          if (traffic.pipeFlash.length > 0) traffic.pipeFlash[pipe] = 0.45;
+          continue;
+        }
+        for (let p = 0; p < this.players.length; p++) {
+          const player = this.players[p];
+          if (!player.active || !player.alive) continue;
+          const bit = 1 << player.slot;
+          if ((photo.hitPlayers & bit) !== 0) continue;
+          const dx = player.x - photo.x;
+          const dy = player.y - photo.y;
+          const reach = camera.radius + PLAYER.radius * player.shrink;
+          if (dx * dx + dy * dy > reach * reach) continue;
+          photo.hitPlayers |= bit;
+          const d = Math.hypot(dx, dy);
+          this.damagePlayer(
+            player,
+            camera.damage,
+            -1,
+            d > 0.001 ? dx / d : 1,
+            d > 0.001 ? dy / d : 0,
+            camera.knockback,
+            SRC.TRAFFIC_CAMERA,
+            -1,
+          );
+        }
+      }
+    }
+
+    const light = this.arena.light;
+    if (light && light.zones.length > 0 && light.stages.length > 0) {
+      traffic.lightClock += dt;
+      traffic.lightStageT += dt;
+      let stage = light.stages[traffic.lightStage % light.stages.length];
+      if (traffic.lightStageT >= Math.max(0.05, stage.duration)) {
+        traffic.lightStage = (traffic.lightStage + 1) % light.stages.length;
+        traffic.lightStageT = 0;
+        traffic.lightTickT = 0;
+        stage = light.stages[traffic.lightStage];
+      }
+      for (let i = 0; i < light.zones.length; i++) {
+        const zone = light.zones[i];
+        trafficZoneAt(zone.path, light.speed, zone.offset, traffic.lightClock, this.trafficPoint);
+        traffic.zoneX[i] = this.trafficPoint.x;
+        traffic.zoneY[i] = this.trafficPoint.y;
+      }
+      traffic.lightWarnT = Math.max(0, light.warn - traffic.lightStageT);
+      traffic.lightActive = traffic.lightStageT >= light.warn;
+      if (traffic.lightActive) {
+        traffic.lightTickT -= dt;
+        if (traffic.lightTickT <= 0) {
+          traffic.lightTickT = Math.max(0.1, light.tick);
+          const zone = light.zones[stage.zone];
+          if (zone) {
+            const x = traffic.zoneX[stage.zone];
+            const y = traffic.zoneY[stage.zone];
+            for (let p = 0; p < this.players.length; p++) {
+              const player = this.players[p];
+              if (!player.active || !player.alive) continue;
+              const dx = player.x - x;
+              const dy = player.y - y;
+              if (dx * dx + dy * dy > zone.radius * zone.radius) continue;
+              const d = Math.hypot(dx, dy);
+              this.damagePlayer(
+                player,
+                light.damage,
+                -1,
+                d > 0.001 ? dx / d : 0,
+                d > 0.001 ? dy / d : 0,
+                light.knockback,
+                SRC.TRAFFIC_LIGHT,
+                -1,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    const crosswalk = this.arena.crosswalk;
+    if (crosswalk) {
+      traffic.crosswalkT += dt;
+      const period = Math.max(0.5, crosswalk.period);
+      const walkTime = Math.max(0, Math.min(period, crosswalk.walkTime));
+      const stopTime = Math.max(0.05, period - walkTime);
+      const phase = traffic.crosswalkT % period;
+      const walk = phase >= stopTime;
+      const remaining = walk ? period - phase : stopTime - phase;
+      traffic.crosswalkWarnT = remaining <= crosswalk.warn ? Math.max(0, remaining) : 0;
+      traffic.crosswalkFlashT = Math.max(0, traffic.crosswalkFlashT - dt);
+      if (walk !== traffic.crosswalkWalk) {
+        traffic.crosswalkFlashT = 0.35;
+        this.setCrosswalkLayout(walk, false);
+      }
+    }
+  }
+
+  /** Swap the crosswalk's solid layout and eject any body the new cover landed on. */
+  private setCrosswalkLayout(walk: boolean, force: boolean): void {
+    const crosswalk = this.arena.crosswalk;
+    const traffic = this.traffic;
+    if (!crosswalk || !traffic) return;
+    if (!force && traffic.crosswalkWalk === walk) return;
+    traffic.crosswalkWalk = walk;
+    this.arena.pillars = (walk ? crosswalk.walk : crosswalk.stop).map((rect) => ({ ...rect }));
+    this.baseSolids = [...this.arena.pillars];
+    this.baseDashSolids = [...this.arena.pillars];
+    this.rebuildSolids();
+    this.pushPlayersOutOfArcade();
   }
 
   /** Build the local arcade runtime once. Arrays are preallocated; ticks only mutate. */

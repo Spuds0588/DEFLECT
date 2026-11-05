@@ -216,6 +216,70 @@ export interface ArenaTetrisDef {
   sub: string;
 }
 
+/** TRAFFIC CAMERA: a wall lens flashes and sends image files down fixed routes into feed mouths. */
+export interface ArenaTrafficCameraDef {
+  lens: SpawnPoint;
+  /** Authored photo routes. Each route ends at the matching pipe mouth. */
+  paths: readonly (readonly SpawnPoint[])[];
+  /** Feed mouths, one per route, in the same order. */
+  pipes: readonly SpawnPoint[];
+  interval: number;
+  /** Flash lead before a photo leaves the lens. */
+  warn: number;
+  speed: number;
+  radius: number;
+  damage: number;
+  knockback: number;
+  label: string;
+  sub: string;
+}
+
+/** TRAFFIC LIGHT: one moving floor circle per lens. */
+export interface ArenaTrafficZoneDef {
+  /** 0 green, 1 amber, 2 red. */
+  color: number;
+  path: readonly SpawnPoint[];
+  radius: number;
+  /** 0..1 start offset along the path, so the three circles never start stacked. */
+  offset: number;
+}
+
+export interface ArenaTrafficStageDef {
+  /** Index into `zones`. */
+  zone: number;
+  duration: number;
+}
+
+export interface ArenaTrafficLightDef {
+  zones: readonly ArenaTrafficZoneDef[];
+  stages: readonly ArenaTrafficStageDef[];
+  speed: number;
+  /** Warning lead at the start of every stage. The floor is safe until it ends. */
+  warn: number;
+  tick: number;
+  damage: number;
+  knockback: number;
+  label: string;
+  sub: string;
+}
+
+/** CROSSWALK SIGN: the sign swaps two authored cover layouts. */
+export interface ArenaCrosswalkDef {
+  sign: SpawnPoint;
+  /** Solid blocks while the sign shows DON'T WALK. */
+  stop: readonly Rect[];
+  /** Solid blocks while the sign shows the walking figure. */
+  walk: readonly Rect[];
+  /** Full cycle: stop layout then walk layout. */
+  period: number;
+  /** Seconds of the cycle spent on the walking layout. */
+  walkTime: number;
+  /** Warning blink before each swap. */
+  warn: number;
+  label: string;
+  sub: string;
+}
+
 /** Authored tetromino cells inside a 4x4 box. Exported so the renderer and World agree. */
 export const TETROMINO_SHAPES: readonly (readonly (readonly [number, number])[])[] = [
   [[0, 0], [1, 0], [0, 1], [1, 1]],
@@ -1668,6 +1732,12 @@ export interface ArenaDef {
   duck?: ArenaDuckDef;
   /** TETRIS. Local-only dynamic cover. */
   tetris?: ArenaTetrisDef;
+  /** TRAFFIC CAMERA. Local-only photo routes and feed mouths. */
+  camera?: ArenaTrafficCameraDef;
+  /** TRAFFIC LIGHT. Local-only moving floor circles. */
+  light?: ArenaTrafficLightDef;
+  /** CROSSWALK SIGN. Local-only cover that swaps between two layouts. */
+  crosswalk?: ArenaCrosswalkDef;
   /** A round spinning platter with a read arm. Implies an open drop around the rim. */
   disc?: DiscDef;
 }
@@ -1948,6 +2018,192 @@ const TETRIS_WELL: ArenaTetrisDef = {
   label: 'TETRIS // LOCAL WELL',
   sub: 'STACK THE FALL // CLEAR A ROW // THE COVER STAYS',
 };
+
+// A 5x7 pixel font for the crosswalk sign's floor text. The glyph cells are merged into
+// horizontal runs, so the painted text and the solid cover are the same rectangles.
+const CROSSWALK_GLYPHS: Record<string, readonly string[]> = {
+  D: ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
+  O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110'],
+  N: ['10001', '11001', '10101', '10011', '10001', '10001', '10001'],
+  "'": ['1', '1', '0', '0', '0', '0', '0'],
+  T: ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
+  W: ['10001', '10001', '10001', '10101', '10101', '11011', '10001'],
+  A: ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
+  L: ['10000', '10000', '10000', '10000', '10000', '10000', '11111'],
+  K: ['10001', '10010', '10100', '11000', '10100', '10010', '10001'],
+};
+
+/** Merge the on-cells of a pixel grid into horizontal runs, one row at a time. */
+function pixelRects(rows: readonly string[], x: number, y: number, cell: number): Rect[] {
+  const rects: Rect[] = [];
+  for (let row = 0; row < rows.length; row++) {
+    let run = -1;
+    for (let col = 0; col <= rows[row].length; col++) {
+      const on = col < rows[row].length && rows[row][col] === '1';
+      if (on && run < 0) run = col;
+      if (!on && run >= 0) {
+        rects.push({ x: x + run * cell, y: y + row * cell, w: (col - run) * cell, h: cell });
+        run = -1;
+      }
+    }
+  }
+  return rects;
+}
+
+/** One line of pixel text, with a one-cell gap between letters. */
+function pixelWord(word: string, x: number, y: number, cell: number): Rect[] {
+  const rects: Rect[] = [];
+  let cursor = x;
+  for (const ch of word) {
+    const rows = CROSSWALK_GLYPHS[ch];
+    if (!rows) {
+      cursor += cell;
+      continue;
+    }
+    rects.push(...pixelRects(rows, cursor, y, cell));
+    cursor += (rows[0].length + 1) * cell;
+  }
+  return rects;
+}
+
+const CROSSWALK_WALKER: readonly string[] = [
+  '....111....',
+  '...11111...',
+  '...11111...',
+  '....111....',
+  '...11111...',
+  '..1111111..',
+  '.111111111.',
+  '.111111111.',
+  '..1111111..',
+  '...11111...',
+  '...11.11...',
+  '..11...11..',
+  '.11.....11.',
+  '.11.....11.',
+  '11.......11',
+  '11.......11',
+  '1.........1',
+  '1.........1',
+];
+
+const TRAFFIC_CAMERA: ArenaTrafficCameraDef = {
+  lens: { x: 70, y: 548 },
+  paths: [
+    [
+      { x: 70, y: 548 },
+      { x: 430, y: 260 },
+      { x: 980, y: 210 },
+      { x: 1520, y: 250 },
+      { x: 1886, y: 260 },
+    ],
+    [
+      { x: 70, y: 548 },
+      { x: 620, y: 548 },
+      { x: 1180, y: 500 },
+      { x: 1600, y: 430 },
+      { x: 1886, y: 430 },
+    ],
+    [
+      { x: 70, y: 548 },
+      { x: 430, y: 840 },
+      { x: 980, y: 890 },
+      { x: 1520, y: 850 },
+      { x: 1886, y: 812 },
+    ],
+  ],
+  pipes: [
+    { x: 1886, y: 260 },
+    { x: 1886, y: 430 },
+    { x: 1886, y: 812 },
+  ],
+  interval: 3.4,
+  warn: 0.5,
+  speed: 430,
+  radius: 26,
+  damage: 1,
+  knockback: 380,
+  label: 'TRAFFIC CAMERA // LENS 03',
+  sub: 'FLASH // IMAGE FILE // FEED MOUTH',
+};
+
+const TRAFFIC_LIGHT: ArenaTrafficLightDef = {
+  zones: [
+    { color: 0, path: [{ x: 300, y: 800 }, { x: 1680, y: 800 }], radius: 118, offset: 0.1 },
+    { color: 1, path: [{ x: 995, y: 260 }, { x: 995, y: 840 }], radius: 108, offset: 0.55 },
+    { color: 2, path: [{ x: 1680, y: 280 }, { x: 300, y: 280 }], radius: 126, offset: 0.25 },
+  ],
+  stages: [
+    { zone: 0, duration: 3.8 },
+    { zone: 1, duration: 1.5 },
+    { zone: 2, duration: 4.2 },
+  ],
+  speed: 190,
+  warn: 0.6,
+  tick: 0.5,
+  damage: 1,
+  knockback: 0,
+  label: 'TRAFFIC LIGHT // JUNCTION 09',
+  sub: 'GREEN // AMBER // RED // THE FLOOR MOVES',
+};
+
+const CROSSWALK: ArenaCrosswalkDef = {
+  sign: { x: 995, y: 96 },
+  stop: [...pixelWord("DON'T", 665, 300, 30), ...pixelWord('WALK', 650, 590, 30)],
+  walk: pixelRects(CROSSWALK_WALKER, 830, 250, 30),
+  period: 8.4,
+  walkTime: 3.4,
+  warn: 0.7,
+  label: 'CROSSWALK SIGN // INTERSECTION 04',
+  sub: "DON'T WALK // THE TEXT IS COVER // THE SIGN SWAPS IT",
+};
+
+/** Point at `t` on a ping-pong path. Reuses `out`; no allocation per tick. */
+export function trafficZoneAt(
+  path: readonly SpawnPoint[],
+  speed: number,
+  offset: number,
+  t: number,
+  out: { x: number; y: number },
+): void {
+  if (path.length === 0) {
+    out.x = 0;
+    out.y = 0;
+    return;
+  }
+  if (path.length === 1) {
+    out.x = path[0].x;
+    out.y = path[0].y;
+    return;
+  }
+  let total = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    total += Math.hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y);
+  }
+  if (total <= 0.001) {
+    out.x = path[0].x;
+    out.y = path[0].y;
+    return;
+  }
+  const cycle = total * 2;
+  let d = (offset * total + t * speed) % cycle;
+  if (d < 0) d += cycle;
+  if (d > total) d = cycle - d;
+  for (let i = 0; i < path.length - 1; i++) {
+    const dx = path[i + 1].x - path[i].x;
+    const dy = path[i + 1].y - path[i].y;
+    const len = Math.hypot(dx, dy);
+    if (d <= len) {
+      const k = len > 0.001 ? d / len : 0;
+      out.x = path[i].x + dx * k;
+      out.y = path[i].y + dy * k;
+      return;
+    }
+    d -= len;
+  }
+  out.x = path[path.length - 1].x;
+  out.y = path[path.length - 1].y;
+}
 
 const browserChrome: Rect = { x: 48, y: 48, w: 1846, h: 136 };
 const browserPage: Rect = { x: 56, y: 192, w: 1830, h: 846 };
@@ -4102,6 +4358,48 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     tetris: TETRIS_WELL,
   },
   {
+    id: 49,
+    name: 'TRAFFIC CAMERA',
+    tagline: 'The lens is watching. The files are moving.',
+    hudLabel: 'ARENA // TRAFFIC CAMERA',
+    accent: '#ffb35c',
+    accentSoft: 'rgba(255, 179, 92, 0.32)',
+    accentFaint: 'rgba(255, 179, 92, 0.032)',
+    signature: 1,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    spawns: arcadeSpawns,
+    camera: TRAFFIC_CAMERA,
+  },
+  {
+    id: 50,
+    name: 'TRAFFIC LIGHT',
+    tagline: 'Three colors. Three moving floors.',
+    hudLabel: 'ARENA // TRAFFIC LIGHT',
+    accent: '#8dffb0',
+    accentSoft: 'rgba(141, 255, 176, 0.32)',
+    accentFaint: 'rgba(141, 255, 176, 0.032)',
+    signature: 2,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    spawns: arcadeSpawns,
+    light: TRAFFIC_LIGHT,
+  },
+  {
+    id: 51,
+    name: 'CROSSWALK SIGN',
+    tagline: 'The sign decides what is solid.',
+    hudLabel: 'ARENA // CROSSWALK SIGN',
+    accent: '#ffd166',
+    accentSoft: 'rgba(255, 209, 102, 0.32)',
+    accentFaint: 'rgba(255, 209, 102, 0.032)',
+    signature: 3,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    spawns: arcadeSpawns,
+    crosswalk: CROSSWALK,
+  },
+  {
     id: 90,
     qa: true,
     name: 'TEST RANGE',
@@ -4853,6 +5151,84 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     ctx.font = '700 6px ui-monospace, monospace';
     ctx.textAlign = 'center';
     ctx.fillText('TETRIS // FALLING COVER', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+    return;
+  }
+
+  if (arena.camera) {
+    const cam = arena.camera;
+    ctx.fillStyle = '#0a0805';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 2]);
+    for (let i = 0; i < cam.paths.length; i++) {
+      const path = cam.paths[i];
+      ctx.beginPath();
+      ctx.moveTo(mapX(path[0].x), mapY(path[0].y));
+      for (let p = 1; p < path.length; p++) ctx.lineTo(mapX(path[p].x), mapY(path[p].y));
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.fillStyle = arena.accent;
+    ctx.beginPath();
+    ctx.arc(mapX(cam.lens.x + 30), mapY(cam.lens.y), 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    for (const pipe of cam.pipes) {
+      ctx.fillStyle = '#05090d';
+      ctx.fillRect(mapX(pipe.x) - 3, mapY(pipe.y) - 2, 6, 4);
+      ctx.strokeStyle = arena.accent;
+      ctx.strokeRect(mapX(pipe.x) - 2.5, mapY(pipe.y) - 1.5, 5, 3);
+    }
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('TRAFFIC CAM // FILE ROUTES', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+    return;
+  }
+  if (arena.light) {
+    const def = arena.light;
+    ctx.fillStyle = '#050a07';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    const colors = ['#8dffb0', '#ffd166', '#ff5a5a'];
+    for (const zone of def.zones) {
+      const a = zone.path[0];
+      const b = zone.path[zone.path.length - 1];
+      const mx = mapX((a.x + b.x) * 0.5);
+      const my = mapY((a.y + b.y) * 0.5);
+      ctx.fillStyle = colors[zone.color] ?? arena.accent;
+      ctx.globalAlpha = 0.22;
+      ctx.beginPath();
+      ctx.arc(mx, my, Math.max(4, zone.radius * sx), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.arc(mx, my, Math.max(4, zone.radius * sx), 0, Math.PI * 2);
+      ctx.strokeStyle = colors[zone.color] ?? arena.accent;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('TRAFFIC LIGHT // MOVING ZONES', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+    return;
+  }
+  if (arena.crosswalk) {
+    const def = arena.crosswalk;
+    ctx.fillStyle = '#0a0906';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.fillStyle = '#241a08';
+    ctx.fillRect(mapX(def.sign.x) - 4, mapY(def.sign.y) - 3, 8, 6);
+    ctx.strokeStyle = arena.accent;
+    ctx.strokeRect(mapX(def.sign.x) - 3.5, mapY(def.sign.y) - 2.5, 7, 5);
+    for (const rect of def.stop) {
+      ctx.fillStyle = 'rgba(255, 90, 74, 0.72)';
+      ctx.fillRect(mapX(rect.x), mapY(rect.y), Math.max(1, rect.w * sx), Math.max(1, rect.h * sy));
+    }
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText("CROSSWALK // DON'T WALK COVER", mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
     return;
   }
 

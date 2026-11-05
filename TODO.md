@@ -2,6 +2,21 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Traffic fixtures: camera, light, crosswalk (2026-11-05, v0.1.205)
+
+- [x] `TRAFFIC CAMERA` (49): a west-wall lens flashes and launches an image file along one of three
+      authored routes; the file hits once and de-rezzes into the matching feed mouth
+- [x] `TRAFFIC LIGHT` (50): three ping-pong floor circles, a green -> amber -> red signal clock, a warning
+      beat before each stage, and damage only on the live stage's floor
+- [x] `CROSSWALK SIGN` (51): the hanging sign swaps the level between pixel `DON'T WALK` text cover and
+      walking-figure cover, ejecting bodies from the incoming layout
+- [x] All three use one preallocated `TrafficRuntime`, stay out of hosted rooms and `Snapshot`, and do not
+      enter the 30-level campaign route; QA `TEST RANGE` moves to `ARENAS[52]`
+- [x] `.tmp/traffic-arena-check.ts` covers spawn clearance, camera launch/route/pipe/damage, light
+      warning/live damage/stage advance and crosswalk swap/ejection
+- [ ] Human visual pass: read the camera routes and flash, the three light circles through a full cycle,
+      and both crosswalk layouts at full and low health
+
 ## Campaign order: TETRIS in the arcade, NETWORK BOARD finale (2026-11-05, v0.1.204)
 
 - [x] TETRIS is the seventh arcade node after DUCK HUNTER and a normal 8-kill assault; NETWORK BOARD is

@@ -29,7 +29,7 @@ The food-court and arcade row adds `SNACK MACHINE`, `TOKEN DISPENSER`, `SODA MAC
 `FIGHTING GAME`, `DUCK HUNTER` and `TETRIS`: falling selections, shrinking soda cover, reversible race
 cars, vector fighters, marked birds and a Tetris well whose landed blocks become cover. These are local
 only; none of their runtime state is in the snapshot.
-Thirteen programs, forty-nine arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
+Thirteen programs, fifty-two arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
 session JSON with setup, player action totals, round results, deflect sources and FPS/sim samples, shared
 through the platform sheet or downloaded with a copied summary. Callsigns, room codes, IPs and raw inputs
 are omitted, and nothing is uploaded automatically. The alpha is deployed from `main` on every push.

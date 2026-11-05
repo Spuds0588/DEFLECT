@@ -155,7 +155,7 @@ for (let i = 0; i < expected.length; i++) {
   if (arenaSolids(arena).length !== arena.pillars.length) fail(`${arena.name} has extra body solids`);
 }
 
-if (ARENAS[49]?.id !== 90) fail(`QA arena moved: index 49 is ${ARENAS[49]?.id}`);
+if (ARENAS[52]?.id !== 90) fail(`QA arena moved: index 52 is ${ARENAS[52]?.id}`);
 
 const names = expected.map((e) => ARENAS[e.id].name).join(', ');
 console.log(`server boards ok: ${names} // modules and spawns are clear`);

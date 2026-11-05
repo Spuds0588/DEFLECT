@@ -19,7 +19,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **CAMPAIGN:** the 30-level route through BUILD ROOT, REBOOT, the office devices, an airport chapter, a space chapter, the arcade and food court, and the KISSINGFACE AI datacenter, with three local save slots. A cleared level shows the route map and carries the run to the next device.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
-- Thirteen programs, forty-nine arenas.
+- Thirteen programs, fifty-two arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
@@ -434,6 +434,9 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `FIGHTING GAME` | Two vector cabinets alternate a punch, a kick and a fireball. Each strike has a telegraphed lane, the melee takes one segment, and the fireball can be caught by a guard or lash and sent back. The figures are drawn from paths and lines, not assets. Local-only. |
 | `DUCK HUNTER` | Birds cross a sky band. A random bird is marked with an AOE warning, the shot damages bodies inside the ring, and the bird then falls as a projectile until it leaves the tray line. Local-only. |
 | `TETRIS` | A 10×12 well drops one tetromino every 0.55 s. Landed blocks become real cover for bodies and shots; a full row clears and the stack shifts down. The next piece and the landing ghost are presentation. Local-only: the grid and falling cover are not in the snapshot. |
+| `TRAFFIC CAMERA` | A lens on the west wall flashes on a 3.4 s cycle and launches an image file down one of three dotted routes. A file takes one segment on contact and de-rezzes into the feed mouth at the end of its route; the routes are readable before the file arrives. No static cover. Local-only: the lens clock, files and pipe flashes are not in the snapshot. |
+| `TRAFFIC LIGHT` | Three large floor circles travel on fixed ping-pong paths, one green, one amber and one red. The signal head runs green -> amber -> red; each stage first dashes the circle as a warning, then makes that floor live, taking one segment every 0.5 s. Only the live color burns; the other circles are standby. Local-only. |
+| `CROSSWALK SIGN` | A hanging sign alternates between `DON'T WALK` and the walking figure. The active symbol is the level's cover: the stop layout is a field of pixel text blocks, the walk layout is the figure's blocks, and the sign warns before swapping. A body standing where the new block lands is pushed clear. Local-only: the sign clock and both layouts are not in the snapshot. |
 
 ### Ordinary programs
 

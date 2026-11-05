@@ -126,6 +126,10 @@ export const SRC = {
   TETRIS: 27,
   /** GPU BOARD thermal AOE. No body, so the death camera falls through. */
   SERVER_HEAT: 28,
+  /** TRAFFIC CAMERA image file. No body, so the death camera falls through. */
+  TRAFFIC_CAMERA: 29,
+  /** TRAFFIC LIGHT live floor circle. No body, so the death camera falls through. */
+  TRAFFIC_LIGHT: 30,
 } as const;
 
 export const EV = {
@@ -376,6 +380,47 @@ export interface ArcadeRuntime {
   tetrisT: number;
   tetrisClearT: number;
   tetrisClearRow: number;
+}
+
+/** One image file in flight from a traffic camera to a feed mouth. */
+export interface TrafficPhoto {
+  active: boolean;
+  /** Route index in `ArenaTrafficCameraDef.paths`. */
+  path: number;
+  /** Current segment of that route. */
+  seg: number;
+  x: number;
+  y: number;
+  angle: number;
+  /** One bit per player already hit by this photo. */
+  hitPlayers: number;
+}
+
+/**
+ * The traffic fixtures share one local-only runtime. The camera owns photos and pipe
+ * flashes, the light owns its moving zones and stage clock, and the crosswalk owns its
+ * two-layout sign clock. None of it enters `Snapshot`.
+ */
+export interface TrafficRuntime {
+  photos: TrafficPhoto[];
+  photoT: number;
+  photoPath: number;
+  cameraFlashT: number;
+  cameraPending: boolean;
+  pipeFlash: Float32Array;
+  lightClock: number;
+  lightStage: number;
+  lightStageT: number;
+  /** Seconds of warning left in the current stage; zero once the floor is live. */
+  lightWarnT: number;
+  lightActive: boolean;
+  lightTickT: number;
+  zoneX: Float32Array;
+  zoneY: Float32Array;
+  crosswalkWalk: boolean;
+  crosswalkT: number;
+  crosswalkWarnT: number;
+  crosswalkFlashT: number;
 }
 
 export interface SatelliteMeteor {

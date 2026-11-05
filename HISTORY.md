@@ -8327,3 +8327,46 @@ the network motherboard at the end of KISSINGFACE.
 
 **Next:** human pass on DUCK HUNTER -> TETRIS -> food court -> NETWORK BOARD, and a resume smoke test from
 a real v0.1.203 slot.
+
+## 2026-11-05 — Traffic fixtures: camera, signal and crosswalk (v0.1.205)
+
+**Goal:** build the designer's three new arena ideas as local street-fixture arenas: a traffic camera
+that flashes and sends image files down set paths into network pipes, a traffic light whose three moving
+floor circles burn only when their color is live, and a crosswalk sign whose changing symbol swaps the
+level's cover between `DON'T WALK` text and the walking figure.
+
+**Changes.**
+- Added `TRAFFIC CAMERA` (49), `TRAFFIC LIGHT` (50) and `CROSSWALK SIGN` (51) immediately before QA
+  `TEST RANGE`, which moved from `ARENAS[49]` to `ARENAS[52]`. All three use the shared `arcadeSpawns` ring,
+  the full 48,48 -> 1942,1046 floor and no authored static pillars. They are standalone arenas, not
+  campaign nodes.
+- One preallocated `TrafficRuntime` on `World` owns the camera photos, pipe flashes, light stage clock and
+  moving zones, and the crosswalk layout clock. It is local-only and never enters `Snapshot` or
+  `SnapshotHazards`; `isOnlineArena` excludes all three via `a.camera`, `a.light` and `a.crosswalk`. A
+  local bot match still runs them.
+- Camera: the west-wall lens warns, flashes and launches an image file along the next authored route in
+  round-robin order. Files hit once per body for one segment and knock the body away, then de-rez into the
+  matching feed mouth with a short pipe flash. Three routes are authored and all end on their pipes.
+- Traffic light: green, amber and red circles ping-pong on fixed paths. The signal runs green -> amber ->
+  red; each stage first dashes its circle as a warning, then makes that floor live, taking one segment
+  every 0.5 s. The warning itself does not damage, and only the live stage's circle burns.
+- Crosswalk: the hanging sign alternates the pixel `DON'T WALK` text layout and the walking-figure layout
+  on an 8.4 s period. The active layout is rebuilt into `baseSolids`/`baseDashSolids`; a body caught where
+  the incoming block lands is pushed clear. Each World clones its pillar list, so the shared arena record
+  never changes.
+- Added the asphalt floor, camera housing/flash cone/file cards and feed mouths, the signal head and zone
+  rings, and the sign face plus lit cover blocks to `render.ts`; added picker previews for all three.
+- Updated AGENTS D74 (and the TEST RANGE index under D70), README/GAME_GUIDE counts and arena table, TODO,
+  and the request/server/arcade probes' QA index assertions. Bumped all version stamps to 0.1.205.
+
+**Verification.**
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,188.92 kB JS, 331.24 kB gzip).
+- `.tmp/traffic-arena-check.ts` 0: ids/spawn clearance for both crosswalk layouts, camera launch/route/
+  pipe/damage, light warning vs live damage and stage advance, crosswalk swap/ejection, local-only checks.
+- `.tmp/arcade-arena-check.ts`, `.tmp/request-arena-check.ts` and `.tmp/server-board-check.ts` 0 with
+  QA `TEST RANGE` at index 52.
+- `npm run bench` clean: 8P max proj 0.100 ms avg / 0.290 ms p99; gauntlet max 0.297 ms avg / 0.808 ms p99.
+- `git diff --check` clean.
+
+**Next:** human visual pass on the camera routes and flash, a full green -> amber -> red cycle, and both
+crosswalk layouts at full and low health.

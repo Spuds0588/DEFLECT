@@ -61,7 +61,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.204';
+const BUILD = '0.1.205';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -1313,12 +1313,13 @@ function selectArena(index: number): void {
  * modules are ordinary cover, but the hazard pass is deliberately not network state yet.
  * DISPATCH YARD and LOAD BALANCER own local request traffic for the same reason. The
  * food-court and arcade row is local-only too: its drops, cars, fighters, birds and
- * falling Tetris cover have no snapshot fields.
+ * falling Tetris cover have no snapshot fields. The traffic-camera file routes, the
+ * traffic-light stage clock and the crosswalk's two cover layouts are local-only as well.
  */
 function isOnlineArena(a: ArenaDef): boolean {
   // Room arenas are tutorial staging: their chasms, props and fixture clocks are local
   // presentation/content, not a versus map. Keep them out of hosted rooms and series.
-  return !a.server && !a.requests && !a.dispenser && !a.soda && !a.race && !a.fighter && !a.duck && !a.tetris && !a.pipes && !a.firewallSwitch && !a.rooms && !a.rocket && !a.weapon && !a.seek && !a.car && !a.pong && !a.flip && !a.invaders && !a.fax && !a.plug && !a.smoke && !a.watch && !a.laptop && !a.radar;
+  return !a.server && !a.requests && !a.dispenser && !a.soda && !a.race && !a.fighter && !a.duck && !a.tetris && !a.pipes && !a.firewallSwitch && !a.rooms && !a.rocket && !a.weapon && !a.seek && !a.car && !a.pong && !a.flip && !a.invaders && !a.fax && !a.plug && !a.smoke && !a.watch && !a.laptop && !a.radar && !a.camera && !a.light && !a.crosswalk;
 }
 
 function onlineArenaIndex(index: number): number {
