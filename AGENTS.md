@@ -297,15 +297,15 @@ stay inside the board footprint and every spawn must stay clear of them. `drawSe
 substrate, bus traces, module art and wall edge; `drawArenaPreview` draws the same board in the picker. No
 `shadowBlur`.
 
-These are blockouts, not campaign nodes. `isOnlineArena` skips `a.server` so they cannot enter hosted rooms
-or series. The Level-6 hazard pass is only partly open: `GPU BOARD` now carries `server.heat`, a timed
-thermal cycle around its `kind: 'card'` modules (`ArenaServerHeatDef`: 12 s period, 3 s warning, 4.2 s hot,
-0.8 s tick, 1 damage, 46-unit pad, 3 s phase step). `serverHeatZoneRects` derives the padded AOE from the
-same module list the renderer paints, so the glowing skirt and the burn cannot drift; the card itself
-stays solid cover. `World.serverHeatT` is local-only and never enters `Snapshot`. CPU and NETWORK remain
-hazard-free foundations. Until the full pass lands, do not add any of them to `CAMPAIGN_ROUTE`,
-`CAMPAIGN_LEVELS` or a boss flow. New board hazards need an explicit snapshot decision or must stay local
-like the other fixture arenas.
+They are route nodes in the KISSINGFACE chapter, but they remain local-only. `isOnlineArena` skips
+`a.server` so they cannot enter hosted rooms or series. The hazard pass is only partly open: `GPU BOARD`
+now carries `server.heat`, a timed thermal cycle around its `kind: 'card'` modules (`ArenaServerHeatDef`:
+12 s period, 3 s warning, 4.2 s hot, 0.8 s tick, 1 damage, 46-unit pad, 3 s phase step).
+`serverHeatZoneRects` derives the padded AOE from the same module list the renderer paints, so the glowing
+skirt and the burn cannot drift; the card itself stays solid cover. `World.serverHeatT` is local-only and
+never enters `Snapshot`. CPU and NETWORK remain hazard-free beyond their cover. New board hazards need an
+explicit snapshot decision or must stay local like the other fixture arenas; do not send board state through
+`Snapshot`.
 
 ### D69 — Final-level request traffic is one shared local hazard (decided 2026-11-05)
 
@@ -321,9 +321,9 @@ local-only and satisfy the renderer without entering `Snapshot`. Cars advance by
 lane changes are deterministic. Every train is one health segment: the hit shoves the body **across** the
 rail, never along `dirX`/`dirY`, because a head-on body pushed with the train stays in front of the later
 cars and takes a second segment. Keep the shared 0.9 s i-frame window until the full train has cleared.
-A request arena is excluded by `isOnlineArena` through `a.requests`; it is not a campaign node until the
-Level-6 sequence and hazard snapshot decision exist. New request arenas add data and a renderer lane, not
-a second hazard system. `.tmp/request-arena-check.ts` owns route, clearance, spawn, train, knockback and
+Both are route nodes in the KISSINGFACE chapter, excluded from hosted rooms by `isOnlineArena` through
+`a.requests`. They remain local-only: the request clock, cars and next-lane signal never enter `Snapshot`.
+New request arenas add data and a renderer lane, not a second hazard system. `.tmp/request-arena-check.ts` owns route, clearance, spawn, train, knockback and
 local-only checks.
 
 ### D70 — Food-court and arcade row is one local hazard layer (decided 2026-11-05)
@@ -333,7 +333,8 @@ local-only checks.
 `TEST RANGE`. They share one `ArcadeRuntime` on `World`, preallocated at construction; none of it enters
 `Snapshot`. The picker and `isOnlineArena` gate each flag, so a hosted room never sees a cabinet. A local
 bot match does run them, because the room is still local; `World('match')` no longer nulls local hazard
-state. Keep the hosted gate at the arena-selection boundary rather than silently disabling a mode.
+state. Keep the hosted gate at the arena-selection boundary rather than silently disabling a mode. The three
+food-court machines are the FOOD COURT campaign stop; the four cabinets are the ARCADE stop.
 
 - `ArenaDispenserDef` handles both snack and token machines: the next chute is selected in authored order,
   the item blinks for `warn`, falls at `fallSpeed`, deals one segment on contact and de-rezzes at the tray
@@ -366,15 +367,19 @@ the solid band. The car route is unaffected and remains body geometry.
 
 ### D66 — Campaign route and the 2026-11-04 feedback pass (decided 2026-11-04)
 
-- `CAMPAIGN_LEVELS` is now 22 nodes: the four quarantine rooms, REBOOT (MEGA WORM), NETWORK SWITCH,
+- `CAMPAIGN_LEVELS` is now 30 nodes: the four quarantine rooms, REBOOT (MEGA WORM), NETWORK SWITCH,
   DOCUMENT SCANNER, FAX MACHINE, SMART WATCH, BUSINESS LAPTOP, then the airport chapter (AIRPORT with
   FILE BLOB, AIR TRAFFIC with STORM CLOUD), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE with
-  IDLE HANDS), and the arcade chapter (SPACE CADET, PONG, SPACE INVADERS with STARFISH, ARCADE RACING,
-  FIGHTING GAME, DUCK HUNTER, TETRIS with USER as the finale). The live route is data in `CAMPAIGN_ROUTE`; `drawCampaignRoad`
+  IDLE HANDS), the arcade chapter (SPACE CADET, PONG, SPACE INVADERS with STARFISH, ARCADE RACING,
+  FIGHTING GAME, DUCK HUNTER), the food-court trio (SNACK MACHINE, TOKEN DISPENSER, SODA MACHINE), and
+  the KISSINGFACE chapter (CPU BOARD, GPU BOARD, NETWORK BOARD, DISPATCH YARD, LOAD BALANCER, TETRIS with
+  USER as the finale). The 30 levels collapse to 12 chapter stops. The live route is data in `CAMPAIGN_ROUTE`; `drawCampaignRoad`
   renders completed, current, revealed and generic future stops. A clear shows the route plate only at a
   level boundary (`cleared.nodeId !== next.nodeId`); the four BUILD ROOT rooms and each themed chapter
   share one node and portal straight through. Sector is not the gate. Future branches are just extra
   `links` entries, and unseen stops stay dim generic nodes until the preceding node is cleared.
+- QA boot `?campaign=N&program=P&bots=B` starts at a zero-based authored level with no save slot; use it
+  to enter a late chapter for testing. It never enters menus or `Snapshot`.
 - A live-fire node may carry `CampaignLevel.blurb`, a two-beat script_kitty landing line. `setupCampaign`
   starts that `TutorialRunner` before `beginAssault`; it is narration only, so it never gates the clear,
   never replaces the Warden/Holding/REBOOT lessons, and  never enters `Snapshot`.

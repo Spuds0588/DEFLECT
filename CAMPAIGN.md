@@ -1,9 +1,11 @@
 # CAMPAIGN // route blueprint
 
-Status: 22 levels are playable. The live route runs BUILD ROOT
+Status: 30 levels are playable. The live route runs BUILD ROOT
 (INTAKE -> HOLDING -> MAINBOARD -> ROUTER) -> REBOOT -> NETWORK SWITCH -> DOCUMENT SCANNER -> FAX MACHINE ->
 SMART WATCH -> BUSINESS LAPTOP -> AIRPORT -> AIR TRAFFIC -> CAPCOM -> ROCKET NAVIGATION -> SATELLITE ->
-SPACE CADET -> PONG -> SPACE INVADERS -> ARCADE RACING -> FIGHTING GAME -> DUCK HUNTER -> TETRIS.
+SPACE CADET -> PONG -> SPACE INVADERS -> ARCADE RACING -> FIGHTING GAME -> DUCK HUNTER -> SNACK MACHINE ->
+TOKEN DISPENSER -> SODA MACHINE -> CPU BOARD -> GPU BOARD -> NETWORK BOARD -> DISPATCH YARD ->
+LOAD BALANCER -> TETRIS. The 30 levels collapse to 12 chapter stops.
 Bosses are spread across the route: REBOOT ends on MEGA WORM, AIRPORT on FILE BLOB, AIR TRAFFIC on STORM
 CLOUD, SATELLITE on IDLE HANDS, SPACE INVADERS on STARFISH, and TETRIS on the USER finale. BUSINESS LAPTOP
 is a normal assault again. A clear shows the route
@@ -331,12 +333,14 @@ final arena should be readable in one screen even if the approach is multi-scree
 ### Themed chapters (2026-11-05)
 
 Level 3 is the airport chapter (`AIRPORT`, `AIR TRAFFIC`), level 4 is the space chapter (`CAPCOM`,
-`ROCKET NAVIGATION`, `SATELLITE`) and level 5 is the arcade chapter (`SPACE CADET`, `PONG`,
-`SPACE INVADERS`, `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`, `TETRIS`). They are the same campaign
-runtime as the earlier devices: local-only assault phases, a `CampaignLevel.opening` squad on the first
-frame, one data crate on a clear spawn pad where the level has one, and no new snapshot fields. The airport
-and arcade arenas carry their own local hazards; the space arenas use existing cover, the ROCKET
-NAVIGATION reflector and the satellite void. The final node is TETRIS, where the USER finale holds the top of the stack.
+`ROCKET NAVIGATION`, `SATELLITE`), level 5 is the arcade and food-court chapter (`SPACE CADET`, `PONG`,
+`SPACE INVADERS`, `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`, `SNACK MACHINE`, `TOKEN DISPENSER`,
+`SODA MACHINE`) and level 6 is KISSINGFACE (`CPU BOARD`, `GPU BOARD`, `NETWORK BOARD`, `DISPATCH YARD`,
+`LOAD BALANCER`, `TETRIS`). They are the same campaign runtime as the earlier devices: local-only assault
+phases, a `CampaignLevel.opening` squad on the first frame, one data crate on a clear spawn pad where the
+level has one, and no new snapshot fields. The airport, arcade, food-court and server arenas carry their
+own local hazards; the space arenas use existing cover, the ROCKET NAVIGATION reflector and the satellite
+void. The final node is TETRIS, where the USER finale holds the top of the stack.
 
 ### Built foundations (2026-11-05)
 
@@ -345,14 +349,14 @@ The first three server-board blockouts are in `arenas.ts` as local-only arenas: 
 GPU has four long accelerator cards around an NVSwitch; network is three leaf and three spine switches
 around a fabric block. Their modules are ordinary cover, and they use the perimeter spawn ring. GPU BOARD
 now has a timed thermal cycle: each accelerator card warns, then burns a padded skirt around itself for one
-segment per 0.8 s, and the phases roll from card to card. CPU and NETWORK still have no hazards. They are
-**not** route nodes: wiring them into Level 6 waits for the full hazard pass and the finale sequence. Treat them as the floor plan the RACK/COOLANT/SUCCESSOR levels can grow from.
+segment per 0.8 s, and the phases roll from card to card. CPU and NETWORK still have no hazards beyond
+their cover. All three are KISSINGFACE route nodes now, and all three stay local-only.
 
 `DISPATCH YARD` (40) and `LOAD BALANCER` (41) extend that foundation with live request traffic. Dispatch
 has one inbound line, a three-way switch and three destinations; Load Balancer has four lanes and a
 round-robin rotor. The trains warn their next lane, take one segment on contact and shove the body across
-the rail so the rest of the chain passes. They are local-only and are not route nodes yet either; the
-Level-6 sequence still has to decide whether they become RACK arenas, a hazard layer, or both.
+the rail so the rest of the chain passes. Both are KISSINGFACE route nodes; their request state stays
+local-only.
 
 ## What each map sketch needs
 

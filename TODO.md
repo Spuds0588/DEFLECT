@@ -2,6 +2,19 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## KISSINGFACE campaign wiring (2026-11-05, v0.1.202)
+
+- [x] 30-node route: after DUCK HUNTER add SNACK MACHINE, TOKEN DISPENSER and SODA MACHINE as FOOD COURT,
+      then CPU BOARD, GPU BOARD, NETWORK BOARD, DISPATCH YARD and LOAD BALANCER as KISSINGFACE, before
+      TETRIS and the USER finale
+- [x] `SECTORS[7]` carries the food-court nodes and ends at SODA; new `SECTORS[8]` KISSINGFACE carries the
+      server boards, request floor and TETRIS
+- [x] `?campaign=N&program=P&bots=B` QA boot starts at any authored node without a save slot; a clear still
+      advances through the rest of the route
+- [x] Old completed 22-level saves that still point at the `arcade` node resume at SNACK MACHINE
+- [x] `.tmp/campaign-chapter-check.ts` and `.tmp/campaign-rules-check.ts` green; `npx tsc --noEmit` green
+- [ ] Human playthrough of SNACK MACHINE -> USER; judge the 12-stop route plate and the new hazard density
+
 ## USER finale and mini-boss distribution (2026-11-05, v0.1.201)
 
 - [x] Spread the roaming mini-bosses: REBOOT MEGA WORM, AIRPORT FILE BLOB, AIR TRAFFIC STORM CLOUD,
@@ -26,7 +39,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] Route plate groups levels by `nodeId`, so a chapter is one stop and the 22-level route stays readable
 - [x] New levels reuse existing arena hazards and place one crate on a clear spawn pad; all local-only
 - [x] `.tmp/campaign-chapter-check.ts` and the updated `campaign-rules-check.ts` green; build and bench green
-- [ ] Human visual pass on the route plate after two chapters, and a full 22-node playthrough
+- [ ] Human visual pass on the route plate at 12 stops, and a full 30-node playthrough
 
 ## GPU board thermal hazard (2026-11-05, v0.1.199)
 
@@ -58,7 +71,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] One preallocated `ArcadeRuntime`; picker previews; local-only `isOnlineArena` gate; QA range at index 49
 - [x] `.tmp/arcade-arena-check.ts`, request probe, `npm run build` and `npm run bench` green; headed pass done
 - [ ] Play each cabinet with a full local squad and tune intervals, damage and readability from play
-- [ ] Decide whether any cabinet becomes a campaign node or gains a snapshot hazard record
+- [x] Food-court machines and arcade cabinets are campaign nodes as of v0.1.202; no snapshot record
 
 ## Final-level request traffic (2026-11-05, v0.1.196)
 
@@ -69,7 +82,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
       covers the rest of the chain
 - [x] Custom spawn ring, request renderer, picker previews and `isOnlineArena` exclusion
 - [x] `.tmp/request-arena-check.ts` green; `npm run build` and `npm run bench` green; headed arena pass done
-- [ ] Wire the request arenas into Level 6 after the finale sequence and a hazard snapshot decision
+- [x] Wire the request arenas into KISSINGFACE; both are route nodes as of v0.1.202 and stay local-only
 
 ## Final-level server boards (2026-11-05, v0.1.195)
 
@@ -79,7 +92,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] Perimeter spawns clear of modules; online rotation excludes `server` arenas
 - [x] `.tmp/server-board-check.ts` green; `npm run build` green; `npm run bench` green
 - [ ] Hazard pass for the three boards (thermal/load, power delivery, fabric failure) — design still open
-- [ ] Wire the boards into Level 6 only after the hazard pass and finale route are designed
+- [x] Wire the boards into KISSINGFACE as route nodes in v0.1.202; CPU/NETWORK hazards remain open
 
 ## Campaign allies, node map, companion loss (2026-11-04, v0.1.194)
 

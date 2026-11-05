@@ -18,8 +18,8 @@ if (t.current?.id !== 'dash') throw new Error('tutorial did not advance after th
 // 2. The live route is the four split quarantine rooms, then the first network.
 const route = PLAYABLE_CAMPAIGN_LEVELS.map((level) => [level.arenaId, level.intro]);
 console.log('route:', route.map(([id, intro]) => `${id}:${intro}`).join(' -> '));
-if (PLAYABLE_CAMPAIGN_LEVELS.length !== 22) throw new Error(`expected twenty-two playable levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
-const expectedArenas = [14, 34, 35, 36, 1, 9, 12, 25, 28, 29, 23, 33, 32, 18, 17, 10, 22, 24, 45, 46, 47, 48];
+if (PLAYABLE_CAMPAIGN_LEVELS.length !== 30) throw new Error(`expected thirty playable levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
+const expectedArenas = [14, 34, 35, 36, 1, 9, 12, 25, 28, 29, 23, 33, 32, 18, 17, 10, 22, 24, 45, 46, 47, 42, 43, 44, 37, 38, 39, 40, 41, 48];
 if (route.some(([id], i) => id !== expectedArenas[i])) {
   throw new Error('campaign route does not match the authored level-2 sequence');
 }
@@ -76,4 +76,4 @@ for (const index of [2, 3]) {
   console.log(`${level.name}: ports=${world.portTotal} crates=${world.dataTotal}`);
 }
 
-console.log('campaign-rules-check: OK (intake wakes its class, kitty arrival, split route, live feed rooms)');
+console.log('campaign-rules-check: OK (intake wakes its class, kitty arrival, 30-node route, live feed rooms)');

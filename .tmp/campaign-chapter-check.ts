@@ -1,13 +1,27 @@
 import { ARENAS } from '../src/game/arenas';
 import { CAMPAIGN_ROUTE, PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
 import { MAX_PLAYERS } from '../src/game/config';
+import { SECTORS } from '../src/game/sectors';
 import { World } from '../src/game/world';
 
-if (PLAYABLE_CAMPAIGN_LEVELS.length !== 22) {
-  throw new Error(`expected 22 levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
+if (PLAYABLE_CAMPAIGN_LEVELS.length !== 30) {
+  throw new Error(`expected 30 levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
 }
-if (CAMPAIGN_ROUTE.length !== 10) {
-  throw new Error(`expected 10 chapter stops, got ${CAMPAIGN_ROUTE.length}`);
+if (CAMPAIGN_ROUTE.length !== 12) {
+  throw new Error(`expected 12 chapter stops, got ${CAMPAIGN_ROUTE.length}`);
+}
+const tail = PLAYABLE_CAMPAIGN_LEVELS.slice(21).map((level) => level.arenaId);
+if (tail.join(',') !== '42,43,44,37,38,39,40,41,48') {
+  throw new Error(`KISSINGFACE route is ${tail.join(',')}`);
+}
+if (CAMPAIGN_ROUTE[10].nodeId !== 'food-court' || CAMPAIGN_ROUTE[11].nodeId !== 'ai-core') {
+  throw new Error('the food court and AI core are not separate route stops');
+}
+if (!SECTORS[8] || SECTORS[8].name !== 'KISSINGFACE' || SECTORS[8].entry !== 'cpu' || SECTORS[8].exit !== 'tetris') {
+  throw new Error('KISSINGFACE is not the authored sector 8 route');
+}
+if (PLAYABLE_CAMPAIGN_LEVELS[21].sector !== 7 || PLAYABLE_CAMPAIGN_LEVELS[24].sector !== 8) {
+  throw new Error('food court and KISSINGFACE levels point at the wrong sectors');
 }
 const finale = PLAYABLE_CAMPAIGN_LEVELS.filter((level) => level.finale);
 if (finale.length !== 1 || finale[0].arenaId !== 48) {
@@ -15,7 +29,7 @@ if (finale.length !== 1 || finale[0].arenaId !== 48) {
 }
 if (PLAYABLE_CAMPAIGN_LEVELS[9].finale) throw new Error('BUSINESS LAPTOP is still marked finale');
 
-const newIds = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+const newIds = Array.from({ length: 20 }, (_, index) => index + 10);
 const names = new Array<string>(MAX_PLAYERS).fill('');
 names[0] = 'P';
 for (const id of newIds) {
@@ -75,4 +89,4 @@ for (const id of newIds) {
   console.log(`${level.name}: ${world.campaignPhase}, bodies ${world.sentries.filter((s) => s.active).length}/${world.viruses.filter((v) => v.active).length}/${world.worms.filter((w) => w.active).length}, crates ${world.dataTotal}`);
 }
 
-console.log('campaign-chapter-check: OK (22 levels, 10 stops, kitty blurbs, live openings, TETRIS finale)');
+console.log('campaign-chapter-check: OK (30 levels, 12 stops, food court + KISSINGFACE, TETRIS finale)');

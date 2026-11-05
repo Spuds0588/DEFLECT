@@ -61,7 +61,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.201';
+const BUILD = '0.1.202';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -574,6 +574,22 @@ function boot(): void {
   registerServiceWorker();
 
   const params = new URLSearchParams(location.search);
+  // QA-only campaign jump: `?campaign=N&program=P&bots=B` boots one authored node
+  // without writing a save slot. N is the zero-based index in PLAYABLE_CAMPAIGN_LEVELS.
+  const campaignBootRaw = params.get('campaign');
+  const campaignBootParam = campaignBootRaw === null ? Number.NaN : Number(campaignBootRaw);
+  const campaignBootLevel =
+    Number.isFinite(campaignBootParam) && campaignBootParam >= 0
+      ? Math.min(PLAYABLE_CAMPAIGN_LEVELS.length - 1, Math.floor(campaignBootParam))
+      : -1;
+  const campaignBootBotsParam = Number(params.get('bots') ?? '0');
+  const campaignBootBots = Number.isFinite(campaignBootBotsParam)
+    ? Math.max(0, Math.min(3, Math.floor(campaignBootBotsParam)))
+    : 0;
+  const campaignBootProgramParam = Number(params.get('program') ?? '0');
+  const campaignBootProgram = Number.isFinite(campaignBootProgramParam)
+    ? Math.floor(campaignBootProgramParam)
+    : 0;
   const campaignDebugParam =
     params.get('campaignDebug') === '1' || params.get('campaigndebug') === '1';
   // `?ui=0` hides the canvas UI for a clean capture without changing the saved setting.
@@ -672,6 +688,11 @@ function boot(): void {
     window.setTimeout(() => startGauntlet(gauntletBot), 250);
   } else if (playtestMode) {
     window.setTimeout(startPlaytest, 250);
+  } else if (campaignBootLevel >= 0) {
+    window.setTimeout(
+      () => startCampaignTestRun(campaignBootLevel, campaignBootProgram, campaignBootBots),
+      250,
+    );
   } else if (autoplayParam >= 1) {
     window.setTimeout(() => startAutoplay(autoplayParam), 250);
   }
@@ -1713,6 +1734,34 @@ function startNewCampaign(): void {
   startCampaignLevel();
 }
 
+/**
+ * QA-only campaign jump used by `?campaign=N`. It starts at any authored node with the
+ * requested program and companion count, but keeps `campaignSlot` at -1, so no save slot
+ * is created or overwritten and a clear can still advance to the next node.
+ */
+function startCampaignTestRun(index: number, program: number, bots: number): void {
+  campaignSlot = -1;
+  campaignPlayers = 1;
+  selectedProgram = clampProgram(program);
+  campaignBots = Math.max(0, Math.min(3, Math.floor(bots)));
+  campaignLevelIndex = Math.max(0, Math.min(PLAYABLE_CAMPAIGN_LEVELS.length - 1, Math.floor(index)));
+  campaignPlaySeconds = 0;
+  campaignMemory = new Array(MAX_PLAYERS).fill(0);
+  campaignShards = [];
+  campaignBotDead = 0;
+  campaignDeadHere = 0;
+  campaignRetryRevives = false;
+  campaignDebug?.mark(
+    'test-campaign',
+    `level ${campaignLevelIndex + 1} // program ${selectedProgram} // ${campaignBots} bots // no save`,
+  );
+  startCampaignLevel();
+  toast(
+    `QA CAMPAIGN // ${PLAYABLE_CAMPAIGN_LEVELS[campaignLevelIndex].name} // NO SAVE`,
+    'warn',
+  );
+}
+
 function resumeCampaign(index: number, save: StorySave): void {
   storySlot = index;
   campaignSlot = index;
@@ -1736,7 +1785,13 @@ function resumeCampaign(index: number, save: StorySave): void {
     renderStorySlots();
     return;
   }
-  campaignLevelIndex = Math.max(0, save.level);
+  // v0.1.202 inserted the food-court and KISSINGFACE chapters before TETRIS. An old
+  // completed slot still points at the arcade node; resume it at the new first stop
+  // instead of skipping SNACK MACHINE. A fresh slot saved after SNACK carries the
+  // food-court node id and resumes normally at TOKEN DISPENSER.
+  let resumeLevel = Math.max(0, save.level);
+  if (resumeLevel === 22 && save.nodeId === 'arcade') resumeLevel = 21;
+  campaignLevelIndex = resumeLevel;
   campaignDebug?.mark('resume-campaign', `slot ${index + 1} // level ${save.level + 1}`);
   startCampaignLevel();
 }
@@ -5952,6 +6007,7 @@ if (import.meta.env.DEV) {
     startGauntlet,
     startInfection,
     startCampaignLevel,
+    startCampaignTestRun,
     getCampaign: () => ({
       slot: campaignSlot,
       level: campaignLevelIndex,

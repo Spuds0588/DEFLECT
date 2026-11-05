@@ -8242,3 +8242,32 @@ mixes their attacks into one finale.
 
 **Next:** play the USER finale with each program and judge whether the two-fist tell, eye fan and portal
 adds stay readable while the TETRIS stack is tall.
+
+## 2026-11-05 — KISSINGFACE campaign wiring (v0.1.202)
+
+**Goal:** put every authored late-game arena on the campaign route and make the final chapter reachable for
+a test pass.
+
+**Changes.**
+- `CAMPAIGN_LEVELS` is now 30 levels. After DUCK HUNTER the route adds SNACK MACHINE, TOKEN DISPENSER and
+  SODA MACHINE as the FOOD COURT stop, then CPU BOARD, GPU BOARD, NETWORK BOARD, DISPATCH YARD and
+  LOAD BALANCER as the KISSINGFACE stop, before TETRIS and the USER finale.
+- `SECTORS[7]` now carries the food-court nodes and ends at SODA; new `SECTORS[8]` KISSINGFACE carries the
+  server boards, request floor and TETRIS. The route is 12 chapter stops.
+- Added `?campaign=N&program=P&bots=B` QA boot. It starts at any authored node without a save slot; a clear
+  still advances through the rest of the route.
+- Old completed 22-level saves that still point at the `arcade` node resume at SNACK MACHINE instead of
+  skipping it.
+- Updated AGENTS D66/D68/D69/D70, CAMPAIGN, README, GAME_GUIDE and TODO; bumped all version stamps to 0.1.202.
+
+**Verification.**
+- `.tmp/campaign-chapter-check.ts` 0: 30 levels, 12 stops, FOOD COURT + KISSINGFACE order, TETRIS/USER
+  finale, every new node opens in assault with a kitty blurb, a crate and enough opening bodies.
+- `.tmp/campaign-rules-check.ts` 0 with the 30-arena route; `npx tsc --noEmit` 0; `npm run build` 0.
+- Browser boot `?campaign=21&bots=3&program=0`: SNACK MACHINE, phase `assault`, four active players, no
+  console errors.
+- Not tested: a human run of the new late-game hazards, the 12-stop route plate, or the USER finale after
+  the new chapter.
+
+**Next:** play SNACK MACHINE through USER, judge hazard density and the route plate, then tune the new
+nodes from play.

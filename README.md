@@ -12,7 +12,7 @@ files, no game engine.
 [![DEFLECT kiosk demo](screenshots/demo-kiosk.png)](https://spuds0588.github.io/DEFLECT/?demo=true)
 
 Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, a
-timed infection clear, the first campaign node, and host/join rooms for up to eight players. VS BOTS and
+timed infection clear, the 30-node campaign, and host/join rooms for up to eight players. VS BOTS and
 online versus can run a 1, 3 or 5 game series with random map rotation by default or a fixed custom arena.
 SATELLITE's solar wings, meteors, capacitor pods and reentry front are host-synced in those rooms.
 ROCKET NAVIGATION, WEAPON SYSTEMS, SPEAK & FIND, CAR NAVIGATION, PONG, AIRPORT, SPACE INVADERS, FAX
@@ -20,11 +20,11 @@ MACHINE, SMART PLUG, SMOKE DETECTOR, SMART WATCH, BUSINESS LAPTOP, SPREADSHEET a
 arenas: their launch walls, cockpit consoles, toy cards, car routes, rally balls, flip boards, simulated
 cannons, moving print heads, live circuit rings, alarm sirens, sweeping watch hands, scrolling mail,
 breakable sheet cells and rising chat bubbles are not synced online.
-The three final-level server boards (`CPU BOARD`, `GPU BOARD`, `NETWORK BOARD`) are local: their sockets,
-accelerator cards and network switches are cover. `GPU BOARD` adds a timed thermal cycle around its
-accelerator cards, and the other two boards' hazard pass is still open.
-`DISPATCH YARD` and `LOAD BALANCER` are local request-traffic arenas: authored train routes split at a
-switch, warn the next lane, and shove a hit body clear of the rail. Their cars are not in the snapshot.
+The three KISSINGFACE server boards (`CPU BOARD`, `GPU BOARD`, `NETWORK BOARD`) are local campaign nodes:
+their sockets, accelerator cards and network switches are cover. `GPU BOARD` adds a timed thermal cycle
+around its accelerator cards, and the other two boards' hazard pass is still open.
+`DISPATCH YARD` and `LOAD BALANCER` are local request-traffic campaign nodes: authored train routes split
+at a switch, warn the next lane, and shove a hit body clear of the rail. Their cars are not in the snapshot.
 The food-court and arcade row adds `SNACK MACHINE`, `TOKEN DISPENSER`, `SODA MACHINE`, `ARCADE RACING`,
 `FIGHTING GAME`, `DUCK HUNTER` and `TETRIS`: falling selections, shrinking soda cover, reversible race
 cars, vector fighters, marked birds and a Tetris well whose landed blocks become cover. These are local
