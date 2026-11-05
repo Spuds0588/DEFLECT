@@ -56,6 +56,7 @@ import {
   USB_STATE,
   usbPhaseAt,
   ROOM_THEME_COLORS,
+  TETROMINO_SHAPES,
   type ArenaDef,
   type ArenaFaxDef,
   type ArenaKeypadDef,
@@ -71,7 +72,7 @@ import { PROGRAM_ID, programDef } from './programs';
 import { MINIBOSS } from './minibosses';
 import { MEMORY } from './memory';
 import { drawDroppedFiles, drawRegularProgram, regularFace, regularProgram, type RegularMood, type RegularProgramDef } from './regulars';
-import { PROP, SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type RequestCar, type SatelliteMeteor, type Sentry, type SmokeWave, type Virus, type Worm } from './types';
+import { PROP, SRC, type ArcadeRuntime, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type RequestCar, type SatelliteMeteor, type Sentry, type SmokeWave, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
 import { beamReach } from './collision';
 
@@ -188,6 +189,8 @@ export interface RenderState {
   /** CAR NAVIGATION route clock and 0..1 progress. Local-only. */
   carT?: number;
   carProgress?: number;
+  /** Food-court and arcade hazards. Local-only. */
+  arcade?: ArcadeRuntime | null;
   /** DISPATCH / LOAD BALANCER live request traffic and its switch signal. Local-only. */
   requestCars?: readonly RequestCar[];
   requestT?: number;
@@ -7254,6 +7257,994 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** Food-court and arcade row. One renderer dispatch, one local runtime. */
+  private drawArcadeArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    this.drawArcadeFloor(arena, groundA, t);
+    if (arena.dispenser) this.drawDispenserArena(arena, state, groundA, frameA, t);
+    else if (arena.soda) this.drawSodaArena(arena, state, groundA, frameA, t);
+    else if (arena.race) this.drawRaceArena(arena, state, groundA, frameA, t);
+    else if (arena.fighter) this.drawFighterArena(arena, state, groundA, frameA, t);
+    else if (arena.duck) this.drawDuckArena(arena, state, groundA, frameA, t);
+    else if (arena.tetris) this.drawTetrisArena(arena, state, groundA, frameA, t);
+    this.drawArcadeFrame(arena, frameA, t);
+  }
+
+  /** Dark service floor under every cabinet. The machine itself is the landmark. */
+  private drawArcadeFloor(arena: ArenaDef, groundA: number, t: number): void {
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    ctx.save();
+    ctx.fillStyle = '#020509';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#0b0f14';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.globalAlpha = groundA * 0.18;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = b.left + 48; x < b.right; x += 64) {
+      ctx.moveTo(x, b.top);
+      ctx.lineTo(x, b.bottom);
+    }
+    for (let y = b.top + 48; y < b.bottom; y += 64) {
+      ctx.moveTo(b.left, y);
+      ctx.lineTo(b.right, y);
+    }
+    ctx.stroke();
+    // One slow sweep gives the floor life without competing with the cabinets.
+    const scanX = b.left + ((t * 46) % (b.right - b.left));
+    ctx.globalAlpha = groundA * 0.1;
+    ctx.fillStyle = arena.accent;
+    ctx.fillRect(scanX, b.top + 2, 2, b.bottom - b.top - 4);
+    ctx.restore();
+  }
+
+  private drawArcadeFrame(arena: ArenaDef, frameA: number, t: number): void {
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const ink = arena.accent;
+    ctx.save();
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(b.left + 2, b.top + 2, b.right - b.left - 4, b.bottom - b.top - 4);
+    ctx.strokeStyle = '#eaffff';
+    ctx.globalAlpha = frameA * 0.8;
+    ctx.lineWidth = 1.3;
+    ctx.strokeRect(b.left + 6.5, b.top + 6.5, b.right - b.left - 13, b.bottom - b.top - 13);
+    ctx.globalAlpha = frameA * 0.06;
+    ctx.fillStyle = ink;
+    ctx.fillRect(b.left + 9, b.top + 9, b.right - b.left - 18, 48);
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.38)';
+    ctx.font = '600 10px ui-monospace, monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('LOCAL ARCADE // COVER AND HAZARDS', b.right - 22, b.bottom - 18);
+    // Small corner ticks keep the frame reading as a cabinet bezel.
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 2;
+    const c = 26;
+    ctx.beginPath();
+    ctx.moveTo(b.left + 14, b.top + 14 + c);
+    ctx.lineTo(b.left + 14, b.top + 14);
+    ctx.lineTo(b.left + 14 + c, b.top + 14);
+    ctx.moveTo(b.right - 14 - c, b.top + 14);
+    ctx.lineTo(b.right - 14, b.top + 14);
+    ctx.lineTo(b.right - 14, b.top + 14 + c);
+    ctx.moveTo(b.left + 14, b.bottom - 14 - c);
+    ctx.lineTo(b.left + 14, b.bottom - 14);
+    ctx.lineTo(b.left + 14 + c, b.bottom - 14);
+    ctx.moveTo(b.right - 14 - c, b.bottom - 14);
+    ctx.lineTo(b.right - 14, b.bottom - 14);
+    ctx.lineTo(b.right - 14, b.bottom - 14 - c);
+    ctx.stroke();
+    // A tiny marquee pulse, far away from the fight.
+    const blink = 0.55 + 0.45 * Math.sin(t * 2.2);
+    ctx.globalAlpha = frameA * blink * 0.5;
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.arc(b.right - 30, b.top + 30, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private drawDispenserArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const def = arena.dispenser;
+    if (!def) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const snack = def.kind === 'snack';
+    const body = { x: 150, y: 86, w: 1700, h: 452 };
+    const tray = def.tray;
+    ctx.save();
+    ctx.globalAlpha = groundA;
+    // Housing and glass. The glass is the product face; the tray is a real mouth.
+    ctx.fillStyle = '#0d1318';
+    ctx.fillRect(body.x, body.y, body.w, body.h);
+    ctx.fillStyle = snack ? '#1a1710' : '#111a18';
+    ctx.fillRect(body.x + 14, body.y + 14, body.w - 28, body.h - 28);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(body.x + 5, body.y + 5, body.w - 10, body.h - 10);
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#03070a';
+    ctx.fillRect(body.x + 34, body.y + 74, body.w - 68, body.h - 144);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(body.x + 34, body.y + 74, body.w - 68, body.h - 144);
+    // Six selection columns. Product packets sit above each coil; the coil is the mouth.
+    const cols = snack ? 6 : 3;
+    const colW = (body.w - 104) / cols;
+    const rows = snack ? 2 : 1;
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const x = body.x + 52 + col * colW;
+        const y = body.y + 100 + row * 150;
+        const packetW = Math.min(112, colW - 26);
+        const packetH = 66;
+        ctx.globalAlpha = frameA * 0.78;
+        ctx.fillStyle = snack ? (col + row) % 2 === 0 ? '#5f421e' : '#374c33' : '#2c3d45';
+        ctx.fillRect(x + (colW - packetW) * 0.5, y, packetW, packetH);
+        ctx.strokeStyle = arena.accentSoft;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x + (colW - packetW) * 0.5, y, packetW, packetH);
+        ctx.fillStyle = '#e8f5f0';
+        ctx.font = '700 12px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(snack ? 'SNACK' : 'BILL', x + colW * 0.5, y + 28);
+        ctx.fillStyle = arena.accent;
+        ctx.font = '600 10px ui-monospace, monospace';
+        ctx.fillText(`A${row + 1}`, x + colW * 0.5, y + 48);
+        // Coil: three visible turns around the drop point for this column.
+        const point = def.points[(row * cols + col) % def.points.length];
+        ctx.globalAlpha = frameA * 0.9;
+        ctx.strokeStyle = arena.accent;
+        ctx.lineWidth = 2;
+        for (let turn = 0; turn < 3; turn++) {
+          ctx.beginPath();
+          ctx.arc(point.x, point.y + turn * 13, 20 - turn * 3, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#03070a';
+        ctx.beginPath();
+        ctx.arc(point.x, point.y + 8, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = arena.accentSoft;
+        ctx.stroke();
+      }
+    }
+    if (!snack && def.bills) {
+      // Bills cross the head on two belts.
+      for (let i = 0; i < def.bills.length; i++) {
+        const lane = def.bills[i];
+        const travel = ((t * 82 + i * 140) % (lane.w + 240)) - 120;
+        const x = lane.x + travel;
+        ctx.globalAlpha = frameA * 0.8;
+        ctx.fillStyle = '#163b24';
+        ctx.fillRect(x, lane.y, 118, 30);
+        ctx.strokeStyle = '#8ef0b0';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, lane.y + 0.5, 117, 29);
+        ctx.fillStyle = '#8ef0b0';
+        ctx.fillRect(x + 8, lane.y + 6, 26, 3);
+        ctx.fillRect(x + 8, lane.y + 13, 16, 2);
+        ctx.font = '700 9px ui-monospace, monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText('$1', x + 108, lane.y + 20);
+      }
+    }
+    // Collection tray. The lip is where a falling item de-rezzes.
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#050a0d';
+    ctx.fillRect(tray.x, tray.y, tray.w, tray.h);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(tray.x + 1.5, tray.y + 1.5, tray.w - 3, tray.h - 3);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tray.x + 16, tray.y + 16, tray.w - 32, tray.h - 32);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.42)';
+    ctx.font = '700 12px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('COLLECTION TRAY // WATCH THE LIP', tray.x + tray.w * 0.5, tray.y + tray.h * 0.62);
+    if (state?.arcade?.dropFlashT) {
+      ctx.globalAlpha = frameA * Math.min(1, state.arcade.dropFlashT * 3);
+      ctx.strokeStyle = '#eaffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(tray.x + 6, tray.y + 6, tray.w - 12, tray.h - 12);
+    }
+    // Warning lane and the live selection.
+    const drops = state?.arcade?.drops;
+    if (drops) {
+      for (let i = 0; i < drops.length; i++) {
+        const drop = drops[i];
+        if (!drop.active) continue;
+        if (drop.warnT > 0) {
+          ctx.globalAlpha = frameA * (0.35 + 0.65 * Math.min(1, drop.warnT / Math.max(0.01, def.warn)));
+          ctx.strokeStyle = arena.accent;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([8, 8]);
+          ctx.beginPath();
+          ctx.moveTo(drop.x, drop.y);
+          ctx.lineTo(drop.x, tray.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(drop.x, drop.y, 26 + Math.sin(t * 18) * 4, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = frameA;
+        ctx.save();
+        ctx.translate(drop.x, drop.y);
+        ctx.rotate(drop.spin);
+        if (drop.kind === 0) {
+          ctx.fillStyle = '#ffd166';
+          ctx.fillRect(-16, -20, 32, 40);
+          ctx.strokeStyle = '#fff3c4';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(-15, -19, 30, 38);
+          ctx.fillStyle = '#3a2b10';
+          ctx.fillRect(-9, -11, 18, 4);
+          ctx.fillRect(-9, -2, 12, 3);
+        } else {
+          ctx.fillStyle = '#f6d365';
+          ctx.beginPath();
+          ctx.arc(0, 0, drop.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#fff8cc';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.fillStyle = '#3d3310';
+          ctx.font = '700 14px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('¢', 0, 1);
+        }
+        ctx.restore();
+      }
+    }
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#eaffff';
+    ctx.font = '700 18px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(def.label, b.left + (b.right - b.left) * 0.5, b.top + 30);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.46)';
+    ctx.font = '500 11px ui-monospace, monospace';
+    ctx.fillText(def.sub, b.left + (b.right - b.left) * 0.5, b.top + 48);
+    if (state?.arcade) {
+      ctx.fillStyle = arena.accentSoft;
+      ctx.textAlign = 'left';
+      ctx.font = '600 11px ui-monospace, monospace';
+      ctx.fillText(snack ? 'SELECTION CYCLE // LIVE' : 'BILL ACCEPTOR // LIVE', body.x + 34, body.y + body.h + 34);
+    }
+    ctx.restore();
+  }
+
+  private drawSodaArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    _t: number,
+  ): void {
+    const def = arena.soda;
+    if (!def) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const arcade = state?.arcade;
+    ctx.save();
+    ctx.globalAlpha = groundA;
+    // Cooler shell.
+    ctx.fillStyle = '#0a1216';
+    ctx.fillRect(500, 96, 990, 824);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(505, 101, 980, 814);
+    ctx.fillStyle = '#061014';
+    ctx.fillRect(536, 142, 918, 742);
+    // Shelves behind the stacks.
+    ctx.strokeStyle = 'rgba(141, 230, 255, 0.18)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(560, 142 + (742 * i) / 4);
+      ctx.lineTo(1430, 142 + (742 * i) / 4);
+      ctx.stroke();
+    }
+    // Static side cabinets. Their collision is ordinary cover.
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      if (r.w < 120) continue;
+      ctx.globalAlpha = frameA;
+      ctx.fillStyle = '#10191d';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = arena.accentSoft;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      ctx.fillStyle = 'rgba(220, 245, 255, 0.4)';
+      ctx.font = '600 9px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('COOLER', r.x + r.w * 0.5, r.y + r.h * 0.62);
+    }
+    // Every can is a slice of the stack's dynamic cover. Empty shelves stay visible.
+    const colors = ['#8de6ff', '#ff7b8f', '#ffd166', '#9dff8a'];
+    for (let si = 0; si < def.stacks.length; si++) {
+      const stack = def.stacks[si];
+      const count = arcade?.sodaCounts[si] ?? stack.cans;
+      const step = stack.h / stack.cans;
+      ctx.globalAlpha = frameA;
+      ctx.fillStyle = '#061015';
+      ctx.fillRect(stack.x - 6, stack.y - 6, stack.w + 12, stack.h + 12);
+      ctx.strokeStyle = arena.accentSoft;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(stack.x - 6, stack.y - 6, stack.w + 12, stack.h + 12);
+      for (let c = 0; c < count; c++) {
+        const y = stack.y + (stack.cans - count + c) * step;
+        const h = Math.max(10, step - 5);
+        const color = colors[(si + c) % colors.length];
+        ctx.fillStyle = color;
+        ctx.globalAlpha = frameA * 0.82;
+        ctx.fillRect(stack.x + 5, y + 3, stack.w - 10, h);
+        ctx.globalAlpha = frameA;
+        ctx.strokeStyle = '#eaffff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(stack.x + 5.5, y + 3.5, stack.w - 11, h - 1);
+        ctx.fillStyle = 'rgba(5, 15, 20, 0.55)';
+        ctx.fillRect(stack.x + 10, y + 9, stack.w - 20, 3);
+        ctx.fillStyle = '#f7ffff';
+        ctx.beginPath();
+        ctx.ellipse(stack.x + stack.w * 0.5, y + 5, stack.w * 0.28, 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Empty slots read as removed barriers, not a rendering gap.
+      for (let c = count; c < stack.cans; c++) {
+        const y = stack.y + c * step;
+        ctx.globalAlpha = frameA * 0.13;
+        ctx.strokeStyle = arena.accentSoft;
+        ctx.setLineDash([4, 6]);
+        ctx.strokeRect(stack.x + 5, y + 3, stack.w - 10, Math.max(10, step - 5));
+        ctx.setLineDash([]);
+      }
+      ctx.globalAlpha = frameA * 0.7;
+      ctx.fillStyle = arena.accent;
+      ctx.font = '700 11px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${count}/${stack.cans}`, stack.x + stack.w * 0.5, stack.y + stack.h + 22);
+    }
+    if (arcade && arcade.sodaFlashT > 0) {
+      ctx.globalAlpha = frameA * Math.min(1, arcade.sodaFlashT * 3);
+      ctx.strokeStyle = '#eaffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(534, 140, 922, 746);
+    }
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#eaffff';
+    ctx.font = '700 18px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(def.label, b.left + (b.right - b.left) * 0.5, b.top + 30);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.46)';
+    ctx.font = '500 11px ui-monospace, monospace';
+    ctx.fillText(def.sub, b.left + (b.right - b.left) * 0.5, b.top + 48);
+    ctx.fillStyle = arena.accentSoft;
+    ctx.textAlign = 'left';
+    ctx.font = '600 11px ui-monospace, monospace';
+    ctx.fillText('AUTO-VEND // ONE CAN PER CYCLE', 536, 902);
+    ctx.restore();
+  }
+
+  private drawRaceArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    _t: number,
+  ): void {
+    const def = arena.race;
+    if (!def) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const cx = def.center.x;
+    const cy = def.center.y;
+    const ink = arena.accent;
+    ctx.save();
+    ctx.globalAlpha = groundA;
+    // The oval and its apron.
+    ctx.strokeStyle = '#15191f';
+    ctx.lineWidth = 178;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, def.rx, def.ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#232a32';
+    ctx.lineWidth = 150;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, def.rx, def.ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, def.rx + 82, def.ry + 82, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, def.rx - 82, def.ry - 82, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Lane dashes inside the racing surface.
+    ctx.setLineDash([18, 20]);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, def.rx, def.ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Start/finish checker at the east end.
+    const sx = cx + def.rx;
+    for (let i = 0; i < 8; i++) {
+      ctx.fillStyle = i % 2 === 0 ? '#eaffff' : '#11161b';
+      ctx.fillRect(sx - 8, cy - 70 + i * 17.5, 16, 17.5);
+    }
+    // Infield cover.
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      ctx.fillStyle = '#0a1015';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = arena.accentSoft;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      ctx.fillStyle = 'rgba(255, 91, 122, 0.18)';
+      ctx.fillRect(r.x + 16, r.y + 16, r.w - 32, 4);
+      ctx.fillStyle = 'rgba(220, 245, 255, 0.4)';
+      ctx.font = '700 12px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('PIT', r.x + r.w * 0.5, r.y + r.h * 0.54);
+    }
+    // Hazard cars. They are the projectile.
+    const cars = state?.arcade?.raceCars;
+    if (cars) {
+      const carColors = ['#ff5b7a', '#ffd166', '#70ddff', '#b49cff', '#8dffb0'];
+      for (let i = 0; i < cars.length; i++) {
+        const car = cars[i];
+        if (!car.active) continue;
+        const x = cx + Math.cos(car.angle) * def.rx;
+        const y = cy + Math.sin(car.angle) * def.ry;
+        let tangent = Math.atan2(Math.cos(car.angle) * def.ry, -Math.sin(car.angle) * def.rx);
+        if (car.dir < 0) tangent += Math.PI;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(tangent);
+        ctx.globalAlpha = frameA;
+        ctx.fillStyle = '#05090c';
+        ctx.fillRect(-def.carW * 0.5 - 4, -def.carH * 0.5 - 4, def.carW + 8, def.carH + 8);
+        ctx.fillStyle = carColors[i % carColors.length];
+        ctx.beginPath();
+        ctx.moveTo(-def.carW * 0.5, -def.carH * 0.5);
+        ctx.lineTo(def.carW * 0.35, -def.carH * 0.5);
+        ctx.lineTo(def.carW * 0.5, 0);
+        ctx.lineTo(def.carW * 0.35, def.carH * 0.5);
+        ctx.lineTo(-def.carW * 0.5, def.carH * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#eaffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = '#071015';
+        ctx.fillRect(-def.carW * 0.12, -def.carH * 0.3, def.carW * 0.25, def.carH * 0.6);
+        ctx.fillStyle = '#eaffff';
+        ctx.fillRect(def.carW * 0.31, -def.carH * 0.22, 4, def.carH * 0.44);
+        // Wheels read outside the hull at couch distance.
+        ctx.fillStyle = car.flashT > 0 ? '#ffffff' : '#12181c';
+        ctx.fillRect(-def.carW * 0.30, -def.carH * 0.65, 12, 8);
+        ctx.fillRect(def.carW * 0.16, -def.carH * 0.65, 12, 8);
+        ctx.fillRect(-def.carW * 0.30, def.carH * 0.65 - 8, 12, 8);
+        ctx.fillRect(def.carW * 0.16, def.carH * 0.65 - 8, 12, 8);
+        ctx.restore();
+      }
+    }
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#eaffff';
+    ctx.font = '700 18px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(def.label, b.left + (b.right - b.left) * 0.5, b.top + 30);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.46)';
+    ctx.font = '500 11px ui-monospace, monospace';
+    ctx.fillText(def.sub, b.left + (b.right - b.left) * 0.5, b.top + 48);
+    ctx.fillStyle = arena.accentSoft;
+    ctx.textAlign = 'left';
+    ctx.font = '600 11px ui-monospace, monospace';
+    ctx.fillText('LIVE CARS // THEY DO NOT BRAKE', b.left + 24, b.bottom - 34);
+    ctx.restore();
+  }
+
+  private drawFighterArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const def = arena.fighter;
+    if (!def) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const arcade = state?.arcade;
+    const ink = arena.accent;
+    const warn = arcade?.fighterWarnT ?? 0;
+    const active = arcade?.fighterActiveT ?? 0;
+    const side = arcade?.fighterSide ?? 0;
+    const kind = arcade?.fighterKind ?? 0;
+    ctx.save();
+    ctx.globalAlpha = groundA;
+    // Cabinet stage.
+    ctx.fillStyle = '#070b0d';
+    ctx.fillRect(90, 86, 1820, 880);
+    ctx.fillStyle = '#120e0b';
+    ctx.fillRect(118, 114, 1764, 824);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(96, 92, 1808, 868);
+    // Marquee and crowd.
+    ctx.globalAlpha = frameA * 0.65;
+    ctx.fillStyle = '#21150b';
+    ctx.fillRect(160, 126, 1680, 54);
+    ctx.fillStyle = ink;
+    ctx.font = '700 20px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('ROUND 1 // FIGHT', b.left + (b.right - b.left) * 0.5, 162);
+    for (let i = 0; i < 26; i++) {
+      ctx.globalAlpha = frameA * (0.12 + (i % 3) * 0.05);
+      ctx.fillStyle = '#ffd9a8';
+      ctx.beginPath();
+      ctx.arc(160 + i * 63, 210 + ((i * 17) % 18), 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Stage floor.
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#1a120c';
+    ctx.fillRect(182, 690, 1636, 68);
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(182, 690);
+    ctx.lineTo(1818, 690);
+    ctx.stroke();
+    // A telegraphed lane sells the next strike before it lands.
+    if (warn > 0) {
+      const left = side === 0;
+      const x1 = left ? def.left.x + 42 : def.right.x - 42;
+      const x2 = left ? x1 + def.reach : x1 - def.reach;
+      ctx.globalAlpha = frameA * (0.3 + 0.35 * (1 - warn / Math.max(0.01, def.warn)));
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = kind === 2 ? 4 : 6;
+      ctx.setLineDash(kind === 2 ? [6, 8] : [14, 8]);
+      ctx.beginPath();
+      ctx.moveTo(x1, def.left.y);
+      ctx.lineTo(x2, def.left.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // Vector fighters. They have no assets, so the silhouette carries the read.
+    this.drawStickFighter(def.left.x, def.left.y, 1, side === 0 ? warn : 0, side === 0 ? active : 0, side === 0 ? kind : -1, frameA, ink, t);
+    this.drawStickFighter(def.right.x, def.right.y, -1, side === 1 ? warn : 0, side === 1 ? active : 0, side === 1 ? kind : -1, frameA, '#ffd166', t);
+    // Arcade health pips, not player health.
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#eaffff';
+    ctx.font = '700 12px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('P1', def.left.x, 250);
+    ctx.fillText('CPU', def.right.x, 250);
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = i < 3 ? ink : '#252b30';
+      ctx.fillRect(def.left.x - 34 + i * 24, 262, 18, 6);
+      ctx.fillStyle = i < 3 ? '#ffd166' : '#252b30';
+      ctx.fillRect(def.right.x - 34 + i * 24, 262, 18, 6);
+    }
+    // Live fireballs and their catch flash.
+    const shots = arcade?.fighterShots;
+    if (shots) {
+      for (let i = 0; i < shots.length; i++) {
+        const shot = shots[i];
+        if (!shot.active) continue;
+        ctx.globalAlpha = frameA;
+        ctx.fillStyle = '#ff7b38';
+        ctx.beginPath();
+        ctx.arc(shot.x, shot.y, shot.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fff0c2';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.fillStyle = '#fff0c2';
+        ctx.beginPath();
+        ctx.arc(shot.x - Math.sign(shot.vx) * 6, shot.y - 4, 4, 0, Math.PI * 2);
+        ctx.fill();
+        // A short trail makes the projectile legible against the stage.
+        ctx.globalAlpha = frameA * 0.25;
+        ctx.fillStyle = '#ff7b38';
+        ctx.fillRect(shot.x - Math.sign(shot.vx) * 34, shot.y - 4, 28, 8);
+      }
+    }
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#eaffff';
+    ctx.font = '700 18px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(def.label, b.left + (b.right - b.left) * 0.5, b.top + 30);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.46)';
+    ctx.font = '500 11px ui-monospace, monospace';
+    ctx.fillText(def.sub, b.left + (b.right - b.left) * 0.5, b.top + 48);
+    ctx.fillStyle = arena.accentSoft;
+    ctx.textAlign = 'left';
+    ctx.font = '600 11px ui-monospace, monospace';
+    ctx.fillText('CABINET AI // STRIKES ARE TELEGRAPHED', 182, 806);
+    ctx.restore();
+  }
+
+  /** One vector stick figure. `side` 1 faces right, -1 faces left. */
+  private drawStickFighter(
+    x: number,
+    y: number,
+    side: number,
+    warn: number,
+    active: number,
+    kind: number,
+    frameA: number,
+    ink: string,
+    t: number,
+  ): void {
+    const ctx = this.ctx;
+    const attack = active > 0;
+    const wind = warn > 0;
+    const phase = Math.max(0, Math.min(1, active / 0.24));
+    const reach = attack ? 1 - phase * 0.4 : wind ? 0.35 : 0.1;
+    const punch = kind === 0;
+    const kick = kind === 1;
+    const fire = kind === 2;
+    ctx.save();
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = attack ? '#eaffff' : ink;
+    ctx.fillStyle = attack ? '#eaffff' : ink;
+    ctx.lineWidth = attack ? 5 : 4;
+    ctx.lineCap = 'round';
+    // Head.
+    ctx.beginPath();
+    ctx.arc(x, y - 102, 17, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y - 102, 7, 0, Math.PI * 2);
+    ctx.fill();
+    // Torso.
+    ctx.beginPath();
+    ctx.moveTo(x, y - 84);
+    ctx.lineTo(x, y - 26);
+    ctx.stroke();
+    // Legs. The kick swaps the front leg's length.
+    const legKick = kick && (wind || attack) ? 48 : 0;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 26);
+    ctx.lineTo(x - 26, y + 18);
+    ctx.moveTo(x, y - 26);
+    ctx.lineTo(x + side * (30 + legKick), y + 18 + (legKick > 0 ? -10 : 0));
+    ctx.stroke();
+    // Arms. The punch extends the front arm; fire holds both forward.
+    const arm = side * (punch && (wind || attack) ? 34 + reach * 34 : 40);
+    const backArm = side * (fire && (wind || attack) ? 26 : -34);
+    ctx.beginPath();
+    ctx.moveTo(x, y - 72);
+    ctx.lineTo(x + backArm, y - 44);
+    ctx.moveTo(x, y - 72);
+    ctx.lineTo(x + arm, y - 44 + (fire && (wind || attack) ? 0 : 8));
+    ctx.stroke();
+    if (fire && (wind || attack)) {
+      const orbX = x + side * (attack ? 82 : 58);
+      ctx.fillStyle = attack ? '#fff0c2' : '#ff7b38';
+      ctx.beginPath();
+      ctx.arc(orbX, y - 44, attack ? 12 : 7 + Math.sin(t * 14) * 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = frameA * 0.25;
+      ctx.beginPath();
+      ctx.arc(orbX, y - 44, attack ? 24 : 14, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // A compact fighting stance shadow.
+    ctx.globalAlpha = frameA * 0.24;
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 20, 46, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private drawDuckArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const def = arena.duck;
+    if (!def) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const sky = def.sky;
+    const arcade = state?.arcade;
+    ctx.save();
+    ctx.globalAlpha = groundA;
+    const grad = ctx.createLinearGradient(0, sky.y, 0, sky.y + sky.h);
+    grad.addColorStop(0, '#071420');
+    grad.addColorStop(1, '#163042');
+    ctx.fillStyle = grad;
+    ctx.fillRect(sky.x, sky.y, sky.w, sky.h);
+    // Stars and clouds; static enough not to pull focus.
+    ctx.fillStyle = '#dff8ff';
+    for (let i = 0; i < 32; i++) {
+      const sx = sky.x + ((i * 173) % sky.w);
+      const sy = sky.y + ((i * 67) % (sky.h - 24));
+      ctx.globalAlpha = groundA * (0.12 + (i % 4) * 0.05);
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+    ctx.globalAlpha = frameA * 0.35;
+    ctx.fillStyle = '#27485d';
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      ctx.ellipse(sky.x + 120 + i * 340 + Math.sin(t * 0.2 + i) * 18, sky.y + 88 + (i % 2) * 66, 92, 18, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Marsh and grass below the sky.
+    ctx.globalAlpha = groundA * 0.9;
+    ctx.fillStyle = '#081711';
+    ctx.fillRect(b.left, sky.y + sky.h, b.right - b.left, b.bottom - sky.y - sky.h);
+    ctx.fillStyle = '#0f2a1b';
+    ctx.beginPath();
+    ctx.moveTo(b.left, sky.y + sky.h + 110);
+    for (let x = b.left; x <= b.right; x += 80) {
+      ctx.lineTo(x, sky.y + sky.h + 62 + Math.sin(x * 0.01) * 36);
+    }
+    ctx.lineTo(b.right, b.bottom);
+    ctx.lineTo(b.left, b.bottom);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(142, 226, 111, 0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let x = b.left + 30; x < b.right; x += 44) {
+      const h = 16 + ((x * 7) % 20);
+      ctx.moveTo(x, b.bottom - 10);
+      ctx.lineTo(x + 4, b.bottom - 10 - h);
+    }
+    ctx.stroke();
+    // The tray is the bottom line a falling bird reaches.
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 10]);
+    ctx.beginPath();
+    ctx.moveTo(b.left + 90, def.trayY);
+    ctx.lineTo(b.right - 90, def.trayY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Birds.
+    const birds = arcade?.duckBirds;
+    if (birds) {
+      for (let i = 0; i < birds.length; i++) {
+        const bird = birds[i];
+        if (!bird.active) continue;
+        const falling = bird.state === 1;
+        const flap = Math.sin(t * 15 + i * 1.7) * (falling ? 0.1 : 0.7);
+        ctx.save();
+        ctx.translate(bird.x, bird.y);
+        if (falling) ctx.rotate(Math.PI * 0.55 + Math.sin(t * 9 + i) * 0.18);
+        ctx.globalAlpha = frameA;
+        ctx.fillStyle = bird.variant === 0 ? '#d7e8c4' : bird.variant === 1 ? '#e8d2a8' : '#b8d6e8';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 18, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(15, -6, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#eaffff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(21, -6);
+        ctx.lineTo(30, -3);
+        ctx.stroke();
+        ctx.strokeStyle = bird.variant === 0 ? '#9fc38a' : '#c9b27e';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        const wing = 22 + flap * 16;
+        ctx.moveTo(-4, -3);
+        ctx.lineTo(-16, -wing);
+        ctx.lineTo(-24, -4);
+        ctx.moveTo(2, -2);
+        ctx.lineTo(14, -wing * 0.8);
+        ctx.lineTo(22, -1);
+        ctx.stroke();
+        // A marked bird carries the AOE warning until the shot lands.
+        if (bird.shotT > 0) {
+          const pulse = 0.5 + 0.5 * Math.sin(t * 18);
+          ctx.globalAlpha = frameA * (0.55 + pulse * 0.35);
+          ctx.strokeStyle = '#ff7b5c';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([7, 7]);
+          ctx.beginPath();
+          ctx.arc(0, 0, def.aoeRadius * (0.8 + pulse * 0.2), 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(0, 0, 4 + pulse * 3, 0, Math.PI * 2);
+          ctx.fillStyle = '#ff7b5c';
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+    // Hunter's reticle stays at the tray edge, not over the player.
+    const reticleX = 1740;
+    const reticleY = 900;
+    ctx.globalAlpha = frameA * 0.55;
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(reticleX, reticleY, 20, 0, Math.PI * 2);
+    ctx.moveTo(reticleX - 28, reticleY);
+    ctx.lineTo(reticleX + 28, reticleY);
+    ctx.moveTo(reticleX, reticleY - 28);
+    ctx.lineTo(reticleX, reticleY + 28);
+    ctx.stroke();
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#eaffff';
+    ctx.font = '700 18px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(def.label, b.left + (b.right - b.left) * 0.5, b.top + 30);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.46)';
+    ctx.font = '500 11px ui-monospace, monospace';
+    ctx.fillText(def.sub, b.left + (b.right - b.left) * 0.5, b.top + 48);
+    ctx.fillStyle = arena.accentSoft;
+    ctx.textAlign = 'left';
+    ctx.font = '600 11px ui-monospace, monospace';
+    ctx.fillText('SKY // MARKED BIRDS FALL AS PROJECTILES', b.left + 24, b.bottom - 34);
+    ctx.restore();
+  }
+
+  private drawTetrisArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    _t: number,
+  ): void {
+    const def = arena.tetris;
+    if (!def) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const well = def.well;
+    const arcade = state?.arcade;
+    const cellW = well.w / def.cols;
+    const cellH = well.h / def.rows;
+    ctx.save();
+    ctx.globalAlpha = groundA;
+    // Cabinet body and a recessed well.
+    ctx.fillStyle = '#080a12';
+    ctx.fillRect(well.x - 90, well.y - 90, well.w + 180, well.h + 220);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(well.x - 84, well.y - 84, well.w + 168, well.h + 208);
+    ctx.fillStyle = '#03060d';
+    ctx.fillRect(well.x, well.y, well.w, well.h);
+    // Grid.
+    ctx.globalAlpha = groundA * 0.28;
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 0; x <= def.cols; x++) {
+      ctx.moveTo(well.x + x * cellW, well.y);
+      ctx.lineTo(well.x + x * cellW, well.y + well.h);
+    }
+    for (let y = 0; y <= def.rows; y++) {
+      ctx.moveTo(well.x, well.y + y * cellH);
+      ctx.lineTo(well.x + well.w, well.y + y * cellH);
+    }
+    ctx.stroke();
+    const block = (bx: number, by: number, color: string, alpha: number): void => {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+      ctx.fillRect(bx + 2, by + 2, cellW - 4, cellH - 4);
+      ctx.strokeStyle = '#eaffff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(bx + 2.5, by + 2.5, cellW - 5, cellH - 5);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.fillRect(bx + 6, by + 6, cellW - 12, 4);
+    };
+    // Settled stack.
+    if (arcade) {
+      ctx.globalAlpha = frameA;
+      for (let y = 0; y < def.rows; y++) {
+        for (let x = 0; x < def.cols; x++) {
+          const value = arcade.tetrisGrid[y * def.cols + x];
+          if (value === 0) continue;
+          block(well.x + x * cellW, well.y + y * cellH, def.colors[(value - 1) % def.colors.length], frameA);
+        }
+      }
+      // Ghost and live piece. The ghost is the landing preview, not extra cover.
+      if (arcade.tetrisPiece.active) {
+        const piece = arcade.tetrisPiece;
+        const shape = TETROMINO_SHAPES[piece.shape % TETROMINO_SHAPES.length];
+        let ghostY = piece.y;
+        for (;;) {
+          let blocked = false;
+          for (let i = 0; i < shape.length; i++) {
+            const gx = piece.x + shape[i][0];
+            const gy = ghostY + shape[i][1] + 1;
+            if (gy >= def.rows) {
+              blocked = true;
+              break;
+            }
+            if (gx >= 0 && gx < def.cols && gy >= 0 && arcade.tetrisGrid[gy * def.cols + gx] !== 0) {
+              blocked = true;
+              break;
+            }
+          }
+          if (blocked) break;
+          ghostY++;
+        }
+        for (let i = 0; i < shape.length; i++) {
+          const gx = piece.x + shape[i][0];
+          const gy = ghostY + shape[i][1];
+          if (gx < 0 || gx >= def.cols || gy < 0 || gy >= def.rows) continue;
+          ctx.globalAlpha = frameA * 0.18;
+          ctx.strokeStyle = arena.accent;
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(well.x + gx * cellW + 3, well.y + gy * cellH + 3, cellW - 6, cellH - 6);
+        }
+        for (let i = 0; i < shape.length; i++) {
+          const gx = piece.x + shape[i][0];
+          const gy = piece.y + shape[i][1];
+          if (gx < 0 || gx >= def.cols || gy < 0 || gy >= def.rows) continue;
+          block(well.x + gx * cellW, well.y + gy * cellH, def.colors[piece.shape % def.colors.length], frameA);
+        }
+      }
+      if (arcade.tetrisClearT > 0 && arcade.tetrisClearRow >= 0) {
+        ctx.globalAlpha = frameA * Math.min(1, arcade.tetrisClearT * 3);
+        ctx.fillStyle = '#eaffff';
+        ctx.fillRect(well.x, well.y + arcade.tetrisClearRow * cellH, well.w, cellH);
+      }
+    }
+    // Side telemetry. It also makes the clear state legible without a HUD.
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = arena.accentSoft;
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('WELL // 10 x 12', well.x - 70, well.y + well.h + 42);
+    ctx.textAlign = 'right';
+    ctx.fillText('LANDED BLOCKS ARE COVER', well.x + well.w + 70, well.y + well.h + 42);
+    ctx.fillStyle = '#eaffff';
+    ctx.font = '700 18px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(def.label, b.left + (b.right - b.left) * 0.5, b.top + 30);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.46)';
+    ctx.font = '500 11px ui-monospace, monospace';
+    ctx.fillText(def.sub, b.left + (b.right - b.left) * 0.5, b.top + 48);
+    ctx.restore();
+  }
+
   /** DISPATCH / LOAD BALANCER: a track plan, a switch signal, and request cars. */
   private drawRequestArena(
     arena: ArenaDef,
@@ -7518,6 +8509,10 @@ export class Renderer {
     const pillarDrop = (1 - pillarA) * 30;
     if (arena.requests) {
       this.drawRequestArena(arena, satelliteState, groundA, frameA, t);
+      return;
+    }
+    if (arena.dispenser || arena.soda || arena.race || arena.fighter || arena.duck || arena.tetris) {
+      this.drawArcadeArena(arena, satelliteState, groundA, frameA, t);
       return;
     }
     if (arena.server) {

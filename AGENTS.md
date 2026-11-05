@@ -321,6 +321,34 @@ Level-6 sequence and hazard snapshot decision exist. New request arenas add data
 a second hazard system. `.tmp/request-arena-check.ts` owns route, clearance, spawn, train, knockback and
 local-only checks.
 
+### D70 — Food-court and arcade row is one local hazard layer (decided 2026-11-05)
+
+`SNACK MACHINE` (42), `TOKEN DISPENSER` (43), `SODA MACHINE` (44), `ARCADE RACING` (45),
+`FIGHTING GAME` (46), `DUCK HUNTER` (47) and `TETRIS` (48) are authored local arenas inserted before QA
+`TEST RANGE`. They share one `ArcadeRuntime` on `World`, preallocated at construction; none of it enters
+`Snapshot`. The picker and `isOnlineArena` gate each flag, so a hosted room never sees a cabinet. A local
+bot match does run them, because the room is still local; `World('match')` no longer nulls local hazard
+state. Keep the hosted gate at the arena-selection boundary rather than silently disabling a mode.
+
+- `ArenaDispenserDef` handles both snack and token machines: the next chute is selected in authored order,
+  the item blinks for `warn`, falls at `fallSpeed`, deals one segment on contact and de-rezzes at the tray
+  lip. `bills` are presentation only.
+- `ArenaSodaDef` stacks are dynamic body and shot cover. Each World clones `arena.pillars` before adding
+  stacks; `arenaSolids` is cached by arena id and must not be used for dynamic cover. One can leaves the
+  top of a stack every interval, and the remaining can height is the solid. Empty shelves stay drawn.
+- `ArenaRaceDef` cars move by arc angle around an oval. Body contact costs one segment. A guard or live
+  lash facing the tangent reverses `ArcadeRaceCar.dir`; the car is the projectile, not a body.
+- `ArenaFighterDef` alternates punch, kick and fireball with a warning lane. The first telegraph is the
+  right cabinet's kick. Melee masks are per attack; a fireball is reflectable by the same catch rule.
+- `ArenaDuckDef` spawns birds across the sky, marks one with an AOE warning, resolves the blast, then
+  turns the bird into a falling projectile until `trayY`.
+- `ArenaTetrisDef` is a 10×12 grid. `TETROMINO_SHAPES` is the only cell table. A landed piece is rebuilt
+  into `baseSolids` and `baseDashSolids`; a full row clears and shifts the stack. Dynamic cover is
+  local-only and must never enter a guest path.
+- QA `TEST RANGE` is now `ARENAS[49]`; update index assertions when adding another arena before it.
+- `.tmp/arcade-arena-check.ts` owns spawn clearance, drops, soda shrink and isolation, race reversal,
+  fighter telegraph/fireball, duck fall, Tetris landing and the local-only checks.
+
 ### ROCKET NAVIGATION reflector (decided 2026-11-02)
 
 The rocket's flown trajectory is a **shot-only dotted reflector**, not a wall. Projectiles bounce off the

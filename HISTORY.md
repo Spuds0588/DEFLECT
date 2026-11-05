@@ -8082,3 +8082,44 @@ round-robin through four lanes.
 
 **Next:** decide whether the request arenas become RACK/EDGE BALANCER nodes, a reusable hazard layer, or
 both, then design the server-board hazard pass and the Level 6 finale sequence.
+
+## 2026-11-05 — Food-court and arcade row (v0.1.197)
+
+**Goal:** turn the seven food-court / arcade arena ideas into authored local content: snack and token
+dispensers, a soda wall that drains, racing cars, a vector fighting cabinet, a duck-hunter sky and a
+Tetris well.
+
+**Changes.**
+- Added `SNACK MACHINE` (42), `TOKEN DISPENSER` (43), `SODA MACHINE` (44), `ARCADE RACING` (45),
+  `FIGHTING GAME` (46), `DUCK HUNTER` (47) and `TETRIS` (48) before QA `TEST RANGE`, with picker previews.
+- Added `ArenaDispenserDef`, `ArenaSodaDef`, `ArenaRaceDef`, `ArenaFighterDef`, `ArenaDuckDef`,
+  `ArenaTetrisDef` and `TETROMINO_SHAPES`. One `ArcadeRuntime` holds preallocated drops, stacks, cars,
+  fighter shots, birds and the Tetris grid; no per-tick allocation and no snapshot fields.
+- Snack/token selections warn, fall, damage a body once and land in the collection tray. Soda stacks are
+  per-World dynamic cover, losing one can every 3.8 s; the shared ARENAS record is never mutated. Race cars
+  lap an oval and reverse when a guard or lash faces them. The fighter cabinets alternate a telegraphed
+  punch, kick and fireball, with the fireball catchable. Ducks are marked with an AOE warning, then fall as
+  projectiles. Tetris pieces land as real body/shot cover and full rows clear.
+- Local bot matches now keep request and arcade traffic; hosted rooms are excluded by `isOnlineArena`
+  through the new arena flags. Dynamic cover clones `pillars` per World because `arenaSolids` is a global
+  cache keyed by arena id. QA `TEST RANGE` moved to index 49.
+- Added `.tmp/arcade-arena-check.ts` for IDs, spawn clearance, drop damage, soda shrink and isolation,
+  race movement/reversal, fighter hit/fireball, duck fall, Tetris landing and local-only checks.
+- Updated AGENTS (D70), README, GAME_GUIDE and TODO; bumped all version stamps to 0.1.197.
+
+**Verification.**
+- `.tmp/arcade-arena-check.ts` 0: all seven IDs, spawns and snapshot exclusion checks; snack/token damage
+  exactly one segment; soda shrinks one can and leaves another World and ARENAS untouched; race car moves
+  and reverses under guard; fighter punch lands and a fireball launches; duck reaches falling state; Tetris
+  lands cover without mutating the shared record.
+- `.tmp/request-arena-check.ts` 0 after QA moved to index 49; local match retains request traffic.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only). `npm run bench` 0: 8P bot
+  swarm 0.124 ms avg / 0.397 ms p99; gauntlet max 0.254 ms avg / 0.763 ms p99.
+- Headed local Vite pass on `?gauntlet=1&arena=42` through `48` with `bot=1`: each route loaded the
+  intended cabinet, the canvas initialized and the console stayed clean. Frame-by-frame visual tuning was
+  not performed.
+- Not tested: a full human 2-4 player session on every cabinet, online play (intentionally excluded), or a
+  campaign route (not wired).
+
+**Next:** play the row with a full local squad, then decide whether any cabinet becomes a campaign node or
+gets a snapshot hazard record. The Level-6 server-board and request hazards remain open.

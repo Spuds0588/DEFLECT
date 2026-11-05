@@ -19,7 +19,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **CAMPAIGN:** `BUILD ROOT`, `REBOOT`, and the first level-2 device chain, with three local save slots. A cleared level shows the route map and carries the run to the next device.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
-- Thirteen programs, forty-two arenas.
+- Thirteen programs, forty-nine arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
@@ -412,6 +412,13 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `NETWORK BOARD` | A leaf-spine fabric floor: three leaf switches north, three spine switches south and a fabric block at the centre. Long east-west lanes connect the switch banks. No live hazard yet. Local-only foundation for Level 6. |
 | `DISPATCH YARD` | One inbound request line splits at a three-position switch to three platforms. A three-car train arrives every 5.6 s; the signal lights the next platform before the switch. Each car takes one health segment and shoves the body across the rail, clear of the remaining cars. The yard's control cabinets are cover; the rails are not. Local-only: the request clock and cars are not in the snapshot. |
 | `LOAD BALANCER` | Four lanes on a round-robin switch. Two-car requests arrive every 3.8 s and leave through the lit lane, while the central rotor shows the cycle. A hit takes one segment and pushes the body clear of the rail. The four server cabinets are cover; the lanes are not. Local-only: the switch clock and cars are not in the snapshot. |
+| `SNACK MACHINE` | Six chutes cycle a snack selection. A packet blinks at its mouth, drops, and can take one segment before landing in the collection tray. The tray and machine face are presentation; the drop and the body hit are the hazard. Local-only. |
+| `TOKEN DISPENSER` | Bills cross the machine head while three coils release tokens on a faster cycle. A token blinks, falls, and deals one segment before the tray catches it. Local-only. |
+| `SODA MACHINE` | Three stacks of cans form dividing cover. One can leaves the top of a stack every 3.8 s, so each barrier shrinks from the top and eventually opens a lane; the empty shelves stay visible. Local-only: the stack counts and reconstructed cover are not in the snapshot. |
+| `ARCADE RACING` | Five cars lap an oval with no wall and no brakes. A car that touches a body takes one segment; a guard or live lash facing the car reverses its direction instead. The central pit is ordinary cover. Local-only. |
+| `FIGHTING GAME` | Two vector cabinets alternate a punch, a kick and a fireball. Each strike has a telegraphed lane, the melee takes one segment, and the fireball can be caught by a guard or lash and sent back. The figures are drawn from paths and lines, not assets. Local-only. |
+| `DUCK HUNTER` | Birds cross a sky band. A random bird is marked with an AOE warning, the shot damages bodies inside the ring, and the bird then falls as a projectile until it leaves the tray line. Local-only. |
+| `TETRIS` | A 10×12 well drops one tetromino every 0.55 s. Landed blocks become real cover for bodies and shots; a full row clears and the stack shifts down. The next piece and the landing ghost are presentation. Local-only: the grid and falling cover are not in the snapshot. |
 
 ### Ordinary programs
 

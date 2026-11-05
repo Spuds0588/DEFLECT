@@ -94,6 +94,116 @@ export interface ArenaRequestDef {
   sub: string;
 }
 
+/** SNACK MACHINE / TOKEN DISPENSER: a selection drops into a collection tray. */
+export type ArenaDispenserKind = 'snack' | 'token';
+
+export interface ArenaDispenserDef {
+  kind: ArenaDispenserKind;
+  /** Drop points along the machine face. Each pick uses the next point. */
+  points: readonly SpawnPoint[];
+  /** The open tray at the bottom. A drop de-rezzes when it reaches the lip. */
+  tray: Rect;
+  interval: number;
+  /** Seconds the selection blinks at the mouth before it falls. */
+  warn: number;
+  fallSpeed: number;
+  radius: number;
+  damage: number;
+  knockback: number;
+  variants: readonly string[];
+  /** TOKEN only: bill lanes crossing the machine head. Presentation only. */
+  bills?: readonly Rect[];
+  label: string;
+  sub: string;
+}
+
+/** One SODA MACHINE stack. The top can is removed every `interval` seconds. */
+export interface ArenaSodaStackDef {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Starting cans. The cover rect shrinks from the bottom as cans leave the top. */
+  cans: number;
+}
+
+export interface ArenaSodaDef {
+  stacks: readonly ArenaSodaStackDef[];
+  interval: number;
+  label: string;
+  sub: string;
+}
+
+/** ARCADE RACING: hazard cars lap an oval and can be reversed by a catch. */
+export interface ArenaRaceDef {
+  center: SpawnPoint;
+  rx: number;
+  ry: number;
+  cars: number;
+  speed: number;
+  carW: number;
+  carH: number;
+  damage: number;
+  knockback: number;
+  label: string;
+  sub: string;
+}
+
+/** FIGHTING GAME: two vector cabinets trade telegraphed strikes and fireballs. */
+export interface ArenaFighterDef {
+  left: SpawnPoint;
+  right: SpawnPoint;
+  interval: number;
+  warn: number;
+  active: number;
+  reach: number;
+  damage: number;
+  knockback: number;
+  fireballSpeed: number;
+  fireballRadius: number;
+  label: string;
+  sub: string;
+}
+
+/** DUCK HUNTER: birds cross the sky, a blast marks a hit, the bird falls. */
+export interface ArenaDuckDef {
+  sky: Rect;
+  trayY: number;
+  birds: number;
+  speed: number;
+  interval: number;
+  warn: number;
+  aoeRadius: number;
+  damage: number;
+  knockback: number;
+  fallSpeed: number;
+  label: string;
+  sub: string;
+}
+
+/** TETRIS: one local well whose landed blocks become ordinary cover. */
+export interface ArenaTetrisDef {
+  well: Rect;
+  cols: number;
+  rows: number;
+  fallInterval: number;
+  clearFlash: number;
+  colors: readonly string[];
+  label: string;
+  sub: string;
+}
+
+/** Authored tetromino cells inside a 4x4 box. Exported so the renderer and World agree. */
+export const TETROMINO_SHAPES: readonly (readonly (readonly [number, number])[])[] = [
+  [[0, 0], [1, 0], [0, 1], [1, 1]],
+  [[0, 0], [1, 0], [2, 0], [3, 0]],
+  [[0, 0], [1, 0], [2, 0], [1, 1]],
+  [[0, 0], [0, 1], [1, 1], [2, 1]],
+  [[2, 0], [0, 1], [1, 1], [2, 1]],
+  [[1, 0], [2, 0], [0, 1], [1, 1]],
+  [[0, 0], [1, 0], [1, 1], [2, 1]],
+];
+
 /** A tutorial room's visual identity. The floor is presentation; walls stay in `pillars`. */
 export type ArenaRoomTheme = 'office' | 'holding' | 'board' | 'router' | 'console';
 
@@ -1523,6 +1633,18 @@ export interface ArenaDef {
   server?: ArenaServerDef;
   /** DISPATCH / LOAD BALANCER request trains. Local-only; numbered rooms skip this. */
   requests?: ArenaRequestDef;
+  /** SNACK MACHINE / TOKEN DISPENSER. Local-only. */
+  dispenser?: ArenaDispenserDef;
+  /** SODA MACHINE. Dynamic cover is local-only. */
+  soda?: ArenaSodaDef;
+  /** ARCADE RACING. Local-only hazard cars. */
+  race?: ArenaRaceDef;
+  /** FIGHTING GAME. Local-only vector opponents. */
+  fighter?: ArenaFighterDef;
+  /** DUCK HUNTER. Local-only birds and blast warnings. */
+  duck?: ArenaDuckDef;
+  /** TETRIS. Local-only dynamic cover. */
+  tetris?: ArenaTetrisDef;
   /** A round spinning platter with a read arm. Implies an open drop around the rim. */
   disc?: DiscDef;
 }
@@ -1637,6 +1759,130 @@ const LOAD_BALANCER_REQUESTS: ArenaRequestDef = {
   knockback: 380,
   label: 'BALANCER // REQUEST FABRIC',
   sub: 'FOUR LANES // ROUND-ROBIN // NO WAITING',
+};
+
+// The arcade row shares one spawn ring so a picker preview and a real match keep the
+// same entry points. The bottom pair sits clear of the food trays and the Tetris well.
+const arcadeSpawns: SpawnPoint[] = [
+  { x: 995, y: 120 },
+  { x: 1770, y: 150 },
+  { x: 1815, y: 930 },
+  { x: 995, y: 975 },
+  { x: 160, y: 930 },
+  { x: 130, y: 150 },
+  { x: 620, y: 120 },
+  { x: 1370, y: 975 },
+];
+
+const SNACK_DISPENSER: ArenaDispenserDef = {
+  kind: 'snack',
+  points: [
+    { x: 620, y: 300 },
+    { x: 995, y: 300 },
+    { x: 1370, y: 300 },
+    { x: 700, y: 500 },
+    { x: 995, y: 500 },
+    { x: 1290, y: 500 },
+  ],
+  tray: { x: 700, y: 870, w: 590, h: 80 },
+  interval: 1.9,
+  warn: 0.65,
+  fallSpeed: 560,
+  radius: 18,
+  damage: 1,
+  knockback: 320,
+  variants: ['CHIPS', 'PRETZEL', 'CANDY', 'COOKIE'],
+  label: 'SNACK MACHINE // SELECTION',
+  sub: 'SIX SPIRALS // ONE TRAY // MIND THE DROP',
+};
+
+const TOKEN_DISPENSER: ArenaDispenserDef = {
+  kind: 'token',
+  points: [
+    { x: 640, y: 260 },
+    { x: 995, y: 260 },
+    { x: 1350, y: 260 },
+  ],
+  tray: { x: 720, y: 870, w: 550, h: 80 },
+  interval: 1.4,
+  warn: 0.55,
+  fallSpeed: 620,
+  radius: 15,
+  damage: 1,
+  knockback: 260,
+  variants: ['QUARTER', 'TOKEN', 'NICKEL', 'ARCADE COIN'],
+  bills: [
+    { x: 180, y: 150, w: 210, h: 38 },
+    { x: 1540, y: 150, w: 210, h: 38 },
+  ],
+  label: 'TOKEN DISPENSER // CHANGE',
+  sub: 'BILLS IN // COILS DOWN // COLLECT AT THE TRAY',
+};
+
+const SODA_MACHINE: ArenaSodaDef = {
+  stacks: [
+    { x: 610, y: 300, w: 80, h: 420, cans: 7 },
+    { x: 930, y: 250, w: 80, h: 500, cans: 8 },
+    { x: 1250, y: 320, w: 80, h: 380, cans: 6 },
+  ],
+  interval: 3.8,
+  label: 'SODA MACHINE // STACKS',
+  sub: 'THREE DIVIDERS // THE COOLER EMPTIES // CROSSFIRE RISES',
+};
+
+const ARCADE_RACE: ArenaRaceDef = {
+  center: { x: 995, y: 547 },
+  rx: 620,
+  ry: 365,
+  cars: 5,
+  speed: 300,
+  carW: 92,
+  carH: 40,
+  damage: 1,
+  knockback: 420,
+  label: 'ARCADE RACING // LIVE TRACK',
+  sub: 'FIVE CARS // NO BRAKES // GUARD OR LASH REVERSES A CAR',
+};
+
+const ARCADE_FIGHTER: ArenaFighterDef = {
+  left: { x: 330, y: 547 },
+  right: { x: 1660, y: 547 },
+  interval: 2.8,
+  warn: 0.8,
+  active: 0.24,
+  reach: 250,
+  damage: 1,
+  knockback: 480,
+  fireballSpeed: 460,
+  fireballRadius: 20,
+  label: 'FIGHTING GAME // CABINET',
+  sub: 'PUNCH // KICK // FIREBALL // VECTOR OPPONENTS',
+};
+
+const DUCK_HUNTER: ArenaDuckDef = {
+  sky: { x: 120, y: 150, w: 1704, h: 240 },
+  trayY: 930,
+  birds: 4,
+  speed: 240,
+  interval: 2.0,
+  warn: 0.65,
+  aoeRadius: 90,
+  damage: 1,
+  knockback: 320,
+  fallSpeed: 520,
+  label: 'DUCK HUNTER // SKY',
+  sub: 'CROSS THE SKY // THE SHOT MARKS // THE BIRD FALLS',
+};
+
+const TETRIS_WELL: ArenaTetrisDef = {
+  well: { x: 675, y: 150, w: 640, h: 720 },
+  cols: 10,
+  rows: 12,
+  fallInterval: 0.55,
+  clearFlash: 0.5,
+  colors: ['#5ee7ff', '#ffd166', '#ff7eb6', '#8dffb0', '#b49cff', '#ff9b63', '#c9f2ff'],
+  label: 'TETRIS // LOCAL WELL',
+  sub: 'STACK THE FALL // CLEAR A ROW // THE COVER STAYS',
 };
 
 const browserChrome: Rect = { x: 48, y: 48, w: 1846, h: 136 };
@@ -3686,6 +3932,109 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     requests: LOAD_BALANCER_REQUESTS,
   },
   {
+    id: 42,
+    name: 'SNACK MACHINE',
+    tagline: 'Make a selection. Duck the delivery.',
+    hudLabel: 'ARENA // SNACK MACHINE',
+    accent: '#ffcf6e',
+    accentSoft: 'rgba(255, 207, 110, 0.32)',
+    accentFaint: 'rgba(255, 207, 110, 0.032)',
+    signature: 0,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    spawns: arcadeSpawns,
+    dispenser: SNACK_DISPENSER,
+  },
+  {
+    id: 43,
+    name: 'TOKEN DISPENSER',
+    tagline: 'Bills in, coils down, tray full.',
+    hudLabel: 'ARENA // TOKEN DISPENSER',
+    accent: '#f6d365',
+    accentSoft: 'rgba(246, 211, 101, 0.32)',
+    accentFaint: 'rgba(246, 211, 101, 0.032)',
+    signature: 3,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    spawns: arcadeSpawns,
+    dispenser: TOKEN_DISPENSER,
+  },
+  {
+    id: 44,
+    name: 'SODA MACHINE',
+    tagline: 'Three dividers. The cooler is emptying.',
+    hudLabel: 'ARENA // SODA MACHINE',
+    accent: '#8de6ff',
+    accentSoft: 'rgba(141, 230, 255, 0.32)',
+    accentFaint: 'rgba(141, 230, 255, 0.032)',
+    signature: 2,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [
+      { x: 250, y: 330, w: 150, h: 62 },
+      { x: 1542, y: 330, w: 150, h: 62 },
+      { x: 250, y: 720, w: 150, h: 62 },
+      { x: 1542, y: 720, w: 150, h: 62 },
+    ],
+    spawns: arcadeSpawns,
+    soda: SODA_MACHINE,
+  },
+  {
+    id: 45,
+    name: 'ARCADE RACING',
+    tagline: 'Five cars. No brakes. No wall.',
+    hudLabel: 'ARENA // ARCADE RACING',
+    accent: '#ff5b7a',
+    accentSoft: 'rgba(255, 91, 122, 0.32)',
+    accentFaint: 'rgba(255, 91, 122, 0.032)',
+    signature: 1,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [{ x: 800, y: 430, w: 390, h: 254 }],
+    spawns: arcadeSpawns,
+    race: ARCADE_RACE,
+  },
+  {
+    id: 46,
+    name: 'FIGHTING GAME',
+    tagline: 'Two cabinets. One lane. No quarter.',
+    hudLabel: 'ARENA // FIGHTING GAME',
+    accent: '#ffb347',
+    accentSoft: 'rgba(255, 179, 71, 0.32)',
+    accentFaint: 'rgba(255, 179, 71, 0.032)',
+    signature: 0,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    spawns: arcadeSpawns,
+    fighter: ARCADE_FIGHTER,
+  },
+  {
+    id: 47,
+    name: 'DUCK HUNTER',
+    tagline: 'The sky is open. The shot is random.',
+    hudLabel: 'ARENA // DUCK HUNTER',
+    accent: '#8ee26f',
+    accentSoft: 'rgba(142, 226, 111, 0.32)',
+    accentFaint: 'rgba(142, 226, 111, 0.032)',
+    signature: 2,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    spawns: arcadeSpawns,
+    duck: DUCK_HUNTER,
+  },
+  {
+    id: 48,
+    name: 'TETRIS',
+    tagline: 'Build the wall. Clear the line.',
+    hudLabel: 'ARENA // TETRIS',
+    accent: '#b48cff',
+    accentSoft: 'rgba(180, 140, 255, 0.32)',
+    accentFaint: 'rgba(180, 140, 255, 0.032)',
+    signature: 3,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    spawns: arcadeSpawns,
+    tetris: TETRIS_WELL,
+  },
+  {
     id: 90,
     qa: true,
     name: 'TEST RANGE',
@@ -4308,6 +4657,135 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     ctx.font = '700 6px ui-monospace, monospace';
     ctx.textAlign = 'left';
     ctx.fillText(req.kind === 'balancer' ? 'BALANCER' : 'DISPATCH', mapX(bounds.left) + 5, mapY(bounds.top) + 9);
+    return;
+  }
+
+  // Food-court and arcade cabinets read by their device, not by a generic floor.
+  if (arena.dispenser) {
+    const d = arena.dispenser;
+    ctx.fillStyle = '#080d11';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    const machine = { x: bounds.left + 120, y: bounds.top + 90, w: bounds.right - bounds.left - 240, h: 330 };
+    ctx.fillStyle = d.kind === 'snack' ? '#211a0e' : '#0d1b18';
+    ctx.fillRect(mapX(machine.x), mapY(machine.y), machine.w * sx, machine.h * sy);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(machine.x) + 0.5, mapY(machine.y) + 0.5, machine.w * sx - 1, machine.h * sy - 1);
+    ctx.fillStyle = arena.accentSoft;
+    for (let i = 0; i < d.points.length; i++) {
+      const p = d.points[i];
+      ctx.beginPath();
+      ctx.arc(mapX(p.x), mapY(p.y), 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#05090d';
+    ctx.fillRect(mapX(d.tray.x), mapY(d.tray.y), d.tray.w * sx, d.tray.h * sy);
+    ctx.strokeStyle = arena.accent;
+    ctx.strokeRect(mapX(d.tray.x) + 0.5, mapY(d.tray.y) + 0.5, d.tray.w * sx - 1, d.tray.h * sy - 1);
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(d.kind === 'snack' ? 'SNACKS' : 'TOKENS', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+    return;
+  }
+  if (arena.soda) {
+    ctx.fillStyle = '#061014';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    for (let i = 0; i < arena.soda.stacks.length; i++) {
+      const st = arena.soda.stacks[i];
+      ctx.fillStyle = i === 1 ? '#8de6ff' : 'rgba(141, 230, 255, 0.45)';
+      ctx.fillRect(mapX(st.x), mapY(st.y), Math.max(2, st.w * sx), Math.max(2, st.h * sy));
+    }
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('SODA // SHRINKING COVER', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+    return;
+  }
+  if (arena.race) {
+    const r = arena.race;
+    ctx.fillStyle = '#08070a';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(mapX(r.center.x), mapY(r.center.y), r.rx * sx, r.ry * sy, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.beginPath();
+    ctx.ellipse(mapX(r.center.x), mapY(r.center.y), (r.rx - 90) * sx, (r.ry - 90) * sy, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < r.cars; i++) {
+      const a = (i / r.cars) * Math.PI * 2;
+      ctx.fillStyle = arena.accent;
+      ctx.fillRect(mapX(r.center.x + Math.cos(a) * r.rx) - 2, mapY(r.center.y + Math.sin(a) * r.ry) - 1, 4, 2);
+    }
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('RACING // LIVE CARS', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+    return;
+  }
+  if (arena.fighter) {
+    const f = arena.fighter;
+    ctx.fillStyle = '#0e0907';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(f.left.x - 60), mapY(f.left.y - 100), 120 * sx, 200 * sy);
+    ctx.strokeRect(mapX(f.right.x - 60), mapY(f.right.y - 100), 120 * sx, 200 * sy);
+    ctx.beginPath();
+    ctx.moveTo(mapX(f.left.x), mapY(f.left.y - 90));
+    ctx.lineTo(mapX(f.left.x), mapY(f.left.y + 20));
+    ctx.moveTo(mapX(f.right.x), mapY(f.right.y - 90));
+    ctx.lineTo(mapX(f.right.x), mapY(f.right.y + 20));
+    ctx.stroke();
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('FIGHTING // VECTOR', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+    return;
+  }
+  if (arena.duck) {
+    ctx.fillStyle = '#071420';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.fillStyle = 'rgba(142, 226, 111, 0.18)';
+    ctx.fillRect(mapX(arena.duck.sky.x), mapY(arena.duck.sky.y), arena.duck.sky.w * sx, arena.duck.sky.h * sy);
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = '#d7e8c4';
+      ctx.fillRect(mapX(arena.duck.sky.x + 160 + i * 360), mapY(arena.duck.sky.y + 70 + (i % 2) * 60), 5, 2);
+    }
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.beginPath();
+    ctx.moveTo(mapX(bounds.left + 90), mapY(arena.duck.trayY));
+    ctx.lineTo(mapX(bounds.right - 90), mapY(arena.duck.trayY));
+    ctx.stroke();
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('DUCK HUNTER // SKY', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+    return;
+  }
+  if (arena.tetris) {
+    const w = arena.tetris.well;
+    ctx.fillStyle = '#07060e';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.fillStyle = '#03060d';
+    ctx.fillRect(mapX(w.x), mapY(w.y), w.w * sx, w.h * sy);
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(w.x) + 0.5, mapY(w.y) + 0.5, w.w * sx - 1, w.h * sy - 1);
+    ctx.fillStyle = arena.accentSoft;
+    for (let y = 0; y < arena.tetris.rows; y++) {
+      for (let x = 0; x < arena.tetris.cols; x++) {
+        if ((x + y * 3) % 7 !== 0) continue;
+        ctx.fillRect(mapX(w.x + (x * w.w) / arena.tetris.cols) + 0.5, mapY(w.y + (y * w.h) / arena.tetris.rows) + 0.5, w.w / arena.tetris.cols * sx - 1, w.h / arena.tetris.rows * sy - 1);
+      }
+    }
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('TETRIS // FALLING COVER', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
     return;
   }
 

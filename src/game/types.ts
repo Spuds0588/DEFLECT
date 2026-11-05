@@ -114,6 +114,16 @@ export const SRC = {
   WATCH: 20,
   /** DISPATCH / LOAD BALANCER request car. No body, so the death camera falls through. */
   REQUEST: 22,
+  /** SNACK MACHINE / TOKEN DISPENSER falling item. */
+  DISPENSER: 23,
+  /** ARCADE RACING hazard car. */
+  RACE: 24,
+  /** FIGHTING GAME strike or fireball. */
+  FIGHTER: 25,
+  /** DUCK HUNTER falling bird or blast. */
+  DUCK: 26,
+  /** TETRIS landed block. */
+  TETRIS: 27,
 } as const;
 
 export const EV = {
@@ -271,6 +281,97 @@ export interface RequestCar {
   dirY: number;
   horizontal: boolean;
   hitPlayers: number;
+}
+
+/** A snack or token falling toward a collection tray. Local arena state. */
+export interface ArcadeDrop {
+  active: boolean;
+  /** 0 snack, 1 token. */
+  kind: number;
+  variant: number;
+  x: number;
+  y: number;
+  vy: number;
+  r: number;
+  spin: number;
+  warnT: number;
+  hitPlayers: number;
+}
+
+/** One hazard car on the ARCADE RACING oval. */
+export interface ArcadeRaceCar {
+  active: boolean;
+  angle: number;
+  /** 1 clockwise, -1 after a guard or lash reflect. */
+  dir: number;
+  hitPlayers: number;
+  flashT: number;
+}
+
+/** A fighting-cabinet fireball. Local-only; guard and lash reverse it. */
+export interface ArcadeShot {
+  active: boolean;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  r: number;
+  side: number;
+  hitPlayers: number;
+  flashT: number;
+}
+
+/** A DUCK HUNTER bird: flying, then falling after the shot. */
+export interface ArcadeBird {
+  active: boolean;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** 0 flying, 1 falling. */
+  state: number;
+  shotT: number;
+  hitPlayers: number;
+  variant: number;
+}
+
+/** The active TETRIS piece, addressed in grid cells. */
+export interface ArcadeTetrisPiece {
+  active: boolean;
+  shape: number;
+  x: number;
+  y: number;
+  fallT: number;
+}
+
+/** Local-only state for the food-court and arcade arenas. Never enters Snapshot. */
+export interface ArcadeRuntime {
+  drops: ArcadeDrop[];
+  dropT: number;
+  dropPoint: number;
+  dropFlashT: number;
+  sodaCounts: number[];
+  sodaT: number;
+  sodaFlashT: number;
+  raceCars: ArcadeRaceCar[];
+  raceT: number;
+  fighterT: number;
+  fighterSide: number;
+  /** 0 punch, 1 kick, 2 fireball. */
+  fighterKind: number;
+  fighterWarnT: number;
+  fighterActiveT: number;
+  fighterHitPlayers: number;
+  fighterShots: ArcadeShot[];
+  duckBirds: ArcadeBird[];
+  duckT: number;
+  duckShotT: number;
+  duckTarget: number;
+  tetrisGrid: Uint8Array;
+  tetrisPiece: ArcadeTetrisPiece;
+  tetrisT: number;
+  tetrisClearT: number;
+  tetrisClearRow: number;
 }
 
 export interface SatelliteMeteor {

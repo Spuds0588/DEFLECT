@@ -131,10 +131,11 @@ for (let s = 0; s < requestSpecs.length; s++) {
     }
   }
 
-  // A hosted match must not build the local hazard. A training build must not leak it
-  // into the snapshot hazard payload.
+  // A local match still runs the authored traffic. Hosted rooms are excluded by the
+  // arena picker gate, not by silently disabling the sim. No mode may leak it into
+  // the snapshot hazard payload.
   const matchWorld = new World('match', ['A', 'B'], 0, arena);
-  if (matchWorld.requests !== null) fail(`${tag} entered a hosted match`);
+  if (matchWorld.requests === null) fail(`${tag} lost its request track in a local match`);
   const trainingWorld = new World('training', ['QA'], 0, arena);
   if (trainingWorld.requests === null) fail(`${tag} lost its request track in training`);
   if (buildSnapshotHazards(trainingWorld) !== null) fail(`${tag} leaked into SnapshotHazards`);
@@ -199,5 +200,5 @@ for (let s = 0; s < requestSpecs.length; s++) {
   );
 }
 
-if (ARENAS[42]?.id !== 90) fail(`QA arena moved: index 42 is ${ARENAS[42]?.id}`);
+if (ARENAS[49]?.id !== 90) fail(`QA arena moved: index 49 is ${ARENAS[49]?.id}`);
 console.log('request arenas ok: dispatch + balancer before the QA range');

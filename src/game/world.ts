@@ -57,6 +57,7 @@ import {
 import {
   ARENAS,
   arenaSolids,
+  TETROMINO_SHAPES,
   discArmAngle,
   discArmLength,
   discArmPivotX,
@@ -168,6 +169,11 @@ import {
   PROP,
   SRC,
   type AimMark,
+  type ArcadeBird,
+  type ArcadeDrop,
+  type ArcadeRaceCar,
+  type ArcadeRuntime,
+  type ArcadeShot,
   type Barrier,
   type CampaignPhase,
   type CascadingError,
@@ -757,6 +763,11 @@ export class World {
   /** Authored lane the next train will take, for the signal and renderer. */
   requestNextRoute = 0;
   private requestRouteIndex = 0;
+  /** Food-court and arcade hazards. Local-only; never part of a snapshot. */
+  readonly arcade: ArcadeRuntime | null;
+  private sodaStaticPillars: Rect[] = [];
+  private tetrisStaticPillars: Rect[] = [];
+  private sodaRectScratch: Rect = { x: 0, y: 0, w: 0, h: 0 };
   /** AIRPORT split-flap board. Local-only; time tiles resolve as floor hazards. */
   readonly flip: ArenaFlipDef | null;
   flipT = 0;
@@ -870,7 +881,12 @@ export class World {
     this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.campaignBotsLost = campaignDeadBots & 0xfe;
-    this.arena = arena;
+    // Dynamic cover (soda stacks, Tetris blocks) mutates `pillars`. Give this World
+    // its own list; the arena records in ARENAS are shared by every match and preview.
+    this.arena =
+      arena.soda || arena.tetris
+        ? { ...arena, pillars: arena.pillars.slice(), spawns: arena.spawns.slice() }
+        : arena;
     this.radar = arena.radar ?? null;
     this.resetRadar();
     this.rocket = arena.rocket ?? null;
@@ -887,7 +903,7 @@ export class World {
     }
     this.pong = arena.pong ?? null;
     if (this.pong) this.resetPong();
-    this.requests = mode === 'match' ? null : arena.requests ?? null;
+    this.requests = arena.requests ?? null;
     if (this.requests) {
       for (let i = 0; i < 24; i++) {
         this.requestCars.push({
@@ -904,6 +920,11 @@ export class World {
       }
       this.resetRequests();
     }
+    // Dynamic cover needs a per-World pillar list. `arenaSolids` is keyed by arena id,
+    // so a shared global cache would hand one match another match's soda stack.
+    this.sodaStaticPillars = this.arena.soda ? this.arena.pillars.slice() : [];
+    this.tetrisStaticPillars = this.arena.tetris ? this.arena.pillars.slice() : [];
+    this.arcade = this.makeArcadeRuntime();
     this.flip = arena.flip ?? null;
     this.flipStates = new Uint8Array(this.flip?.rows.length ?? 0);
     this.flipPrevStates = new Uint8Array(this.flipStates.length);
@@ -918,9 +939,13 @@ export class World {
     // still real geometry and keeps its body collision.
     const routeBarrierRects = [...this.carBarrierRects];
     const staticSolids =
-      routeBarrierRects.length > 0 ? [...arenaSolids(arena), ...routeBarrierRects] : arenaSolids(arena);
+      arena.soda || arena.tetris
+        ? [...this.arena.pillars, ...routeBarrierRects]
+        : routeBarrierRects.length > 0
+          ? [...arenaSolids(this.arena), ...routeBarrierRects]
+          : arenaSolids(this.arena);
     this.baseSolids = staticSolids;
-    this.baseDashSolids = [...arena.pillars, ...routeBarrierRects];
+    this.baseDashSolids = [...this.arena.pillars, ...routeBarrierRects];
     this.campaignBarSolids = campaign ? campaignCellBarRects(arena) : [];
     this.rebuildSolids();
     this.keypad = arena.keypad ?? null;
@@ -1164,6 +1189,9 @@ export class World {
     }
     this.events = new Array(EVENT_CAPACITY);
     for (let i = 0; i < EVENT_CAPACITY; i++) this.events[i] = { kind: 0, slot: 0, x: 0, y: 0, power: 0, dirX: 0, dirY: 0 };
+    // Players and pools exist now, so the first cover rebuild can safely push a body
+    // out of a stack that would otherwise overlap its spawn.
+    if (this.arcade) this.resetArcade();
 
     for (let i = 0; i < MAX_PLAYERS; i++) {
       const name = names[i];
@@ -1273,6 +1301,7 @@ export class World {
     if (this.swipe) this.resetSwipe();
     if (this.satellite) this.resetSatellite();
     if (this.requests) this.resetRequests();
+    if (this.arcade) this.resetArcade();
     for (let i = 0; i < this.pipes.length; i++) {
       const pipe = this.pipes[i];
       pipe.active = true;
@@ -3550,6 +3579,7 @@ export class World {
     if (this.car) this.resetCar();
     if (this.pong) this.resetPong();
     if (this.requests) this.resetRequests();
+    if (this.arcade) this.resetArcade();
     if (this.flip) this.resetFlip();
     if (this.invaders) this.resetInvaders();
     const active = this.activeCount();
@@ -3718,6 +3748,7 @@ export class World {
     if (this.car && canAct) this.tickCar(dt);
     if (this.pong && canAct) this.tickPong(dt);
     if (this.requests && canAct) this.tickRequests(dt);
+    if (this.arcade && canAct) this.tickArcade(dt);
     if (this.radar && canAct) this.tickRadar(dt);
     if (this.flip && canAct) this.tickFlip(dt);
     if (this.invaders && canAct) this.tickInvaders(dt);
@@ -10553,6 +10584,648 @@ export class World {
       );
       // A three-car train takes ~0.74 s to clear one body; one train is one hit.
       p.iframes = Math.max(p.iframes, 0.9);
+    }
+  }
+
+  /** Build the local arcade runtime once. Arrays are preallocated; ticks only mutate. */
+  private makeArcadeRuntime(): ArcadeRuntime | null {
+    const arena = this.arena;
+    if (!arena.dispenser && !arena.soda && !arena.race && !arena.fighter && !arena.duck && !arena.tetris) {
+      return null;
+    }
+    const drops: ArcadeDrop[] = [];
+    for (let i = 0; i < 14; i++) {
+      drops.push({
+        active: false,
+        kind: 0,
+        variant: 0,
+        x: 0,
+        y: 0,
+        vy: 0,
+        r: 0,
+        spin: 0,
+        warnT: 0,
+        hitPlayers: 0,
+      });
+    }
+    const raceCars: ArcadeRaceCar[] = [];
+    for (let i = 0; i < 12; i++) {
+      raceCars.push({ active: false, angle: 0, dir: 1, hitPlayers: 0, flashT: 0 });
+    }
+    const fighterShots: ArcadeShot[] = [];
+    for (let i = 0; i < 8; i++) {
+      fighterShots.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, r: 0, side: 0, hitPlayers: 0, flashT: 0 });
+    }
+    const duckBirds: ArcadeBird[] = [];
+    for (let i = 0; i < 8; i++) {
+      duckBirds.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, state: 0, shotT: 0, hitPlayers: 0, variant: 0 });
+    }
+    const cols = arena.tetris?.cols ?? 0;
+    const rows = arena.tetris?.rows ?? 0;
+    return {
+      drops,
+      dropT: 0.8,
+      dropPoint: 0,
+      dropFlashT: 0,
+      sodaCounts: (arena.soda?.stacks ?? []).map((stack) => stack.cans),
+      sodaT: 2.4,
+      sodaFlashT: 0,
+      raceCars,
+      raceT: 0,
+      fighterT: 1.2,
+      fighterSide: 0,
+      fighterKind: 0,
+      fighterWarnT: 0,
+      fighterActiveT: 0,
+      fighterHitPlayers: 0,
+      fighterShots,
+      duckBirds,
+      duckT: 0.7,
+      duckShotT: 2.2,
+      duckTarget: -1,
+      tetrisGrid: new Uint8Array(cols * rows),
+      tetrisPiece: { active: false, shape: 0, x: 0, y: 0, fallT: 0 },
+      tetrisT: 0,
+      tetrisClearT: 0,
+      tetrisClearRow: -1,
+    };
+  }
+
+  /** Put the arcade run back to its opening state. Cover is rebuilt from the arena data. */
+  private resetArcade(): void {
+    const arcade = this.arcade;
+    if (!arcade) return;
+    for (let i = 0; i < arcade.drops.length; i++) {
+      const drop = arcade.drops[i];
+      drop.active = false;
+      drop.hitPlayers = 0;
+    }
+    arcade.dropT = this.arena.dispenser?.warn ?? 0.8;
+    arcade.dropPoint = 0;
+    arcade.dropFlashT = 0;
+    const stacks = this.arena.soda?.stacks ?? [];
+    for (let i = 0; i < stacks.length; i++) arcade.sodaCounts[i] = stacks[i].cans;
+    arcade.sodaT = this.arena.soda?.interval ?? 2.4;
+    arcade.sodaFlashT = 0;
+    const race = this.arena.race;
+    for (let i = 0; i < arcade.raceCars.length; i++) {
+      const car = arcade.raceCars[i];
+      car.active = !!race && i < race.cars;
+      car.angle = race ? (i / Math.max(1, race.cars)) * Math.PI * 2 : 0;
+      car.dir = 1;
+      car.hitPlayers = 0;
+      car.flashT = 0;
+    }
+    arcade.raceT = 0;
+    arcade.fighterT = 1.2;
+    arcade.fighterSide = 0;
+    arcade.fighterKind = 0;
+    arcade.fighterWarnT = 0;
+    arcade.fighterActiveT = 0;
+    arcade.fighterHitPlayers = 0;
+    for (let i = 0; i < arcade.fighterShots.length; i++) {
+      arcade.fighterShots[i].active = false;
+      arcade.fighterShots[i].hitPlayers = 0;
+    }
+    for (let i = 0; i < arcade.duckBirds.length; i++) {
+      arcade.duckBirds[i].active = false;
+      arcade.duckBirds[i].state = 0;
+      arcade.duckBirds[i].hitPlayers = 0;
+    }
+    arcade.duckT = 0.7;
+    arcade.duckShotT = 2.2;
+    arcade.duckTarget = -1;
+    arcade.tetrisGrid.fill(0);
+    arcade.tetrisPiece.active = false;
+    arcade.tetrisT = 0;
+    arcade.tetrisClearT = 0;
+    arcade.tetrisClearRow = -1;
+    if (this.arena.tetris) this.startTetrisPiece();
+    this.rebuildArcadeSolids();
+  }
+
+  private tickArcade(dt: number): void {
+    const arcade = this.arcade;
+    if (!arcade) return;
+    arcade.dropFlashT = Math.max(0, arcade.dropFlashT - dt);
+    arcade.sodaFlashT = Math.max(0, arcade.sodaFlashT - dt);
+    if (this.arena.dispenser) this.tickDispenser(dt);
+    if (this.arena.soda) this.tickSoda(dt);
+    if (this.arena.race) this.tickRace(dt);
+    if (this.arena.fighter) this.tickFighter(dt);
+    if (this.arena.duck) this.tickDuck(dt);
+    if (this.arena.tetris) this.tickTetris(dt);
+  }
+
+  /** A guard or the live lash catches something in front of the body. */
+  private arcadeCatch(p: Player, dirX: number, dirY: number): boolean {
+    if (p.guardT <= 0 && p.swingPhase !== 2) return false;
+    return Math.cos(p.facing) * dirX + Math.sin(p.facing) * dirY > -0.1;
+  }
+
+  private arcadeHit(
+    p: Player,
+    amount: number,
+    x: number,
+    y: number,
+    knockback: number,
+    sourceKind: number,
+    sourceId: number,
+    iframes = 0.5,
+  ): void {
+    if (!p.active || !p.alive || p.iframes > 0 || p.travelT > 0 || phased(p)) return;
+    const dx = p.x - x;
+    const dy = p.y - y;
+    const d = Math.hypot(dx, dy) || 1;
+    this.damagePlayer(p, amount, -1, dx / d, dy / d, knockback, sourceKind, sourceId);
+    p.iframes = Math.max(p.iframes, iframes);
+  }
+
+  private tickDispenser(dt: number): void {
+    const arcade = this.arcade;
+    const def = this.arena.dispenser;
+    if (!arcade || !def) return;
+    arcade.dropT -= dt;
+    if (arcade.dropT <= 0) {
+      this.spawnArcadeDrop();
+      arcade.dropT += Math.max(0.35, def.interval);
+    }
+    for (let i = 0; i < arcade.drops.length; i++) {
+      const drop = arcade.drops[i];
+      if (!drop.active) continue;
+      drop.spin += dt * 7;
+      if (drop.warnT > 0) {
+        drop.warnT = Math.max(0, drop.warnT - dt);
+        if (drop.warnT === 0) drop.vy = def.fallSpeed;
+        continue;
+      }
+      drop.y += drop.vy * dt;
+      if (drop.y + drop.r >= def.tray.y + 8) {
+        drop.active = false;
+        arcade.dropFlashT = 0.3;
+        continue;
+      }
+      for (let pi = 0; pi < this.players.length; pi++) {
+        const p = this.players[pi];
+        if (!p.active || !p.alive || p.iframes > 0 || p.travelT > 0 || phased(p)) continue;
+        const bit = 1 << p.slot;
+        if (drop.hitPlayers & bit) continue;
+        const reach = drop.r + PLAYER.radius * p.shrink;
+        const dx = p.x - drop.x;
+        const dy = p.y - drop.y;
+        if (dx * dx + dy * dy > reach * reach) continue;
+        drop.hitPlayers |= bit;
+        drop.active = false;
+        this.arcadeHit(p, def.damage, drop.x, drop.y, def.knockback, SRC.DISPENSER, i, 0.55);
+        break;
+      }
+    }
+  }
+
+  private spawnArcadeDrop(): void {
+    const arcade = this.arcade;
+    const def = this.arena.dispenser;
+    if (!arcade || !def || def.points.length === 0) return;
+    let drop: ArcadeDrop | null = null;
+    for (let i = 0; i < arcade.drops.length; i++) {
+      if (!arcade.drops[i].active) {
+        drop = arcade.drops[i];
+        break;
+      }
+    }
+    if (!drop) return;
+    const point = def.points[arcade.dropPoint % def.points.length];
+    arcade.dropPoint = (arcade.dropPoint + 1) % def.points.length;
+    drop.active = true;
+    drop.kind = def.kind === 'snack' ? 0 : 1;
+    drop.variant = this.rng.int(0, Math.max(1, def.variants.length));
+    drop.x = point.x;
+    drop.y = point.y;
+    drop.vy = 0;
+    drop.r = def.radius;
+    drop.spin = this.rng.range(0, Math.PI * 2);
+    drop.warnT = def.warn;
+    drop.hitPlayers = 0;
+  }
+
+  private tickSoda(dt: number): void {
+    const arcade = this.arcade;
+    const def = this.arena.soda;
+    if (!arcade || !def) return;
+    arcade.sodaT -= dt;
+    if (arcade.sodaT > 0) return;
+    arcade.sodaT += Math.max(0.6, def.interval);
+    for (let i = 0; i < arcade.sodaCounts.length; i++) {
+      if (arcade.sodaCounts[i] <= 0) continue;
+      arcade.sodaCounts[i]--;
+      arcade.sodaFlashT = 0.4;
+      this.rebuildArcadeSolids();
+      break;
+    }
+  }
+
+  private tickRace(dt: number): void {
+    const arcade = this.arcade;
+    const def = this.arena.race;
+    if (!arcade || !def) return;
+    arcade.raceT += dt;
+    const angular = def.speed / Math.max(1, (def.rx + def.ry) * 0.5);
+    for (let ci = 0; ci < arcade.raceCars.length; ci++) {
+      const car = arcade.raceCars[ci];
+      if (!car.active) continue;
+      car.flashT = Math.max(0, car.flashT - dt);
+      car.angle += car.dir * angular * dt;
+      const x = def.center.x + Math.cos(car.angle) * def.rx;
+      const y = def.center.y + Math.sin(car.angle) * def.ry;
+      const dirX = -Math.sin(car.angle) * car.dir;
+      const dirY = Math.cos(car.angle) * car.dir;
+      const reach = def.carW * 0.5 + PLAYER.radius;
+      for (let pi = 0; pi < this.players.length; pi++) {
+        const p = this.players[pi];
+        if (!p.active || !p.alive || p.travelT > 0 || phased(p)) continue;
+        const bit = 1 << p.slot;
+        const dx = p.x - x;
+        const dy = p.y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > reach * reach) {
+          if (d2 > (reach + 40) * (reach + 40)) car.hitPlayers &= ~bit;
+          continue;
+        }
+        if (this.arcadeCatch(p, dirX, dirY)) {
+          car.dir *= -1;
+          car.hitPlayers = 0;
+          car.flashT = 0.25;
+          p.iframes = Math.max(p.iframes, 0.25);
+          this.emit(EV.DEFLECT, p.slot, x, y, 1, -dirX, -dirY);
+          continue;
+        }
+        if (p.iframes > 0 || car.hitPlayers & bit) continue;
+        car.hitPlayers |= bit;
+        this.arcadeHit(p, def.damage, x, y, def.knockback, SRC.RACE, ci, 0.7);
+      }
+    }
+  }
+
+  private tickFighter(dt: number): void {
+    const arcade = this.arcade;
+    const def = this.arena.fighter;
+    if (!arcade || !def) return;
+    for (let i = 0; i < arcade.fighterShots.length; i++) {
+      const shot = arcade.fighterShots[i];
+      if (!shot.active) continue;
+      shot.flashT = Math.max(0, shot.flashT - dt);
+      shot.x += shot.vx * dt;
+      shot.y += shot.vy * dt;
+      if (shot.x < this.arena.bounds.left - 40 || shot.x > this.arena.bounds.right + 40) {
+        shot.active = false;
+        continue;
+      }
+      for (let pi = 0; pi < this.players.length; pi++) {
+        const p = this.players[pi];
+        if (!p.active || !p.alive || p.iframes > 0 || p.travelT > 0 || phased(p)) continue;
+        const bit = 1 << p.slot;
+        if (shot.hitPlayers & bit) continue;
+        const reach = shot.r + PLAYER.radius * p.shrink;
+        const dx = p.x - shot.x;
+        const dy = p.y - shot.y;
+        if (dx * dx + dy * dy > reach * reach) continue;
+        const travel = Math.sign(shot.vx) || 1;
+        if (this.arcadeCatch(p, travel, 0)) {
+          shot.vx *= -1;
+          shot.hitPlayers = 0;
+          shot.flashT = 0.25;
+          p.iframes = Math.max(p.iframes, 0.25);
+          this.emit(EV.DEFLECT, p.slot, shot.x, shot.y, 1, -travel, 0);
+          continue;
+        }
+        shot.hitPlayers |= bit;
+        shot.active = false;
+        this.arcadeHit(p, def.damage, shot.x, shot.y, def.knockback, SRC.FIGHTER, i, 0.6);
+        break;
+      }
+    }
+    if (arcade.fighterWarnT > 0) {
+      arcade.fighterWarnT -= dt;
+      if (arcade.fighterWarnT <= 0) {
+        arcade.fighterActiveT = def.active;
+        arcade.fighterHitPlayers = 0;
+        if (arcade.fighterKind === 2) this.spawnFighterShot();
+      }
+      return;
+    }
+    if (arcade.fighterActiveT > 0) {
+      arcade.fighterActiveT = Math.max(0, arcade.fighterActiveT - dt);
+      if (arcade.fighterKind !== 2) this.hitFighterMelee();
+      return;
+    }
+    arcade.fighterT -= dt;
+    if (arcade.fighterT > 0) return;
+    arcade.fighterT += Math.max(1.0, def.interval);
+    arcade.fighterSide = arcade.fighterSide === 0 ? 1 : 0;
+    arcade.fighterKind = (arcade.fighterKind + 1) % 3;
+    arcade.fighterWarnT = def.warn;
+  }
+
+  private spawnFighterShot(): void {
+    const arcade = this.arcade;
+    const def = this.arena.fighter;
+    if (!arcade || !def) return;
+    let shot: ArcadeShot | null = null;
+    for (let i = 0; i < arcade.fighterShots.length; i++) {
+      if (!arcade.fighterShots[i].active) {
+        shot = arcade.fighterShots[i];
+        break;
+      }
+    }
+    if (!shot) return;
+    const left = arcade.fighterSide === 0;
+    shot.active = true;
+    shot.x = left ? def.left.x + 54 : def.right.x - 54;
+    shot.y = def.left.y;
+    shot.vx = left ? def.fireballSpeed : -def.fireballSpeed;
+    shot.vy = 0;
+    shot.r = def.fireballRadius;
+    shot.side = arcade.fighterSide;
+    shot.hitPlayers = 0;
+    shot.flashT = 0;
+  }
+
+  private hitFighterMelee(): void {
+    const arcade = this.arcade;
+    const def = this.arena.fighter;
+    if (!arcade || !def) return;
+    const left = arcade.fighterSide === 0;
+    const originX = left ? def.left.x : def.right.x;
+    const dirX = left ? 1 : -1;
+    const x1 = left ? originX + 34 : originX - 34 - def.reach;
+    for (let pi = 0; pi < this.players.length; pi++) {
+      const p = this.players[pi];
+      if (!p.active || !p.alive || p.iframes > 0 || p.travelT > 0 || phased(p)) continue;
+      const bit = 1 << p.slot;
+      if (arcade.fighterHitPlayers & bit) continue;
+      const cy = def.left.y;
+      if (p.y < cy - 54 || p.y > cy + 54) continue;
+      if (p.x < x1 || p.x > x1 + def.reach) continue;
+      if (this.arcadeCatch(p, dirX, 0)) {
+        arcade.fighterHitPlayers |= bit;
+        p.iframes = Math.max(p.iframes, 0.25);
+        this.emit(EV.DEFLECT, p.slot, p.x, p.y, 1, -dirX, 0);
+        continue;
+      }
+      arcade.fighterHitPlayers |= bit;
+      this.arcadeHit(p, def.damage, originX, cy, def.knockback, SRC.FIGHTER, 1, 0.55);
+    }
+  }
+
+  private tickDuck(dt: number): void {
+    const arcade = this.arcade;
+    const def = this.arena.duck;
+    if (!arcade || !def) return;
+    arcade.duckT -= dt;
+    if (arcade.duckT <= 0) {
+      this.spawnDuckBird();
+      arcade.duckT += Math.max(0.7, def.interval);
+    }
+    arcade.duckShotT -= dt;
+    if (arcade.duckShotT <= 0) {
+      arcade.duckShotT = Math.max(1.0, def.interval * 1.5);
+      for (let i = 0; i < arcade.duckBirds.length; i++) {
+        const bird = arcade.duckBirds[i];
+        if (!bird.active || bird.state !== 0 || bird.shotT > 0) continue;
+        bird.shotT = def.warn;
+        arcade.duckTarget = i;
+        break;
+      }
+    }
+    for (let i = 0; i < arcade.duckBirds.length; i++) {
+      const bird = arcade.duckBirds[i];
+      if (!bird.active) continue;
+      if (bird.state === 0) {
+        bird.x += bird.vx * dt;
+        if (bird.x < def.sky.x - 50 || bird.x > def.sky.x + def.sky.w + 50) {
+          bird.active = false;
+          if (arcade.duckTarget === i) arcade.duckTarget = -1;
+          continue;
+        }
+        if (bird.shotT > 0) {
+          bird.shotT -= dt;
+          if (bird.shotT <= 0) {
+            bird.shotT = 0;
+            bird.state = 1;
+            bird.vy = def.fallSpeed;
+            arcade.duckTarget = -1;
+            this.blastDuck(bird, i, def.aoeRadius, def.damage, def.knockback);
+          }
+        }
+        continue;
+      }
+      bird.y += bird.vy * dt;
+      bird.x += bird.vx * 0.15 * dt;
+      if (bird.y > def.trayY) {
+        bird.active = false;
+        continue;
+      }
+      for (let pi = 0; pi < this.players.length; pi++) {
+        const p = this.players[pi];
+        if (!p.active || !p.alive || p.iframes > 0 || p.travelT > 0 || phased(p)) continue;
+        const bit = 1 << p.slot;
+        if (bird.hitPlayers & bit) continue;
+        const reach = 18 + PLAYER.radius * p.shrink;
+        const dx = p.x - bird.x;
+        const dy = p.y - bird.y;
+        if (dx * dx + dy * dy > reach * reach) continue;
+        bird.hitPlayers |= bit;
+        bird.active = false;
+        this.arcadeHit(p, def.damage, bird.x, bird.y, def.knockback, SRC.DUCK, i, 0.6);
+        break;
+      }
+    }
+  }
+
+  private spawnDuckBird(): void {
+    const arcade = this.arcade;
+    const def = this.arena.duck;
+    if (!arcade || !def) return;
+    let bird: ArcadeBird | null = null;
+    for (let i = 0; i < arcade.duckBirds.length; i++) {
+      if (!arcade.duckBirds[i].active) {
+        bird = arcade.duckBirds[i];
+        break;
+      }
+    }
+    if (!bird) return;
+    const fromLeft = this.rng.next() < 0.5;
+    bird.active = true;
+    bird.x = fromLeft ? def.sky.x - 28 : def.sky.x + def.sky.w + 28;
+    bird.y = def.sky.y + 28 + this.rng.range(0, Math.max(1, def.sky.h - 56));
+    bird.vx = (fromLeft ? 1 : -1) * def.speed;
+    bird.vy = 0;
+    bird.state = 0;
+    bird.shotT = 0;
+    bird.hitPlayers = 0;
+    bird.variant = this.rng.int(0, 3);
+  }
+
+  private blastDuck(bird: ArcadeBird, id: number, radius: number, damage: number, knockback: number): void {
+    for (let pi = 0; pi < this.players.length; pi++) {
+      const p = this.players[pi];
+      if (!p.active || !p.alive || p.iframes > 0 || p.travelT > 0 || phased(p)) continue;
+      const dx = p.x - bird.x;
+      const dy = p.y - bird.y;
+      if (dx * dx + dy * dy > radius * radius) continue;
+      this.arcadeHit(p, damage, bird.x, bird.y, knockback, SRC.DUCK, id, 0.6);
+    }
+  }
+
+  private startTetrisPiece(): void {
+    const arcade = this.arcade;
+    const def = this.arena.tetris;
+    if (!arcade || !def) return;
+    arcade.tetrisPiece.active = true;
+    arcade.tetrisPiece.shape = this.rng.int(0, TETROMINO_SHAPES.length);
+    arcade.tetrisPiece.x = Math.floor((def.cols - 4) * 0.5);
+    arcade.tetrisPiece.y = 0;
+    arcade.tetrisPiece.fallT = def.fallInterval;
+  }
+
+  private tetrisPieceCanFall(): boolean {
+    const arcade = this.arcade;
+    const def = this.arena.tetris;
+    if (!arcade || !def) return false;
+    const piece = arcade.tetrisPiece;
+    const shape = TETROMINO_SHAPES[piece.shape % TETROMINO_SHAPES.length];
+    for (let i = 0; i < shape.length; i++) {
+      const x = piece.x + shape[i][0];
+      const y = piece.y + shape[i][1] + 1;
+      if (x < 0 || x >= def.cols || y >= def.rows) return false;
+      if (y >= 0 && arcade.tetrisGrid[y * def.cols + x] !== 0) return false;
+    }
+    return true;
+  }
+
+  private tickTetris(dt: number): void {
+    const arcade = this.arcade;
+    const def = this.arena.tetris;
+    if (!arcade || !def) return;
+    if (arcade.tetrisClearT > 0) {
+      arcade.tetrisClearT = Math.max(0, arcade.tetrisClearT - dt);
+      return;
+    }
+    if (arcade.tetrisT > 0) {
+      arcade.tetrisT = Math.max(0, arcade.tetrisT - dt);
+      if (arcade.tetrisT > 0) return;
+      this.startTetrisPiece();
+      return;
+    }
+    const piece = arcade.tetrisPiece;
+    if (!piece.active) {
+      this.startTetrisPiece();
+      return;
+    }
+    piece.fallT -= dt;
+    if (piece.fallT > 0) return;
+    piece.fallT += Math.max(0.12, def.fallInterval);
+    if (this.tetrisPieceCanFall()) {
+      piece.y++;
+      return;
+    }
+    // The piece has landed. Its cells become ordinary cover for bodies and shots.
+    piece.active = false;
+    const shape = TETROMINO_SHAPES[piece.shape % TETROMINO_SHAPES.length];
+    for (let i = 0; i < shape.length; i++) {
+      const x = piece.x + shape[i][0];
+      const y = piece.y + shape[i][1];
+      if (x < 0 || x >= def.cols || y < 0 || y >= def.rows) continue;
+      arcade.tetrisGrid[y * def.cols + x] = piece.shape + 1;
+    }
+    arcade.tetrisClearRow = this.clearTetrisRows();
+    this.rebuildArcadeSolids();
+    if (arcade.tetrisClearRow >= 0) arcade.tetrisClearT = def.clearFlash;
+    arcade.tetrisT = arcade.tetrisClearRow >= 0 ? def.clearFlash : 0.35;
+  }
+
+  /** Clear every full row, shift the stack down, and return the first cleared row. */
+  private clearTetrisRows(): number {
+    const arcade = this.arcade;
+    const def = this.arena.tetris;
+    if (!arcade || !def) return -1;
+    let first = -1;
+    let y = def.rows - 1;
+    while (y >= 0) {
+      let full = true;
+      for (let x = 0; x < def.cols; x++) {
+        if (arcade.tetrisGrid[y * def.cols + x] === 0) {
+          full = false;
+          break;
+        }
+      }
+      if (!full) {
+        y--;
+        continue;
+      }
+      if (first < 0) first = y;
+      for (let row = y; row > 0; row--) {
+        for (let x = 0; x < def.cols; x++) {
+          arcade.tetrisGrid[row * def.cols + x] = arcade.tetrisGrid[(row - 1) * def.cols + x];
+        }
+      }
+      for (let x = 0; x < def.cols; x++) arcade.tetrisGrid[x] = 0;
+    }
+    return first;
+  }
+
+  /** Rebuild the dynamic cover and refresh the body solver in one place. */
+  private rebuildArcadeSolids(): void {
+    const arcade = this.arcade;
+    if (!arcade) return;
+    const def = this.arena.tetris;
+    if (this.arena.soda) {
+      const sodas = this.arena.soda.stacks;
+      const rects: Rect[] = [];
+      for (let i = 0; i < sodas.length; i++) {
+        const count = arcade.sodaCounts[i] ?? 0;
+        if (count <= 0) continue;
+        const step = sodas[i].h / sodas[i].cans;
+        const y = sodas[i].y + (sodas[i].cans - count) * step;
+        this.sodaRectScratch.x = sodas[i].x;
+        this.sodaRectScratch.y = y;
+        this.sodaRectScratch.w = sodas[i].w;
+        this.sodaRectScratch.h = step * count;
+        rects.push({ x: this.sodaRectScratch.x, y: this.sodaRectScratch.y, w: this.sodaRectScratch.w, h: this.sodaRectScratch.h });
+      }
+      this.arena.pillars = [...this.sodaStaticPillars, ...rects];
+    } else if (def) {
+      const rects: Rect[] = [];
+      const cellW = def.well.w / def.cols;
+      const cellH = def.well.h / def.rows;
+      for (let y = 0; y < def.rows; y++) {
+        for (let x = 0; x < def.cols; x++) {
+          if (arcade.tetrisGrid[y * def.cols + x] === 0) continue;
+          rects.push({ x: def.well.x + x * cellW, y: def.well.y + y * cellH, w: cellW, h: cellH });
+        }
+      }
+      this.arena.pillars = [...this.tetrisStaticPillars, ...rects];
+    } else {
+      return;
+    }
+    this.baseSolids = [...this.arena.pillars];
+    this.baseDashSolids = [...this.arena.pillars];
+    this.rebuildSolids();
+    this.pushPlayersOutOfArcade();
+  }
+
+  private pushPlayersOutOfArcade(): void {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive) continue;
+      const radius = PLAYER.radius * p.shrink;
+      for (let s = 0; s < this.solids.length; s++) {
+        if (!circleRect(p.x, p.y, radius, this.solids[s], hitScratch)) continue;
+        p.x = hitScratch.px;
+        p.y = hitScratch.py;
+        p.vx = 0;
+        p.vy = 0;
+      }
     }
   }
 

@@ -2,6 +2,19 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Food-court and arcade row (2026-11-05, v0.1.197)
+
+- [x] `SNACK MACHINE` (42) and `TOKEN DISPENSER` (43): warning, falling selection, tray catch and hit
+- [x] `SODA MACHINE` (44): stacked dynamic cover that loses one can every 3.8 s
+- [x] `ARCADE RACING` (45): five lap cars, body damage and guard/lash reversal
+- [x] `FIGHTING GAME` (46): vector punch/kick/fireball cycle with telegraphs and fireball catch
+- [x] `DUCK HUNTER` (47): marked AOE shot and falling bird projectile
+- [x] `TETRIS` (48): 10x12 well, landed cover and row clears
+- [x] One preallocated `ArcadeRuntime`; picker previews; local-only `isOnlineArena` gate; QA range at index 49
+- [x] `.tmp/arcade-arena-check.ts`, request probe, `npm run build` and `npm run bench` green; headed pass done
+- [ ] Play each cabinet with a full local squad and tune intervals, damage and readability from play
+- [ ] Decide whether any cabinet becomes a campaign node or gains a snapshot hazard record
+
 ## Final-level request traffic (2026-11-05, v0.1.196)
 
 - [x] `DISPATCH YARD` (40): one inbound line, three platforms, three-car trains every 5.6 s
