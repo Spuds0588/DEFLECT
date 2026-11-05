@@ -64,6 +64,36 @@ export interface ArenaServerDef {
   modules: readonly ArenaServerModuleDef[];
 }
 
+/** Two request-traffic silhouettes share one local-only hazard. */
+export type ArenaRequestKind = 'dispatch' | 'balancer';
+
+/**
+ * Authored request tracks. A car runs from `entry` to `hub`, moves to its selected
+ * lane, then leaves through `exitX`. `pattern` is the authored routing order; it is
+ * what makes the switch readable before a train arrives. The live cars stay in World.
+ */
+export interface ArenaRequestDef {
+  kind: ArenaRequestKind;
+  entry: SpawnPoint;
+  hub: SpawnPoint;
+  exitX: number;
+  lanes: readonly number[];
+  pattern: readonly number[];
+  interval: number;
+  firstDelay: number;
+  /** Seconds of signal warning before the next train enters. */
+  warn: number;
+  speed: number;
+  cars: number;
+  carW: number;
+  carH: number;
+  carGap: number;
+  damage: number;
+  knockback: number;
+  label: string;
+  sub: string;
+}
+
 /** A tutorial room's visual identity. The floor is presentation; walls stay in `pillars`. */
 export type ArenaRoomTheme = 'office' | 'holding' | 'board' | 'router' | 'console';
 
@@ -1491,6 +1521,8 @@ export interface ArenaDef {
   regulars?: readonly ArenaRegularDef[];
   /** A final-level motherboard. Local-only until its hazards have a snapshot story. */
   server?: ArenaServerDef;
+  /** DISPATCH / LOAD BALANCER request trains. Local-only; numbered rooms skip this. */
+  requests?: ArenaRequestDef;
   /** A round spinning platter with a read arm. Implies an open drop around the rim. */
   disc?: DiscDef;
 }
@@ -1550,6 +1582,62 @@ const NETWORK_BOARD_MODULES: readonly ArenaServerModuleDef[] = [
 function serverPillars(modules: readonly ArenaServerModuleDef[]): Rect[] {
   return modules.map(({ x, y, w, h }) => ({ x, y, w, h }));
 }
+
+// Request arenas use a custom top/bottom ring so the entry and outbound tracks do not
+// cross a player's opening position. The standard perimeter ring has two points at the
+// centre height, exactly where the inbound line runs.
+const requestSpawns: SpawnPoint[] = [
+  { x: 995, y: 120 },
+  { x: 1770, y: 150 },
+  { x: 1815, y: 930 },
+  { x: 995, y: 975 },
+  { x: 160, y: 930 },
+  { x: 130, y: 150 },
+  { x: 620, y: 120 },
+  { x: 1370, y: 975 },
+];
+
+const DISPATCH_REQUESTS: ArenaRequestDef = {
+  kind: 'dispatch',
+  entry: { x: 48, y: 547 },
+  hub: { x: 700, y: 547 },
+  exitX: 1942,
+  lanes: [235, 547, 860],
+  pattern: [1, 0, 2, 1, 2, 0],
+  interval: 5.6,
+  firstDelay: 1.4,
+  warn: 1.1,
+  speed: 430,
+  cars: 3,
+  carW: 92,
+  carH: 30,
+  carGap: 112,
+  damage: 1,
+  knockback: 430,
+  label: 'DISPATCH // REQUEST YARD',
+  sub: 'ONE INBOUND LINE // THREE OUTBOUND PLATFORMS',
+};
+
+const LOAD_BALANCER_REQUESTS: ArenaRequestDef = {
+  kind: 'balancer',
+  entry: { x: 48, y: 547 },
+  hub: { x: 900, y: 547 },
+  exitX: 1942,
+  lanes: [250, 430, 664, 844],
+  pattern: [0, 1, 2, 3, 2, 1, 0, 3],
+  interval: 3.8,
+  firstDelay: 1.0,
+  warn: 0.9,
+  speed: 555,
+  cars: 2,
+  carW: 68,
+  carH: 26,
+  carGap: 84,
+  damage: 1,
+  knockback: 380,
+  label: 'BALANCER // REQUEST FABRIC',
+  sub: 'FOUR LANES // ROUND-ROBIN // NO WAITING',
+};
 
 const browserChrome: Rect = { x: 48, y: 48, w: 1846, h: 136 };
 const browserPage: Rect = { x: 56, y: 192, w: 1830, h: 846 };
@@ -3558,6 +3646,46 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     },
   },
   {
+    id: 40,
+    name: 'DISPATCH YARD',
+    tagline: 'Three platforms. One request at a time.',
+    hudLabel: 'ARENA // DISPATCH YARD',
+    accent: '#ffc45e',
+    accentSoft: 'rgba(255, 196, 94, 0.32)',
+    accentFaint: 'rgba(255, 196, 94, 0.032)',
+    signature: 3,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [
+      { x: 250, y: 330, w: 150, h: 62 },
+      { x: 1542, y: 330, w: 150, h: 62 },
+      { x: 250, y: 720, w: 150, h: 62 },
+      { x: 1542, y: 720, w: 150, h: 62 },
+    ],
+    spawns: requestSpawns,
+    requests: DISPATCH_REQUESTS,
+  },
+  {
+    id: 41,
+    name: 'LOAD BALANCER',
+    tagline: 'Every request finds a lane. Make sure it is not yours.',
+    hudLabel: 'ARENA // LOAD BALANCER',
+    accent: '#6fe7c8',
+    accentSoft: 'rgba(111, 231, 200, 0.32)',
+    accentFaint: 'rgba(111, 231, 200, 0.032)',
+    signature: 2,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [
+      { x: 250, y: 300, w: 150, h: 56 },
+      { x: 1542, y: 300, w: 150, h: 56 },
+      { x: 250, y: 740, w: 150, h: 56 },
+      { x: 1542, y: 740, w: 150, h: 56 },
+      { x: 1120, y: 300, w: 130, h: 56 },
+      { x: 1120, y: 740, w: 130, h: 56 },
+    ],
+    spawns: requestSpawns,
+    requests: LOAD_BALANCER_REQUESTS,
+  },
+  {
     id: 90,
     qa: true,
     name: 'TEST RANGE',
@@ -4147,6 +4275,41 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
 
   const previewW = (bounds.right - bounds.left) * sx;
   const previewH = (bounds.bottom - bounds.top) * sy;
+
+  // Request arenas read by their track plan, not by their cover boxes.
+  if (arena.requests) {
+    const req = arena.requests;
+    ctx.fillStyle = '#03070b';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.fillStyle = req.kind === 'balancer' ? '#071318' : '#151006';
+    ctx.fillRect(mapX(bounds.left) + 2, mapY(bounds.top) + 2, previewW - 4, previewH - 4);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(bounds.left) + 2.5, mapY(bounds.top) + 2.5, previewW - 5, previewH - 5);
+    const line = (x1: number, y1: number, x2: number, y2: number): void => {
+      ctx.beginPath();
+      ctx.moveTo(mapX(x1), mapY(y1));
+      ctx.lineTo(mapX(x2), mapY(y2));
+      ctx.stroke();
+    };
+    ctx.globalAlpha = 0.8;
+    ctx.strokeStyle = arena.accent;
+    line(req.entry.x, req.entry.y, req.hub.x, req.hub.y);
+    line(req.hub.x, Math.min(...req.lanes), req.hub.x, Math.max(...req.lanes));
+    for (let i = 0; i < req.lanes.length; i++) line(req.hub.x, req.lanes[i], req.exitX, req.lanes[i]);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#071016';
+    ctx.strokeStyle = arena.accent;
+    ctx.beginPath();
+    ctx.arc(mapX(req.hub.x), mapY(req.hub.y), req.kind === 'balancer' ? 5 : 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(req.kind === 'balancer' ? 'BALANCER' : 'DISPATCH', mapX(bounds.left) + 5, mapY(bounds.top) + 9);
+    return;
+  }
 
   // The three final-level boards read as PCBs even in a tiny picker preview.
   if (arena.server) {

@@ -122,6 +122,7 @@ import {
   type ArenaFlipDef,
   type ArenaInvadersDef,
   type ArenaPongDef,
+  type ArenaRequestDef,
   type ArenaRocketDef,
   type ArenaScannerDef,
   type ArenaSwipeDef,
@@ -187,6 +188,7 @@ import {
   type Player,
   type Projectile,
   type Prop,
+  type RequestCar,
   type Sentry,
   type SmokeWave,
   type Virus,
@@ -746,6 +748,15 @@ export class World {
   private pongServeIndex = 0;
   private pongHitNx = 1;
   private pongHitNy = 0;
+  /** DISPATCH / LOAD BALANCER request trains. Local-only; hosted rooms skip the arena. */
+  readonly requests: ArenaRequestDef | null;
+  /** Live request cars. Preallocated; a train is a short chain of these. */
+  readonly requestCars: RequestCar[] = [];
+  /** Seconds until the next train enters. */
+  requestT = 0;
+  /** Authored lane the next train will take, for the signal and renderer. */
+  requestNextRoute = 0;
+  private requestRouteIndex = 0;
   /** AIRPORT split-flap board. Local-only; time tiles resolve as floor hazards. */
   readonly flip: ArenaFlipDef | null;
   flipT = 0;
@@ -876,6 +887,23 @@ export class World {
     }
     this.pong = arena.pong ?? null;
     if (this.pong) this.resetPong();
+    this.requests = mode === 'match' ? null : arena.requests ?? null;
+    if (this.requests) {
+      for (let i = 0; i < 24; i++) {
+        this.requestCars.push({
+          active: false,
+          route: 0,
+          s: 0,
+          x: 0,
+          y: 0,
+          dirX: 1,
+          dirY: 0,
+          horizontal: true,
+          hitPlayers: 0,
+        });
+      }
+      this.resetRequests();
+    }
     this.flip = arena.flip ?? null;
     this.flipStates = new Uint8Array(this.flip?.rows.length ?? 0);
     this.flipPrevStates = new Uint8Array(this.flipStates.length);
@@ -1244,6 +1272,7 @@ export class World {
     if (this.usb) this.resetUsb();
     if (this.swipe) this.resetSwipe();
     if (this.satellite) this.resetSatellite();
+    if (this.requests) this.resetRequests();
     for (let i = 0; i < this.pipes.length; i++) {
       const pipe = this.pipes[i];
       pipe.active = true;
@@ -3520,6 +3549,7 @@ export class World {
     if (this.rocket) this.resetRocket();
     if (this.car) this.resetCar();
     if (this.pong) this.resetPong();
+    if (this.requests) this.resetRequests();
     if (this.flip) this.resetFlip();
     if (this.invaders) this.resetInvaders();
     const active = this.activeCount();
@@ -3687,6 +3717,7 @@ export class World {
     if (this.rocket && canAct) this.tickRocket(dt);
     if (this.car && canAct) this.tickCar(dt);
     if (this.pong && canAct) this.tickPong(dt);
+    if (this.requests && canAct) this.tickRequests(dt);
     if (this.radar && canAct) this.tickRadar(dt);
     if (this.flip && canAct) this.tickFlip(dt);
     if (this.invaders && canAct) this.tickInvaders(dt);
@@ -10375,6 +10406,153 @@ export class World {
         const d = Math.hypot(dx, dy) || 1;
         this.damageError(e, radar.damage, -1, dx / d, dy / d);
       }
+    }
+  }
+
+  /** Reset the request traffic on every round and gauntlet start. */
+  private resetRequests(): void {
+    const def = this.requests;
+    if (!def) return;
+    this.requestT = def.firstDelay;
+    this.requestRouteIndex = 0;
+    this.requestNextRoute = def.pattern.length > 0 ? def.pattern[0] : 0;
+    for (let i = 0; i < this.requestCars.length; i++) {
+      const car = this.requestCars[i];
+      car.active = false;
+      car.route = 0;
+      car.s = 0;
+      car.x = 0;
+      car.y = 0;
+      car.dirX = 1;
+      car.dirY = 0;
+      car.horizontal = true;
+      car.hitPlayers = 0;
+    }
+  }
+
+  /** Advance the switch signal, launch the next chain and move every live car. */
+  private tickRequests(dt: number): void {
+    const def = this.requests;
+    if (!def) return;
+    this.requestT -= dt;
+    if (this.requestT <= 0) {
+      this.spawnRequestTrain();
+      this.requestT += Math.max(0.1, def.interval);
+      if (this.requestT <= 0) this.requestT = Math.max(0.1, def.interval);
+    }
+    for (let i = 0; i < this.requestCars.length; i++) {
+      const car = this.requestCars[i];
+      if (!car.active) continue;
+      car.s += def.speed * dt;
+      const total = this.requestCarAt(car);
+      if (car.s > total + def.carW) {
+        car.active = false;
+        continue;
+      }
+      if (car.s < 0) continue;
+      this.hitRequestPlayers(car, def);
+    }
+  }
+
+  /** One car at a distance `s` along its entry -> switch -> lane -> exit route. */
+  private requestCarAt(car: RequestCar): number {
+    const def = this.requests;
+    if (!def) return 0;
+    const lane = def.lanes.length > 0 ? def.lanes[car.route % def.lanes.length] : def.hub.y;
+    const approach = Math.max(1, def.hub.x - def.entry.x);
+    const laneRun = Math.abs(lane - def.hub.y);
+    const outbound = Math.max(1, def.exitX - def.hub.x);
+    if (car.s < 0) {
+      car.x = def.entry.x + car.s;
+      car.y = def.hub.y;
+      car.dirX = 1;
+      car.dirY = 0;
+      car.horizontal = true;
+    } else if (car.s < approach) {
+      car.x = def.entry.x + car.s;
+      car.y = def.hub.y;
+      car.dirX = 1;
+      car.dirY = 0;
+      car.horizontal = true;
+    } else if (car.s < approach + laneRun) {
+      car.x = def.hub.x;
+      car.y = def.hub.y + Math.sign(lane - def.hub.y) * (car.s - approach);
+      car.dirX = 0;
+      car.dirY = Math.sign(lane - def.hub.y);
+      car.horizontal = false;
+    } else {
+      car.x = def.hub.x + (car.s - approach - laneRun);
+      car.y = lane;
+      car.dirX = 1;
+      car.dirY = 0;
+      car.horizontal = true;
+    }
+    return approach + laneRun + outbound;
+  }
+
+  /** Put one authored request chain on the track. Cars enter nose-to-tail. */
+  private spawnRequestTrain(): void {
+    const def = this.requests;
+    if (!def || def.lanes.length === 0) return;
+    const route = this.requestNextRoute % def.lanes.length;
+    for (let i = 0; i < def.cars; i++) {
+      let car: RequestCar | null = null;
+      for (let n = 0; n < this.requestCars.length; n++) {
+        if (!this.requestCars[n].active) {
+          car = this.requestCars[n];
+          break;
+        }
+      }
+      if (!car) break;
+      car.active = true;
+      car.route = route;
+      car.s = -i * def.carGap;
+      car.hitPlayers = 0;
+      this.requestCarAt(car);
+    }
+    const pattern = def.pattern;
+    this.requestRouteIndex = (this.requestRouteIndex + 1) % Math.max(1, pattern.length);
+    this.requestNextRoute = pattern.length > 0 ? pattern[this.requestRouteIndex] ?? 0 : 0;
+  }
+
+  /** A request car hits once and shoves the body off the rail, not along the train. */
+  private hitRequestPlayers(car: RequestCar, def: ArenaRequestDef): void {
+    const halfW = (car.horizontal ? def.carW : def.carH) * 0.5;
+    const halfH = (car.horizontal ? def.carH : def.carW) * 0.5;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.iframes > 0 || p.travelT > 0 || phased(p)) continue;
+      const bit = 1 << p.slot;
+      if (car.hitPlayers & bit) continue;
+      const radius = PLAYER.radius * p.shrink;
+      const closestX = Math.max(car.x - halfW, Math.min(p.x, car.x + halfW));
+      const closestY = Math.max(car.y - halfH, Math.min(p.y, car.y + halfH));
+      const dx = p.x - closestX;
+      const dy = p.y - closestY;
+      if (dx * dx + dy * dy > radius * radius) continue;
+      car.hitPlayers |= bit;
+      // The car's travel vector runs along the rail, so using it as knockback keeps a
+      // head-on body in front of the train. Shove across the rail instead: the body is
+      // damaged once and lands clear of the remaining cars.
+      let pushX = 0;
+      let pushY = 0;
+      if (car.horizontal) {
+        pushY = p.y <= car.y ? -1 : 1;
+      } else {
+        pushX = p.x <= car.x ? -1 : 1;
+      }
+      this.damagePlayer(
+        p,
+        def.damage,
+        -1,
+        pushX,
+        pushY,
+        def.knockback,
+        SRC.REQUEST,
+        -1,
+      );
+      // A three-car train takes ~0.74 s to clear one body; one train is one hit.
+      p.iframes = Math.max(p.iframes, 0.9);
     }
   }
 

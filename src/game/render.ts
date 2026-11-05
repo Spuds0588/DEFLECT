@@ -71,7 +71,7 @@ import { PROGRAM_ID, programDef } from './programs';
 import { MINIBOSS } from './minibosses';
 import { MEMORY } from './memory';
 import { drawDroppedFiles, drawRegularProgram, regularFace, regularProgram, type RegularMood, type RegularProgramDef } from './regulars';
-import { PROP, SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type SatelliteMeteor, type Sentry, type SmokeWave, type Virus, type Worm } from './types';
+import { PROP, SRC, type Barrier, type CampaignPhase, type CascadingError, type Drone, type Firewall, type GameMode, type LaserEmitter, type Lure, type Net, type Phase, type Pickup, type Pipe, type Player, type Projectile, type Prop, type RequestCar, type SatelliteMeteor, type Sentry, type SmokeWave, type Virus, type Worm } from './types';
 import { CameraDirector, type CameraRig } from './camera';
 import { beamReach } from './collision';
 
@@ -83,6 +83,7 @@ const laptopCellDraw = { x: 0, y: 0, w: 0, h: 0 };
  * request the text faces so the shared symbol stack can keep the marks monochrome;
  * the open palm stays upright and the pointing hand turns along the latched charge.
  */
+const REQUEST_COLORS = ['#ffd166', '#70ddff', '#ff8fa3', '#a0ffb0'] as const;
 const IDLE_HAND_OPEN = '✋\uFE0E';
 const IDLE_HAND_POINT = '☝\uFE0E';
 const IDLE_HAND_EYE = '👁\uFE0E';
@@ -187,6 +188,10 @@ export interface RenderState {
   /** CAR NAVIGATION route clock and 0..1 progress. Local-only. */
   carT?: number;
   carProgress?: number;
+  /** DISPATCH / LOAD BALANCER live request traffic and its switch signal. Local-only. */
+  requestCars?: readonly RequestCar[];
+  requestT?: number;
+  requestNextRoute?: number;
   /** PONG rally state. Local-only. */
   pongBallX?: number;
   pongBallY?: number;
@@ -7249,6 +7254,249 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** DISPATCH / LOAD BALANCER: a track plan, a switch signal, and request cars. */
+  private drawRequestArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const req = arena.requests;
+    if (!req) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const dispatch = req.kind === 'dispatch';
+    const ink = dispatch ? '#ffc45e' : '#6fe7c8';
+    const minLane = Math.min(...req.lanes);
+    const maxLane = Math.max(...req.lanes);
+
+    ctx.save();
+    ctx.fillStyle = '#020509';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = dispatch ? '#151006' : '#071412';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+
+    // A sparse technical grid; the rails own the floor, not a decorative backdrop.
+    ctx.globalAlpha = groundA * 0.16;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = b.left + 48; x < b.right; x += 64) {
+      ctx.moveTo(x, b.top);
+      ctx.lineTo(x, b.bottom);
+    }
+    for (let y = b.top + 48; y < b.bottom; y += 64) {
+      ctx.moveTo(b.left, y);
+      ctx.lineTo(b.right, y);
+    }
+    ctx.stroke();
+
+    const rail = (x1: number, y1: number, x2: number, y2: number): void => {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    };
+    const sleepersH = (x1: number, x2: number, y: number): void => {
+      ctx.beginPath();
+      for (let x = x1 + 20; x < x2; x += 34) {
+        ctx.moveTo(x, y - 8);
+        ctx.lineTo(x, y + 8);
+      }
+      ctx.stroke();
+    };
+    const sleepersV = (x: number, y1: number, y2: number): void => {
+      ctx.beginPath();
+      for (let y = y1 + 20; y < y2; y += 34) {
+        ctx.moveTo(x - 8, y);
+        ctx.lineTo(x + 8, y);
+      }
+      ctx.stroke();
+    };
+
+    // Inbound, switch trunk, then one platform rail per authored lane.
+    ctx.globalAlpha = groundA * 0.52;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    sleepersH(req.entry.x, req.hub.x, req.hub.y);
+    sleepersV(req.hub.x, minLane, maxLane);
+    for (let i = 0; i < req.lanes.length; i++) sleepersH(req.hub.x, req.exitX, req.lanes[i]);
+    ctx.globalAlpha = groundA * 0.9;
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 2;
+    rail(req.entry.x, req.hub.y, req.hub.x, req.hub.y);
+    rail(req.hub.x, minLane, req.hub.x, maxLane);
+    for (let i = 0; i < req.lanes.length; i++) rail(req.hub.x, req.lanes[i], req.exitX, req.lanes[i]);
+
+    // Lane labels sit on the quiet side of each rail.
+    ctx.globalAlpha = frameA;
+    ctx.font = '600 11px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    for (let i = 0; i < req.lanes.length; i++) {
+      ctx.fillStyle = arena.accentSoft;
+      ctx.fillText(dispatch ? `PLATFORM ${i}` : `LANE ${i}`, req.hub.x + 20, req.lanes[i] - 15);
+      ctx.fillStyle = ink;
+      ctx.fillText('>', req.exitX - 34, req.lanes[i] + 4);
+    }
+
+    // The switch. Dispatch gets a lever; the balancer gets a four-blade rotor.
+    const nextRoute = state?.requestNextRoute ?? req.pattern[0] ?? 0;
+    const nextLane = req.lanes[nextRoute % req.lanes.length] ?? req.hub.y;
+    ctx.globalAlpha = frameA;
+    ctx.fillStyle = '#081217';
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(req.hub.x, req.hub.y, dispatch ? 30 : 42, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    if (dispatch) {
+      const dy = Math.sign(nextLane - req.hub.y) || 1;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(req.hub.x, req.hub.y);
+      ctx.lineTo(req.hub.x, req.hub.y + dy * 24);
+      ctx.stroke();
+      ctx.fillStyle = ink;
+      ctx.beginPath();
+      ctx.moveTo(req.hub.x, req.hub.y + dy * 32);
+      ctx.lineTo(req.hub.x - 6, req.hub.y + dy * 23);
+      ctx.lineTo(req.hub.x + 6, req.hub.y + dy * 23);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.save();
+      ctx.translate(req.hub.x, req.hub.y);
+      ctx.rotate(t * 0.55);
+      ctx.strokeStyle = arena.accentSoft;
+      ctx.lineWidth = 2;
+      for (let blade = 0; blade < 4; blade++) {
+        ctx.rotate(Math.PI * 0.5);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -32);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Signal heads: the next lane is lit, and brightens during the warning window.
+    const warning =
+      state?.requestT === undefined
+        ? 0
+        : Math.max(0, Math.min(1, (req.warn - state.requestT) / Math.max(0.01, req.warn)));
+    for (let i = 0; i < req.lanes.length; i++) {
+      const lit = i === nextRoute % req.lanes.length;
+      ctx.globalAlpha = frameA * (lit ? 0.75 + warning * 0.25 : 0.22);
+      ctx.fillStyle = lit ? ink : arena.accentSoft;
+      ctx.beginPath();
+      ctx.arc(req.hub.x + 46, req.lanes[i], lit ? 7 : 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (warning > 0) {
+      ctx.globalAlpha = frameA * warning * 0.7;
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([7, 7]);
+      ctx.beginPath();
+      ctx.moveTo(req.hub.x + 46, req.hub.y);
+      ctx.lineTo(req.hub.x + 46, nextLane);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Control cabinets are ordinary cover. They are placed off the rails on purpose.
+    for (let i = 0; i < arena.pillars.length; i++) {
+      const r = arena.pillars[i];
+      ctx.globalAlpha = frameA;
+      ctx.fillStyle = '#0b1114';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = arena.accentSoft;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      ctx.fillStyle = ink;
+      ctx.fillRect(r.x + 8, r.y + 8, 28, 3);
+      ctx.fillRect(r.x + 8, r.y + 15, 16, 2);
+      ctx.fillStyle = 'rgba(220, 245, 255, 0.48)';
+      ctx.font = '600 9px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(dispatch ? 'CONTROL' : 'SERVER', r.x + r.w * 0.5, r.y + r.h - 9);
+    }
+
+    // The live traffic. Each car carries its lane color, so a switch is legible.
+    const cars = state?.requestCars;
+    if (cars) {
+      for (let i = 0; i < cars.length; i++) {
+        const car = cars[i];
+        if (!car.active || car.x + req.carW < b.left || car.x - req.carW > b.right) continue;
+        const w = car.horizontal ? req.carW : req.carH;
+        const h = car.horizontal ? req.carH : req.carW;
+        const color = REQUEST_COLORS[car.route % REQUEST_COLORS.length];
+        ctx.globalAlpha = frameA;
+        ctx.save();
+        ctx.translate(car.x, car.y);
+        ctx.fillStyle = '#0d171b';
+        ctx.fillRect(-w * 0.5, -h * 0.5, w, h);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-w * 0.5 + 1, -h * 0.5 + 1, w - 2, h - 2);
+        ctx.fillStyle = color;
+        ctx.fillRect(-w * 0.5 + 5, -h * 0.5 + 5, 8, h - 10);
+        ctx.fillStyle = '#eaffff';
+        ctx.fillRect(car.dirX * (w * 0.5 - 5) - 2, car.dirY * (h * 0.5 - 5) - 2, 4, 4);
+        if (w >= 60) {
+          ctx.font = '700 9px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = 'rgba(230, 245, 255, 0.82)';
+          ctx.fillText(dispatch ? 'REQ' : 'PKT', 2, 1);
+        }
+        ctx.restore();
+      }
+    }
+
+    // Silkscreen and status rail. Centre the title so the readiness dock cannot cover it.
+    ctx.globalAlpha = frameA;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = ink;
+    ctx.font = '700 19px ui-monospace, monospace';
+    ctx.fillText(req.label, (b.left + b.right) * 0.5, b.top + 32);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.46)';
+    ctx.font = '500 11px ui-monospace, monospace';
+    ctx.fillText(req.sub, (b.left + b.right) * 0.5, b.top + 50);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.3)';
+    ctx.textAlign = 'right';
+    ctx.font = '600 10px ui-monospace, monospace';
+    ctx.fillText(
+      warning > 0 ? 'REQUEST INBOUND // CLEAR THE PLATFORM' : 'REQUEST TRAFFIC // LIVE',
+      b.right - 20,
+      b.bottom - 18,
+    );
+
+    // A slow sweep line keeps the dark floor from reading as a static backdrop.
+    const scanX = b.left + ((t * 44) % (b.right - b.left));
+    ctx.globalAlpha = frameA * 0.06;
+    ctx.fillStyle = ink;
+    ctx.fillRect(scanX, b.top + 3, 2, b.bottom - b.top - 6);
+
+    ctx.globalAlpha = groundA * 0.14;
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 20;
+    ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(b.left + 2, b.top + 2, b.right - b.left - 4, b.bottom - b.top - 4);
+    ctx.strokeStyle = '#eaffff';
+    ctx.lineWidth = 1.3;
+    ctx.strokeRect(b.left + 5.5, b.top + 5.5, b.right - b.left - 11, b.bottom - b.top - 11);
+    ctx.restore();
+  }
+
   private drawArena(
     t: number,
     arena: ArenaDef,
@@ -7268,6 +7516,10 @@ export class Renderer {
     const frameA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 0.7) / 0.75));
     const pillarA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 1.15) / 0.8));
     const pillarDrop = (1 - pillarA) * 30;
+    if (arena.requests) {
+      this.drawRequestArena(arena, satelliteState, groundA, frameA, t);
+      return;
+    }
     if (arena.server) {
       this.drawServerArena(arena, t, groundA, frameA);
       return;

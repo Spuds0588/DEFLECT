@@ -302,6 +302,25 @@ These are blockouts, not campaign nodes. They have no emitters, moving parts, pi
 still open; until it lands, do not add them to `CAMPAIGN_ROUTE`, `CAMPAIGN_LEVELS` or a boss flow. When
 hazards arrive, they need an explicit snapshot decision or must stay local like the other fixture arenas.
 
+### D69 — Final-level request traffic is one shared local hazard (decided 2026-11-05)
+
+`DISPATCH YARD` (40) and `LOAD BALANCER` (41) are authored `ArenaRequestDef` records inserted before QA
+`TEST RANGE`. They use one request-train system, not two arenas with separate simulators. A car travels
+`entry -> hub -> selected lane -> exit`; `pattern` is the authored routing order, and the next lane is
+signalled before the train enters. Dispatch runs three-car trains every 5.6 s through three platforms;
+Load Balancer runs two-car trains every 3.8 s through four round-robin lanes. `requestSpawns` is a custom
+top/bottom ring because the perimeter ring puts two opening positions on the inbound centre line.
+
+Runtime state is `World.requestCars` (preallocated), `requestT` and `requestNextRoute`; all three are
+local-only and satisfy the renderer without entering `Snapshot`. Cars advance by arc length, so turns and
+lane changes are deterministic. Every train is one health segment: the hit shoves the body **across** the
+rail, never along `dirX`/`dirY`, because a head-on body pushed with the train stays in front of the later
+cars and takes a second segment. Keep the shared 0.9 s i-frame window until the full train has cleared.
+A request arena is excluded by `isOnlineArena` through `a.requests`; it is not a campaign node until the
+Level-6 sequence and hazard snapshot decision exist. New request arenas add data and a renderer lane, not
+a second hazard system. `.tmp/request-arena-check.ts` owns route, clearance, spawn, train, knockback and
+local-only checks.
+
 ### ROCKET NAVIGATION reflector (decided 2026-11-02)
 
 The rocket's flown trajectory is a **shot-only dotted reflector**, not a wall. Projectiles bounce off the

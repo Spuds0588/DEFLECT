@@ -8040,3 +8040,45 @@ GPU motherboard and a networking motherboard. Hazards were deliberately left for
 
 **Next:** design the three boards' hazards (thermal/load, power delivery, fabric failure), then decide
 whether they stay local or gain snapshot state before wiring them into Level 6.
+
+## 2026-11-05 — Dispatch and load-balancer request arenas (v0.1.196)
+
+**Goal:** add the two final-level request-traffic arenas the Level 6 server set still needed: a dispatch
+yard that sorts one inbound line across three platforms, and a load balancer that sends short requests
+round-robin through four lanes.
+
+**Changes.**
+- Added `ArenaRequestDef`, `ArenaRequestKind` and the `DISPATCH YARD` (40) / `LOAD BALANCER` (41) records
+  before QA `TEST RANGE`. Dispatch uses three-car trains every 5.6 s through lanes `[235, 547, 860]` with
+  pattern `[1, 0, 2, 1, 2, 0]`; Load Balancer uses two-car trains every 3.8 s through lanes
+  `[250, 430, 664, 844]` with pattern `[0, 1, 2, 3, 2, 1, 0, 3]`.
+- Added the `RequestCar` runtime record and `SRC.REQUEST`. `World.requestCars` is preallocated; `requestT`
+  and `requestNextRoute` drive the signal. Cars follow `entry -> hub -> selected lane -> exit` by arc
+  length, so a turn and lane change are deterministic.
+- Added a custom top/bottom `requestSpawns` ring: the standard perimeter ring puts opening positions on the
+  inbound centre line. Control cabinets are ordinary pillars and stay off every rail.
+- Added `drawRequestArena` with the track plan, sleepers, switch signal, dispatch lever, balancer rotor,
+  live request cars, silkscreen and wall edge. The picker also draws the route plan. No `shadowBlur`.
+- A request hit deals one segment and knocks the body **across** the rail, not along the car's travel
+  vector. A head-on body pushed with the train stayed in front of the later cars and took a second segment;
+  the shared 0.9 s i-frame window covers the rest of the chain.
+- `isOnlineArena` skips `a.requests`; request cars are local-only and never enter `Snapshot`. The arenas
+  remain Level 6 foundations, not campaign nodes.
+- Added `.tmp/request-arena-check.ts` for IDs, lane geometry, cover/spawn clearance, car spacing, full-lane
+  pattern coverage, one-train damage, knockback clearance and local-only exclusion. Updated AGENTS (D69),
+  CAMPAIGN, README, GAME_GUIDE and TODO; bumped all version stamps to 0.1.196.
+
+**Verification.**
+- `.tmp/request-arena-check.ts` 0: Dispatch 3 lanes / 3-car trains / all lanes routed / 65 units of
+  sideways knockback; Load Balancer 4 lanes / 2-car trains / all lanes routed / 58 units of knockback.
+  Both passed cover, spawn, rail-clearance and single-segment checks; QA arena remains id 90 at index 42.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only). `npm run bench` 0: 8P bot
+  swarm 0.197 ms avg / 0.501 ms p99; gauntlet max 0.355 ms avg / 0.995 ms p99 at 29.5 threats.
+- Headed local pass on `?gauntlet=1&arena=40&bot=1` and `arena=41&bot=1`: track rails, switch, live `REQ`
+  car, lane labels, balancer rotor and server cabinets all render with no console errors. The follow camera
+  does not show the full map in one frame, so the complete lane set was checked in the picker preview and
+  the headless probe.
+- Not tested: online play (intentionally excluded) or a campaign Level 6 route (not wired).
+
+**Next:** decide whether the request arenas become RACK/EDGE BALANCER nodes, a reusable hazard layer, or
+both, then design the server-board hazard pass and the Level 6 finale sequence.

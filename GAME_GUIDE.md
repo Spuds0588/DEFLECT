@@ -19,7 +19,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **CAMPAIGN:** `BUILD ROOT`, `REBOOT`, and the first level-2 device chain, with three local save slots. A cleared level shows the route map and carries the run to the next device.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
-- Thirteen programs, forty arenas.
+- Thirteen programs, forty-two arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
@@ -410,6 +410,8 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `CPU BOARD` | A final-level motherboard blockout: four CPU sockets, two DIMM banks and a central chipset. Every module is solid cover; the perimeter ring and the cross-shaped gaps are the lanes. No live hazard yet. Local-only foundation for Level 6. |
 | `GPU BOARD` | Four long accelerator cards around a central NVSwitch. The cards wall off the north and south approaches, leaving a wide central lane and two tight side channels. No live hazard yet. Local-only foundation for Level 6. |
 | `NETWORK BOARD` | A leaf-spine fabric floor: three leaf switches north, three spine switches south and a fabric block at the centre. Long east-west lanes connect the switch banks. No live hazard yet. Local-only foundation for Level 6. |
+| `DISPATCH YARD` | One inbound request line splits at a three-position switch to three platforms. A three-car train arrives every 5.6 s; the signal lights the next platform before the switch. Each car takes one health segment and shoves the body across the rail, clear of the remaining cars. The yard's control cabinets are cover; the rails are not. Local-only: the request clock and cars are not in the snapshot. |
+| `LOAD BALANCER` | Four lanes on a round-robin switch. Two-car requests arrive every 3.8 s and leave through the lit lane, while the central rotor shows the cycle. A hit takes one segment and pushes the body clear of the rail. The four server cabinets are cover; the lanes are not. Local-only: the switch clock and cars are not in the snapshot. |
 
 ### Ordinary programs
 

@@ -326,6 +326,12 @@ around a fabric block. Their modules are ordinary cover, they use the perimeter 
 no hazards yet. They are **not** route nodes: wiring them into Level 6 waits for the hazard pass and the
 finale sequence. Treat them as the floor plan the RACK/COOLANT/SUCCESSOR levels can grow from.
 
+`DISPATCH YARD` (40) and `LOAD BALANCER` (41) extend that foundation with live request traffic. Dispatch
+has one inbound line, a three-way switch and three destinations; Load Balancer has four lanes and a
+round-robin rotor. The trains warn their next lane, take one segment on contact and shove the body across
+the rail so the rest of the chain passes. They are local-only and are not route nodes yet either; the
+Level-6 sequence still has to decide whether they become RACK arenas, a hazard layer, or both.
+
 ## What each map sketch needs
 
 A rough top-down drawing is enough. I can turn it into an `ArenaDef` blockout.

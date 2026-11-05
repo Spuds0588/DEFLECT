@@ -2,6 +2,17 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Final-level request traffic (2026-11-05, v0.1.196)
+
+- [x] `DISPATCH YARD` (40): one inbound line, three platforms, three-car trains every 5.6 s
+- [x] `LOAD BALANCER` (41): four lanes, two-car trains every 3.8 s and a rotating central switch
+- [x] Shared `ArenaRequestDef` / `RequestCar` route system; authored lane patterns and next-lane signals
+- [x] One train deals one segment and knocks the body across the rail; the shared 0.9 s i-frame window
+      covers the rest of the chain
+- [x] Custom spawn ring, request renderer, picker previews and `isOnlineArena` exclusion
+- [x] `.tmp/request-arena-check.ts` green; `npm run build` and `npm run bench` green; headed arena pass done
+- [ ] Wire the request arenas into Level 6 after the finale sequence and a hazard snapshot decision
+
 ## Final-level server boards (2026-11-05, v0.1.195)
 
 - [x] Three full-size local blockouts: `CPU BOARD` (37), `GPU BOARD` (38), `NETWORK BOARD` (39)

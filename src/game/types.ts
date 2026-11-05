@@ -112,6 +112,8 @@ export const SRC = {
   SMOKE: 19,
   /** SMART WATCH second hand. No body, so the death camera falls through. */
   WATCH: 20,
+  /** DISPATCH / LOAD BALANCER request car. No body, so the death camera falls through. */
+  REQUEST: 22,
 } as const;
 
 export const EV = {
@@ -252,6 +254,23 @@ export interface InvaderShot {
   x: number;
   y: number;
   vy: number;
+}
+
+/**
+ * One request car on a DISPATCH or LOAD BALANCER track. This is a local arena
+ * hazard: it never enters `Snapshot` and a hosted room never selects the arena.
+ * `s` is distance along the route, negative while the car waits outside the floor.
+ */
+export interface RequestCar {
+  active: boolean;
+  route: number;
+  s: number;
+  x: number;
+  y: number;
+  dirX: number;
+  dirY: number;
+  horizontal: boolean;
+  hitPlayers: number;
 }
 
 export interface SatelliteMeteor {

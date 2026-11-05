@@ -22,7 +22,9 @@ cannons, moving print heads, live circuit rings, alarm sirens, sweeping watch ha
 breakable sheet cells and rising chat bubbles are not synced online.
 The three final-level server boards (`CPU BOARD`, `GPU BOARD`, `NETWORK BOARD`) are local blockouts:
 their sockets, accelerator cards and network switches are cover, and their hazard pass is still open.
-Thirteen programs, forty arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
+`DISPATCH YARD` and `LOAD BALANCER` are local request-traffic arenas: authored train routes split at a
+switch, warn the next lane, and shove a hit body clear of the rail. Their cars are not in the snapshot.
+Thirteen programs, forty-two arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
 session JSON with setup, player action totals, round results, deflect sources and FPS/sim samples, shared
 through the platform sheet or downloaded with a copied summary. Callsigns, room codes, IPs and raw inputs
 are omitted, and nothing is uploaded automatically. The alpha is deployed from `main` on every push.
