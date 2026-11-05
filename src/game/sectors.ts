@@ -429,6 +429,38 @@ export const SECTORS: readonly SectorDef[] = [
       { a: 'load', b: 'network', kind: 'portal' },
     ],
   },
+  {
+    id: 9,
+    code: '10',
+    name: 'ROAD TRIP',
+    subtitle: 'CITY TRANSIT',
+    accent: '#ffb35c',
+    story:
+      'Kitty pulls the office car out of the garage. The city grid is still awake, and the infection is riding every signal between the office and the airport.',
+    objective: 'Drive the city block, cross the signals, and reach the airport crosswalk.',
+    mechanic:
+      'Road fixtures: a moving car route, a tuner needle, camera frames, a three-stage light and a walk sign that changes solid cover.',
+    boss: 'NO BOSS // ROUTE LEVEL',
+    crossing: 'OFFICE GARAGE',
+    entry: 'crossroads',
+    exit: 'crosswalk',
+    nodes: [
+      { id: 'crossroads', label: 'CROSSROADS', kind: 'entry', x: 92, y: 270, arenaId: 0 },
+      { id: 'car-nav', label: 'CAR NAV', kind: 'arena', x: 250, y: 108, arenaId: 21 },
+      { id: 'car-radio', label: 'CAR RADIO', kind: 'arena', x: 250, y: 432, arenaId: 52 },
+      { id: 'camera', label: 'TRAFFIC CAM', kind: 'hazard', x: 470, y: 108, arenaId: 49 },
+      { id: 'light', label: 'TRAFFIC LIGHT', kind: 'hazard', x: 470, y: 432, arenaId: 50 },
+      { id: 'crosswalk', label: 'CROSSWALK', kind: 'exit', x: 760, y: 270, arenaId: 51 },
+    ],
+    links: [
+      { a: 'crossroads', b: 'car-nav', kind: 'portal' },
+      { a: 'crossroads', b: 'car-radio', kind: 'portal' },
+      { a: 'car-nav', b: 'camera', kind: 'portal' },
+      { a: 'car-radio', b: 'light', kind: 'portal' },
+      { a: 'camera', b: 'crosswalk', kind: 'portal' },
+      { a: 'light', b: 'crosswalk', kind: 'portal' },
+    ],
+  },
 ];
 
 /**

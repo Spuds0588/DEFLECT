@@ -1,9 +1,9 @@
 /**
  * Campaign chapter threat roster.
  *
- * Level 1 is primitives and worms only; viruses unlock in level 2. Spinners (level 3)
- * and magic users (level 5) are scheduled but have no approved kit, so the gate must
- * keep them off the floor. Chapters 4 and 6 introduce nothing.
+ * Level 1 is primitives and worms only; viruses unlock in level 2. ROAD TRIP (level 3)
+ * adds no body. Spinners (level 4) and magic users (level 6) are scheduled but have no
+ * approved kit, so the gate must keep them off the floor. Levels 5 and 7 add nothing.
  *
  * Run with `npx tsx .tmp/chapter-threats-check.ts`.
  */
@@ -27,27 +27,28 @@ function check(name: string, ok: boolean, detail = ''): void {
 }
 
 // --- The authored rollout -------------------------------------------------------------
-check('six chapters are authored', CAMPAIGN_CHAPTERS.length === 6);
+check('seven chapters are authored', CAMPAIGN_CHAPTERS.length === 7);
 check('chapter 1 adds no new body', CAMPAIGN_CHAPTERS[0].introduces === null);
 check('chapter 2 introduces viruses', CAMPAIGN_CHAPTERS[1].introduces === 'viruses');
+check('chapter 3 adds no new body', CAMPAIGN_CHAPTERS[2].introduces === null);
 check(
-  'chapter 3 reserves spinners',
-  CAMPAIGN_CHAPTERS[2].introduces === 'spinners' && CAMPAIGN_CHAPTERS[2].pending === true,
+  'chapter 4 reserves spinners',
+  CAMPAIGN_CHAPTERS[3].introduces === 'spinners' && CAMPAIGN_CHAPTERS[3].pending === true,
 );
-check('chapter 4 adds no new body', CAMPAIGN_CHAPTERS[3].introduces === null);
+check('chapter 5 adds no new body', CAMPAIGN_CHAPTERS[4].introduces === null);
 check(
-  'chapter 5 reserves magic',
-  CAMPAIGN_CHAPTERS[4].introduces === 'magic' && CAMPAIGN_CHAPTERS[4].pending === true,
+  'chapter 6 reserves magic',
+  CAMPAIGN_CHAPTERS[5].introduces === 'magic' && CAMPAIGN_CHAPTERS[5].pending === true,
 );
-check('chapter 6 adds no new body', CAMPAIGN_CHAPTERS[5].introduces === null);
+check('chapter 7 adds no new body', CAMPAIGN_CHAPTERS[6].introduces === null);
 
 check('level 1 is sentries and worms', campaignThreatAllowed(1, 'sentries') && campaignThreatAllowed(1, 'worms'));
 check('level 1 has no viruses', !campaignThreatAllowed(1, 'viruses'));
 check('level 2 unlocks viruses', campaignThreatAllowed(2, 'viruses'));
-check('pending spinners never spawn', !campaignThreatAllowed(3, 'spinners'));
-check('pending magic never spawns', !campaignThreatAllowed(5, 'magic'));
-check('chapter 4 inherits the pool', campaignThreatAllowed(4, 'viruses'));
-check('chapter 6 inherits the pool', campaignThreatAllowed(6, 'viruses'));
+check('pending spinners never spawn', !campaignThreatAllowed(4, 'spinners'));
+check('pending magic never spawns', !campaignThreatAllowed(6, 'magic'));
+check('chapter 5 inherits the pool', campaignThreatAllowed(5, 'viruses'));
+check('chapter 7 inherits the pool', campaignThreatAllowed(7, 'viruses'));
 check(
   'no-roster worlds keep implemented families',
   campaignThreatAllowed(0, 'viruses') && !campaignThreatAllowed(0, 'magic'),
@@ -56,6 +57,12 @@ check(
 check(
   'chapter 1 route levels map to chapter 1',
   PLAYABLE_CAMPAIGN_LEVELS.filter((level) => campaignChapterForLevel(level) === 1).length === 5,
+);
+const roadLevels = PLAYABLE_CAMPAIGN_LEVELS.filter((level) => level.nodeId === 'road-trip');
+check('ROAD TRIP is six levels', roadLevels.length === 6, String(roadLevels.length));
+check(
+  'ROAD TRIP maps to chapter 3',
+  roadLevels.length === 6 && roadLevels.every((level) => campaignChapterForLevel(level) === 3),
 );
 for (const level of PLAYABLE_CAMPAIGN_LEVELS) {
   if (campaignChapterForLevel(level) !== 1 || !level.opening) continue;

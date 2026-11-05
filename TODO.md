@@ -2,6 +2,19 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## ROAD TRIP campaign chapter (2026-11-05, v0.1.209)
+
+- [x] Insert the six car/road arenas between BUSINESS LAPTOP and AIRPORT: CROSSROADS, CAR NAVIGATION,
+      CAR RADIO, TRAFFIC CAMERA, TRAFFIC LIGHT and CROSSWALK SIGN, all one `road-trip` chapter
+- [x] Add `SECTORS[9]` ROAD TRIP with the city-grid blueprint, entry `crossroads` and exit `crosswalk`
+- [x] `STORY_ROUTE_VERSION` 3 shifts pre-v3 slots from AIRPORT onward by six; a completed old route lands
+      on NETWORK BOARD
+- [x] Rebalance the chapter roster: ROAD TRIP 3, AIRPORT 4, SPACE 5, ARCADE // FOOD COURT 6, KISSINGFACE 7;
+      spinners stay reserved for AIRPORT and magic users for the arcade
+- [x] `.tmp/campaign-chapter-check.ts`, `campaign-rules-check.ts`, `campaign-save-migration-check.ts` and
+      `chapter-threats-check.ts` green; build and bench green
+- [ ] Human playthrough of the six road arenas and the route plate at 13 stops
+
 ## Street fixtures in hosted rooms (2026-11-05, v0.1.207)
 
 - [x] `SnapshotHazards` carries the camera photo list, pipe flashes and lens flash; the traffic-light
@@ -36,7 +49,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] `CROSSWALK SIGN` (51): the hanging sign swaps the level between pixel `DON'T WALK` text cover and
       walking-figure cover, ejecting bodies from the incoming layout
 - [x] All three use one preallocated `TrafficRuntime`; host-synced in v0.1.207 (originally local-only), and
-      they do not enter the 30-level campaign route; QA `TEST RANGE` moved to `ARENAS[53]`
+      they now enter the 36-level campaign route as the ROAD TRIP chapter; QA `TEST RANGE` moved to `ARENAS[53]`
 - [x] `.tmp/traffic-arena-check.ts` covers spawn clearance, camera launch/route/pipe/damage, light
       warning/live damage/stage advance and crosswalk swap/ejection; host-state checks updated in v0.1.207
 - [ ] Human visual pass: read the camera routes and flash, the three light circles through a full cycle,
@@ -105,7 +118,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] Route plate groups levels by `nodeId`, so a chapter is one stop and the 22-level route stays readable
 - [x] New levels reuse existing arena hazards and place one crate on a clear spawn pad; all local-only
 - [x] `.tmp/campaign-chapter-check.ts` and the updated `campaign-rules-check.ts` green; build and bench green
-- [ ] Human visual pass on the route plate at 12 stops, and a full 30-node playthrough
+- [ ] Human visual pass on the route plate at 13 stops, and a full 36-node playthrough
 
 ## GPU board thermal hazard (2026-11-05, v0.1.199)
 
@@ -290,8 +303,8 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 
 ## Campaign roadmap after level 1 (2026-11-04)
 
-> Forward notes from the designer, not scheduled work. Level 1 is the quarantine / REBOOT run above.
-> The live chapter mapping is the themed table in CAMPAIGN.md; this list predates that pass.
+> Historical sketch from the designer, kept for the original five-sector plan; the live 36-level route is the
+> themed table in CAMPAIGN.md. Level 1 is the quarantine / REBOOT run above.
 
 - **Level 2 — NETWORK SWITCH:** the switch arena, business-laptop variants, the scanner, the fax,
   `SWIPE RIGHT`, then `SMART WATCH`; File Blob is the mini-boss.
@@ -305,16 +318,17 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 
 ## Campaign threat rollout (2026-11-05)
 
-> One new enemy family per chapter. Chapters 4 and 6 add no new body; they test the mix.
+> One new enemy family per chapter. Chapters 3, 5 and 7 add no new body; they test the mix.
 
 - [x] **Chapter 1 — BUILD ROOT + REBOOT:** sentries and worms only. HOLDING releases four chains; MAINBOARD,
       ROUTER and REBOOT openings carry no viruses; virus feeds remap to worms.
 - [x] **Chapter 2 — OFFICE LAN:** viruses unlock and stay in the pool.
-- [x] **Chapter 4 — SPACE:** no new family.
-- [x] **Chapter 6 — KISSINGFACE:** no new family.
-- [ ] **Chapter 3 — AIRPORT:** **spinning bots** are reserved as `pending`. Needs the designer's silhouette,
+- [x] **Chapter 3 — ROAD TRIP:** no new family; the six city-grid fixtures carry the chapter.
+- [x] **Chapter 5 — SPACE:** no new family.
+- [x] **Chapter 7 — KISSINGFACE:** no new family.
+- [ ] **Chapter 4 — AIRPORT:** **spinning bots** are reserved as `pending`. Needs the designer's silhouette,
       one readable attack/projectile, tuning and a spawner. Do not fill the slot with an existing family.
-- [ ] **Chapter 5 — ARCADE // FOOD COURT:** **magic users** are reserved as `pending`. The magic-user
+- [ ] **Chapter 6 — ARCADE // FOOD COURT:** **magic users** are reserved as `pending`. The magic-user
       placeholder below still applies: references and descriptions first, then shapes, attacks and tuning.
 - [x] `campaignThreatAllowed` gates every spawn path; `campaignPortFamily` remaps locked feeds.
 - [x] `.tmp/chapter-threats-check.ts` green.

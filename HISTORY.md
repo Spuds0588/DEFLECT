@@ -8476,3 +8476,36 @@ food court, and no new body in SPACE or KISSINGFACE.
 
 **Next:** designer supplies the spinning-bot kit and the magic-user references; add each to
 `IMPLEMENTED_THREAT_FAMILIES` when its spawner lands. Human pass on the four-worm HOLDING release.
+
+## 2026-11-05 — ROAD TRIP campaign chapter (v0.1.209)
+
+**Goal:** bridge the office and the airport with every car/road arena, so the route explains how the party
+gets from the office LAN to the airport instead of cutting straight between chapters.
+
+**Changes.**
+- Inserted six levels after BUSINESS LAPTOP and before AIRPORT: CROSSROADS (0), CAR NAVIGATION (21), CAR
+  RADIO (52), TRAFFIC CAMERA (49), TRAFFIC LIGHT (50) and CROSSWALK SIGN (51). All six use `sector: 9`,
+  `nodeId: 'road-trip'`, `intro: 'assault'`, a two-beat script_kitty landing blurb and one data crate.
+- Added `SECTORS[9]` ROAD TRIP: city-grid blueprint, entry `crossroads`, exit `crosswalk`, and six nodes.
+  The route is now 36 levels and 13 chapter stops, with ROAD TRIP between the office and AIRPORT.
+- Rebalanced the chapter roster: ROAD TRIP is 3, AIRPORT 4 (spinning bots reserved), SPACE 5, ARCADE //
+  FOOD COURT 6 (magic users reserved), KISSINGFACE 7. `THREAT_INTRODUCED_IN` now maps spinners to 4 and
+  magic to 6. ROAD TRIP introduces no new family; it inherits sentries, worms and viruses.
+- Bumped `STORY_ROUTE_VERSION` to 3. `migrateCampaignLevel` applies the v2 food-court shift first, then
+  shifts every pre-v3 slot from level 10 (AIRPORT) onward by six and caps at the new finale (35), so a
+  completed old route resumes on NETWORK BOARD instead of falling off the table.
+- Updated campaign probes for 36 levels, 13 stops, the road chapter and v1/v2 save mapping. Updated AGENTS
+  D66/D76, CAMPAIGN, README, GAME_GUIDE, TODO and all version stamps.
+
+**Verification.**
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,206.54 kB JS / 336.53 kB gzip; existing chunk-size warning);
+  `npm run bench` clean (8P max proj 0.104 ms avg / 0.271 ms p99; gauntlet 0.287 ms avg / 0.927 ms p99 at
+  30.5 live threats); `git diff --check` clean.
+- `.tmp/campaign-chapter-check.ts` 0 (36 levels, 13 stops, ROAD TRIP before AIRPORT, NETWORK BOARD finale);
+  `campaign-rules-check` 0 (36-node route); `campaign-save-migration-check` 0 (v2/v1 shifts);
+  `chapter-threats-check` 0 (seven chapters, ROAD TRIP maps to 3); `campaign2` and `campaign-finale` green.
+- Not run: the broad `campaign-playthrough-check` remains a pre-existing NETWORK SWITCH failure; no human
+  playthrough of the six road arenas yet.
+
+**Next:** human playthrough of the six road arenas and the 13-stop route plate; designer supplies the
+spinning-bot and magic-user kits.

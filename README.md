@@ -12,7 +12,7 @@ files, no game engine.
 [![DEFLECT kiosk demo](screenshots/demo-kiosk.png)](https://spuds0588.github.io/DEFLECT/?demo=true)
 
 Solo training, endless bot practice, round matches against local bots, a one-life scored gauntlet, a
-timed infection clear, the 30-node campaign, and host/join rooms for up to eight players. VS BOTS and
+timed infection clear, the 36-node campaign, and host/join rooms for up to eight players. VS BOTS and
 online versus can run a 1, 3 or 5 game series with random map rotation by default or a fixed custom arena.
 SATELLITE's solar wings, meteors, capacitor pods and reentry front are host-synced in those rooms.
 `TRAFFIC CAMERA`, `TRAFFIC LIGHT`, `CROSSWALK SIGN` and `CAR RADIO` are online-safe too: the host
@@ -265,7 +265,8 @@ result with
 can be hit on its staged approach before it crosses the lip.
 
 The campaign continues after REBOOT through NETWORK SWITCH, DOCUMENT SCANNER, FAX MACHINE, SMART WATCH
-and BUSINESS LAPTOP, then through the airport chapter (AIRPORT with FILE BLOB, AIR TRAFFIC with STORM
+and BUSINESS LAPTOP, then through the road-trip chapter (CROSSROADS, CAR NAVIGATION, CAR RADIO, TRAFFIC
+CAMERA, TRAFFIC LIGHT, CROSSWALK SIGN), the airport chapter (AIRPORT with FILE BLOB, AIR TRAFFIC with STORM
 CLOUD), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE with IDLE HANDS), the arcade chapter
 (SPACE CADET, PONG, SPACE INVADERS with STARFISH, ARCADE RACING, FIGHTING GAME, DUCK HUNTER, TETRIS), the
 food court (SNACK MACHINE, TOKEN DISPENSER, SODA MACHINE) and KISSINGFACE (CPU BOARD, GPU BOARD, DISPATCH
@@ -280,10 +281,10 @@ bot while locked on it. A dead companion stays lost across later nodes and a sav
 a TPK retry restores only the bots lost in that arena.
 
 Each chapter introduces one threat family. BUILD ROOT and REBOOT are sentries and worms only; viruses
-unlock with NETWORK SWITCH and stay in the pool. AIRPORT reserves spinning bots and the arcade/food court
-reserves magic users, but neither kit exists yet, so `campaignThreatAllowed` keeps them off the floor.
-SPACE and KISSINGFACE introduce nothing new: they are mix tests. An authored feed locked by the roster
-remaps to a legal family instead of becoming a dead port.
+unlock with NETWORK SWITCH and stay in the pool. ROAD TRIP, SPACE and KISSINGFACE introduce nothing new:
+they are mix tests. AIRPORT reserves spinning bots and the arcade/food court reserves magic users, but
+neither kit exists yet, so `campaignThreatAllowed` keeps them off the floor. An authored feed locked by the
+roster remaps to a legal family instead of becoming a dead port.
 
 Every round-based match hops the same way. When a round ends, a white portal opens on the right wall and
 pulls every standing body in; the next round is thrown out of the left-wall mouth with a decaying eastward

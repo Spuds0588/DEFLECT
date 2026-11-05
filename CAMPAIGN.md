@@ -1,11 +1,12 @@
 # CAMPAIGN // route blueprint
 
-Status: 30 levels are playable. The live route runs BUILD ROOT
+Status: 36 levels are playable. The live route runs BUILD ROOT
 (INTAKE -> HOLDING -> MAINBOARD -> ROUTER) -> REBOOT -> NETWORK SWITCH -> DOCUMENT SCANNER -> FAX MACHINE ->
-SMART WATCH -> BUSINESS LAPTOP -> AIRPORT -> AIR TRAFFIC -> CAPCOM -> ROCKET NAVIGATION -> SATELLITE ->
+SMART WATCH -> BUSINESS LAPTOP -> CROSSROADS -> CAR NAVIGATION -> CAR RADIO -> TRAFFIC CAMERA ->
+TRAFFIC LIGHT -> CROSSWALK SIGN -> AIRPORT -> AIR TRAFFIC -> CAPCOM -> ROCKET NAVIGATION -> SATELLITE ->
 SPACE CADET -> PONG -> SPACE INVADERS -> ARCADE RACING -> FIGHTING GAME -> DUCK HUNTER -> TETRIS ->
 SNACK MACHINE -> TOKEN DISPENSER -> SODA MACHINE -> CPU BOARD -> GPU BOARD -> DISPATCH YARD ->
-LOAD BALANCER -> NETWORK BOARD. The 30 levels collapse to 12 chapter stops.
+LOAD BALANCER -> NETWORK BOARD. The 36 levels collapse to 13 chapter stops.
 Bosses are spread across the route: REBOOT ends on MEGA WORM, AIRPORT on FILE BLOB, AIR TRAFFIC on STORM
 CLOUD, SATELLITE on IDLE HANDS, SPACE INVADERS on STARFISH, and NETWORK BOARD on the USER finale. BUSINESS
 LAPTOP is a normal assault again. A clear shows the route
@@ -332,15 +333,17 @@ final arena should be readable in one screen even if the approach is multi-scree
 
 ### Themed chapters (2026-11-05)
 
-Level 3 is the airport chapter (`AIRPORT`, `AIR TRAFFIC`), level 4 is the space chapter (`CAPCOM`,
-`ROCKET NAVIGATION`, `SATELLITE`), level 5 is the arcade and food-court chapter (`SPACE CADET`, `PONG`,
-`SPACE INVADERS`, `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`, `TETRIS`, `SNACK MACHINE`, `TOKEN
-DISPENSER`, `SODA MACHINE`) and level 6 is KISSINGFACE (`CPU BOARD`, `GPU BOARD`, `DISPATCH YARD`, `LOAD
-BALANCER`, `NETWORK BOARD`). They are the same campaign runtime as the earlier devices: local-only assault
-phases, a `CampaignLevel.opening` squad on the first frame, one data crate on a clear spawn pad where the
-level has one, and no new snapshot fields. The airport, arcade, food-court and server arenas carry their
-own local hazards; the space arenas use existing cover, the ROCKET NAVIGATION reflector and the satellite
-void. The final node is NETWORK BOARD, where the USER finale holds the ceiling over the fabric.
+Level 3 is the ROAD TRIP chapter (`CROSSROADS`, `CAR NAVIGATION`, `CAR RADIO`, `TRAFFIC CAMERA`, `TRAFFIC
+LIGHT`, `CROSSWALK SIGN`), level 4 is the airport chapter (`AIRPORT`, `AIR TRAFFIC`), level 5 is the space
+chapter (`CAPCOM`, `ROCKET NAVIGATION`, `SATELLITE`), level 6 is the arcade and food-court chapter (`SPACE
+CADET`, `PONG`, `SPACE INVADERS`, `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`, `TETRIS`, `SNACK
+MACHINE`, `TOKEN DISPENSER`, `SODA MACHINE`) and level 7 is KISSINGFACE (`CPU BOARD`, `GPU BOARD`,
+`DISPATCH YARD`, `LOAD BALANCER`, `NETWORK BOARD`). They are the same campaign runtime as the earlier
+devices: local-only assault phases, a `CampaignLevel.opening` squad on the first frame, one data crate on a
+clear spawn pad where the level has one, and no new snapshot fields. The road, airport, arcade, food-court
+and server arenas carry their own local hazards; the space arenas use existing cover, the ROCKET NAVIGATION
+reflector and the satellite void. The final node is NETWORK BOARD, where the USER finale holds the ceiling
+over the fabric.
 
 ### Threat rollout (2026-11-05)
 
@@ -350,11 +353,13 @@ spawn gate; an authored feed locked by the roster remaps to a legal family inste
 1. **BUILD ROOT + REBOOT:** sentries and worms. No viruses in MAINBOARD, ROUTER, REBOOT or HOLDING's cell
    wave; a virus feed becomes a worm feed.
 2. **OFFICE LAN:** viruses unlock and stay in every later pool.
-3. **AIRPORT:** spinning bots are reserved (`pending`); the kit is not designed yet.
-4. **SPACE:** no new family; inherits the pool.
-5. **ARCADE // FOOD COURT:** magic users are reserved (`pending`); references are still required before
+3. **ROAD TRIP:** no new family; the city-grid fixtures are the new pressure, while the pool stays sentries,
+   worms and viruses.
+4. **AIRPORT:** spinning bots are reserved (`pending`); the kit is not designed yet.
+5. **SPACE:** no new family; inherits the pool.
+6. **ARCADE // FOOD COURT:** magic users are reserved (`pending`); references are still required before
    their shapes or attacks are authored.
-6. **KISSINGFACE:** no new family; the full mix is the test.
+7. **KISSINGFACE:** no new family; the full mix is the test.
 
 ### Built foundations (2026-11-05)
 

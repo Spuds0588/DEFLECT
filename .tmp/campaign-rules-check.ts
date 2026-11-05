@@ -1,7 +1,7 @@
 import { TutorialRunner, WARDEN_TUTORIAL } from '../src/game/tutorial';
 import { World } from '../src/game/world';
 import { ARENAS } from '../src/game/arenas';
-import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
+import { PLAYABLE_CAMPAIGN_LEVELS, campaignChapterForLevel } from '../src/game/campaign';
 import { MAX_PLAYERS, SIM_DT } from '../src/game/config';
 
 // 1. The lesson waits for the hands, not the clock.
@@ -18,8 +18,8 @@ if (t.current?.id !== 'dash') throw new Error('tutorial did not advance after th
 // 2. The live route is the four split quarantine rooms, then the first network.
 const route = PLAYABLE_CAMPAIGN_LEVELS.map((level) => [level.arenaId, level.intro]);
 console.log('route:', route.map(([id, intro]) => `${id}:${intro}`).join(' -> '));
-if (PLAYABLE_CAMPAIGN_LEVELS.length !== 30) throw new Error(`expected thirty playable levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
-const expectedArenas = [14, 34, 35, 36, 1, 9, 12, 25, 28, 29, 23, 33, 32, 18, 17, 10, 22, 24, 45, 46, 47, 48, 42, 43, 44, 37, 38, 40, 41, 39];
+if (PLAYABLE_CAMPAIGN_LEVELS.length !== 36) throw new Error(`expected thirty-six playable levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
+const expectedArenas = [14, 34, 35, 36, 1, 9, 12, 25, 28, 29, 0, 21, 52, 49, 50, 51, 23, 33, 32, 18, 17, 10, 22, 24, 45, 46, 47, 48, 42, 43, 44, 37, 38, 40, 41, 39];
 if (route.some(([id], i) => id !== expectedArenas[i])) {
   throw new Error('campaign route does not match the authored level-2 sequence');
 }
@@ -31,7 +31,8 @@ const build = (index: number, bots = 0) => {
   const arena = ARENAS.find((a) => a.id === level.arenaId)!;
   return new World(
     'gauntlet', names, 0, arena, false, 0, bots, bots > 0 ? [11, 10, 9] : null, true,
-    level.dataCrates, false, level.intro, level.clearKills, false, level.boss ?? -1, false,
+    level.dataCrates, false, level.intro, level.clearKills, false, level.boss ?? -1,
+    campaignChapterForLevel(level), level.opening ?? null, level.finale === true, 0, level.blurb ?? null,
   );
 };
 
@@ -62,8 +63,8 @@ const arrival = holding.tutorial?.current;
 if (arrival?.speaker !== 'SCRIPT_KITTY' || arrival?.id !== 'kitty-worked') throw new Error('holding did not open on kitty saying it worked');
 const shapes = holding.sentries.filter((s) => s.active && s.kind >= 4 && s.kind <= 6);
 if (shapes.length !== 6) throw new Error(`expected six calibration subjects, got ${shapes.length}`);
-if (holding.worms.filter((w) => w.active && w.held).length !== 2) throw new Error('holding does not have its two held worm chains');
-if (holding.viruses.filter((v) => v.active && v.held).length !== 8) throw new Error('holding does not have its eight held viruses');
+if (holding.worms.filter((w) => w.active && w.held).length !== 4) throw new Error('holding does not have its four held worm chains');
+if (holding.viruses.filter((v) => v.active && v.held).length !== 0) throw new Error('holding still holds viruses in chapter 1');
 
 // 5. Feed rooms open live with their authored port counts and no calibration class.
 for (const index of [2, 3]) {
@@ -76,4 +77,4 @@ for (const index of [2, 3]) {
   console.log(`${level.name}: ports=${world.portTotal} crates=${world.dataTotal}`);
 }
 
-console.log('campaign-rules-check: OK (intake wakes its class, kitty arrival, 30-node route, live feed rooms)');
+console.log('campaign-rules-check: OK (intake wakes its class, kitty arrival, 36-node route, live feed rooms)');

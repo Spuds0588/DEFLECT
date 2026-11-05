@@ -16,7 +16,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **VS BOTS:** normal round matches against one to three local bot opponents, first to 3.
 - **GAUNTLET:** a scored, one-life local run against worms, viruses, cascading errors, sentries and
   infected thralls, with a local top-eight table.
-- **CAMPAIGN:** the 30-level route through BUILD ROOT, REBOOT, the office devices, an airport chapter, a space chapter, the arcade and food court, and the KISSINGFACE AI datacenter, with three local save slots. A cleared level shows the route map and carries the run to the next device.
+- **CAMPAIGN:** the 36-level route through BUILD ROOT, REBOOT, the office devices, a road-trip chapter, an airport chapter, a space chapter, the arcade and food court, and the KISSINGFACE AI datacenter, with three local save slots. A cleared level shows the route map and carries the run to the next device.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
 - Thirteen programs, fifty-three arenas.
@@ -247,8 +247,9 @@ your body is still held on the floor. That node does not
 end on a kill count or a port sweep; it ends when the boss is dead. After the kill, Kitty says the infection
 got into the network here and patches the party into the backbone. Her portal pulls the party through and a
 route plate names the next device; unseen stops are dim generic nodes. The live chain continues through
-`NETWORK SWITCH`, `DOCUMENT SCANNER`, `FAX MACHINE`, `SMART WATCH` and `BUSINESS LAPTOP`, then the airport
-chapter (`AIRPORT` with FILE BLOB, `AIR TRAFFIC` with STORM CLOUD), the space chapter (`CAPCOM`,
+`NETWORK SWITCH`, `DOCUMENT SCANNER`, `FAX MACHINE`, `SMART WATCH` and `BUSINESS LAPTOP`, then the road-trip
+chapter (`CROSSROADS`, `CAR NAVIGATION`, `CAR RADIO`, `TRAFFIC CAMERA`, `TRAFFIC LIGHT`, `CROSSWALK SIGN`),
+the airport chapter (`AIRPORT` with FILE BLOB, `AIR TRAFFIC` with STORM CLOUD), the space chapter (`CAPCOM`,
 `ROCKET NAVIGATION`, `SATELLITE` with IDLE HANDS), the arcade chapter (`SPACE CADET`, `PONG`,
 `SPACE INVADERS` with STARFISH, `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`, `TETRIS`), the food court
 (`SNACK MACHINE`, `TOKEN DISPENSER`, `SODA MACHINE`) and the KISSINGFACE datacenter (`CPU BOARD`, `GPU
@@ -262,9 +263,9 @@ the result screen offers `RETRY` or `SLOTS`. The
 layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
 
 Each chapter adds one threat family. BUILD ROOT and REBOOT are sentries and worms; viruses start at
-NETWORK SWITCH and stay in the mix. AIRPORT and the arcade/food-court chapter are scheduled to add
-spinning bots and magic users, but those kits are not built yet, so their floors use the families already
-unlocked. SPACE and KISSINGFACE add nothing new: they are there to test the mix.
+NETWORK SWITCH and stay in the mix. ROAD TRIP, SPACE and KISSINGFACE add nothing new: they are there to test
+the mix. AIRPORT and the arcade/food-court chapter are scheduled to add spinning bots and magic users, but
+those kits are not built yet, so their floors use the families already unlocked.
 
 ### Online status
 

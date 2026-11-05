@@ -1,26 +1,48 @@
 import { ARENAS } from '../src/game/arenas';
-import { CAMPAIGN_ROUTE, PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
+import {
+  CAMPAIGN_ROUTE,
+  PLAYABLE_CAMPAIGN_LEVELS,
+  campaignChapterForLevel,
+} from '../src/game/campaign';
 import { MAX_PLAYERS } from '../src/game/config';
 import { SECTORS } from '../src/game/sectors';
 import { World } from '../src/game/world';
 
-if (PLAYABLE_CAMPAIGN_LEVELS.length !== 30) {
-  throw new Error(`expected 30 levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
+if (PLAYABLE_CAMPAIGN_LEVELS.length !== 36) {
+  throw new Error(`expected 36 levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
 }
-if (CAMPAIGN_ROUTE.length !== 12) {
-  throw new Error(`expected 12 chapter stops, got ${CAMPAIGN_ROUTE.length}`);
+if (CAMPAIGN_ROUTE.length !== 13) {
+  throw new Error(`expected 13 chapter stops, got ${CAMPAIGN_ROUTE.length}`);
 }
-const tail = PLAYABLE_CAMPAIGN_LEVELS.slice(21).map((level) => level.arenaId);
-if (tail.join(',') !== '48,42,43,44,37,38,40,41,39') {
-  throw new Error(`ARCADE + KISSINGFACE route is ${tail.join(',')}`);
+const expectedArenas = [
+  14, 34, 35, 36, 1, 9, 12, 25, 28, 29,
+  0, 21, 52, 49, 50, 51,
+  23, 33,
+  32, 18, 17,
+  10, 22, 24, 45, 46, 47, 48,
+  42, 43, 44,
+  37, 38, 40, 41, 39,
+];
+const actualArenas = PLAYABLE_CAMPAIGN_LEVELS.map((level) => level.arenaId);
+if (actualArenas.join(',') !== expectedArenas.join(',')) {
+  throw new Error(`campaign route is ${actualArenas.join(',')}`);
 }
-if (CAMPAIGN_ROUTE[10].nodeId !== 'food-court' || CAMPAIGN_ROUTE[11].nodeId !== 'ai-core') {
-  throw new Error('the food court and AI core are not separate route stops');
+if (CAMPAIGN_ROUTE[7].nodeId !== 'road-trip') {
+  throw new Error('the road trip is not its own route stop');
+}
+if (CAMPAIGN_ROUTE[10].nodeId !== 'arcade' || CAMPAIGN_ROUTE[11].nodeId !== 'food-court' || CAMPAIGN_ROUTE[12].nodeId !== 'ai-core') {
+  throw new Error('the arcade, food court and AI core are not separate route stops');
 }
 if (!SECTORS[8] || SECTORS[8].name !== 'KISSINGFACE' || SECTORS[8].entry !== 'cpu' || SECTORS[8].exit !== 'network') {
   throw new Error('KISSINGFACE is not the authored sector 8 route');
 }
-if (PLAYABLE_CAMPAIGN_LEVELS[24].sector !== 7 || PLAYABLE_CAMPAIGN_LEVELS[25].sector !== 8) {
+if (!SECTORS[9] || SECTORS[9].name !== 'ROAD TRIP' || SECTORS[9].entry !== 'crossroads' || SECTORS[9].exit !== 'crosswalk') {
+  throw new Error('ROAD TRIP is not the authored sector 9 route');
+}
+if (PLAYABLE_CAMPAIGN_LEVELS[10].sector !== 9) {
+  throw new Error('CROSSROADS does not point at the ROAD TRIP sector');
+}
+if (PLAYABLE_CAMPAIGN_LEVELS[30].sector !== 7 || PLAYABLE_CAMPAIGN_LEVELS[31].sector !== 8) {
   throw new Error('food court and KISSINGFACE levels point at the wrong sectors');
 }
 const finale = PLAYABLE_CAMPAIGN_LEVELS.filter((level) => level.finale);
@@ -29,10 +51,10 @@ if (finale.length !== 1 || finale[0].arenaId !== 39 || finale[0].name !== 'NETWO
 }
 const tetris = PLAYABLE_CAMPAIGN_LEVELS.find((level) => level.arenaId === 48);
 if (!tetris || tetris.boss !== undefined || tetris.finale) throw new Error('TETRIS is not a normal arcade assault');
-if (PLAYABLE_CAMPAIGN_LEVELS[29].boss === undefined) throw new Error('NETWORK BOARD does not carry the USER finale');
+if (PLAYABLE_CAMPAIGN_LEVELS[35].boss === undefined) throw new Error('NETWORK BOARD does not carry the USER finale');
 if (PLAYABLE_CAMPAIGN_LEVELS[9].finale) throw new Error('BUSINESS LAPTOP is still marked finale');
 
-const newIds = Array.from({ length: 20 }, (_, index) => index + 10);
+const newIds = Array.from({ length: 26 }, (_, index) => index + 10);
 const names = new Array<string>(MAX_PLAYERS).fill('');
 names[0] = 'P';
 for (const id of newIds) {
@@ -71,7 +93,7 @@ for (const id of newIds) {
     level.clearKills,
     false,
     level.boss ?? -1,
-    false,
+    campaignChapterForLevel(level),
     level.opening ?? null,
     level.finale === true,
     0,
@@ -92,4 +114,4 @@ for (const id of newIds) {
   console.log(`${level.name}: ${world.campaignPhase}, bodies ${world.sentries.filter((s) => s.active).length}/${world.viruses.filter((v) => v.active).length}/${world.worms.filter((w) => w.active).length}, crates ${world.dataTotal}`);
 }
 
-console.log('campaign-chapter-check: OK (30 levels, 12 stops, TETRIS in arcade, NETWORK BOARD finale)');
+console.log('campaign-chapter-check: OK (36 levels, 13 stops, ROAD TRIP before AIRPORT, NETWORK BOARD finale)');

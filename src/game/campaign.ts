@@ -66,13 +66,13 @@ export interface CampaignLevel {
 export type CampaignIntro = 'none' | 'warden' | 'holding' | 'assault' | 'kitty';
 
 /**
- * The campaign introduces one threat family per chapter. Chapters 4 and 6 add no new
- * body, so those fights are about surviving the mix that is already unlocked.
+ * The campaign introduces one threat family per chapter. Chapters 3, 5 and 7 add no
+ * new body, so those fights are about surviving the mix that is already unlocked.
  */
 export type CampaignThreatFamily = 'sentries' | 'worms' | 'viruses' | 'spinners' | 'magic';
 
 export interface CampaignChapterDef {
-  /** 1-based chapter index used by the route's six themed stops. */
+  /** 1-based chapter index used by the route's seven themed stops. */
   id: number;
   label: string;
   /** Campaign node ids that belong to this chapter. */
@@ -102,26 +102,32 @@ export const CAMPAIGN_CHAPTERS: readonly CampaignChapterDef[] = [
   },
   {
     id: 3,
+    label: 'ROAD TRIP',
+    nodeIds: ['road-trip'],
+    introduces: null,
+  },
+  {
+    id: 4,
     label: 'AIRPORT',
     nodeIds: ['airport'],
     introduces: 'spinners',
     pending: true,
   },
   {
-    id: 4,
+    id: 5,
     label: 'SPACE',
     nodeIds: ['orbit'],
     introduces: null,
   },
   {
-    id: 5,
+    id: 6,
     label: 'ARCADE // FOOD COURT',
     nodeIds: ['arcade', 'food-court'],
     introduces: 'magic',
     pending: true,
   },
   {
-    id: 6,
+    id: 7,
     label: 'KISSINGFACE',
     nodeIds: ['ai-core'],
     introduces: null,
@@ -140,8 +146,8 @@ const THREAT_INTRODUCED_IN: Record<CampaignThreatFamily, number> = {
   sentries: 1,
   worms: 1,
   viruses: 2,
-  spinners: 3,
-  magic: 5,
+  spinners: 4,
+  magic: 6,
 };
 
 export function campaignChapterForNode(nodeId: string): number {
@@ -376,6 +382,108 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
   },
   {
     id: 10,
+    sector: 9,
+    nodeId: 'road-trip',
+    name: 'CROSSROADS',
+    code: 'CITY GRID',
+    arenaId: 0,
+    intro: 'assault',
+    blurb: kitty(
+      'crossroads',
+      'CROSSROADS. KITTY PULLS THE OFFICE CAR OUT OF THE GARAGE AND INTO A DEAD INTERSECTION.',
+      'THE CITY GRID IS STILL RUNNING. FOLLOW THE SIGNALS TO THE AIRPORT.',
+    ),
+    clearKills: 8,
+    opening: { sentries: 4, viruses: 3, worms: 1 },
+    dataCrates: [crate(0, PROP.DOC)],
+  },
+  {
+    id: 11,
+    sector: 9,
+    nodeId: 'road-trip',
+    name: 'CAR NAVIGATION',
+    code: 'ROUTE 01',
+    arenaId: 21,
+    intro: 'assault',
+    blurb: kitty(
+      'car-navigation',
+      'CAR NAVIGATION. THE DASHBOARD MAP IS INFECTED, BUT IT STILL KNOWS THE WAY OUT.',
+      'KEEP THE ARROW AHEAD OF YOU. THE ROUTE IS THE ONLY CLEAR LINE.',
+    ),
+    clearKills: 8,
+    opening: { sentries: 4, viruses: 3, worms: 1 },
+    dataCrates: [crate(21, PROP.DOC)],
+  },
+  {
+    id: 12,
+    sector: 9,
+    nodeId: 'road-trip',
+    name: 'CAR RADIO',
+    code: 'DEAD AIR',
+    arenaId: 52,
+    intro: 'assault',
+    blurb: kitty(
+      'car-radio',
+      'CAR RADIO. FOUR STATIONS, ONE SIGNAL, AND EVERY ONE OF THEM IS PLAYING THE INFECTION.',
+      'TUNE OUT THE NOISE. WATCH THE SWEEP.',
+    ),
+    clearKills: 8,
+    opening: { sentries: 4, viruses: 3, worms: 1 },
+    dataCrates: [crate(52, PROP.AUDIO)],
+  },
+  {
+    id: 13,
+    sector: 9,
+    nodeId: 'road-trip',
+    name: 'TRAFFIC CAMERA',
+    code: 'RED LIGHT',
+    arenaId: 49,
+    intro: 'assault',
+    blurb: kitty(
+      'traffic-camera',
+      'TRAFFIC CAMERA. EVERY LENS IN THE CITY IS WATCHING THIS CAR.',
+      'MOVE THROUGH THE FRAMES BEFORE THE NEXT FILE LANDS.',
+    ),
+    clearKills: 8,
+    opening: { sentries: 4, viruses: 3, worms: 1 },
+    dataCrates: [crate(49, PROP.ZIP)],
+  },
+  {
+    id: 14,
+    sector: 9,
+    nodeId: 'road-trip',
+    name: 'TRAFFIC LIGHT',
+    code: 'SIGNAL CYCLE',
+    arenaId: 50,
+    intro: 'assault',
+    blurb: kitty(
+      'traffic-light',
+      'TRAFFIC LIGHT. THE INTERSECTION IS STUCK ON RED, AND THE FLOOR IS TAKING TURNS.',
+      'READ THE SIGNAL. CROSS ON YOUR COLOR.',
+    ),
+    clearKills: 8,
+    opening: { sentries: 4, viruses: 3, worms: 1 },
+    dataCrates: [crate(50, PROP.VIDEO)],
+  },
+  {
+    id: 15,
+    sector: 9,
+    nodeId: 'road-trip',
+    name: 'CROSSWALK SIGN',
+    code: "WALK / DON'T WALK",
+    arenaId: 51,
+    intro: 'assault',
+    blurb: kitty(
+      'crosswalk-sign',
+      'CROSSWALK SIGN. THE AIRPORT IS ACROSS THE STREET, AND THE SIGN IS NOT MAKING IT EASY.',
+      'WATCH THE WALK LIGHT. THE FLOOR MOVES WITH THE SIGN.',
+    ),
+    clearKills: 9,
+    opening: { sentries: 4, viruses: 4, worms: 1 },
+    dataCrates: [crate(51, PROP.DOC)],
+  },
+  {
+    id: 16,
     sector: 5,
     nodeId: 'airport',
     name: 'AIRPORT',
@@ -393,7 +501,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [],
   },
   {
-    id: 11,
+    id: 17,
     sector: 5,
     nodeId: 'airport',
     name: 'AIR TRAFFIC',
@@ -411,7 +519,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [],
   },
   {
-    id: 12,
+    id: 18,
     sector: 6,
     nodeId: 'orbit',
     name: 'CAPCOM',
@@ -428,7 +536,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(32, PROP.ZIP)],
   },
   {
-    id: 13,
+    id: 19,
     sector: 6,
     nodeId: 'orbit',
     name: 'ROCKET NAVIGATION',
@@ -445,7 +553,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(18, PROP.VIDEO)],
   },
   {
-    id: 14,
+    id: 20,
     sector: 6,
     nodeId: 'orbit',
     name: 'SATELLITE',
@@ -463,7 +571,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [],
   },
   {
-    id: 15,
+    id: 21,
     sector: 7,
     nodeId: 'arcade',
     name: 'SPACE CADET',
@@ -480,7 +588,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(10, PROP.AUDIO)],
   },
   {
-    id: 16,
+    id: 22,
     sector: 7,
     nodeId: 'arcade',
     name: 'PONG',
@@ -497,7 +605,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(22, PROP.ZIP)],
   },
   {
-    id: 17,
+    id: 23,
     sector: 7,
     nodeId: 'arcade',
     name: 'SPACE INVADERS',
@@ -515,7 +623,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [],
   },
   {
-    id: 18,
+    id: 24,
     sector: 7,
     nodeId: 'arcade',
     name: 'ARCADE RACING',
@@ -532,7 +640,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(45, PROP.AUDIO)],
   },
   {
-    id: 19,
+    id: 25,
     sector: 7,
     nodeId: 'arcade',
     name: 'FIGHTING GAME',
@@ -549,7 +657,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(46, PROP.VIDEO)],
   },
   {
-    id: 20,
+    id: 26,
     sector: 7,
     nodeId: 'arcade',
     name: 'DUCK HUNTER',
@@ -566,7 +674,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(47, PROP.DOC)],
   },
   {
-    id: 21,
+    id: 27,
     sector: 7,
     nodeId: 'arcade',
     name: 'TETRIS',
@@ -583,7 +691,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(48, PROP.AUDIO)],
   },
   {
-    id: 22,
+    id: 28,
     sector: 7,
     nodeId: 'food-court',
     name: 'SNACK MACHINE',
@@ -600,7 +708,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(42, PROP.DOC)],
   },
   {
-    id: 23,
+    id: 29,
     sector: 7,
     nodeId: 'food-court',
     name: 'TOKEN DISPENSER',
@@ -617,7 +725,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(43, PROP.ZIP)],
   },
   {
-    id: 24,
+    id: 30,
     sector: 7,
     nodeId: 'food-court',
     name: 'SODA MACHINE',
@@ -634,7 +742,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(44, PROP.AUDIO)],
   },
   {
-    id: 25,
+    id: 31,
     sector: 8,
     nodeId: 'ai-core',
     name: 'CPU BOARD',
@@ -651,7 +759,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(37, PROP.ZIP)],
   },
   {
-    id: 26,
+    id: 32,
     sector: 8,
     nodeId: 'ai-core',
     name: 'GPU BOARD',
@@ -668,7 +776,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(38, PROP.VIDEO)],
   },
   {
-    id: 27,
+    id: 33,
     sector: 8,
     nodeId: 'ai-core',
     name: 'DISPATCH YARD',
@@ -685,7 +793,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(40, PROP.DOC)],
   },
   {
-    id: 28,
+    id: 34,
     sector: 8,
     nodeId: 'ai-core',
     name: 'LOAD BALANCER',
@@ -702,7 +810,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(41, PROP.ZIP)],
   },
   {
-    id: 29,
+    id: 35,
     sector: 8,
     nodeId: 'ai-core',
     name: 'NETWORK BOARD',
@@ -727,21 +835,21 @@ export const PLAYABLE_CAMPAIGN_LEVELS = CAMPAIGN_LEVELS.filter((level) => level.
 
 /**
  * Map a slot authored against an older route onto the current level order. `level` is the
- * completed count, so it is also the next level index. The v0.1.204 order moves TETRIS
- * into the arcade and puts the server boards after the food court, so a slot parked on
- * SNACK MACHINE through the old NETWORK BOARD (21-26) shifts one arena later. The old
- * request floor and the old TETRIS finale already sit at their new indices, and a save
- * from before the food court did not clear that content, so those cases stay put.
+ * completed count, so it is also the next level index. Route v2 moved TETRIS into the
+ * arcade and made NETWORK BOARD the finale; route v3 inserts the six-level ROAD TRIP
+ * before AIRPORT. A slot keeps the arena it was facing, and a completed old route gets
+ * one final run at the new NETWORK BOARD.
  */
 export function migrateCampaignLevel(level: number, nodeId: string, routeVersion: number): number {
-  const next = Math.max(0, Math.min(PLAYABLE_CAMPAIGN_LEVELS.length, Math.floor(level)));
+  let next = Math.max(0, Math.min(PLAYABLE_CAMPAIGN_LEVELS.length, Math.floor(level)));
   if (routeVersion >= STORY_ROUTE_VERSION) return next;
-  // Pre-food-court slots: level 21 was the TETRIS finale, level 22 was a completed run.
-  if (nodeId === 'arcade' && (next === 21 || next === 22)) return next;
-  // A completed 30-level route gets one more run at the new NETWORK BOARD finale.
-  if (next >= PLAYABLE_CAMPAIGN_LEVELS.length) return PLAYABLE_CAMPAIGN_LEVELS.length - 1;
-  if (next >= 21 && next <= 26) return next + 1;
-  return next;
+  if (routeVersion < 2) {
+    // Pre-food-court slots: level 21 was the TETRIS finale, level 22 was a completed run.
+    const arcadeFinale = nodeId === 'arcade' && (next === 21 || next === 22);
+    if (!arcadeFinale && next >= 21 && next <= 26) next += 1;
+  }
+  if (routeVersion < 3 && next >= 10) next += 6;
+  return Math.min(next, PLAYABLE_CAMPAIGN_LEVELS.length - 1);
 }
 
 /** The first authored level. Everything campaign-shaped starts here for now. */

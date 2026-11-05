@@ -8,7 +8,7 @@
 export const STORY_SLOT_COUNT = 3;
 export const STORY_SAVE_VERSION = 1;
 /** Bump when authored level order changes; old slots migrate against this. */
-export const STORY_ROUTE_VERSION = 2;
+export const STORY_ROUTE_VERSION = 3;
 
 export interface StorySave {
   version: number;

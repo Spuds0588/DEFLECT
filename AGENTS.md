@@ -359,7 +359,7 @@ food-court machines are the FOOD COURT campaign stop; the four cabinets are the 
 
 ### D76 — Campaign threat roster is chapter data (decided 2026-11-05)
 
-The campaign introduces one threat family at a time. `CAMPAIGN_CHAPTERS` in `campaign.ts` maps the six
+The campaign introduces one threat family at a time. `CAMPAIGN_CHAPTERS` in `campaign.ts` maps the seven
 route chapters to their node ids and names the family each one introduces; `CAMPAIGN_LEVELS` stay free of
 per-level threat switches. `campaignThreatAllowed(chapter, family)` is the only spawn gate, and it is
 enforced inside `spawnVirus` (not at a call site) so an opening squad, a port emission or the HOLDING cell
@@ -368,15 +368,15 @@ virus feed becomes a worm feed in chapter 1 instead of a dead source the player 
 
 - Chapter 1 (BUILD ROOT + REBOOT) is sentries and worms. Do not restore viruses to MAINBOARD, ROUTER,
   REBOOT or HOLDING's cell wave. The HOLDING caged art and the power-lesson line match the worm-only wave.
-- Chapter 2 (OFFICE LAN) unlocks viruses; chapters 4 (SPACE) and 6 (KISSINGFACE) introduce no new body and
-  inherit the pool.
-- Chapter 3 reserves **spinning bots** and chapter 5 reserves **magic users**. Both entries are `pending`:
+- Chapter 2 (OFFICE LAN) unlocks viruses; chapters 3 (ROAD TRIP), 5 (SPACE) and 7 (KISSINGFACE)
+  introduce no new body and inherit the pool.
+- Chapter 4 reserves **spinning bots** and chapter 6 reserves **magic users**. Both entries are `pending`:
   no kit, silhouette, attack or tuning exists, and `campaignThreatAllowed` returns false because the family
   is not in `IMPLEMENTED_THREAT_FAMILIES`. Do not invent either kit to fill the slot. When an approved kit
   lands, add its spawner/family to that list; the roster then unlocks it in its chapter and every later
   chapter.
 - `CampaignLevel` does not store a chapter. `campaignChapterForLevel` resolves it from `nodeId`, so a new
-  route node must be added to `CAMPAIGN_CHAPTERS` or it inherits the latest chapter (6).
+  route node must be added to `CAMPAIGN_CHAPTERS` or it inherits the latest chapter (7).
 - Chapter 0 means no roster gate: gauntlet, infection and probes that do not pass a chapter keep every
   implemented family. A campaign `World` always passes its 1-based chapter.
 - `.tmp/chapter-threats-check.ts` owns the roster, opening-squad, port-remap and HOLDING wave checks.
@@ -393,13 +393,14 @@ the solid band. The car route is unaffected and remains body geometry.
 
 ### D66 — Campaign route and the 2026-11-04 feedback pass (decided 2026-11-04)
 
-- `CAMPAIGN_LEVELS` is now 30 nodes: the four quarantine rooms, REBOOT (MEGA WORM), NETWORK SWITCH,
-  DOCUMENT SCANNER, FAX MACHINE, SMART WATCH, BUSINESS LAPTOP, then the airport chapter (AIRPORT with
-  FILE BLOB, AIR TRAFFIC with STORM CLOUD), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE with
-  IDLE HANDS), the arcade chapter (SPACE CADET, PONG, SPACE INVADERS with STARFISH, ARCADE RACING,
+- `CAMPAIGN_LEVELS` is now 36 nodes: the four quarantine rooms, REBOOT (MEGA WORM), NETWORK SWITCH,
+  DOCUMENT SCANNER, FAX MACHINE, SMART WATCH, BUSINESS LAPTOP, then the ROAD TRIP chapter (CROSSROADS,
+  CAR NAVIGATION, CAR RADIO, TRAFFIC CAMERA, TRAFFIC LIGHT, CROSSWALK SIGN), the airport chapter (AIRPORT
+  with FILE BLOB, AIR TRAFFIC with STORM CLOUD), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE
+  with IDLE HANDS), the arcade chapter (SPACE CADET, PONG, SPACE INVADERS with STARFISH, ARCADE RACING,
   FIGHTING GAME, DUCK HUNTER, TETRIS), the food-court trio (SNACK MACHINE, TOKEN DISPENSER, SODA MACHINE),
   and the KISSINGFACE chapter (CPU BOARD, GPU BOARD, DISPATCH YARD, LOAD BALANCER, NETWORK BOARD with
-  USER as the finale). The 30 levels collapse to 12 chapter stops. The live route is data in `CAMPAIGN_ROUTE`; `drawCampaignRoad`
+  USER as the finale). The 36 levels collapse to 13 chapter stops. The live route is data in `CAMPAIGN_ROUTE`; `drawCampaignRoad`
   renders completed, current, revealed and generic future stops. A clear shows the route plate only at a
   level boundary (`cleared.nodeId !== next.nodeId`); the four BUILD ROOT rooms and each themed chapter
   share one node and portal straight through. Sector is not the gate. Future branches are just extra
@@ -409,7 +410,8 @@ the solid band. The car route is unaffected and remains body geometry.
 - **Route revisions.** A story slot stores the completed count plus `routeVersion` (`STORY_ROUTE_VERSION`).
   When the authored order changes, bump the version and extend `migrateCampaignLevel`; never infer a
   resume point from `nodeId` alone. The v0.1.204 reorder shifted SNACK MACHINE through the old NETWORK
-  BOARD by one arena and left the request floor and the old finale index in place.
+  BOARD by one arena and left the request floor and the old finale index in place. The v0.1.209 ROAD TRIP
+  insert shifts every pre-v3 slot from AIRPORT onward by six; a completed old route lands on the new finale.
 - A live-fire node may carry `CampaignLevel.blurb`, a two-beat script_kitty landing line. `setupCampaign`
   starts that `TutorialRunner` before `beginAssault`; it is narration only, so it never gates the clear,
   never replaces the Warden/Holding/REBOOT lessons, and  never enters `Snapshot`.
