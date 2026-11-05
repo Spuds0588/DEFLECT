@@ -61,7 +61,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.199';
+const BUILD = '0.1.200';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -1784,6 +1784,7 @@ function startCampaignLevel(viaPortal = false, retrySameArena = false): void {
     level.opening ?? null,
     level.finale === true,
     campaignBotDead,
+    level.blurb ?? null,
   );
   world.friendlyFire = friendlyFire;
   for (let i = 0; i < MAX_PLAYERS; i++) world.setMemoryStacks(i, campaignMemory[i] ?? 0);

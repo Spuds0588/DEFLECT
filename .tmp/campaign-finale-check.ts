@@ -78,15 +78,16 @@ function make(level: (typeof PLAYABLE_CAMPAIGN_LEVELS)[number]): World {
   console.log('intake: three subjects // Kitty exit // portal clear');
 }
 
-// --- Final node: opening squad, Mega clear, finale narration, then pull ----------------
+// --- Final node: opening squad, boss clear, finale narration, then pull -----------------
 {
   if (!bossLevel.opening) fail('finale level has no authored opening squad');
   if (!bossLevel.finale) fail('finale level is not marked finale');
   const world = make(bossLevel);
   const priv = world as any;
+  // A live-fire node already ran setupCampaign -> beginAssault in the constructor.
+  // Calling beginAssault again would seed a second opening squad on the same floor.
+  if (world.campaignPhase !== 'assault') fail(`finale did not open in assault (${world.campaignPhase})`);
   priv.tutorial = null;
-  priv.campaignPhase = 'assault';
-  priv.beginAssault();
   const sentries = world.sentries.filter((s) => s.active).length;
   const viruses = world.viruses.filter((v) => v.active).length;
   const worms = world.worms.filter((w) => w.active).length;
@@ -94,7 +95,7 @@ function make(level: (typeof PLAYABLE_CAMPAIGN_LEVELS)[number]): World {
     fail(`finale opening ${sentries}/${viruses}/${worms}, expected ${bossLevel.opening.sentries}/${bossLevel.opening.viruses}/${bossLevel.opening.worms}`);
   }
 
-  // The run-up is over: all feeds and fodder are gone, and the Mega Worm is the last body.
+  // The run-up is over: all feeds and fodder are gone, and the boss is the last body.
   for (const p of world.props) p.active = false;
   for (const s of world.sentries) s.active = false;
   for (const v of world.viruses) v.active = false;
@@ -118,7 +119,7 @@ function make(level: (typeof PLAYABLE_CAMPAIGN_LEVELS)[number]): World {
   for (let i = 0; i < 360 && world.campaignPhase !== 'cleared'; i++) world.step(SIM_DT, idle);
   if (world.campaignPhase !== 'cleared') fail(`finale did not clear after the pull (${world.campaignPhase})`);
   if (!world.gauntletOver) fail('finale cleared without freezing the arena under the result card');
-  console.log('finale: opening squad // Mega clear // Kitty trail // portal result');
+  console.log('finale: opening squad // boss clear // Kitty trail // portal result');
 }
 
 console.log('campaign-finale-check: OK');

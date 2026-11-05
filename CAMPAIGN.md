@@ -1,10 +1,19 @@
 # CAMPAIGN // route blueprint
 
-Status: `BUILD ROOT`, `REBOOT`, and the first level-2 chain are playable. The live route runs BUILD ROOT
+Status: 22 levels are playable. The live route runs BUILD ROOT
 (INTAKE -> HOLDING -> MAINBOARD -> ROUTER) -> REBOOT -> NETWORK SWITCH -> DOCUMENT SCANNER -> FAX MACHINE ->
-SMART WATCH -> BUSINESS LAPTOP. A clear shows the route plate before script_kitty's portal opens, so the
-next device is a named reveal and unseen stops stay dim generic nodes. The route is data in `CAMPAIGN_ROUTE`,
-with explicit per-stop links ready for a future branch.
+SMART WATCH -> BUSINESS LAPTOP -> AIRPORT -> AIR TRAFFIC -> CAPCOM -> ROCKET NAVIGATION -> SATELLITE ->
+SPACE CADET -> PONG -> SPACE INVADERS -> ARCADE RACING -> FIGHTING GAME -> DUCK HUNTER -> TETRIS.
+BUSINESS LAPTOP is the BLOB chapter boss; TETRIS ends the route with STORM CLOUD. A clear shows the route
+plate before script_kitty's portal opens, so the next device is a named reveal and unseen stops stay dim
+generic nodes. The route is data in `CAMPAIGN_ROUTE`, with explicit per-stop links ready for a future branch.
+Consecutive levels that share a `nodeId` are one route stop: the plate is the network map between chapters,
+not a card between every arena in a chapter.
+
+Every live-fire node carries a short `CampaignLevel.blurb` from script_kitty. It names the place the party
+landed, adds one line about the infection in that device, and runs as ordinary narration over the first
+seconds of the assault. It never gates a clear, never replaces the Warden/Holding/REBOOT lessons, and never
+enters `Snapshot`. Levels 0-4 keep their authored lessons; the assault nodes use the landing blurb instead.
 `SINGLE PLAYER > CAMPAIGN` is the story-mode entry: three local save slots first, then for a new run a bot
 count and player select. The run saves after every completed level via `src/game/saves.ts`; after the last
 live level the slot reports the campaign complete state.
@@ -316,6 +325,16 @@ at the AI core. A coolant loop pad connects the lower rack to the GPU farm.
 This is the finale. Use every language the campaign has taught: firewall sweeps, destructible data walls,
 transmitters that reflect shots, and a boss that changes the arena rather than only adding health. The
 final arena should be readable in one screen even if the approach is multi-screen.
+
+### Themed chapters (2026-11-05)
+
+Level 3 is the airport chapter (`AIRPORT`, `AIR TRAFFIC`), level 4 is the space chapter (`CAPCOM`,
+`ROCKET NAVIGATION`, `SATELLITE`) and level 5 is the arcade chapter (`SPACE CADET`, `PONG`,
+`SPACE INVADERS`, `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`, `TETRIS`). They are the same campaign
+runtime as the earlier devices: local-only assault phases, a `CampaignLevel.opening` squad on the first
+frame, one data crate on a clear spawn pad where the level has one, and no new snapshot fields. The airport
+and arcade arenas carry their own local hazards; the space arenas use existing cover, the ROCKET
+NAVIGATION reflector and the satellite void. The final node is TETRIS, where STORM CLOUD is the last boss.
 
 ### Built foundations (2026-11-05)
 

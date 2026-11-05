@@ -16,7 +16,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **VS BOTS:** normal round matches against one to three local bot opponents, first to 3.
 - **GAUNTLET:** a scored, one-life local run against worms, viruses, cascading errors, sentries and
   infected thralls, with a local top-eight table.
-- **CAMPAIGN:** `BUILD ROOT`, `REBOOT`, and the first level-2 device chain, with three local save slots. A cleared level shows the route map and carries the run to the next device.
+- **CAMPAIGN:** the 22-level route through BUILD ROOT, REBOOT, the office devices, an airport chapter, a space chapter and an arcade chapter, with three local save slots. A cleared level shows the route map and carries the run to the next device.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
 - Thirteen programs, forty-nine arenas.
@@ -247,8 +247,11 @@ your body is still held on the floor. That node does not
 end on a kill count or a port sweep; it ends when the boss is dead. After the kill, Kitty says the infection
 got into the network here and patches the party into the backbone. Her portal pulls the party through and a
 route plate names the next device; unseen stops are dim generic nodes. The live chain continues through
-`NETWORK SWITCH`, `DOCUMENT SCANNER`, `FAX MACHINE`, `SMART WATCH` and the `BUSINESS LAPTOP` finale. A run
-is never saved mid-level.
+`NETWORK SWITCH`, `DOCUMENT SCANNER`, `FAX MACHINE`, `SMART WATCH` and `BUSINESS LAPTOP`, then the airport
+chapter (`AIRPORT`, `AIR TRAFFIC`), the space chapter (`CAPCOM`, `ROCKET NAVIGATION`, `SATELLITE`) and the
+arcade chapter (`SPACE CADET`, `PONG`, `SPACE INVADERS`, `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`,
+`TETRIS`). BUSINESS LAPTOP ends on the BLOB; TETRIS is the finale, with STORM CLOUD as the last boss. Each
+live-fire arena opens with a short script_kitty landing line. A run is never saved mid-level.
 Everything before the assault is practice: if you fall off a plate or get caught during orientation or
 the drill, you come back on the training timer and the lesson keeps its place, so a bad start costs time
 rather than the run. **The assault is one life** — going down once the fight starts ends the node, and

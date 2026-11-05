@@ -18,8 +18,8 @@ if (t.current?.id !== 'dash') throw new Error('tutorial did not advance after th
 // 2. The live route is the four split quarantine rooms, then the first network.
 const route = PLAYABLE_CAMPAIGN_LEVELS.map((level) => [level.arenaId, level.intro]);
 console.log('route:', route.map(([id, intro]) => `${id}:${intro}`).join(' -> '));
-if (PLAYABLE_CAMPAIGN_LEVELS.length !== 10) throw new Error(`expected ten playable levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
-const expectedArenas = [14, 34, 35, 36, 1, 9, 12, 25, 28, 29];
+if (PLAYABLE_CAMPAIGN_LEVELS.length !== 22) throw new Error(`expected twenty-two playable levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
+const expectedArenas = [14, 34, 35, 36, 1, 9, 12, 25, 28, 29, 23, 33, 32, 18, 17, 10, 22, 24, 45, 46, 47, 48];
 if (route.some(([id], i) => id !== expectedArenas[i])) {
   throw new Error('campaign route does not match the authored level-2 sequence');
 }

@@ -260,12 +260,15 @@ result with
 `MORE LEVELS COMING SOON`. GRID ZERO's outer edge is open to shots and beams (but not bodies), so the Worm
 can be hit on its staged approach before it crosses the lip.
 
-The live level-2 chain continues after REBOOT through NETWORK SWITCH, DOCUMENT SCANNER, FAX MACHINE,
-SMART WATCH and the BUSINESS LAPTOP finale. A clear saves the slot. The route plate opens only when the
-next stop is a new level (`nodeId` changes); BUILD ROOT's four rooms portal straight through. Completed
-stops stay lit, the current stop is ringed, the next stop is named, and unseen stops are dim generic nodes.
-The route is data (`CAMPAIGN_ROUTE`) with per-stop outgoing links, so a future branch needs another link
-rather than another transition system. Campaign bots are loaded on the first frame of every node; `NO BOTS`
+The campaign continues after REBOOT through NETWORK SWITCH, DOCUMENT SCANNER, FAX MACHINE, SMART WATCH
+and BUSINESS LAPTOP (the BLOB chapter boss), then through the airport chapter (AIRPORT, AIR TRAFFIC), the
+space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE) and the arcade chapter (SPACE CADET, PONG, SPACE
+INVADERS, ARCADE RACING, FIGHTING GAME, DUCK HUNTER, TETRIS with STORM CLOUD as the finale). A clear saves
+the slot. The route plate opens only when the next stop is a new chapter (`nodeId` changes); BUILD ROOT's
+four rooms and each themed chapter portal straight through. Completed stops stay lit, the current stop is
+ringed, the next stop is named, and unseen stops are dim generic nodes. The route is data (`CAMPAIGN_ROUTE`)
+with per-stop outgoing links, so a future branch needs another link rather than another transition system.
+Every live-fire node opens with a short script_kitty landing blurb over play. Campaign bots are loaded on the first frame of every node; `NO BOTS`
 now means zero, not a forced drill companion. Companions are allies until the player damages that specific
 bot while locked on it. A dead companion stays lost across later nodes and a save written after a clear;
 a TPK retry restores only the bots lost in that arena.

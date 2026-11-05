@@ -375,6 +375,8 @@ export class World {
   private campaignOpening: CampaignOpening | null = null;
   /** This node is the authored route's end, so a boss clear plays the finale. */
   private campaignFinale = false;
+  /** script_kitty's landing line for this node; narration only. */
+  private readonly campaignBlurb: readonly TutorialStep[] | null;
   /** True once the calibration class has been placed in this world. */
   private campaignShapesSpawned = false;
   /** Holding's live skill briefing has been handed to the player. */
@@ -874,6 +876,7 @@ export class World {
     campaignOpening: CampaignOpening | null = null,
     campaignFinale = false,
     campaignDeadBots = 0,
+    campaignBlurb: readonly TutorialStep[] | null = null,
   ) {
     this.mode = mode;
     this.campaignIntro = campaignIntro;
@@ -885,6 +888,7 @@ export class World {
     this.campaignPrimitivesOnly = primitivesOnly;
     this.campaignOpening = campaignOpening;
     this.campaignFinale = campaignFinale;
+    this.campaignBlurb = campaignBlurb;
     this.levelData = levelData ?? [];
     this.botSlots = Math.max(0, Math.min(MAX_PLAYERS - 1, botSlots));
     this.campaignBotsLost = campaignDeadBots & 0xfe;
@@ -1492,6 +1496,10 @@ export class World {
     // A feed-room node opens in live fire. The port sweep is the whole fight, so there is
     // no calibration class or sparring beat. The squad stays loaded through every phase.
     if (this.campaignIntro === 'assault') {
+      // Kitty gets one landing beat over live fire. It is narration, so it never
+      // gates the breach or the clear; it only tells the player where they woke up.
+      this.tutorial = this.campaignBlurb ? new TutorialRunner(this.campaignBlurb) : null;
+      this.tutorialCatchSeen = this.tutorialCatchTotal();
       this.beginAssault();
       return;
     }

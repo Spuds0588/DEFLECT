@@ -364,15 +364,20 @@ field is read only by `bounceRocketPath`. Mines, traps, bombs (8/9), the super b
 (17) keep their own no-bounce rules. The planned path and the flown path are both drawn dotted; never restore
 the solid band. The car route is unaffected and remains body geometry.
 
-### D66 — Level-2 route and the 2026-11-04 feedback pass (decided 2026-11-04)
+### D66 — Campaign route and the 2026-11-04 feedback pass (decided 2026-11-04)
 
-- `CAMPAIGN_LEVELS` is now ten nodes: the four quarantine rooms, REBOOT, NETWORK SWITCH,
-  DOCUMENT SCANNER, FAX MACHINE, SMART WATCH and BUSINESS LAPTOP (BLOB finale). The live route is
-  data in `CAMPAIGN_ROUTE`; `drawCampaignRoad` renders completed, current, revealed and generic future
-  stops. A clear shows the route plate only at a level boundary (`cleared.nodeId !== next.nodeId`); the
-  four BUILD ROOT rooms share one node and portal straight through. Sector is not the gate. Future
-  branches are just extra `links` entries, and unseen stops stay dim generic nodes until the preceding
-  node is cleared.
+- `CAMPAIGN_LEVELS` is now 22 nodes: the four quarantine rooms, REBOOT, NETWORK SWITCH,
+  DOCUMENT SCANNER, FAX MACHINE, SMART WATCH, BUSINESS LAPTOP (BLOB chapter boss), then the airport
+  chapter (AIRPORT, AIR TRAFFIC), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE), and the
+  arcade chapter (SPACE CADET, PONG, SPACE INVADERS, ARCADE RACING, FIGHTING GAME, DUCK HUNTER, TETRIS
+  with STORM CLOUD as the finale). The live route is data in `CAMPAIGN_ROUTE`; `drawCampaignRoad`
+  renders completed, current, revealed and generic future stops. A clear shows the route plate only at a
+  level boundary (`cleared.nodeId !== next.nodeId`); the four BUILD ROOT rooms and each themed chapter
+  share one node and portal straight through. Sector is not the gate. Future branches are just extra
+  `links` entries, and unseen stops stay dim generic nodes until the preceding node is cleared.
+- A live-fire node may carry `CampaignLevel.blurb`, a two-beat script_kitty landing line. `setupCampaign`
+  starts that `TutorialRunner` before `beginAssault`; it is narration only, so it never gates the clear,
+  never replaces the Warden/Holding/REBOOT lessons, and never enters `Snapshot`.
 - Campaign bots are selected through `World.botSlots`; `0` means no bots. `activateCampaignBots` puts
   every selected bot on the floor from the first campaign frame, and the main loop keeps their brains
   live through calibration, breach and assault. Do not restore the old minimum-one clamp or deactivate

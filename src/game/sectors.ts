@@ -2,8 +2,8 @@
  * Sector campaign blueprint.
  *
  * This is an authored design surface, not a playable mode. It describes how arena
- * blockouts connect into the five-system campaign (portal hops, teleporter pads and
- * a central lift). Nothing here enters `World`, snapshots, rooms or the simulation.
+ * blockouts connect into the campaign (portal hops, teleporter pads and a central lift).
+ * Nothing here enters `World`, snapshots, rooms or the simulation.
  *
  * `arenaId` points at an existing ArenaDef used as the first blockout for that node.
  * It is intentionally a placeholder until a layout is authored for the node itself.
@@ -298,6 +298,100 @@ export const SECTORS: readonly SectorDef[] = [
       { a: 'gpu', b: 'security', kind: 'portal' },
       { a: 'cold-aisle', b: 'security', kind: 'portal' },
       { a: 'security', b: 'ai-core', kind: 'portal' },
+    ],
+  },
+  {
+    id: 5,
+    code: '06',
+    name: 'AIRPORT',
+    subtitle: 'TRANSIT HUB',
+    accent: '#ffc857',
+    story:
+      'The infection books a flight out of the office network. The terminal is the last place it can be grounded.',
+    objective: 'Clear the departures floor, then take the tower before the orbital uplink opens.',
+    mechanic:
+      'Radar rows sweep the terminal and aircraft cross the board on a fixed route; the tower is a tighter second scope.',
+    boss: 'THE DISPATCHER // FLIGHT CONTROL',
+    crossing: 'NETWORK UPLINK',
+    entry: 'airport',
+    exit: 'orbit',
+    nodes: [
+      { id: 'airport', label: 'AIRPORT', kind: 'entry', x: 120, y: 270, arenaId: 23 },
+      { id: 'tower', label: 'AIR TRAFFIC', kind: 'arena', x: 420, y: 120, arenaId: 33 },
+      { id: 'orbit', label: 'ORBIT UPLINK', kind: 'exit', x: 720, y: 270, arenaId: 18 },
+    ],
+    links: [
+      { a: 'airport', b: 'tower', kind: 'portal' },
+      { a: 'tower', b: 'orbit', kind: 'portal' },
+    ],
+  },
+  {
+    id: 6,
+    code: '07',
+    name: 'ORBIT',
+    subtitle: 'LOW EARTH NETWORK',
+    accent: '#7cf7cc',
+    story:
+      'The uplink leaves the atmosphere. Mission control, the launch arc and a solar-wing hull are one last route out of the network.',
+    objective: 'Hold mission control, ride the launch route, and cut the satellite uplink before the infection escapes.',
+    mechanic:
+      'Console cover, a flown rocket path that reflects shots, and a hull split by real voids. The rereflector is the route, not a wall.',
+    boss: 'THE FLIGHT DIRECTOR // LAUNCH CONTROL',
+    crossing: 'ORBITAL UPLINK',
+    entry: 'capcom',
+    exit: 'arcade',
+    nodes: [
+      { id: 'capcom', label: 'CAPCOM', kind: 'entry', x: 100, y: 270, arenaId: 32 },
+      { id: 'launch', label: 'ROCKET NAV', kind: 'arena', x: 390, y: 110, arenaId: 18 },
+      { id: 'satellite', label: 'SATELLITE', kind: 'arena', x: 650, y: 300, arenaId: 17 },
+      { id: 'arcade', label: 'ARCADE DOWNLINK', kind: 'exit', x: 820, y: 180, arenaId: 10 },
+    ],
+    links: [
+      { a: 'capcom', b: 'launch', kind: 'portal' },
+      { a: 'launch', b: 'satellite', kind: 'portal' },
+      { a: 'satellite', b: 'arcade', kind: 'portal' },
+    ],
+  },
+  {
+    id: 7,
+    code: '08',
+    name: 'ARCADE',
+    subtitle: 'FOOD COURT ROW',
+    accent: '#b79bff',
+    story:
+      'The downlink lands in a dead arcade. Every cabinet is still on, and every high score has been overwritten by the infection.',
+    objective: 'Play through the row, clear the cabinets, and delete the source in the last Tetris well.',
+    mechanic:
+      'Each cabinet is a local hazard: pinball bumpers, a live rally ball, an invader fleet, race cars, a fighter AI, duck fire and a stacking well.',
+    boss: 'THE HIGH SCORE // CABINET COLLECTIVE',
+    crossing: 'ARCADE DOWNLINK',
+    entry: 'pinball',
+    exit: 'tetris',
+    nodes: [
+      { id: 'pinball', label: 'PINBALL', kind: 'entry', x: 80, y: 270, arenaId: 10 },
+      { id: 'pong', label: 'PONG', kind: 'arena', x: 210, y: 120, arenaId: 22 },
+      { id: 'invaders', label: 'INVADERS', kind: 'arena', x: 340, y: 400, arenaId: 24 },
+      { id: 'racing', label: 'RACING', kind: 'arena', x: 470, y: 120, arenaId: 45 },
+      { id: 'fighter', label: 'FIGHTER', kind: 'arena', x: 600, y: 400, arenaId: 46 },
+      { id: 'duck', label: 'DUCK', kind: 'arena', x: 730, y: 120, arenaId: 47 },
+      {
+        id: 'tetris',
+        label: 'TETRIS',
+        kind: 'boss',
+        x: 860,
+        y: 270,
+        arenaId: 48,
+        boss: true,
+        major: true,
+      },
+    ],
+    links: [
+      { a: 'pinball', b: 'pong', kind: 'portal' },
+      { a: 'pong', b: 'invaders', kind: 'portal' },
+      { a: 'invaders', b: 'racing', kind: 'portal' },
+      { a: 'racing', b: 'fighter', kind: 'portal' },
+      { a: 'fighter', b: 'duck', kind: 'portal' },
+      { a: 'duck', b: 'tetris', kind: 'portal' },
     ],
   },
 ];

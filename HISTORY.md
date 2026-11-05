@@ -8178,3 +8178,35 @@ aisle around a hot card should cost health like the other hot-floor hazards.
 
 **Next:** play the GPU board with a full local squad and tune the pad, period and tick if the moving safe
 lane reads as clutter rather than a route.
+
+## 2026-11-05 — Airport, space and arcade campaign chapters (v0.1.200)
+
+**Goal:** Fill out the campaign with themed arena chains and give every live-fire arena a short script_kitty
+landing line that says where the party is and why the infection is there.
+
+**Changes.**
+- `CAMPAIGN_LEVELS` now runs 22 levels. After BUSINESS LAPTOP the route adds AIRPORT and AIR TRAFFIC, then
+  CAPCOM, ROCKET NAVIGATION and SATELLITE, then SPACE CADET, PONG, SPACE INVADERS, ARCADE RACING,
+  FIGHTING GAME, DUCK HUNTER and TETRIS. BUSINESS LAPTOP is now the BLOB chapter boss; TETRIS is the final
+  node with STORM CLOUD.
+- Each new level is an ordinary local assault using the existing arena hazards, an authored opening squad
+  and one data crate on a clear spawn pad. No new simulation system, no online arena and no snapshot fields.
+- Added `CampaignLevel.blurb`, a two-beat script_kitty narration runner. `setupCampaign` starts it before
+  `beginAssault`, so it plays over live fire and never gates a clear. Existing Warden, Holding and REBOOT
+  lessons are unchanged. The arrival line is skipped by the campaign's skip-tutorial setting.
+- `CAMPAIGN_ROUTE` now groups consecutive levels that share a `nodeId` into one stop. `drawCampaignRoad`
+  maps the live level to its chapter stop, so the plate stays readable at ten stops instead of crowding 22
+  labels. New sectors AIRPORT, ORBIT and ARCADE carry the slot and blueprint labels.
+- Updated CAMPAIGN, AGENTS D66, README, GAME_GUIDE and TODO; bumped all version stamps to 0.1.200.
+
+**Verification.**
+- `.tmp/campaign-chapter-check.ts` 0: 22 playable levels, 10 route stops, TETRIS as the only finale, every
+  new level opens in assault with a script_kitty line, one loaded crate and enough live bodies for its
+  kill target; all crates are in bounds and outside static cover.
+- `.tmp/campaign-rules-check.ts` 0 with the updated 22-arena route list; `npm run build` 0; `npm run bench` 0;
+  `git diff --check` 0.
+- Not tested: a human 22-node playthrough, the route plate after two chapters, or a visual pass on each
+  new chapter's hazard density.
+
+**Next:** play the airport, space and arcade chapters in order and judge whether the two-beat blurbs read
+over the opening fight or need a shorter single line.

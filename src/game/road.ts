@@ -652,7 +652,17 @@ export function drawCampaignRoad(
   const ctx = fitCanvas(canvas, ROAD_W, ROAD_H);
   if (!ctx) return;
   const levels = PLAYABLE_CAMPAIGN_LEVELS;
-  const count = Math.max(1, levels.length);
+  const stops = CAMPAIGN_ROUTE;
+  const count = Math.max(1, stops.length);
+  // A level maps to its chapter's stop. Several arenas can share one stop, so the
+  // plate stays readable as the route grows instead of drawing a label per arena.
+  const stopForLevel = (levelIndex: number): number => {
+    let stop = 0;
+    for (let i = 0; i < stops.length; i++) if (stops[i].level <= levelIndex) stop = i;
+    return stop;
+  };
+  const currentStop = stopForLevel(current);
+  const revealedStop = stopForLevel(revealed);
   const left = 58;
   const right = ROAD_W - 58;
   const span = right - left;
@@ -685,8 +695,8 @@ export function drawCampaignRoad(
     for (let k = 0; k < from.links.length; k++) {
       const j = from.links[k];
       if (!levels[j]) continue;
-      const live = i < current;
-      const known = j <= revealed;
+      const live = i < currentStop;
+      const known = j <= revealedStop;
       ctx.save();
       ctx.setLineDash(known ? [] : [5, 8]);
       ctx.strokeStyle = live ? '#4ce4ec' : known ? 'rgba(125, 248, 255, 0.45)' : 'rgba(125, 248, 255, 0.16)';
@@ -702,12 +712,12 @@ export function drawCampaignRoad(
   ctx.textAlign = 'center';
   ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
   for (let i = 0; i < count; i++) {
-    const level = levels[i];
+    const level = levels[stops[i].level];
     const x = xAt(i);
     const y = yAt(i);
-    const known = i <= revealed;
-    const done = i < current;
-    const active = i === current;
+    const known = i <= revealedStop;
+    const done = i < currentStop;
+    const active = i === currentStop;
     const color = level.finale ? '#ffb27a' : '#7df8ff';
     ctx.save();
     ctx.globalAlpha = known ? (done ? 0.62 : 1) : 0.26;

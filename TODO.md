@@ -2,6 +2,19 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Campaign themed chapters and landing blurbs (2026-11-05, v0.1.200)
+
+- [x] Campaign route is 22 levels: airport (`AIRPORT`, `AIR TRAFFIC`), space (`CAPCOM`,
+      `ROCKET NAVIGATION`, `SATELLITE`) and arcade (`SPACE CADET`, `PONG`, `SPACE INVADERS`,
+      `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`, `TETRIS`)
+- [x] `BUSINESS LAPTOP` is the BLOB chapter boss; `TETRIS` carries STORM CLOUD and the finale
+- [x] Every live-fire node opens with a two-beat `CampaignLevel.blurb` from script_kitty; narration only,
+      no snapshot state, no replacement for the Warden/Holding/REBOOT lessons
+- [x] Route plate groups levels by `nodeId`, so a chapter is one stop and the 22-level route stays readable
+- [x] New levels reuse existing arena hazards and place one crate on a clear spawn pad; all local-only
+- [x] `.tmp/campaign-chapter-check.ts` and the updated `campaign-rules-check.ts` green; build and bench green
+- [ ] Human visual pass on the route plate after two chapters, and a full 22-node playthrough
+
 ## GPU board thermal hazard (2026-11-05, v0.1.199)
 
 - [x] `ArenaServerHeatDef` on GPU BOARD: 12 s cycle, 3 s warning, 4.2 s hot, one segment per 0.8 s
