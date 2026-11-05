@@ -2,16 +2,29 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Street fixtures in hosted rooms (2026-11-05, v0.1.207)
+
+- [x] `SnapshotHazards` carries the camera photo list, pipe flashes and lens flash; the traffic-light
+      clock; the crosswalk walk/stop layout and clock; and the car-radio tuner, station and dial state
+- [x] `NetView` mirrors those views for guests, advances camera files and the tuner to render time, and
+      feeds the active crosswalk layout into `LocalPredictor` cover
+- [x] `isOnlineArena` admits `TRAFFIC CAMERA` (49), `TRAFFIC LIGHT` (50), `CROSSWALK SIGN` (51) and
+      `CAR RADIO` (52); hosted damage and ejection remain host-only
+- [x] `.tmp/mp-fixtures-check.ts` covers BinaryPack snapshot encode/parse, guest camera/light/crosswalk/radio
+      views, and predictor layout selection; `.tmp/traffic-arena-check.ts` and `.tmp/car-radio-check.ts` updated
+- [ ] Human online-room pass: host and guest agree on a camera file, a full signal cycle, a crosswalk swap
+      and a tuner reversal, with no guest-side damage
+
 ## Car radio arena (2026-11-05, v0.1.206)
 
 - [x] `CAR RADIO` (52): two animated circular dials, a vertical tuner needle sweeping a horizontal track,
       one segment of damage and a shove per pass, reversing at each end
 - [x] Four authored stations on an 8.4 s clock, each changing the waveform family, color and readout behind
       the fight; a warning lead precedes every retune
-- [x] One preallocated `CarRadioRuntime`, no static pillars, excluded from hosted rooms and `Snapshot`; QA
-      `TEST RANGE` moves to `ARENAS[53]`
+- [x] One preallocated `CarRadioRuntime`, no static pillars; host-synced in v0.1.207 (originally local-only);
+      QA `TEST RANGE` moved to `ARENAS[53]`
 - [x] `.tmp/car-radio-check.ts` covers id/index, spawns, tuner movement/damage/reversal, dial animation,
-      station warning/advance and local-only checks
+      station warning/advance and host-state checks
 - [ ] Human visual pass: read the two dials, a full tuner pass and all four station waveforms at fight scale
 
 ## Traffic fixtures: camera, light, crosswalk (2026-11-05, v0.1.205)
@@ -22,10 +35,10 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
       beat before each stage, and damage only on the live stage's floor
 - [x] `CROSSWALK SIGN` (51): the hanging sign swaps the level between pixel `DON'T WALK` text cover and
       walking-figure cover, ejecting bodies from the incoming layout
-- [x] All three use one preallocated `TrafficRuntime`, stay out of hosted rooms and `Snapshot`, and do not
-      enter the 30-level campaign route; QA `TEST RANGE` moves to `ARENAS[53]`
+- [x] All three use one preallocated `TrafficRuntime`; host-synced in v0.1.207 (originally local-only), and
+      they do not enter the 30-level campaign route; QA `TEST RANGE` moved to `ARENAS[53]`
 - [x] `.tmp/traffic-arena-check.ts` covers spawn clearance, camera launch/route/pipe/damage, light
-      warning/live damage/stage advance and crosswalk swap/ejection
+      warning/live damage/stage advance and crosswalk swap/ejection; host-state checks updated in v0.1.207
 - [ ] Human visual pass: read the camera routes and flash, the three light circles through a full cycle,
       and both crosswalk layouts at full and low health
 

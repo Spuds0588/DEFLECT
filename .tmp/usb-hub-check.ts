@@ -109,7 +109,7 @@ if (p.fallT <= 0) throw new Error('walking into the gap did not start a fall');
 const hazards = buildSnapshotHazards(world);
 if (!Array.isArray(hazards)) throw new Error('USB hazards block missing');
 if (Math.abs(Number(hazards[6]) - world.usbT) > 0.011) throw new Error('snapshot USB clock mismatch');
-if (!Array.isArray(hazards[7])) throw new Error('snapshot props moved to the wrong index');
+if (!Array.isArray(hazards[9])) throw new Error('snapshot props moved to the wrong index');
 
 // Guest-side parse and view: the clock at hazards[6] must land on NetView.usbT.
 const parsed = parseSnapshot([

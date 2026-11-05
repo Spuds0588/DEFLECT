@@ -399,9 +399,10 @@ export interface TrafficPhoto {
 }
 
 /**
- * The traffic fixtures share one local-only runtime. The camera owns photos and pipe
+ * The traffic fixtures share one host-authored runtime. The camera owns photos and pipe
  * flashes, the light owns its moving zones and stage clock, and the crosswalk owns its
- * two-layout sign clock. None of it enters `Snapshot`.
+ * two-layout sign clock. `SnapshotHazards.traffic` carries the authoritative view; a
+ * guest renders it but never simulates it.
  */
 export interface TrafficRuntime {
   photos: TrafficPhoto[];
@@ -425,7 +426,7 @@ export interface TrafficRuntime {
   crosswalkFlashT: number;
 }
 
-/** Local-only CAR RADIO state: two dial needles, the tuner sweep and station clock. */
+/** CAR RADIO state: two dial needles, the tuner sweep and station clock. The host sends it in `SnapshotHazards.radio`; a guest renders only. */
 export interface CarRadioRuntime {
   dialAngle: Float32Array;
   /** 0..1 along the tuner path. */

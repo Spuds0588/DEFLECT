@@ -9,7 +9,7 @@
  *      stage on the authored clock;
  *   5. the crosswalk swaps its solid layout, ejects a body from the new cover, and leaves
  *      the shared ARENAS record untouched;
- *   6. none of it enters SnapshotHazards and a local match still runs the fixtures.
+ *   6. host state is carried in SnapshotHazards and a local match still runs the fixtures.
  *
  * Run with `npx tsx .tmp/traffic-arena-check.ts`.
  */
@@ -67,7 +67,7 @@ for (const [index, name] of specs) {
   }
   const world = makeWorld(index);
   if (!world.traffic) fail(`${name} has no traffic runtime`);
-  if (buildSnapshotHazards(world) !== null) fail(`${name} leaked into SnapshotHazards`);
+  if (buildSnapshotHazards(world) === null) fail(`${name} emitted no SnapshotHazards block`);
   if (makeWorld(index, 'match').traffic === null) fail(`${name} is absent from a local match`);
 }
 

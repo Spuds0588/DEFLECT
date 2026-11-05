@@ -194,9 +194,9 @@ export interface RenderState {
   carProgress?: number;
   /** Food-court and arcade hazards. Local-only. */
   arcade?: ArcadeRuntime | null;
-  /** TRAFFIC CAMERA / LIGHT / CROSSWALK fixtures. Local-only. */
+  /** TRAFFIC CAMERA / LIGHT / CROSSWALK fixtures. Host-synced in online rooms. */
   traffic?: TrafficRuntime | null;
-  /** CAR RADIO dials, tuner and station clock. Local-only. */
+  /** CAR RADIO dials, tuner and station clock. Host-synced in online rooms. */
   radio?: CarRadioRuntime | null;
   /** GPU-board thermal cycle clock. Local-only. */
   serverHeatT?: number;

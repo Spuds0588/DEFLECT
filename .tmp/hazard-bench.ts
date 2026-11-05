@@ -26,4 +26,4 @@ const baseMs = baseTotal/(N*4), fullMs = fullTotal/(N*4);
 let b0 = performance.now();
 for (let i=0;i<20000;i++) buildSnapshotHazards(world);
 const buildMs = (performance.now()-b0)/20000;
-console.log(`pack base ${baseMs.toFixed(4)} ms, full ${fullMs.toFixed(4)} ms, delta ${((fullMs-baseMs)*1000).toFixed(1)} us; build ${buildMs.toFixed(4)} ms; props ${hazard[6].length}`);
+console.log(`pack base ${baseMs.toFixed(4)} ms, full ${fullMs.toFixed(4)} ms, delta ${((fullMs-baseMs)*1000).toFixed(1)} us; build ${buildMs.toFixed(4)} ms; props ${hazard[9].length}`);

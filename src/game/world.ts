@@ -775,9 +775,9 @@ export class World {
   private requestRouteIndex = 0;
   /** Food-court and arcade hazards. Local-only; never part of a snapshot. */
   readonly arcade: ArcadeRuntime | null;
-  /** Traffic camera, traffic light and crosswalk fixtures. Local-only. */
+  /** Traffic camera, traffic light and crosswalk host runtime; SnapshotHazards carries it online. */
   readonly traffic: TrafficRuntime | null;
-  /** Car-radio dials, tuner needle and station clock. Local-only. */
+  /** Car-radio dials, tuner needle and station clock; SnapshotHazards carries it online. */
   readonly radio: CarRadioRuntime | null;
   private readonly trafficPoint = { x: 0, y: 0 };
   /** GPU-board thermal cycle clock. Local-only; never part of a snapshot. */
@@ -10965,7 +10965,7 @@ export class World {
   /**
    * Advance the traffic fixtures. Photos follow authored routes and de-rez into their
    * pipe; the light stage moves one circle at a time; the crosswalk swaps its cover.
-   * Every state field here is local-only and never enters a snapshot.
+   * The host publishes the authoritative view in SnapshotHazards.traffic.
    */
   private tickTraffic(dt: number): void {
     const traffic = this.traffic;

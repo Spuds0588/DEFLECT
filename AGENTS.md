@@ -3331,51 +3331,61 @@ ladder still runs the five roaming mini-bosses, while the campaign stages USER d
   campaign boss assignment. Extend it when a new USER attack is added; do not add a second boss harness.
 
 
-### D74 — The street-fixture row is one local traffic runtime (decided 2026-11-05)
+### D74 — The street-fixture row is one host-synced traffic runtime (revised 2026-11-05)
 
-`TRAFFIC CAMERA` (49), `TRAFFIC LIGHT` (50) and `CROSSWALK SIGN` (51) are authored local arenas inserted
+`TRAFFIC CAMERA` (49), `TRAFFIC LIGHT` (50) and `CROSSWALK SIGN` (51) are authored arenas inserted
 immediately before QA `TEST RANGE` (now 53). One `TrafficRuntime` on `World`, built once and preallocated,
-owns photos, pipe flashes, the signal clock and both crosswalk layouts; none of it enters `Snapshot`.
-`isOnlineArena` skips `a.camera`, `a.light` and `a.crosswalk`, so hosted rooms never see the fixtures. A
-local bot match still runs them. `spawns` use `arcadeSpawns`, and both crosswalk layouts must stay clear of
-them. These are standalone arenas, not campaign nodes.
+owns photos, pipe flashes, the signal clock and both crosswalk layouts. The runtime is local simulation
+state, but the host publishes the authoritative view in `SnapshotHazards.traffic`; a guest mirrors it and
+never simulates a fixture or resolves its damage. `isOnlineArena` includes `a.camera`, `a.light` and
+`a.crosswalk`, so hosted rooms and local bot matches both run them. `spawns` use `arcadeSpawns`, and both
+crosswalk layouts must stay clear of them. These are standalone arenas, not campaign nodes.
 
 - **Camera.** The lens warns for `warn`, then launches an image file along the next authored route in
   round-robin order. A photo travels at `speed`, damages once per body for `damage` with `knockback`, and
   de-rezzes into its route's feed mouth (a brief `pipeFlash`). Photos are preallocated; do not allocate
-  cards per tick. `cameraFlashT` is presentation; the photo list is the simulation.
+  cards per tick. The host snapshot carries live path/segment/x/y/angle, pipe flashes and the lens flash;
+  a guest advances each file along the same route to its interpolated render time. `cameraFlashT` and
+  `photoT` are presentation; the photo list is the simulation.
 - **Traffic light.** Three zones ping-pong along authored paths with `trafficZoneAt`. Stages run
   GREEN -> AMBER -> RED on their authored durations. Each stage first spends `warn` seconds as a dashed
   warning and then becomes the live floor, ticking `damage` every `tick` while the clock is in that stage.
   Only the live stage's zone burns; the other two are standby ghosts. The warning itself never damages.
+  The host sends `lightClock`; the guest derives the stage and zone positions, and the host resolves the burn.
 - **Crosswalk.** The sign alternates a stop layout (pixel `DON'T WALK` text) and a walk layout (the walking
   figure) on `period`/`walkTime`. Both layouts are authored `Rect[]`; the active one is rebuilt into
   `baseSolids` and `baseDashSolids`, and `pushPlayersOutOfArcade` ejects a body the new cover lands on. The
-  World clones `pillars`; never write a crosswalk layout into the shared `ARENAS` record or use
-  `arenaSolids` for it.
+  host sends `crosswalkWalk` and the sign clock; `LocalPredictor.setCrosswalk` selects the matching layout
+  for guest prediction. The host still owns the ejection and damage. The World clones `pillars`; never
+  write a crosswalk layout into the shared `ARENAS` record or use `arenaSolids` for it.
 - **Probe.** `.tmp/traffic-arena-check.ts` owns ids/spawn clearance, camera launch/route/pipe/damage,
-  light warning/live damage/stage advance, crosswalk swap/ejection and the local-only checks.
+  light warning/live damage/stage advance, crosswalk swap/ejection and the host-state checks.
+  `.tmp/mp-fixtures-check.ts` owns the host-to-guest snapshot, camera/light/crosswalk mirror and the
+  predictor's walk-layout selection.
 
 
-### D75 — CAR RADIO is a local dial-and-needle arena (decided 2026-11-05)
+### D75 — CAR RADIO is a host-synced dial-and-needle arena (revised 2026-11-05)
 
-`CAR RADIO` (52) is a local arena inserted before QA `TEST RANGE` (now 53). One preallocated
-`CarRadioRuntime` on `World` owns the two dial needles, the tuner sweep and the station clock; none of it
-enters `Snapshot` or `SnapshotHazards`. `isOnlineArena` skips `a.radio`, so hosted rooms never see it; a
-local bot match still runs it. It uses the full 48,48 -> 1942,1046 floor, `arcadeSpawns`, and no static
-pillars. It is standalone content, not a campaign node.
+`CAR RADIO` (52) is an arena inserted before QA `TEST RANGE` (now 53). One preallocated
+`CarRadioRuntime` on `World` owns the two dial needles, the tuner sweep and the station clock. The host
+publishes the authoritative view in `SnapshotHazards.radio`; a guest renders it without owning the tuner
+hit. `isOnlineArena` includes `a.radio`, so hosted rooms and local bot matches both run it. It uses the full
+48,48 -> 1942,1046 floor, `arcadeSpawns`, and no static pillars. It is standalone content, not a campaign node.
 
 - **Tuner.** The tuner is a vertical needle that sweeps a horizontal track at `slider.speed` and reverses at
   each end. It is the only damage source: one body hit per pass, `slider.damage`, shoved along the sweep
-  with `slider.knockback`. The hit mask clears on reversal so the return pass can hit again. Do not turn the
-  two dial housings into collision cover; they are faceplate presentation.
+  with `slider.knockback`. The hit mask clears on reversal so the return pass can hit again. The snapshot
+  carries the authoritative position and direction; a guest extrapolates to render time, and the host
+  resolves the hit. Do not turn the two dial housings into collision cover; they are faceplate presentation.
 - **Dials.** The two circular dials are presentation. Their needle angles advance at `dials[i].rate` from
-  `dials[i].phase` and reset with the round.
+  `dials[i].phase` and reset with the round. The host mirrors their angles; the guest only renders them.
 - **Station clock.** `stations` are the four authored wave families (sine, square, saw, pulse). The radio
   holds `stationTime` seconds per station, shows a `warn` lead, then advances and flashes the readout. The
-  waveform phase and station index drive render-only animation; they never alter collision or snapshot data.
+  station index, clock, warning, waveform phase and dial angles travel in `SnapshotHazards.radio`; they
+  never alter collision or host authority.
 - **Probe.** `.tmp/car-radio-check.ts` owns the id/index, spawn bounds, tuner movement/damage/reversal,
-  dial animation, station warning/advance and the local-only checks.
+  dial animation, station warning/advance and the host-state checks. `.tmp/mp-fixtures-check.ts` owns the
+  host-to-guest tuner/station mirror.
 
 
 ## TEST RANGE sandbox

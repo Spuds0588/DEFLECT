@@ -68,7 +68,7 @@ for (const id of [7, 11, 12, 13]) {
     }
     const bytes = pack(hazard).byteLength;
     if (bytes > maxHazardBytes) maxHazardBytes = bytes;
-    const props = hazard[6] as number[][];
+    const props = hazard[9] as number[][];
     if (props.length > maxProps) maxProps = props.length;
 
     if (arena.pushers) {
@@ -226,7 +226,7 @@ const fullBytes = pack(fullPacket).byteLength;
 const wired = unpack(pack(fullPacket)) as unknown[];
 const wiredSnap = parseSnapshot(wired);
 if (!wiredSnap?.hazards) fail('BinaryPack round-trip lost the hazard block');
-else if (wiredSnap.hazards.props.length !== (hazardBlock as unknown[])[6]!.length) fail('BinaryPack round-trip lost props');
+else if (wiredSnap.hazards.props.length !== (hazardBlock as unknown[])[9]!.length) fail('BinaryPack round-trip lost props');
 console.log(`packet delta at 48 projectiles: +${fullBytes - baseBytes} B (${pack(hazardBlock).byteLength} B hazard block)`);
 
 console.log(failures === 0 ? 'PASS' : `FAILURES ${failures}`);

@@ -14,6 +14,7 @@ import {
   satelliteTelescopeRectAt,
   scannerPhaseAt,
   swipePopupActiveAt,
+  trafficZoneAt,
   type ArenaDef,
   type PusherPhase,
 } from '../game/arenas';
@@ -34,6 +35,9 @@ import {
   type Projectile,
   type Prop,
   type SatelliteMeteor,
+  type CarRadioRuntime,
+  type TrafficPhoto,
+  type TrafficRuntime,
   type Virus,
 } from '../game/types';
 
@@ -637,8 +641,34 @@ export interface Snapshot {
  * Arena hazard state carried at 30 Hz. Clocks are authoritative; every peer derives
  * plate position, key states, scan phase, page cursor and click from them. Hazards
  * never send damage or hit masks: the host resolves those and the player HP in the
- * same snapshot is the result.
+ * same snapshot is the result. The street/radio fixtures use the additive nested
+ * block at slot 10.
  */
+/** TRAFFIC CAMERA / LIGHT / CROSSWALK state. Host-authored; guests render only. */
+export interface SnapshotTrafficHazards {
+  cameraFlashT: number;
+  photoT: number;
+  photoPath: number;
+  /** [path, seg, x, y, angle] for each live image file. */
+  photos: number[][];
+  pipeFlash: number[];
+  lightClock: number;
+  crosswalkWalk: boolean;
+  crosswalkT: number;
+  crosswalkFlashT: number;
+}
+
+/** CAR RADIO state. The host owns the tuner and station clock; guests render only. */
+export interface SnapshotRadioHazards {
+  sliderT: number;
+  sliderDir: number;
+  station: number;
+  stationT: number;
+  stationFlashT: number;
+  wavePhase: number;
+  dialAngle: number[];
+}
+
 export interface SnapshotHazards {
   /** Compactor cycle clock, seconds. */
   pusherT: number;
@@ -672,11 +702,16 @@ export interface SnapshotHazards {
   satelliteHeatY: number;
   /** [index, x, y, t, hit] for each live meteor; empty outside a shower. */
   satelliteMeteors: number[][];
+  /** TRAFFIC CAMERA / LIGHT / CROSSWALK state, null outside those arenas. */
+  traffic: SnapshotTrafficHazards | null;
+  /** CAR RADIO state, null outside that arena. */
+  radio: SnapshotRadioHazards | null;
 }
 
 /**
- * Compact hazard block for the snapshot: nine clocks/indices, live props, then the
- * satellite state. Empty fixtures are omitted entirely, so a quiet arena pays one null.
+ * Compact hazard block for the snapshot: nine clocks/indices, live props, then either
+ * satellite state or the street/radio fixture block. Empty fixtures are omitted entirely,
+ * so a quiet arena pays one null.
  */
 export function buildSnapshotHazards(world: World): unknown[] | null {
   const arena = world.arena;
@@ -687,7 +722,9 @@ export function buildSnapshotHazards(world: World): unknown[] | null {
     hasSnapshotProp = true;
     break;
   }
-  if (!arena.pushers && !arena.keypad && !arena.scanner && !arena.browser && !arena.usb && !arena.swipe && !arena.satellite && !hasSnapshotProp) return null;
+  const hasTraffic = !!arena.camera || !!arena.light || !!arena.crosswalk;
+  const hasRadio = !!arena.radio;
+  if (!arena.pushers && !arena.keypad && !arena.scanner && !arena.browser && !arena.usb && !arena.swipe && !arena.satellite && !hasTraffic && !hasRadio && !hasSnapshotProp) return null;
   const props: number[][] = [];
   for (let i = 0; i < world.props.length; i++) {
     const b = world.props[i];
@@ -733,8 +770,53 @@ export function buildSnapshotHazards(world: World): unknown[] | null {
       round1(world.satelliteHeatY),
       meteors,
     );
+  } else if (hasTraffic || hasRadio) {
+    const traffic = world.traffic;
+    const radio = world.radio;
+    block.push({
+      traffic: traffic
+        ? [
+            round2(traffic.cameraFlashT),
+            round2(traffic.photoT),
+            traffic.photoPath,
+            buildTrafficPhotos(traffic),
+            buildPipeFlashes(traffic),
+            round2(traffic.lightClock),
+            traffic.crosswalkWalk ? 1 : 0,
+            round2(traffic.crosswalkT),
+            round2(traffic.crosswalkFlashT),
+          ]
+        : null,
+      radio: radio
+        ? [
+            round3(radio.sliderT),
+            radio.sliderDir,
+            radio.station,
+            round2(radio.stationT),
+            round2(radio.stationFlashT),
+            round2(radio.wavePhase),
+            Array.from(radio.dialAngle, round3),
+          ]
+        : null,
+    });
   }
   return block;
+}
+
+function buildTrafficPhotos(traffic: TrafficRuntime): number[][] {
+  const photos: number[][] = [];
+  for (let i = 0; i < traffic.photos.length; i++) {
+    const photo = traffic.photos[i];
+    if (!photo.active) continue;
+    photos.push([photo.path, photo.seg, round1(photo.x), round1(photo.y), round2(photo.angle)]);
+  }
+  return photos;
+}
+
+function buildPipeFlashes(traffic: TrafficRuntime): number[] {
+  const flashes: number[] = [];
+  for (let i = 0; i < traffic.pipeFlash.length; i++) flashes.push(round2(traffic.pipeFlash[i]));
+  return flashes;
 }
 
 export class GuestNet {
@@ -1024,6 +1106,13 @@ function parseHazards(raw: unknown): SnapshotHazards | null {
   if (Array.isArray(raw[15])) {
     for (const m of raw[15] as unknown[]) if (Array.isArray(m)) satelliteMeteors.push(m as number[]);
   }
+  // The street/radio fixtures use one additive object at slot 10 instead of the
+  // satellite scalar shape. A number there is the old satellite clock; an object is
+  // the newer fixture block, so both generations parse without a version field.
+  const extras =
+    raw[10] && typeof raw[10] === 'object' && !Array.isArray(raw[10])
+      ? (raw[10] as { traffic?: unknown; radio?: unknown })
+      : null;
   return {
     pusherT: Number(raw[0]) || 0,
     keypadT: Number(raw[1]) || 0,
@@ -1035,13 +1124,270 @@ function parseHazards(raw: unknown): SnapshotHazards | null {
     swipeT: hasSwipe ? Number(raw[7]) || 0 : 0,
     swipePopupT: hasSwipe ? Number(raw[8]) || 0 : 0,
     props,
-    satelliteT: Number(raw[10]) || 0,
-    satelliteState: Number(raw[11]) | 0,
-    satelliteThrusterT: Number(raw[12]) || 0,
-    satelliteReentryT: Number(raw[13]) || 0,
-    satelliteHeatY: Number(raw[14]) || 0,
+    satelliteT: extras ? 0 : Number(raw[10]) || 0,
+    satelliteState: extras ? 0 : Number(raw[11]) | 0,
+    satelliteThrusterT: extras ? 0 : Number(raw[12]) || 0,
+    satelliteReentryT: extras ? 0 : Number(raw[13]) || 0,
+    satelliteHeatY: extras ? 0 : Number(raw[14]) || 0,
     satelliteMeteors,
+    traffic: extras ? parseTrafficHazards(extras.traffic) : null,
+    radio: extras ? parseRadioHazards(extras.radio) : null,
   };
+}
+
+function parseTrafficHazards(raw: unknown): SnapshotTrafficHazards | null {
+  if (!Array.isArray(raw)) return null;
+  const photos: number[][] = [];
+  if (Array.isArray(raw[3])) {
+    for (const p of raw[3] as unknown[]) if (Array.isArray(p)) photos.push(p as number[]);
+  }
+  const pipeFlash: number[] = [];
+  if (Array.isArray(raw[4])) {
+    for (const f of raw[4] as unknown[]) pipeFlash.push(Number(f) || 0);
+  }
+  return {
+    cameraFlashT: Number(raw[0]) || 0,
+    photoT: Number(raw[1]) || 0,
+    photoPath: Number(raw[2]) | 0,
+    photos,
+    pipeFlash,
+    lightClock: Number(raw[5]) || 0,
+    crosswalkWalk: Number(raw[6]) === 1,
+    crosswalkT: Number(raw[7]) || 0,
+    crosswalkFlashT: Number(raw[8]) || 0,
+  };
+}
+
+function parseRadioHazards(raw: unknown): SnapshotRadioHazards | null {
+  if (!Array.isArray(raw)) return null;
+  const dialAngle: number[] = [];
+  if (Array.isArray(raw[6])) {
+    for (const a of raw[6] as unknown[]) dialAngle.push(Number(a) || 0);
+  }
+  return {
+    sliderT: Number(raw[0]) || 0,
+    sliderDir: Number(raw[1]) < 0 ? -1 : 1,
+    station: Number(raw[2]) | 0,
+    stationT: Number(raw[3]) || 0,
+    stationFlashT: Number(raw[4]) || 0,
+    wavePhase: Number(raw[5]) || 0,
+    dialAngle,
+  };
+}
+
+function makeTrafficView(arena: ArenaDef): TrafficRuntime | null {
+  if (!arena.camera && !arena.light && !arena.crosswalk) return null;
+  const photos: TrafficPhoto[] = [];
+  for (let i = 0; i < 8; i++) {
+    photos.push({ active: false, path: 0, seg: 0, x: 0, y: 0, angle: 0, hitPlayers: 0 });
+  }
+  return {
+    photos,
+    photoT: arena.camera?.interval ?? 0,
+    photoPath: 0,
+    cameraFlashT: 0,
+    cameraPending: false,
+    pipeFlash: new Float32Array(arena.camera?.pipes.length ?? 0),
+    lightClock: 0,
+    lightStage: 0,
+    lightStageT: 0,
+    lightWarnT: arena.light?.warn ?? 0,
+    lightActive: false,
+    lightTickT: 0,
+    zoneX: new Float32Array(arena.light?.zones.length ?? 0),
+    zoneY: new Float32Array(arena.light?.zones.length ?? 0),
+    crosswalkWalk: false,
+    crosswalkT: 0,
+    crosswalkWarnT: 0,
+    crosswalkFlashT: 0,
+  };
+}
+
+function makeRadioView(arena: ArenaDef): CarRadioRuntime | null {
+  const def = arena.radio;
+  if (!def) return null;
+  const dialAngle = new Float32Array(def.dials.length);
+  for (let i = 0; i < def.dials.length; i++) dialAngle[i] = def.dials[i].phase;
+  const start = def.slider.path[0] ?? { x: 0, y: 0 };
+  return {
+    dialAngle,
+    sliderT: 0,
+    sliderDir: 1,
+    sliderX: start.x,
+    sliderY: start.y,
+    sliderHitPlayers: 0,
+    station: 0,
+    stationT: 0,
+    stationWarnT: 0,
+    stationFlashT: 0,
+    wavePhase: 0,
+  };
+}
+
+function resetTrafficView(view: TrafficRuntime, arena: ArenaDef): void {
+  for (let i = 0; i < view.photos.length; i++) view.photos[i].active = false;
+  view.photoT = arena.camera?.interval ?? 0;
+  view.photoPath = 0;
+  view.cameraFlashT = 0;
+  view.cameraPending = false;
+  view.pipeFlash.fill(0);
+  view.lightClock = 0;
+  view.lightStage = 0;
+  view.lightStageT = 0;
+  view.lightWarnT = arena.light?.warn ?? 0;
+  view.lightActive = false;
+  view.lightTickT = 0;
+  view.crosswalkWalk = false;
+  view.crosswalkT = 0;
+  view.crosswalkWarnT = 0;
+  view.crosswalkFlashT = 0;
+}
+
+function resetRadioView(view: CarRadioRuntime, arena: ArenaDef): void {
+  const def = arena.radio;
+  if (!def) return;
+  for (let i = 0; i < def.dials.length; i++) view.dialAngle[i] = def.dials[i].phase;
+  view.sliderT = 0;
+  view.sliderDir = 1;
+  const start = def.slider.path[0] ?? { x: 0, y: 0 };
+  view.sliderX = start.x;
+  view.sliderY = start.y;
+  view.sliderHitPlayers = 0;
+  view.station = 0;
+  view.stationT = 0;
+  view.stationWarnT = 0;
+  view.stationFlashT = 0;
+  view.wavePhase = 0;
+}
+
+function syncTrafficView(
+  view: TrafficRuntime,
+  arena: ArenaDef,
+  raw: SnapshotTrafficHazards,
+  age: number,
+  point: { x: number; y: number },
+): void {
+  view.cameraFlashT = Math.max(0, raw.cameraFlashT - age);
+  view.photoT = raw.photoT;
+  view.photoPath = raw.photoPath;
+  view.cameraPending = false;
+  for (let i = 0; i < view.photos.length; i++) view.photos[i].active = false;
+  const camera = arena.camera;
+  for (let i = 0; i < raw.photos.length && i < view.photos.length; i++) {
+    const p = raw.photos[i];
+    const photo = view.photos[i];
+    photo.active = true;
+    photo.path = p[0] ?? 0;
+    photo.seg = p[1] ?? 0;
+    photo.x = p[2] ?? 0;
+    photo.y = p[3] ?? 0;
+    photo.angle = p[4] ?? 0;
+    photo.hitPlayers = 0;
+    // The snapshot is a sample, not a render frame. Advance the file along its route
+    // to the interpolated render time so a 60 Hz guest does not see a 30 Hz slideshow.
+    const path = camera?.paths[photo.path];
+    if (camera && path && path.length > 1) {
+      let remaining = camera.speed * age;
+      while (remaining > 0 && photo.seg < path.length - 1) {
+        const target = path[photo.seg + 1];
+        const dx = target.x - photo.x;
+        const dy = target.y - photo.y;
+        const len = Math.hypot(dx, dy);
+        if (len <= remaining || len <= 0.001) {
+          photo.x = target.x;
+          photo.y = target.y;
+          photo.seg++;
+          remaining -= len;
+        } else {
+          photo.x += (dx / len) * remaining;
+          photo.y += (dy / len) * remaining;
+          photo.angle = Math.atan2(dy, dx);
+          remaining = 0;
+        }
+      }
+      if (photo.seg >= path.length - 1) photo.active = false;
+    }
+  }
+  for (let i = 0; i < view.pipeFlash.length; i++) view.pipeFlash[i] = Math.max(0, (raw.pipeFlash[i] ?? 0) - age);
+
+  view.lightClock = raw.lightClock + age;
+  const light = arena.light;
+  if (light && light.stages.length > 0) {
+    let total = 0;
+    for (let i = 0; i < light.stages.length; i++) total += Math.max(0.05, light.stages[i].duration);
+    let clock = ((view.lightClock % total) + total) % total;
+    let stage = 0;
+    while (stage < light.stages.length - 1 && clock >= light.stages[stage].duration) {
+      clock -= light.stages[stage].duration;
+      stage++;
+    }
+    view.lightStage = stage;
+    view.lightStageT = clock;
+    view.lightWarnT = Math.max(0, light.warn - clock);
+    view.lightActive = clock >= light.warn;
+    view.lightTickT = 0;
+    for (let i = 0; i < light.zones.length && i < view.zoneX.length; i++) {
+      const zone = light.zones[i];
+      trafficZoneAt(zone.path, light.speed, zone.offset, view.lightClock, point);
+      view.zoneX[i] = point.x;
+      view.zoneY[i] = point.y;
+    }
+  }
+
+  view.crosswalkWalk = raw.crosswalkWalk;
+  view.crosswalkT = raw.crosswalkT + age;
+  view.crosswalkFlashT = Math.max(0, raw.crosswalkFlashT - age);
+  const crosswalk = arena.crosswalk;
+  if (crosswalk) {
+    const period = Math.max(0.5, crosswalk.period);
+    const walkTime = Math.max(0, Math.min(period, crosswalk.walkTime));
+    const stopTime = Math.max(0.05, period - walkTime);
+    const phase = ((view.crosswalkT % period) + period) % period;
+    const remaining = view.crosswalkWalk ? period - phase : stopTime - phase;
+    view.crosswalkWarnT = remaining >= 0 && remaining <= crosswalk.warn ? remaining : 0;
+  } else {
+    view.crosswalkWarnT = 0;
+  }
+}
+
+function syncRadioView(view: CarRadioRuntime, arena: ArenaDef, raw: SnapshotRadioHazards, age: number): void {
+  const def = arena.radio;
+  if (!def) return;
+  const a = def.slider.path[0];
+  const b = def.slider.path[def.slider.path.length - 1];
+  let sliderT = raw.sliderT;
+  let sliderDir = raw.sliderDir;
+  if (a && b) {
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len > 0.001) {
+      sliderT += (def.slider.speed * age * sliderDir) / len;
+      for (let guard = 0; guard < 4 && (sliderT < 0 || sliderT > 1); guard++) {
+        if (sliderT > 1) {
+          sliderT = 2 - sliderT;
+          sliderDir = -1;
+        } else {
+          sliderT = -sliderT;
+          sliderDir = 1;
+        }
+      }
+      sliderT = Math.max(0, Math.min(1, sliderT));
+    }
+    view.sliderX = a.x + (b.x - a.x) * sliderT;
+    view.sliderY = a.y + (b.y - a.y) * sliderT;
+  }
+  view.sliderT = sliderT;
+  view.sliderDir = sliderDir;
+  view.sliderHitPlayers = 0;
+  view.station = raw.station % Math.max(1, def.stations.length);
+  const stationT = Math.min(def.stationTime, raw.stationT + age);
+  view.stationT = stationT;
+  const stationLeft = Math.max(0, def.stationTime - stationT);
+  view.stationWarnT = stationLeft <= def.warn ? stationLeft : 0;
+  view.stationFlashT = Math.max(0, raw.stationFlashT - age);
+  view.wavePhase = raw.wavePhase + age * (1.4 + view.station * 0.35);
+  for (let i = 0; i < view.dialAngle.length && i < raw.dialAngle.length; i++) {
+    view.dialAngle[i] = raw.dialAngle[i] + (def.dials[i]?.rate ?? 0) * age;
+  }
 }
 
 // --- Guest view ---------------------------------------------------------------------------
@@ -1099,6 +1445,10 @@ export class NetView {
   satelliteReentryT = 0;
   satelliteHeatY = 0;
   readonly satelliteMeteors: SatelliteMeteor[];
+  /** Host-authored street/radio fixture views. Null outside their arenas. */
+  readonly traffic: TrafficRuntime | null;
+  readonly radio: CarRadioRuntime | null;
+  private readonly trafficPoint = { x: 0, y: 0 };
   browserClickT = 0;
   private readonly pusherPhase: PusherPhase = { warnT: 0, y: 0, active: false, flashT: 0 };
   private readonly browserCursorPoint = { x: 0, y: 0 };
@@ -1126,6 +1476,8 @@ export class NetView {
     for (let i = 0; i < this.satelliteMeteors.length; i++) {
       this.satelliteMeteors[i] = { active: false, x: 0, y: 0, t: 0, hit: false };
     }
+    this.traffic = makeTrafficView(arena);
+    this.radio = makeRadioView(arena);
     const propCount = (arena.props?.length ?? 0) + (arena.pushers ? FILE_PROP.spare : 0);
     this.props = new Array(propCount);
     for (let i = 0; i < propCount; i++) {
@@ -1220,6 +1572,9 @@ export class NetView {
     this.satelliteThrusterT = 0;
     this.satelliteReentryT = 0;
     this.satelliteHeatY = 0;
+    if (this.traffic) resetTrafficView(this.traffic, this.arena);
+    if (this.radio) resetRadioView(this.radio, this.arena);
+    this.predictor.setCrosswalk(false);
     for (let i = 0; i < this.satelliteMeteors.length; i++) this.satelliteMeteors[i].active = false;
     for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
     this.snapCount = 0;
@@ -1470,6 +1825,9 @@ export class NetView {
       this.satelliteHeatY = 0;
       for (let i = 0; i < this.satelliteMeteors.length; i++) this.satelliteMeteors[i].active = false;
       for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
+      if (this.traffic) resetTrafficView(this.traffic, this.arena);
+      if (this.radio) resetRadioView(this.radio, this.arena);
+      this.predictor.setCrosswalk(false);
       this.predictor.setHazards(0, 0, 0, 0, 0);
       return;
     }
@@ -1547,6 +1905,16 @@ export class NetView {
       m.hit = raw[4] === 1 || (!!sat && m.t >= sat.meteors.warn);
       if (sat && m.t >= sat.meteors.warn + sat.meteors.impact) m.active = false;
     }
+
+    if (this.traffic) {
+      if (h.traffic) syncTrafficView(this.traffic, this.arena, h.traffic, age, this.trafficPoint);
+      else resetTrafficView(this.traffic, this.arena);
+    }
+    if (this.radio) {
+      if (h.radio) syncRadioView(this.radio, this.arena, h.radio, age);
+      else resetRadioView(this.radio, this.arena);
+    }
+    this.predictor.setCrosswalk(this.traffic?.crosswalkWalk ?? false);
 
     for (let i = 0; i < this.props.length; i++) this.props[i].active = false;
     for (let i = 0; i < h.props.length; i++) {
@@ -1634,6 +2002,8 @@ export class LocalPredictor {
   private readonly pusherPhase: PusherPhase = { warnT: 0, y: 0, active: false, flashT: 0 };
   private pusherFront = 0;
   private pusherActive = false;
+  /** Crosswalk cover is dynamic; the latest host layout selects which authored rects collide. */
+  crosswalkWalk = false;
 
   constructor(
     slot: number,
@@ -1652,9 +2022,22 @@ export class LocalPredictor {
   setHazards(pusherT: number, keypadT: number, browserPage: number, swipePopupT = 0, satelliteT = 0): void {
     this.solids.length = 0;
     this.dashSolids.length = 0;
-    const statics = arenaSolids(this.arena);
-    for (let i = 0; i < statics.length; i++) this.solids.push(statics[i]);
-    for (let i = 0; i < this.arena.pillars.length; i++) this.dashSolids.push(this.arena.pillars[i]);
+    const crosswalk = this.arena.crosswalk;
+    // A crosswalk arena's pillars are the host's active layout, not static cover. Skip
+    // `arenaSolids` there so a guest never inherits the opposite layout from a shared
+    // arena cache; the selected authored layout below is the whole body geometry.
+    const statics = crosswalk ? null : arenaSolids(this.arena);
+    if (statics) {
+      for (let i = 0; i < statics.length; i++) this.solids.push(statics[i]);
+      for (let i = 0; i < this.arena.pillars.length; i++) this.dashSolids.push(this.arena.pillars[i]);
+    }
+    if (crosswalk) {
+      const layout = this.crosswalkWalk ? crosswalk.walk : crosswalk.stop;
+      for (let i = 0; i < layout.length; i++) {
+        this.solids.push(layout[i]);
+        this.dashSolids.push(layout[i]);
+      }
+    }
     let d = 0;
 
     const kp = this.arena.keypad;
@@ -1720,6 +2103,11 @@ export class LocalPredictor {
       this.pusherActive = false;
       this.pusherFront = 0;
     }
+  }
+
+  /** Select the crosswalk layout the guest predicts against. */
+  setCrosswalk(walk: boolean): void {
+    this.crosswalkWalk = walk;
   }
 
   /** Match `World.carryWithArm` for the local prediction body. */

@@ -276,7 +276,9 @@ When hosting a versus room, the lobby's `SERIES` control chooses `1`, `3` or `5`
 `RANDOM` or `FIXED`. The host owns both rules. A series keeps the room together between games: the host
 starts the next map from the result panel, and guests receive the new arena and game number automatically.
 `RANDOM` rotates through the online-safe arenas without repeating the previous map; `FIXED` uses the
-arena selected in the lobby. Infection ignores the series and remains one shared run.
+arena selected in the lobby. Infection ignores the series and remains one shared run. The street fixtures
+(`TRAFFIC CAMERA`, `TRAFFIC LIGHT`, `CROSSWALK SIGN`, `CAR RADIO`) are part of the online-safe pool: their
+host clocks and layouts travel in the snapshot.
 
 ## Multiplayer menu
 
@@ -434,9 +436,10 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `FIGHTING GAME` | Two vector cabinets alternate a punch, a kick and a fireball. Each strike has a telegraphed lane, the melee takes one segment, and the fireball can be caught by a guard or lash and sent back. The figures are drawn from paths and lines, not assets. Local-only. |
 | `DUCK HUNTER` | Birds cross a sky band. A random bird is marked with an AOE warning, the shot damages bodies inside the ring, and the bird then falls as a projectile until it leaves the tray line. Local-only. |
 | `TETRIS` | A 10×12 well drops one tetromino every 0.55 s. Landed blocks become real cover for bodies and shots; a full row clears and the stack shifts down. The next piece and the landing ghost are presentation. Local-only: the grid and falling cover are not in the snapshot. |
-| `TRAFFIC CAMERA` | A lens on the west wall flashes on a 3.4 s cycle and launches an image file down one of three dotted routes. A file takes one segment on contact and de-rezzes into the feed mouth at the end of its route; the routes are readable before the file arrives. No static cover. Local-only: the lens clock, files and pipe flashes are not in the snapshot. |
-| `TRAFFIC LIGHT` | Three large floor circles travel on fixed ping-pong paths, one green, one amber and one red. The signal head runs green -> amber -> red; each stage first dashes the circle as a warning, then makes that floor live, taking one segment every 0.5 s. Only the live color burns; the other circles are standby. Local-only. |
-| `CROSSWALK SIGN` | A hanging sign alternates between `DON'T WALK` and the walking figure. The active symbol is the level's cover: the stop layout is a field of pixel text blocks, the walk layout is the figure's blocks, and the sign warns before swapping. A body standing where the new block lands is pushed clear. Local-only: the sign clock and both layouts are not in the snapshot. || `CAR RADIO` | A car dashboard faceplate with two animated circular dials, a station readout and a vertical tuner needle that sweeps a horizontal track. The needle is the hazard: one segment per pass, then it shoves the body along the sweep and reverses at the end. Four stations run on an 8.4 s clock, each with its own waveform shape and color behind the fight. The dial housings are presentation. Local-only: the dial angles, tuner and station clock are not in the snapshot. |
+| `TRAFFIC CAMERA` | A lens on the west wall flashes on a 3.4 s cycle and launches an image file down one of three dotted routes. A file takes one segment on contact and de-rezzes into the feed mouth at the end of its route; the routes are readable before the file arrives. No static cover. Online: the lens clock, live files and pipe flashes are mirrored in the snapshot; the host resolves contact. |
+| `TRAFFIC LIGHT` | Three large floor circles travel on fixed ping-pong paths, one green, one amber and one red. The signal head runs green -> amber -> red; each stage first dashes the circle as a warning, then makes that floor live, taking one segment every 0.5 s. Only the live color burns; the other circles are standby. Online: the signal clock and live circle are mirrored; the host resolves the burn. |
+| `CROSSWALK SIGN` | A hanging sign alternates between `DON'T WALK` and the walking figure. The active symbol is the level's cover: the stop layout is a field of pixel text blocks, the walk layout is the figure's blocks, and the sign warns before swapping. A body standing where the new block lands is pushed clear. Online: the sign clock and active layout are mirrored; the host resolves the push. |
+| `CAR RADIO` | A car dashboard faceplate with two animated circular dials, a station readout and a vertical tuner needle that sweeps a horizontal track. The needle is the hazard: one segment per pass, then it shoves the body along the sweep and reverses at the end. Four stations run on an 8.4 s clock, each with its own waveform shape and color behind the fight. The dial housings are presentation. Online: the tuner, station clock and dial needles are mirrored; the host resolves the needle hit. |
 
 ### Ordinary programs
 

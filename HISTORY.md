@@ -8405,3 +8405,34 @@ forth, and a waveform that changes as the station periodically retunes.
 - `git diff --check` clean.
 
 **Next:** human visual pass on the dials, a full tuner pass and all four station waveforms at fight scale.
+
+## 2026-11-05 — Street fixtures in hosted rooms (v0.1.207)
+
+**Goal:** add the missing multiplayer state for `TRAFFIC CAMERA`, `TRAFFIC LIGHT`, `CROSSWALK SIGN` and
+`CAR RADIO` so hosted rooms stop skipping them.
+
+**Changes.**
+- Added one additive `SnapshotHazards` fixture block at slot 10 (an object; the satellite's slot 10 stays a
+  scalar), carrying camera flash/photo list/pipe flashes, the traffic-light clock, the crosswalk walk flag
+  and clock, and the car-radio tuner, station, waveform and dial angles. Old satellite and prop parsing is
+  unchanged.
+- `NetView` now owns guest-side traffic/radio views. It advances camera files along their authored routes
+  and the radio tuner to the interpolated render time, derives the light stage/zones and crosswalk warning
+  from host clocks, and resets all of it on prediction reset.
+- `LocalPredictor.setCrosswalk` selects the host's stop/walk layout for guest body collision, so a guest
+  and the host agree about crosswalk cover. The host still owns hazard damage and crosswalk ejection.
+- `isOnlineArena` now admits the four arenas; hosted rooms and local bot matches both run them.
+- Added `.tmp/mp-fixtures-check.ts`; updated the two local arena probes for the new snapshot block.
+- Updated AGENTS D74/D75, README, GAME_GUIDE, TODO and all version stamps.
+
+**Verification.**
+- `npx tsc --noEmit` 0.
+- `.tmp/mp-fixtures-check.ts` 0: camera photo, light zone/stage, crosswalk walk layout and predictor, radio
+  tuner state all survive build -> BinaryPack -> parse -> `NetView`.
+- `.tmp/traffic-arena-check.ts`, `.tmp/car-radio-check.ts`, `.tmp/hazard-check.ts` and
+  `.tmp/usb-hub-check.ts` 0; the last two had stale pre-SWIPE props indices and now read slot 9.
+- `npm run build` 0 (1,202.57 kB JS, 335.27 kB gzip). `npm run bench` clean: 8P max proj 0.095 ms avg /
+  0.241 ms p99; gauntlet max 0.266 ms avg / 0.834 ms p99.
+
+**Next:** run a real host/guest room through a camera file, a full signal cycle, a crosswalk swap and a tuner
+reversal; confirm only the host spends HP.

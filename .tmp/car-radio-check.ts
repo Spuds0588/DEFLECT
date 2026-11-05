@@ -6,7 +6,7 @@
  *      when it reverses;
  *   4. the dial needles animate and the station clock warns, advances and changes the
  *      waveform phase;
- *   5. none of the runtime enters SnapshotHazards and a local match still runs it.
+ *   5. the tuner and station state are carried in SnapshotHazards and a local match still runs it.
  *
  * Run with `npx tsx .tmp/car-radio-check.ts`.
  */
@@ -44,7 +44,7 @@ const def = arena.radio ?? fail('CAR RADIO has no radio data');
 const radio = world.radio ?? fail('CAR RADIO has no runtime');
 if (def.dials.length !== 2) fail(`CAR RADIO has ${def.dials.length} dials, want 2`);
 if (def.stations.length < 2) fail('CAR RADIO needs at least two stations');
-if (buildSnapshotHazards(world) !== null) fail('CAR RADIO leaked into SnapshotHazards');
+if (buildSnapshotHazards(world) === null) fail('CAR RADIO emitted no SnapshotHazards block');
 if (makeWorld('match').radio === null) fail('CAR RADIO is absent from a local match');
 
 // The needle moves along the whole track and damages a body once per pass.

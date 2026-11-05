@@ -15,6 +15,9 @@ Solo training, endless bot practice, round matches against local bots, a one-lif
 timed infection clear, the 30-node campaign, and host/join rooms for up to eight players. VS BOTS and
 online versus can run a 1, 3 or 5 game series with random map rotation by default or a fixed custom arena.
 SATELLITE's solar wings, meteors, capacitor pods and reentry front are host-synced in those rooms.
+`TRAFFIC CAMERA`, `TRAFFIC LIGHT`, `CROSSWALK SIGN` and `CAR RADIO` are online-safe too: the host
+publishes their photos, signal clock, active crosswalk layout, tuner and station clock in `SnapshotHazards`,
+and guests render that view without resolving damage.
 ROCKET NAVIGATION, WEAPON SYSTEMS, SPEAK & FIND, CAR NAVIGATION, PONG, AIRPORT, SPACE INVADERS, FAX
 MACHINE, SMART PLUG, SMOKE DETECTOR, SMART WATCH, BUSINESS LAPTOP, SPREADSHEET and CHAT are local display
 arenas: their launch walls, cockpit consoles, toy cards, car routes, rally balls, flip boards, simulated
@@ -171,7 +174,7 @@ in the hot path. Particles and projectile trails are pooled ring buffers.
 
 Content is data, not branches:
 
-- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), open decks, breakable props, pipe fixtures, moving keypad caps, USB drive geometry, satellite floor/solar/telescope/meteor/reentry data (host-synced online), rocket launch/telemetry data, weapon-console data, wall style and floor signature.
+- `src/game/arenas.ts` holds pillars, spawn rings, traversal plates, tutorial rooms (including the holding cell block), open decks, breakable props, pipe fixtures, moving keypad caps, USB drive geometry, satellite floor/solar/telescope/meteor/reentry data (host-synced online), traffic-camera routes, signal zones, crosswalk layouts and car-radio dials (host-synced online), rocket launch/telemetry data, weapon-console data, wall style and floor signature.
 - `src/game/sessionReport.ts` owns the opt-in session tracker and share text; `World` and `Snapshot` do not carry its state.
 - `src/game/programs.ts` holds the roster identity and kit tuning; the four action jobs branch in `World`.
 - `src/game/tuning/*.json` holds all gameplay numbers, re-exported through the typed facade in
@@ -366,7 +369,8 @@ authority:
 - **Failure behavior.** If the host closes the tab the room ends; guests get a disconnect state. A guest
   leaving frees its slot. There is no migration and no dedicated server.
 - **What is not networked yet.** Versus rooms carry match state, infection co-op adds its clear readout
-  and virus colony, and hazard arenas add their fixture clocks. No programs, kits, pickups, campaign
+  and virus colony, and hazard arenas add their fixture clocks, including the street fixtures'
+  photos, signal zones, crosswalk layout and radio tuner. No programs, kits, pickups, campaign
   state, most gauntlet threats or pipe/firewall fixtures cross the wire. Online opponents currently use
   slot identity and Probe's kit. Server hosting and richer snapshots are separate future work.
 
