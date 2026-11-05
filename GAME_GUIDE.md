@@ -19,7 +19,7 @@ fight remains one shared view. No input, no menus, no exit; leave it by closing 
 - **CAMPAIGN:** `BUILD ROOT`, `REBOOT`, and the first level-2 device chain, with three local save slots. A cleared level shows the route map and carries the run to the next device.
 - **Online:** host or join a room for up to 8 players.
 - **Session feedback:** after a result, choose `SHARE FEEDBACK` to share an opt-in JSON report of the session. It includes setup, player action totals, round results, deflect sources and FPS/sim samples; callsigns, room codes and raw inputs are omitted. Browsers without file sharing download the report and copy a summary.
-- Thirteen programs, thirty-two arenas.
+- Thirteen programs, forty arenas.
 - **SPACE CADET:** a tall pinball cabinet with round posts, three kickers, a bottom drain and a right-wall feed that cycles files, live balls, viruses and sentries into the table.
 
 Everything below is the current alpha, including the rough edges.
@@ -407,6 +407,9 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `CAPCOM` | A 1968 mission-control floor split into four plates in a ring, each department laid out for its job. `CAPCOM` (flight control) sits in two offset tiers of wide flight desks facing a trajectory board. `FIDO` (flight dynamics) has three plotting tables, paper recorders and crossing plots. `GUIDO` (guidance) wraps a central gyro pedestal with corner navigation racks and a star-fix board. `EECOM` (electrical/environmental) lines its walls with switchgear and breaker cabinets around a service lane. Gaps are wider than a dash, so the ring is the only route. Local-only: room arenas do not appear in online map rotation. |
 | `AIR TRAFFIC` | An air traffic control scope: one circular radar floor with a slow sweep, range rings and a bearing graticule. Aircraft cross the scope on fixed schedules, and they are hazards, not scenery — a pass damages players and, in gauntlet, every threat family it crosses. Each aircraft hits a body once per pass, so dashing, phasing and i-frames are the answer. Six console desks sit on the scope as cover, and stepping off the disc is a drop. Local-only: fixture arenas do not appear in online map rotation. |
 | `SATELLITE` | A long orbital hull joined to two solar wings by narrow bridges, with a telescoping mast below and three capacitor pods above. Only those plates are floor; the gaps are open space. The wings warn, then burn anyone standing on them on independent 16 s cycles. Micro-meteors fall every 12.5 s. Destroy all three capacitors and the thrusters fire: a heat front climbs the whole map from the bottom for 14 s, then the satellite cools and the pods return. A hull-side **replicator** prints pulse units onto the deck every 4 s until it is destroyed: a satellite has no standing network port, so the infection left a machine behind instead. Online: the satellite clock, live meteors, capacitor states and reentry front are synced; the host still resolves every hit. |
+| `CPU BOARD` | A final-level motherboard blockout: four CPU sockets, two DIMM banks and a central chipset. Every module is solid cover; the perimeter ring and the cross-shaped gaps are the lanes. No live hazard yet. Local-only foundation for Level 6. |
+| `GPU BOARD` | Four long accelerator cards around a central NVSwitch. The cards wall off the north and south approaches, leaving a wide central lane and two tight side channels. No live hazard yet. Local-only foundation for Level 6. |
+| `NETWORK BOARD` | A leaf-spine fabric floor: three leaf switches north, three spine switches south and a fabric block at the centre. Long east-west lanes connect the switch banks. No live hazard yet. Local-only foundation for Level 6. |
 
 ### Ordinary programs
 

@@ -317,6 +317,15 @@ This is the finale. Use every language the campaign has taught: firewall sweeps,
 transmitters that reflect shots, and a boss that changes the arena rather than only adding health. The
 final arena should be readable in one screen even if the approach is multi-screen.
 
+### Built foundations (2026-11-05)
+
+The first three server-board blockouts are in `arenas.ts` as local-only arenas: `CPU BOARD` (37),
+`GPU BOARD` (38) and `NETWORK BOARD` (39). CPU has four sockets, two DIMM banks and a central chipset;
+GPU has four long accelerator cards around an NVSwitch; network is three leaf and three spine switches
+around a fabric block. Their modules are ordinary cover, they use the perimeter spawn ring, and they have
+no hazards yet. They are **not** route nodes: wiring them into Level 6 waits for the hazard pass and the
+finale sequence. Treat them as the floor plan the RACK/COOLANT/SUCCESSOR levels can grow from.
+
 ## What each map sketch needs
 
 A rough top-down drawing is enough. I can turn it into an `ArenaDef` blockout.

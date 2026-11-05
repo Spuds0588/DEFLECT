@@ -8006,3 +8006,37 @@ without opening `index.html` directly (which cannot load the TypeScript/module g
 
 **Next:** double-click the launcher and run the 0.1.194 campaign checks. No version bump because this is
 developer tooling, not a player-facing build change.
+
+## 2026-11-05 — Three final-level server boards (v0.1.195)
+
+**Goal:** start the Level 6 AI-datacenter arena set with three playable blockouts: a CPU motherboard, a
+GPU motherboard and a networking motherboard. Hazards were deliberately left for the next pass.
+
+**Changes.**
+- Added `ArenaServerDef` and `ArenaServerModuleDef`. `serverPillars` derives the ordinary `pillars` list
+  from the same module rectangles the renderer draws, so cover and collision cannot drift.
+- Added `CPU BOARD` (37), `GPU BOARD` (38) and `NETWORK BOARD` (39) before QA `TEST RANGE`. CPU has four
+  sockets, two DIMM banks and a chipset; GPU has four accelerator cards around an NVSwitch; network has
+  three leaf and three spine switches around a fabric block. All use the full playfield and perimeter ring.
+- Added `drawServerArena` for the PCB substrate, bus traces, module art and wall edge, plus matching picker
+  previews. CPU sockets draw pin grids, GPU cards draw fans and an edge connector, network switches draw
+  port banks, and the fabric block draws its crosshatch. No `shadowBlur`.
+- `isOnlineArena` skips `server` arenas; they remain local-only until hazards have a snapshot decision.
+- Added `.tmp/server-board-check.ts` for IDs, module/pillar identity, overlap, spawn clearance, hazard
+  absence and the QA boundary. Updated AGENTS (D68), CAMPAIGN, README, GAME_GUIDE and TODO; bumped all
+  version stamps to 0.1.195.
+
+**Verification.**
+- `.tmp/server-board-check.ts` 0: all three boards in order, seven/five/seven modules, every module matched
+  its pillar, no module overlaps, every spawn clear, no hazard/room/portal records, QA arena still at 90.
+- `npm run build` 0 (`tsc --noEmit` + Vite, existing chunk-size warning only); `git diff --check` 0.
+- `npm run bench` 0. 2P 0.020 ms avg; 8P max proj 0.086 ms avg; 8P bot swarm 0.122 ms avg / 0.351 ms p99;
+  gauntlet max 0.257 ms avg / 1.135 ms p99.
+- Visual QA on local Vite `?gauntlet=1&arena=37/38/39`: sockets and chipsets read as CPU cover, GPU fans
+  and edge connectors read as cards, network port banks and fabric crosshatch read as switching. No console
+  errors. Camera framing was not retuned for these boards.
+- Not tested: hostile waves on the new boards, online play (intentionally excluded), or a campaign route
+  (not wired). Hazards and the Level 6 sequence are still open.
+
+**Next:** design the three boards' hazards (thermal/load, power delivery, fabric failure), then decide
+whether they stay local or gain snapshot state before wiring them into Level 6.

@@ -61,7 +61,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.194';
+const BUILD = '0.1.195';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -1288,12 +1288,13 @@ function selectArena(index: number): void {
  * AIRPORT's flip board, SPACE INVADERS' cannon, FAX MACHINE's print head, SMART PLUG's
  * circuit ring, SMOKE DETECTOR's alarm, SMART WATCH's second hand and BUSINESS LAPTOP's
  * scrolling inbox are local presentation too, so none may enter a hosted room until its
- * state is in Snapshot.
+ * state is in Snapshot. The three SERVER BOARDS are local-only for the same reason: their
+ * modules are ordinary cover, but the hazard pass is deliberately not network state yet.
  */
 function isOnlineArena(a: ArenaDef): boolean {
   // Room arenas are tutorial staging: their chasms, props and fixture clocks are local
   // presentation/content, not a versus map. Keep them out of hosted rooms and series.
-  return !a.pipes && !a.firewallSwitch && !a.rooms && !a.rocket && !a.weapon && !a.seek && !a.car && !a.pong && !a.flip && !a.invaders && !a.fax && !a.plug && !a.smoke && !a.watch && !a.laptop && !a.radar;
+  return !a.server && !a.pipes && !a.firewallSwitch && !a.rooms && !a.rocket && !a.weapon && !a.seek && !a.car && !a.pong && !a.flip && !a.invaders && !a.fax && !a.plug && !a.smoke && !a.watch && !a.laptop && !a.radar;
 }
 
 function onlineArenaIndex(index: number): number {

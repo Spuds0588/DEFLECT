@@ -2,6 +2,16 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Final-level server boards (2026-11-05, v0.1.195)
+
+- [x] Three full-size local blockouts: `CPU BOARD` (37), `GPU BOARD` (38), `NETWORK BOARD` (39)
+- [x] Shared `ArenaServerDef`; `pillars` derived from the authored modules, so cover and collision cannot drift
+- [x] Custom PCB renderer and picker previews for sockets, DIMMs, accelerator cards, switches and fabric
+- [x] Perimeter spawns clear of modules; online rotation excludes `server` arenas
+- [x] `.tmp/server-board-check.ts` green; `npm run build` green; `npm run bench` green
+- [ ] Hazard pass for the three boards (thermal/load, power delivery, fabric failure) — design still open
+- [ ] Wire the boards into Level 6 only after the hazard pass and finale route are designed
+
 ## Campaign allies, node map, companion loss (2026-11-04, v0.1.194)
 
 - [x] Campaign bots are allies to the player and each other; stray damage never turns them

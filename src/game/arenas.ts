@@ -39,6 +39,31 @@ export interface ArenaTraversalDef {
   lifts: ArenaLiftDef[];
 }
 
+/** The three server-board silhouettes share one record and one renderer. */
+export type ArenaServerKind = 'cpu' | 'gpu' | 'network';
+
+/** A module is cover first: `pillars` is derived from these same rectangles. */
+export type ArenaServerModuleKind = 'socket' | 'dimm' | 'chipset' | 'card' | 'switch' | 'fabric';
+
+export interface ArenaServerModuleDef extends Rect {
+  label: string;
+  kind: ArenaServerModuleKind;
+}
+
+/**
+ * A final-level motherboard. The board is presentation; `modules` are copied into
+ * `pillars` at authoring time, so collision, pathfinding and spawning see ordinary cover.
+ * No hazard state lives here yet; the board-specific hazard pass comes later.
+ */
+export interface ArenaServerDef {
+  kind: ArenaServerKind;
+  /** The PCB footprint inside the arena bounds. */
+  board: Rect;
+  label: string;
+  sub: string;
+  modules: readonly ArenaServerModuleDef[];
+}
+
 /** A tutorial room's visual identity. The floor is presentation; walls stay in `pillars`. */
 export type ArenaRoomTheme = 'office' | 'holding' | 'board' | 'router' | 'console';
 
@@ -1464,6 +1489,8 @@ export interface ArenaDef {
   port?: ArenaPortDef;
   /** Ordinary program carts. Presentation only; no bodies, collision or snapshot data. */
   regulars?: readonly ArenaRegularDef[];
+  /** A final-level motherboard. Local-only until its hazards have a snapshot story. */
+  server?: ArenaServerDef;
   /** A round spinning platter with a read arm. Implies an open drop around the rim. */
   disc?: DiscDef;
 }
@@ -1490,6 +1517,39 @@ const perimeterSpawns: SpawnPoint[] = [
   { x: 243, y: 547 },
   { x: 339, y: 195 },
 ];
+
+// The board modules are authored once: collision and rendering both read this list.
+const CPU_BOARD_MODULES: readonly ArenaServerModuleDef[] = [
+  { x: 330, y: 250, w: 190, h: 170, label: 'CPU 0', kind: 'socket' },
+  { x: 1422, y: 250, w: 190, h: 170, label: 'CPU 1', kind: 'socket' },
+  { x: 330, y: 626, w: 190, h: 170, label: 'CPU 2', kind: 'socket' },
+  { x: 1422, y: 626, w: 190, h: 170, label: 'CPU 3', kind: 'socket' },
+  { x: 750, y: 190, w: 440, h: 64, label: 'DIMM A', kind: 'dimm' },
+  { x: 750, y: 792, w: 440, h: 64, label: 'DIMM B', kind: 'dimm' },
+  { x: 850, y: 452, w: 260, h: 150, label: 'CHIPSET', kind: 'chipset' },
+];
+
+const GPU_BOARD_MODULES: readonly ArenaServerModuleDef[] = [
+  { x: 240, y: 300, w: 560, h: 130, label: 'GPU 0', kind: 'card' },
+  { x: 240, y: 620, w: 560, h: 130, label: 'GPU 1', kind: 'card' },
+  { x: 1140, y: 300, w: 560, h: 130, label: 'GPU 2', kind: 'card' },
+  { x: 1140, y: 620, w: 560, h: 130, label: 'GPU 3', kind: 'card' },
+  { x: 860, y: 470, w: 220, h: 110, label: 'NVSWITCH', kind: 'switch' },
+];
+
+const NETWORK_BOARD_MODULES: readonly ArenaServerModuleDef[] = [
+  { x: 250, y: 260, w: 260, h: 150, label: 'LEAF 0', kind: 'switch' },
+  { x: 820, y: 260, w: 260, h: 150, label: 'LEAF 1', kind: 'switch' },
+  { x: 1390, y: 260, w: 260, h: 150, label: 'LEAF 2', kind: 'switch' },
+  { x: 250, y: 636, w: 260, h: 150, label: 'SPINE 0', kind: 'switch' },
+  { x: 820, y: 636, w: 260, h: 150, label: 'SPINE 1', kind: 'switch' },
+  { x: 1390, y: 636, w: 260, h: 150, label: 'SPINE 2', kind: 'switch' },
+  { x: 860, y: 460, w: 220, h: 120, label: 'FABRIC', kind: 'fabric' },
+];
+
+function serverPillars(modules: readonly ArenaServerModuleDef[]): Rect[] {
+  return modules.map(({ x, y, w, h }) => ({ x, y, w, h }));
+}
 
 const browserChrome: Rect = { x: 48, y: 48, w: 1846, h: 136 };
 const browserPage: Rect = { x: 56, y: 192, w: 1830, h: 846 };
@@ -3438,6 +3498,66 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     ],
   },
   {
+    id: 37,
+    name: 'CPU BOARD',
+    tagline: 'Many cores. One arbitration lane.',
+    hudLabel: 'ARENA // CPU BOARD',
+    accent: '#7ce7ff',
+    accentSoft: 'rgba(124, 231, 255, 0.32)',
+    accentFaint: 'rgba(124, 231, 255, 0.032)',
+    signature: 1,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: serverPillars(CPU_BOARD_MODULES),
+    spawns: perimeterSpawns,
+    server: {
+      kind: 'cpu',
+      board: { x: 96, y: 96, w: 1798, h: 902 },
+      label: 'CPU COMPLEX // REV 01',
+      sub: 'CORE COMPLEX // TWO MEMORY BANKS // ONE ARBITRATION BUS',
+      modules: CPU_BOARD_MODULES,
+    },
+  },
+  {
+    id: 38,
+    name: 'GPU BOARD',
+    tagline: 'Wide cards. Hot aisles. No safe angle.',
+    hudLabel: 'ARENA // GPU BOARD',
+    accent: '#ff7a55',
+    accentSoft: 'rgba(255, 122, 85, 0.32)',
+    accentFaint: 'rgba(255, 122, 85, 0.032)',
+    signature: 3,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: serverPillars(GPU_BOARD_MODULES),
+    spawns: perimeterSpawns,
+    server: {
+      kind: 'gpu',
+      board: { x: 96, y: 96, w: 1798, h: 902 },
+      label: 'GPU FARM // REV 01',
+      sub: 'FOUR ACCELERATORS // WIDE BUS // HOT AISLE',
+      modules: GPU_BOARD_MODULES,
+    },
+  },
+  {
+    id: 39,
+    name: 'NETWORK BOARD',
+    tagline: 'Leaf, spine, and one clear east-west lane.',
+    hudLabel: 'ARENA // NETWORK BOARD',
+    accent: '#8aa8ff',
+    accentSoft: 'rgba(138, 168, 255, 0.32)',
+    accentFaint: 'rgba(138, 168, 255, 0.032)',
+    signature: 2,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: serverPillars(NETWORK_BOARD_MODULES),
+    spawns: perimeterSpawns,
+    server: {
+      kind: 'network',
+      board: { x: 96, y: 96, w: 1798, h: 902 },
+      label: 'FABRIC // REV 01',
+      sub: 'LEAF-SPINE // EAST-WEST // PACKET SWITCH',
+      modules: NETWORK_BOARD_MODULES,
+    },
+  },
+  {
     id: 90,
     qa: true,
     name: 'TEST RANGE',
@@ -4027,6 +4147,52 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
 
   const previewW = (bounds.right - bounds.left) * sx;
   const previewH = (bounds.bottom - bounds.top) * sy;
+
+  // The three final-level boards read as PCBs even in a tiny picker preview.
+  if (arena.server) {
+    const srv = arena.server;
+    const board = srv.board;
+    ctx.fillStyle = '#03070b';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.fillStyle = srv.kind === 'gpu' ? '#170b08' : srv.kind === 'network' ? '#070b18' : '#061310';
+    ctx.fillRect(mapX(board.x), mapY(board.y), board.w * sx, board.h * sy);
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX(board.x) + 0.5, mapY(board.y) + 0.5, board.w * sx - 1, board.h * sy - 1);
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < srv.modules.length; i++) {
+      const m = srv.modules[i];
+      const mx = mapX(m.x);
+      const my = mapY(m.y);
+      const mw = Math.max(2, m.w * sx);
+      const mh = Math.max(2, m.h * sy);
+      ctx.fillStyle = 'rgba(8, 16, 22, 0.94)';
+      ctx.fillRect(mx, my, mw, mh);
+      ctx.strokeStyle = arena.accent;
+      ctx.globalAlpha = 0.72;
+      ctx.strokeRect(mx + 0.5, my + 0.5, mw - 1, mh - 1);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = arena.accentSoft;
+      if (m.kind === 'card') {
+        ctx.beginPath();
+        ctx.arc(mx + mw * 0.34, my + mh * 0.5, Math.max(2, mh * 0.22), 0, Math.PI * 2);
+        ctx.arc(mx + mw * 0.62, my + mh * 0.5, Math.max(2, mh * 0.22), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (m.kind === 'socket') {
+        ctx.fillRect(mx + mw * 0.32, my + mh * 0.3, mw * 0.36, mh * 0.3);
+      } else if (m.kind === 'dimm') {
+        for (let s = 0; s < 6; s++) ctx.fillRect(mx + mw * 0.06 + s * mw * 0.15, my + 2, mw * 0.09, mh - 4);
+      } else {
+        ctx.fillRect(mx + mw * 0.28, my + mh * 0.2, mw * 0.44, mh * 0.44);
+      }
+    }
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(srv.label.split(' // ')[0], mapX(board.x) + 4, mapY(board.y) + 8);
+    return;
+  }
 
   // BUSINESS LAPTOP is a screen chassis; the sheet and chat screens draw their own panes.
   if (arena.laptop) {

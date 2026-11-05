@@ -20,7 +20,9 @@ MACHINE, SMART PLUG, SMOKE DETECTOR, SMART WATCH, BUSINESS LAPTOP, SPREADSHEET a
 arenas: their launch walls, cockpit consoles, toy cards, car routes, rally balls, flip boards, simulated
 cannons, moving print heads, live circuit rings, alarm sirens, sweeping watch hands, scrolling mail,
 breakable sheet cells and rising chat bubbles are not synced online.
-Thirteen programs, thirty-two arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
+The three final-level server boards (`CPU BOARD`, `GPU BOARD`, `NETWORK BOARD`) are local blockouts:
+their sockets, accelerator cards and network switches are cover, and their hazard pass is still open.
+Thirteen programs, forty arenas. Result and leave overlays offer opt-in `SHARE FEEDBACK`: a local
 session JSON with setup, player action totals, round results, deflect sources and FPS/sim samples, shared
 through the platform sheet or downloaded with a copied summary. Callsigns, room codes, IPs and raw inputs
 are omitted, and nothing is uploaded automatically. The alpha is deployed from `main` on every push.

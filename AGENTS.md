@@ -284,6 +284,24 @@ firewall sweep from the opposite wall and rearms after `NETWORK.switchCooldown` 
 local content: `onlineArenaIndex` skips an arena with `pipes`, and neither fixture enters `Snapshot`. The
 compactor, keypad, scanner and browser are not in this group; their clocks are networked under D40.
 
+### D68 — Server boards are final-level foundations, local-only (decided 2026-11-05)
+
+`CPU BOARD` (37), `GPU BOARD` (38) and `NETWORK BOARD` (39) are three authored `ArenaServerDef`
+records in `arenas.ts`, inserted immediately before QA `TEST RANGE`. Each carries a PCB `board`, silkscreen
+`label`/`sub`, and a shared `ArenaServerModuleDef` list for sockets, DIMMs, chipsets, accelerator cards,
+switches and fabric. `pillars` is derived from that same module list through `serverPillars`, so painted
+cover and collision cannot drift; do not hand-write a second set of rectangles.
+
+They use the full `48,48 -> 1942,1046` playfield and the eight-point `perimeterSpawns` ring. Modules must
+stay inside the board footprint and every spawn must stay clear of them. `drawServerArena` owns the PCB
+substrate, bus traces, module art and wall edge; `drawArenaPreview` draws the same board in the picker. No
+`shadowBlur`.
+
+These are blockouts, not campaign nodes. They have no emitters, moving parts, pickups or threat state, and
+`isOnlineArena` skips `a.server` so they cannot enter hosted rooms or series. The Level-6 hazard pass is
+still open; until it lands, do not add them to `CAMPAIGN_ROUTE`, `CAMPAIGN_LEVELS` or a boss flow. When
+hazards arrive, they need an explicit snapshot decision or must stay local like the other fixture arenas.
+
 ### ROCKET NAVIGATION reflector (decided 2026-11-02)
 
 The rocket's flown trajectory is a **shot-only dotted reflector**, not a wall. Projectiles bounce off the

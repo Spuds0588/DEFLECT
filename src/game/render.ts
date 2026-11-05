@@ -7033,6 +7033,222 @@ export class Renderer {
     ctx.restore();
   }
 
+  /**
+   * Final-level server boards: a PCB substrate, a bus, and authored modules that are
+   * also the arena's `pillars`. Nothing here has a clock or a hit path yet; the board
+   * is a readable room first, so the hazard pass can add fixtures without re-laying it.
+   */
+  private drawServerArena(
+    arena: ArenaDef,
+    t: number,
+    groundA: number,
+    frameA: number,
+  ): void {
+    const srv = arena.server;
+    if (!srv) return;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const board = srv.board;
+    const busX = board.x + board.w * 0.5;
+    const busY = board.y + board.h * 0.5;
+
+    ctx.save();
+    ctx.fillStyle = '#020509';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = srv.kind === 'gpu' ? '#160b08' : srv.kind === 'network' ? '#070b18' : '#061310';
+    ctx.fillRect(board.x, board.y, board.w, board.h);
+
+    // Substrate weave: a faint grid that makes the PCB read at couch distance.
+    ctx.globalAlpha = groundA * 0.22;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = board.x + 24; x < board.x + board.w; x += 48) {
+      ctx.moveTo(x, board.y);
+      ctx.lineTo(x, board.y + board.h);
+    }
+    for (let y = board.y + 24; y < board.y + board.h; y += 48) {
+      ctx.moveTo(board.x, y);
+      ctx.lineTo(board.x + board.w, y);
+    }
+    ctx.stroke();
+
+    // Bus traces. Modules are drawn over the junction so the copper reads as routed
+    // underneath cover, not as a second collision surface.
+    ctx.globalAlpha = groundA * 0.42;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < srv.modules.length; i++) {
+      const m = srv.modules[i];
+      const mx = m.x + m.w * 0.5;
+      const my = m.y + m.h * 0.5;
+      ctx.moveTo(mx, my);
+      if (srv.kind === 'gpu') {
+        ctx.lineTo(busX, my);
+      } else {
+        ctx.lineTo(mx, busY);
+        ctx.lineTo(busX, busY);
+      }
+    }
+    ctx.stroke();
+
+    const modA = Math.max(0, Math.min(1, frameA));
+    for (let i = 0; i < srv.modules.length; i++) {
+      const m = srv.modules[i];
+      const cx = m.x + m.w * 0.5;
+      const cy = m.y + m.h * 0.5;
+      ctx.globalAlpha = modA;
+      ctx.fillStyle = 'rgba(6, 12, 16, 0.97)';
+      ctx.fillRect(m.x, m.y, m.w, m.h);
+      ctx.strokeStyle = arena.accent;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(m.x + 1, m.y + 1, m.w - 2, m.h - 2);
+      ctx.globalAlpha = modA * 0.24;
+      ctx.strokeStyle = '#eaffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(m.x + 5.5, m.y + 5.5, m.w - 11, m.h - 11);
+
+      if (m.kind === 'socket') {
+        const ix = cx - m.w * 0.24;
+        const iy = cy - m.h * 0.2;
+        const iw = m.w * 0.48;
+        const ih = m.h * 0.4;
+        ctx.globalAlpha = modA * 0.7;
+        ctx.fillStyle = 'rgba(124, 231, 255, 0.07)';
+        ctx.fillRect(ix, iy, iw, ih);
+        ctx.strokeStyle = arena.accentSoft;
+        ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, ih - 1);
+        ctx.fillStyle = arena.accentSoft;
+        for (let row = 0; row < 4; row++) {
+          for (let col = 0; col < 4; col++) {
+            ctx.fillRect(ix + 8 + col * (iw - 16) / 3, iy + 7 + row * (ih - 14) / 3, 3, 3);
+          }
+        }
+      } else if (m.kind === 'dimm') {
+        ctx.globalAlpha = modA * 0.62;
+        ctx.fillStyle = arena.accentSoft;
+        for (let s = 0; s < 8; s++) {
+          const sw = (m.w - 24) / 8;
+          ctx.fillRect(m.x + 12 + s * sw, m.y + 8, sw - 5, 18);
+        }
+        ctx.strokeStyle = 'rgba(234, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(m.x + 12, m.y + m.h - 6);
+        ctx.lineTo(m.x + m.w - 12, m.y + m.h - 6);
+        ctx.stroke();
+      } else if (m.kind === 'card') {
+        // Three accelerator fans, then the card's edge connector along the bottom.
+        ctx.globalAlpha = modA * 0.7;
+        ctx.strokeStyle = arena.accentSoft;
+        ctx.lineWidth = 1.4;
+        for (let fan = 0; fan < 3; fan++) {
+          const fx = m.x + 62 + fan * 82;
+          ctx.beginPath();
+          ctx.arc(fx, cy - 6, 27, 0, Math.PI * 2);
+          for (let blade = 0; blade < 4; blade++) {
+            const a = blade * Math.PI * 0.5 + t * 0.35;
+            ctx.moveTo(fx, cy - 6);
+            ctx.lineTo(fx + Math.cos(a) * 23, cy - 6 + Math.sin(a) * 23);
+          }
+          ctx.stroke();
+        }
+        ctx.globalAlpha = modA * 0.55;
+        ctx.fillStyle = '#d9a441';
+        for (let pin = 0; pin < 9; pin++) ctx.fillRect(m.x + 22 + pin * 10, m.y + m.h - 6, 6, 3);
+      } else {
+        const iw = m.w * 0.54;
+        const ih = m.h * 0.52;
+        const ix = cx - iw * 0.5;
+        const iy = cy - ih * 0.5;
+        ctx.globalAlpha = modA * 0.72;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.045)';
+        ctx.fillRect(ix, iy, iw, ih);
+        ctx.strokeStyle = arena.accentSoft;
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(ix + 0.5, iy + 0.5, iw - 1, ih - 1);
+        ctx.fillStyle = arena.accentSoft;
+        for (let pin = 0; pin < 6; pin++) {
+          const px = ix + 6 + pin * (iw - 12) / 5;
+          ctx.fillRect(px, iy - 3, 3, 3);
+          ctx.fillRect(px, iy + ih, 3, 3);
+        }
+        if (srv.kind === 'network' && m.kind === 'switch') {
+          // A leaf/spine switch reads by its port bank, not by a generic die.
+          ctx.globalAlpha = modA * 0.8;
+          ctx.strokeStyle = arena.accentSoft;
+          ctx.lineWidth = 1;
+          const ports = 12;
+          const portW = (m.w - 24) / ports;
+          for (let port = 0; port < ports; port++) {
+            ctx.strokeRect(m.x + 12 + port * portW, m.y + m.h - 33, portW - 4, 10);
+          }
+          ctx.fillStyle = arena.accent;
+          for (let port = 0; port < ports; port += 3) {
+            ctx.fillRect(m.x + 14 + port * portW, m.y + m.h - 30, 2, 2);
+          }
+        } else if (srv.kind === 'network' && m.kind === 'fabric') {
+          ctx.globalAlpha = modA * 0.45;
+          ctx.strokeStyle = arena.accentSoft;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(ix + 5, iy + 5);
+          ctx.lineTo(ix + iw - 5, iy + ih - 5);
+          ctx.moveTo(ix + iw - 5, iy + 5);
+          ctx.lineTo(ix + 5, iy + ih - 5);
+          ctx.stroke();
+        }
+      }
+
+      ctx.globalAlpha = modA;
+      ctx.fillStyle = arena.accent;
+      ctx.font = '600 12px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(m.label, cx, m.y + m.h - 9);
+    }
+
+    // Board silkscreen. The title sits above the first module row, the revision note
+    // below it, so neither competes with the fight for the centre of the board.
+    // The readiness dock owns the top-left corner, so the board title is centred on the
+    // top rail where it stays readable from every camera seat.
+    const titleX = board.x + board.w * 0.5;
+    ctx.globalAlpha = modA;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 20px ui-monospace, monospace';
+    ctx.fillText(srv.label, titleX, board.y + 34);
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.46)';
+    ctx.font = '500 11px ui-monospace, monospace';
+    ctx.fillText(srv.sub, titleX, board.y + 52);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(220, 245, 255, 0.3)';
+    ctx.fillText(`${srv.modules.length} MODULES // COVER ONLINE`, board.x + board.w - 18, board.y + board.h - 16);
+
+    // A slow scan line keeps the board alive without adding a hazard clock.
+    const scanX = board.x + ((t * 52) % board.w);
+    ctx.globalAlpha = modA * 0.07;
+    ctx.fillStyle = arena.accent;
+    ctx.fillRect(scanX, board.y + 4, 2, board.h - 8);
+
+    // The bound is a wall, but the board edge is the readable face of it.
+    ctx.globalAlpha = groundA * 0.15;
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 20;
+    ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = arena.accent;
+    ctx.lineWidth = 5;
+    ctx.strokeRect(b.left + 2, b.top + 2, b.right - b.left - 4, b.bottom - b.top - 4);
+    ctx.strokeStyle = '#eaffff';
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(b.left + 5.5, b.top + 5.5, b.right - b.left - 11, b.bottom - b.top - 11);
+    ctx.restore();
+  }
+
   private drawArena(
     t: number,
     arena: ArenaDef,
@@ -7052,6 +7268,10 @@ export class Renderer {
     const frameA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 0.7) / 0.75));
     const pillarA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 1.15) / 0.8));
     const pillarDrop = (1 - pillarA) * 30;
+    if (arena.server) {
+      this.drawServerArena(arena, t, groundA, frameA);
+      return;
+    }
     if (arena.laptop) {
       this.drawLaptopArena(satelliteState, groundA, frameA, t);
       return;
