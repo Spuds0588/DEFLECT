@@ -10508,6 +10508,8 @@ export class Renderer {
         // Compress leaves the chain smaller, so every segment and the head share one
         // body scale instead of only the jaw shrinking.
         const size = (10.5 - s * 0.22) * w.shrink;
+        const segHp = w.segHp[s] > 0 ? w.segHp[s] : WORM.segmentHp;
+        const cracked = segHp < WORM.segmentHp;
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(w.segAngle[s] + Math.PI * 0.25);
@@ -10524,6 +10526,18 @@ export class Renderer {
         ctx.globalCompositeOperation = 'source-over';
         ctx.fillStyle = '#12040a';
         ctx.fillRect(-size * 0.46, -size * 0.46, size * 0.92, size * 0.92);
+        if (cracked) {
+          // A body node breaks after its own small pool is spent. The pale seam is the
+          // warning that one more hit on this node will sever the chain.
+          ctx.globalAlpha = 0.9;
+          ctx.strokeStyle = '#ffd2c4';
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.moveTo(-size * 0.52, -size * 0.12);
+          ctx.lineTo(size * 0.16, size * 0.16);
+          ctx.lineTo(-size * 0.12, size * 0.54);
+          ctx.stroke();
+        }
         ctx.restore();
       }
 
@@ -10562,6 +10576,19 @@ export class Renderer {
       ctx.fillStyle = '#ffe9e4';
       ctx.fillRect(-r * 0.44, -r * 0.2, r * 0.3, r * 0.3);
       ctx.fillRect(r * 0.14, -r * 0.2, r * 0.3, r * 0.3);
+      if (w.eyeT > 0) {
+        // A severed tail is promoted to a head. The brief flash makes the new target
+        // obvious instead of letting it appear as another anonymous body node.
+        const pulse = Math.min(1, w.eyeT / WORM.splitEye);
+        ctx.globalAlpha = 0.35 + 0.45 * pulse;
+        ctx.strokeStyle = '#fff1ec';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-r - 4, -r - 4, r * 2 + 8, r * 2 + 8);
+        ctx.globalAlpha = 0.22 + 0.35 * pulse;
+        ctx.beginPath();
+        ctx.arc(0, 0, r + 11, 0, TWO_PI);
+        ctx.stroke();
+      }
       if (w.infected) {
         ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 12 + w.phase);
         ctx.strokeStyle = THREAT_COLORS.virus;

@@ -8123,3 +8123,32 @@ Tetris well.
 
 **Next:** play the row with a full local squad, then decide whether any cabinet becomes a campaign node or
 gets a snapshot hazard record. The Level-6 server-board and request hazards remain open.
+
+## 2026-11-05 — Standard worms sever at body nodes (v0.1.198)
+
+**Goal:** make ordinary worms punish body-only fire: every chain node should be a real target, a destroyed
+node should split the worm in two, and the rear half should turn its old tail into a new head.
+
+**Changes.**
+- Added `WORM.segmentHp` (2), `WORM.splitCap` (4) and `WORM.splitEye`. Standard body nodes now carry their
+  own pool; head hits still use `WORM.hp` and kill that piece. A cracked square is one hit from failing.
+- Body shots no longer feed the worm. Projectile, beam, melee, bash, Wedge, Sweep, Atomize, radar, explosion,
+  firewall and charged-dash paths pass their real impact point into `damageWorm`.
+- Destroying a middle node severs the chain: the head side keeps the original head and forward nodes. The
+  rear side's old tail becomes a new head, its remaining nodes trail behind it, and it starts facing away
+  from the cut. Short rear pieces truncate; the four-worm cap prevents exponential growth.
+- New `EV.WORM_SPLIT` effect, a persistent crack on damaged body nodes, and a short promoted-head flash.
+  Split state is local-only and never enters `Snapshot`.
+- Updated AGENTS D9, README, GAME_GUIDE and TODO; bumped all version stamps to 0.1.198.
+
+**Verification.**
+- `.tmp/worm-split-check.ts` 0: body pool 2, head pool untouched, one split with head side 3 / rear side 2,
+  old-tail promotion, new head facing away from the cut, cap 4 stays 4, head kill works, and the ordinary
+  projectile pass severs a chain.
+- `npm run build` 0 (`tsc --noEmit` + Vite; existing large-chunk warning only). `git diff --check` 0.
+- `npm run bench` 0: 8P bot swarm 0.161 ms avg / 0.515 ms p99; gauntlet max 0.270 ms avg / 0.768 ms p99.
+- Not tested: a human visual pass on the cracked-node marker, new-head flash or a busy four-worm fight;
+  online play (worms are local-only and excluded by intent).
+
+**Next:** play a body-only gauntlet run and judge whether 2 node HP and the four-worm cap make head targeting
+read clearly without turning a split into unreadable clutter.

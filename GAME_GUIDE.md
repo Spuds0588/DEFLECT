@@ -99,12 +99,18 @@ tighten across roughly 120 waves, and live caps grow one step at a time. A wave 
 synchronized burst of every threat; existing countdowns keep running. Each arena changes the zones the
 threats hold.
 
-- **WORMS:** trailing chains of red squares. They patrol a territory anchor, eat bolts and viruses, and
-  damage on touch. They only commit to you if you enter their patch or hit them, then lose interest after
-  5.5 s and return. A player who closes inside 76 units draws a telegraphed **bite**: the head rears, then
-  lunges 34 units into a 56-unit reach for 1 damage and a hard shove. Back off, dash through it, or break
-  line of sight to waste it. Longer chains move slower. Cover blocks them. A virus that catches one turns
-  it into a faster hunter.
+- **WORMS:** trailing chains of red squares. They patrol a territory anchor, grow a segment when they eat
+  a virus, and damage on touch. They only commit to you if you enter their patch or hit them, then lose
+  interest after 5.5 s and return. A player who closes inside 76 units draws a telegraphed **bite**: the
+  head rears, then lunges 34 units into a 56-unit reach for 1 damage and a hard shove. Back off, dash
+  through it, or break line of sight to waste it. Longer chains move slower. Cover blocks them. A virus that
+  catches one turns it into a faster hunter.
+  Every red square is a separate target. Two ordinary bolt hits break one body node; a cracked square is
+  one hit from failing. A destroyed node severs the chain: the head side keeps its head, and the rear side
+  promotes its old tail to a new head, turns around and comes at you as a second worm. Head hits use the
+  worm's health pool and kill that piece. If you keep hitting the body instead of the head, you can turn one
+  worm into up to four. At the cap, or when there is no rear body left to promote, the cut only truncates
+  the tail.
 - **VIRUSES:** magenta diamonds that spread toward roam points instead of beelining across the map. They
   pursue a player only inside 310 units, or an uninfected worm inside 560 units. Touching you fills the
   infection meter; at full meter a **THRALL** copy of you spawns nearby and fights with your own
@@ -645,6 +651,9 @@ This build is a test rig as much as a game. A useful pass:
   survivable.
 - Let a worm eat a few viruses. Its chain should grow and its health should recover; cut it down with the
   beam before it reaches the cap.
+- Shoot a worm's body, not its head. A cracked node should fail on the next hit, sever the chain and send
+  the rear half away with its old tail flashing as the new head. Do it again until the four-worm cap, then
+  confirm the next cut only shortens the chain. Kill a head to remove that piece.
 - Let viruses stack on you until the infection bar fills. A thrall should spawn nearby, chase you, swing
   and shoot, and drop when eliminated.
 - Pick up each timed drop: machine gun, scatter, overcharge (fast charge ring, a held beam that leaves a
@@ -687,8 +696,8 @@ the reveal finishes.
 ### Mega Worm
 
 The first boss. It starts beyond the arena edge, crosses the plate in one slow harmless approach, then
-fights as one long straight body: a head with a chain of heavy plates laid out behind it. It is one damage sponge, not a segmented
-creature: every hit anywhere on the body drains the same bar, and nothing breaks off.
+fights as one long straight body: a head with a chain of heavy plates laid out behind it. Unlike ordinary
+worms, it is one damage sponge: every hit anywhere on the body drains the same bar, and nothing breaks off.
 
 - **One health pool.** Where you hit does not matter. There is no weak plate, no head to break and no
   second worm to split off; keep shooting the body and it dies.

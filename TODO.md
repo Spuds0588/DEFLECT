@@ -2,6 +2,15 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Worm chain severing (2026-11-05, v0.1.198)
+
+- [x] Standard worm body nodes carry their own `WORM.segmentHp`; shots no longer feed the worm for free
+- [x] A destroyed body node severs the chain; the rear half promotes its old tail to a new head and turns away
+- [x] Head hits still use the worm health pool and kill that piece; splits are capped at four live standard worms
+- [x] Cracked-node and promoted-head visuals; local-only state never enters `Snapshot`
+- [x] `.tmp/worm-split-check.ts` green; `npm run build` and `npm run bench` green
+- [ ] Human readability pass on the cracked-node marker, the new-head flash and a busy four-worm fight
+
 ## Food-court and arcade row (2026-11-05, v0.1.197)
 
 - [x] `SNACK MACHINE` (42) and `TOKEN DISPENSER` (43): warning, falling selection, tray catch and hit

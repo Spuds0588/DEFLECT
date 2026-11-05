@@ -183,6 +183,8 @@ export const EV = {
   MEGA_DEATH: 45,
   /** A hit landed on the Mega Worm; `x`/`y` are the impact point. */
   MEGA_HIT: 46,
+  /** A body segment was severed; `power` 1 made a second worm, 0 only truncated the rear. */
+  WORM_SPLIT: 47,
 } as const;
 
 /** Breakable file boxes. The renderer maps each to one glyph. */
@@ -1117,7 +1119,10 @@ export interface Worm {
   megaDeathBy: number;
   /** Seconds until the next jagged side volley during a fly-by. */
   volleyT: number;
-  /** Per-node health. Index 0 is the head, index k is segment k-1. */
+  /**
+   * Standard worm body-segment health, parallel to `segX`. The Mega Worm uses the same
+   * array as its per-node pool, where index 0 is the head and index k is plate k-1.
+   */
   segHp: Float32Array;
   segMaxHp: Float32Array;
   /** Collision radii, so one worm loop serves both body sizes. */

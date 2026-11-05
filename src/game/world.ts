@@ -5229,6 +5229,8 @@ export class World {
           for (let s = 0; s < w.segCount; s++) {
             if (this.beamLineHits(ox, oy, dx, dy, reach, w.segX[s], w.segY[s], w.segR)) {
               hit = true;
+              hitX = w.segX[s];
+              hitY = w.segY[s];
               break;
             }
           }
@@ -6343,9 +6345,7 @@ export class World {
         }
         if (!touching) continue;
         p.bashHitWorms |= bit;
-        this.damageWorm(w, damage, p.slot, cos, sin, force);
-        void hitX;
-        void hitY;
+        this.damageWorm(w, damage, p.slot, cos, sin, force, hitX, hitY);
       }
       for (let i = 0; i < this.errors.length; i++) {
         const e = this.errors[i];
@@ -6524,7 +6524,7 @@ export class World {
         if (!touching) continue;
         p.wedgeHitWorms |= bit;
         const side = fx * hy - fy * hx >= 0 ? 1 : -1;
-        this.damageWorm(w, WEDGE.chargeDamage, p.slot, -fy * side, fx * side, WEDGE.chargeKnockback);
+        this.damageWorm(w, WEDGE.chargeDamage, p.slot, -fy * side, fx * side, WEDGE.chargeKnockback, p.x + hx, p.y + hy);
       }
       for (let i = 0; i < this.errors.length; i++) {
         const e = this.errors[i];
@@ -6831,7 +6831,7 @@ export class World {
         continue;
       }
       p.broHitWorms |= bit;
-      this.damageWorm(w, SWEEP.powerDamage, p.slot, 0, sy, SWEEP.powerKnockback);
+      this.damageWorm(w, SWEEP.powerDamage, p.slot, 0, sy, SWEEP.powerKnockback, touchX, touchY);
     }
     for (let i = 0; i < this.errors.length; i++) {
       const e = this.errors[i];
@@ -6966,12 +6966,18 @@ export class World {
         const bit = 1 << i;
         if ((p.fanHitWorms & bit) !== 0) continue;
         let touching = this.fanReaches(bx, by, w.x, w.y, w.hitR, reach);
+        let hitX = w.x;
+        let hitY = w.y;
         for (let s = 0; s < w.segCount && !touching; s++) {
           touching = this.fanReaches(bx, by, w.segX[s], w.segY[s], w.segR, reach);
+          if (touching) {
+            hitX = w.segX[s];
+            hitY = w.segY[s];
+          }
         }
         if (!touching) continue;
         p.fanHitWorms |= bit;
-        this.damageWorm(w, SWEEP.fanDamage, p.slot, shoveX, shoveY, SWEEP.fanKnockback);
+        this.damageWorm(w, SWEEP.fanDamage, p.slot, shoveX, shoveY, SWEEP.fanKnockback, hitX, hitY);
       }
       for (let i = 0; i < this.errors.length; i++) {
         const e = this.errors[i];
@@ -7152,8 +7158,16 @@ export class World {
       const w = this.worms[i];
       if (!w.active) continue;
       let hit = reaches(w.x, w.y, w.hitR);
-      for (let s = 0; s < w.segCount && !hit; s++) hit = reaches(w.segX[s], w.segY[s], w.segR);
-      if (hit) this.damageWorm(w, amount, p.slot, 0, 0, 0);
+      let hitX = w.x;
+      let hitY = w.y;
+      for (let s = 0; s < w.segCount && !hit; s++) {
+        hit = reaches(w.segX[s], w.segY[s], w.segR);
+        if (hit) {
+          hitX = w.segX[s];
+          hitY = w.segY[s];
+        }
+      }
+      if (hit) this.damageWorm(w, amount, p.slot, 0, 0, 0, hitX, hitY);
     }
     for (let i = 0; i < this.errors.length; i++) {
       const e = this.errors[i];
@@ -8523,7 +8537,7 @@ export class World {
         const dx = hx - bx;
         const dy = hy - by;
         const d = Math.hypot(dx, dy) || 1;
-        this.damageWorm(w, ATOMIZE.ballDamage, p.slot, dx / d, dy / d, ATOMIZE.ballKnockback);
+        this.damageWorm(w, ATOMIZE.ballDamage, p.slot, dx / d, dy / d, ATOMIZE.ballKnockback, hx, hy);
         this.consumeAtomBall(p);
         return;
       }
@@ -10402,7 +10416,7 @@ export class World {
         if (!hit) continue;
         this.radarHitWorms[i] |= 1 << wi;
         const d = Math.hypot(hx, hy) || 1;
-        this.damageWorm(w, radar.damage, -1, hx / d, hy / d);
+        this.damageWorm(w, radar.damage, -1, hx / d, hy / d, 0, x + hx, y + hy);
       }
       for (let vi = 0; vi < this.viruses.length; vi++) {
         const v = this.viruses[vi];
@@ -14613,7 +14627,7 @@ export class World {
         const dist = Math.hypot(dx, dy);
         const nx = dist > 0.001 ? dx / dist : 1;
         const ny = dist > 0.001 ? dy / dist : 0;
-        this.damageWorm(w, damage, sourceSlot, nx, ny);
+        this.damageWorm(w, damage, sourceSlot, nx, ny, 0, hitX, hitY);
       }
       for (let i = 0; i < this.viruses.length; i++) {
         const v = this.viruses[i];
@@ -17371,6 +17385,8 @@ export class World {
       w.segPrevX[i] = cx;
       w.segPrevY[i] = cy;
       w.segAngle[i] = w.angle;
+      w.segHp[i] = WORM.segmentHp;
+      w.segMaxHp[i] = WORM.segmentHp;
     }
     return w;
   }
@@ -17505,6 +17521,7 @@ export class World {
     w.prevY = w.y;
     w.phase += dt;
     if (w.hitFlash > 0) w.hitFlash = Math.max(0, w.hitFlash - dt);
+    if (w.eyeT > 0) w.eyeT = Math.max(0, w.eyeT - dt);
     if (h.cd > 0) h.cd = Math.max(0, h.cd - dt);
     if (h.hitCd > 0) h.hitCd = Math.max(0, h.hitCd - dt);
     if (h.eyeT > 0) h.eyeT = Math.max(0, h.eyeT - dt);
@@ -19655,7 +19672,8 @@ export class World {
       }
     }
 
-    // A worm swallows anything it crosses: projectiles feed it, viruses grow its length.
+    // Viruses are still a meal and grow the chain. Player shots now spend the body node
+    // they strike instead of feeding the worm for free.
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
       if (!v.active) continue;
@@ -19742,6 +19760,116 @@ export class World {
     }
   }
 
+  /**
+   * Finds which body node a hit actually landed on. `-1` means the head. Callers that
+   * have an impact point pass it through; callers without one default to the head.
+   */
+  private wormBodyAt(w: Worm, x: number, y: number): number {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return -1;
+    let best = (w.x - x) * (w.x - x) + (w.y - y) * (w.y - y);
+    let body = -1;
+    for (let s = 0; s < w.segCount; s++) {
+      const dx = w.segX[s] - x;
+      const dy = w.segY[s] - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < best) {
+        best = d2;
+        body = s;
+      }
+    }
+    return body;
+  }
+
+  private ordinaryWormCount(): number {
+    let live = 0;
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (w.active && w.bossKind < 0 && !w.mega) live++;
+    }
+    return live;
+  }
+
+  /**
+   * Severs one standard worm at `cut`. The head side keeps the original head and every
+   * body node before the cut. The rear side promotes its old tail to a new head and
+   * trails the remaining nodes behind it, so the two pieces leave in opposite
+   * directions. A short rear piece is simply truncated; a full split is capped.
+   */
+  private splitWorm(
+    w: Worm,
+    cut: number,
+    sourceSlot: number,
+    dirX: number,
+    dirY: number,
+    force: number,
+  ): boolean {
+    const oldCount = w.segCount;
+    if (cut < 0 || cut >= oldCount) return false;
+    const rearBody = oldCount - cut - 2;
+    const tail = oldCount - 1;
+    const headX = w.segX[tail];
+    const headY = w.segY[tail];
+    const prevX = tail > 0 ? w.segX[tail - 1] : w.x;
+    const prevY = tail > 0 ? w.segY[tail - 1] : w.y;
+    let child: Worm | null = null;
+    if (rearBody >= 1 && this.ordinaryWormCount() < WORM.splitCap) {
+      child = this.spawnWorm(headX, headY);
+    }
+    if (child) {
+      const angle = Math.atan2(headY - prevY, headX - prevX);
+      child.x = headX;
+      child.y = headY;
+      child.prevX = headX;
+      child.prevY = headY;
+      child.angle = angle;
+      child.vx = 0;
+      child.vy = 0;
+      child.kx = dirX * force * 0.5;
+      child.ky = dirY * force * 0.5;
+      child.hp = WORM.hp;
+      child.maxHp = WORM.hp;
+      child.spawnT = 0;
+      child.hitFlash = 0.2;
+      child.eyeT = WORM.splitEye;
+      child.infected = w.infected;
+      child.shrink = w.shrink;
+      child.segCount = rearBody;
+      for (let j = 0; j < rearBody; j++) {
+        const src = tail - 1 - j;
+        const sx = w.segX[src];
+        const sy = w.segY[src];
+        child.segX[j] = sx;
+        child.segY[j] = sy;
+        child.segPrevX[j] = sx;
+        child.segPrevY[j] = sy;
+        child.segHp[j] = w.segHp[src] > 0 ? w.segHp[src] : WORM.segmentHp;
+        child.segMaxHp[j] = w.segMaxHp[src] > 0 ? w.segMaxHp[src] : WORM.segmentHp;
+      }
+      for (let j = 0; j < rearBody; j++) {
+        const ax = j === 0 ? child.x : child.segX[j - 1];
+        const ay = j === 0 ? child.y : child.segY[j - 1];
+        child.segAngle[j] = Math.atan2(ay - child.segY[j], ax - child.segX[j]);
+      }
+      child.anchorX = headX;
+      child.anchorY = headY;
+      child.patrolX = headX;
+      child.patrolY = headY;
+      child.retargetT = 0;
+      this.pickWormPatrol(child);
+      child.biteDirX = Math.cos(angle);
+      child.biteDirY = Math.sin(angle);
+      child.dashDirX = child.biteDirX;
+      child.dashDirY = child.biteDirY;
+      child.aggroT = sourceSlot === 0 || child.infected ? WORM.aggroTime : 0;
+    }
+    w.segCount = cut;
+    for (let i = cut; i < oldCount; i++) {
+      w.segHp[i] = 0;
+      w.segMaxHp[i] = 0;
+    }
+    return child !== null;
+  }
+
   private damageWorm(
     w: Worm,
     amount: number,
@@ -19775,6 +19903,26 @@ export class World {
       this.damageMegaWorm(w, amount, sourceSlot, dirX, dirY, force, hitX, hitY);
       return;
     }
+    // A standard worm's chain is made of separate targets. Body hits spend the node's
+    // small pool; destroying one severs the chain before the head takes any damage.
+    // Head hits use the existing one-pool health and end the whole worm.
+    const body = this.wormBodyAt(w, hitX, hitY);
+    if (body >= 0) {
+      const max = w.segMaxHp[body] > 0 ? w.segMaxHp[body] : WORM.segmentHp;
+      if (w.segMaxHp[body] <= 0) w.segMaxHp[body] = max;
+      w.segHp[body] -= amount;
+      w.hitFlash = 0.2;
+      if (sourceSlot === 0) w.aggroT = WORM.aggroTime;
+      w.kx += dirX * force;
+      w.ky += dirY * force;
+      const hx = Number.isFinite(hitX) ? hitX : w.segX[body];
+      const hy = Number.isFinite(hitY) ? hitY : w.segY[body];
+      this.emit(EV.WORM_HIT, sourceSlot, hx, hy, amount, dirX, dirY);
+      if (w.segHp[body] > 0) return;
+      const made = this.splitWorm(w, body, sourceSlot, dirX, dirY, force);
+      this.emit(EV.WORM_SPLIT, sourceSlot, hx, hy, made ? 1 : 0, dirX, dirY);
+      return;
+    }
     w.hp -= amount;
     w.hitFlash = 0.2;
     // Only the player provokes a worm. Crossfire between rival factions should not
@@ -19803,17 +19951,11 @@ export class World {
       w.segPrevX[w.segCount] = sx;
       w.segPrevY[w.segCount] = sy;
       w.segAngle[w.segCount] = w.angle;
+      w.segHp[w.segCount] = WORM.segmentHp;
+      w.segMaxHp[w.segCount] = WORM.segmentHp;
       w.segCount++;
     }
     w.hp = Math.min(w.maxHp, w.hp + WORM.healPerMeal);
-  }
-
-  private eatProjectile(proj: Projectile, w: Worm): void {
-    const x = proj.x;
-    const y = proj.y;
-    proj.active = false;
-    this.growWorm(w, WORM.growthPerProjectile);
-    this.emit(EV.EAT, -1, x, y, w.segCount);
   }
 
   private spawnVirus(x: number, y: number, held = false, edge = true): Virus | null {
@@ -20383,15 +20525,19 @@ export class World {
       const w = this.worms[i];
       if (!w.active) continue;
       let hit = this.beamHits(f, w.x, w.y, w.hitR);
+      let hitX = w.x;
+      let hitY = w.y;
       if (!hit) {
         for (let s = 0; s < w.segCount; s++) {
           if (this.beamHits(f, w.segX[s], w.segY[s], w.segR)) {
             hit = true;
+            hitX = w.segX[s];
+            hitY = w.segY[s];
             break;
           }
         }
       }
-      if (hit) this.damageWorm(w, FIREWALL.enemyDamage, -1, nx, ny);
+      if (hit) this.damageWorm(w, FIREWALL.enemyDamage, -1, nx, ny, 0, hitX, hitY);
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];
@@ -20466,8 +20612,8 @@ export class World {
 
   /**
    * Hourglass pass over the gauntlet roster. Each family uses the spear's hit masks, so
-   * one shell damages a body once and keeps flying until its passes are spent. A worm
-   * swallows the shell, which is the one body that can end the pass early.
+   * one shell damages a body once and keeps flying until its passes are spent. A standard
+   * worm body node is a solid hit now; it does not swallow the shell.
    */
   private hourglassHitsGauntlet(proj: Projectile): boolean {
     const speed = Math.hypot(proj.vx, proj.vy) || 1;
@@ -20529,12 +20675,10 @@ export class World {
         touching = sdx * sdx + sdy * sdy <= sr * sr;
       }
       if (!touching) continue;
-      // A worm swallows the shell instead of being pierced by it. A boss plate takes the hit.
-      if (w.mega) {
-        this.damageWorm(w, proj.damage, proj.owner, ux, uy, 0, proj.x, proj.y);
-      } else {
-        this.eatProjectile(proj, w);
-      }
+      // Every body node takes the shell now. The old swallow rule made body hits free
+      // food and left the head as the only meaningful target.
+      this.damageWorm(w, proj.damage, proj.owner, ux, uy, 0, proj.x, proj.y);
+      if (!w.mega) proj.active = false;
       return true;
     }
     return false;
@@ -20605,7 +20749,7 @@ export class World {
       }
       if (!touching) continue;
       proj.hitWorms |= bit;
-      this.damageWorm(w, proj.damage, proj.owner, ux, uy, PINBALL.shotKnockback);
+      this.damageWorm(w, proj.damage, proj.owner, ux, uy, PINBALL.shotKnockback, proj.x, proj.y);
       if (this.pinballStruck(proj)) return true;
     }
     return false;
@@ -20673,7 +20817,7 @@ export class World {
       }
       if (!touching) continue;
       proj.hitWorms |= bit;
-      this.damageWorm(w, proj.damage, proj.owner, ux, uy, PINBALL.powerKnockback);
+      this.damageWorm(w, proj.damage, proj.owner, ux, uy, PINBALL.powerKnockback, proj.x, proj.y);
     }
     return false;
   }
@@ -20811,13 +20955,11 @@ export class World {
         if (sdx * sdx + sdy * sdy > sr * sr) continue;
         if (proj.type === 1) {
           this.explodeMine(proj, proj.owner);
-        } else if (hostile || w.mega) {
+        } else {
           const speed = Math.hypot(proj.vx, proj.vy) || 1;
           const stormStrike = proj.lightning && proj.owner >= 0 ? STORM_CLOUD.lightning.reflectDamage : proj.damage;
           this.damageWorm(w, stormStrike, hostile ? -1 : proj.owner, proj.vx / speed, proj.vy / speed, 0, proj.x, proj.y);
           proj.active = false;
-        } else {
-          this.eatProjectile(proj, w);
         }
         return true;
       }
@@ -20902,7 +21044,7 @@ export class World {
       }
       if (!touching) continue;
       proj.hitWorms |= bit;
-      this.damageWorm(w, proj.damage, proj.owner, ux, uy, FISHER.spearKnockback);
+      this.damageWorm(w, proj.damage, proj.owner, ux, uy, FISHER.spearKnockback, hitX, hitY);
       if (w.active && this.nearCoverAhead(hitX, hitY, ux, uy, FISHER.spearPinRange)) w.pinT = FISHER.spearPin;
     }
   }
@@ -21042,12 +21184,27 @@ export class World {
     for (let i = 0; i < this.worms.length; i++) {
       const w = this.worms[i];
       if (!w.active) continue;
-      const dx = w.x - p.x;
-      const dy = w.y - p.y;
-      const d = Math.hypot(dx, dy);
-      if (d > reach + w.hitR || d < 0.001) continue;
-      if ((dx / d) * cos + (dy / d) * sin < arcCos) continue;
-      this.damageWorm(w, damage, p.slot, shoveX, shoveY, force);
+      let hitX = w.x;
+      let hitY = w.y;
+      let dx = w.x - p.x;
+      let dy = w.y - p.y;
+      let d = Math.hypot(dx, dy);
+      let touching = d > 0.001 && d <= reach + w.hitR && (dx / d) * cos + (dy / d) * sin >= arcCos;
+      if (!touching) {
+        for (let s = 0; s < w.segCount; s++) {
+          dx = w.segX[s] - p.x;
+          dy = w.segY[s] - p.y;
+          d = Math.hypot(dx, dy);
+          if (d < 0.001 || d > reach + w.segR) continue;
+          if ((dx / d) * cos + (dy / d) * sin < arcCos) continue;
+          touching = true;
+          hitX = w.segX[s];
+          hitY = w.segY[s];
+          break;
+        }
+      }
+      if (!touching) continue;
+      this.damageWorm(w, damage, p.slot, shoveX, shoveY, force, hitX, hitY);
       this.markSwingHit(p);
       return;
     }
@@ -21127,6 +21284,8 @@ export class World {
       const bit = 1 << i;
       if ((p.dashHitWorms & bit) !== 0) continue;
       const rr = hitR + w.hitR;
+      let hitX = w.x;
+      let hitY = w.y;
       let touching = (w.x - p.x) * (w.x - p.x) + (w.y - p.y) * (w.y - p.y) <= rr * rr;
       if (!touching) {
         const sr = hitR + w.segR;
@@ -21135,13 +21294,15 @@ export class World {
           const dy = w.segY[s] - p.y;
           if (dx * dx + dy * dy <= sr * sr) {
             touching = true;
+            hitX = w.segX[s];
+            hitY = w.segY[s];
             break;
           }
         }
       }
       if (!touching) continue;
       p.dashHitWorms |= bit;
-      this.damageWorm(w, PLAYER.chargeDashDamage, p.slot, fx, fy, PLAYER.chargeDashKnockback);
+      this.damageWorm(w, PLAYER.chargeDashDamage, p.slot, fx, fy, PLAYER.chargeDashKnockback, hitX, hitY);
     }
     for (let i = 0; i < this.viruses.length; i++) {
       const v = this.viruses[i];

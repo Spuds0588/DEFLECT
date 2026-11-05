@@ -421,15 +421,20 @@ solo and host-authoritative online co-op (D32); every other gauntlet threat stay
 - A scored record stores callsign, arena, wave reached, seconds survived and kills. Keep the top eight in
   `localStorage` via `src/game/gauntletRecords.ts`; rank by wave, then time, then kills. The gauntlet setup
   stage owns the one-life start and the local table. Records are local-only and never enter `Snapshot`.
-- **Worms** are red square chains that damage on touch, swallow projectiles and viruses, and grow a
-  segment per meal. They **hold a territory anchor**, patrol it at reduced speed, and only chase a player
+- **Worms** are red square chains that damage on touch and grow a segment per virus meal. They **hold a
+  territory anchor**, patrol it at reduced speed, and only chase a player
   who enters `WORM.aggroRadius` or hits them; interest expires after `WORM.aggroTime` and they return.
   Longer chains move slower. They are **blocked by cover** like the player; only designated phasing threats
   should pass through geometry. A player inside `WORM.biteRange` draws a telegraphed **bite**: the head
   rears for `biteWindup`, lunges at `biteLunge` for `biteActive`, and deals `biteDamage` plus
   `biteKnockback` once before `biteRecovery`. The direction is latched at the trigger, so a strafe, dash or
   broken line of sight can make it whiff; touch damage is suppressed for the whole attack, and
-  `biteCooldown` gates the next one. Do not let a worm bite through cover.
+  `biteCooldown` gates the next one. Do not let a worm bite through cover. Every body square is a damage
+  target with `WORM.segmentHp`; a shot spends the struck node instead of being swallowed. Destroying a
+  body node severs the chain: the head side keeps the original head and forward nodes, while the rear side
+  promotes its old tail to a new head and trails the remaining nodes behind it. A head hit still kills the
+  worm. Keep standard worms at `WORM.splitCap`; a cut at the cap, or one with no rear body, truncates the
+  tail. This is local-only state and never enters `Snapshot`.
 - **Viruses** are magenta diamonds that spread, split, and infect. They roam toward `VIRUS.roam*` points
   and only pursue a player or an uninfected worm inside `VIRUS.huntRadius` / `VIRUS.wormHuntRadius`; worms
   are the preferred host. They can convert a worm (magenta, faster) or fill the local player's infection
@@ -1135,7 +1140,8 @@ snapshots do not move. Identity:
 - **Ranged**: one heavy hourglass (type 10), `740 u/s`, 2.1 s life, wide (`14`), no motion tail, dies on
   geometry. It passes through up to five bodies (`BUFFER.shotHits`), damaging each for 1.75 and shoving
   hard (`780`); every body struck flips `spinDir`, so the mark visibly reverses. It uses the spear's hit
-  masks per family, and a worm swallows it. Every `type >= 3` deflect branch may turn it into a bolt,
+  masks per family; a standard worm body node takes the hit and ends the shell. Every `type >= 3` deflect
+  branch may turn it into a bolt,
   which is the existing guard/lash rule; types 8/9 remain the never-deflectable exceptions.
 - **Skill**: **fast-forward** for `3.8 s`. Movement, attack rate and every cooldown run at `2.8x` for
   that body only. It is driven by `Player.fastT` (local-only) and a per-player `pdt` that scales

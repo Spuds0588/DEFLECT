@@ -206,6 +206,10 @@ rather than dropping a body nearby. Sentry packs arrive as pairs when the live c
 arrive together, and a cascading-error colony enters as a three-block burst. Campaign opening squads and
 authored campaign ports are separate content.
 
+Ordinary worms use per-node body health: a shot spends the square it hit, and destroying a body node cuts
+the chain into two, with the rear half's old tail promoted to a new head. Only a head hit removes that
+piece. The live-worm cap and split state are local-only and never enter a snapshot.
+
 ### Campaign levels: one device, one portal
 
 A campaign level is one arena in an ordered route, not a floor plan joined to the next. Clearing a node

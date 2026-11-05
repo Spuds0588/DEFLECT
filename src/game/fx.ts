@@ -200,6 +200,17 @@ export class Fx {
         this.shake = Math.max(this.shake, 2.5);
         break;
       }
+      case EV.WORM_SPLIT: {
+        // The cut is louder than a chip but smaller than a kill: a short red seam and
+        // a spray of squares where the chain came apart. Power 1 means a second worm
+        // was made; power 0 is a truncation only.
+        const made = ev.power > 0;
+        this.particles.ring(ev.x, ev.y, P_COLOR_WORM, made ? 12 : 7, made ? 78 : 46, 0.34);
+        this.particles.squares(ev.x, ev.y, made ? 18 : 9, P_COLOR_WORM, 80, made ? 430 : 260);
+        this.particles.impact(ev.x, ev.y, ev.dirX, ev.dirY, P_COLOR_WORM, 10);
+        this.shake = Math.max(this.shake, made ? 5 : 2.5);
+        break;
+      }
       case EV.VIRUS_HIT: {
         this.particles.impact(ev.x, ev.y, ev.dirX, ev.dirY, P_COLOR_VIRUS, 12);
         break;
