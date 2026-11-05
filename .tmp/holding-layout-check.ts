@@ -4,7 +4,7 @@
  * portal by ordinary walking after the cell wave clears.
  */
 import { ARENAS, holdingCellLayout, type Rect } from '../src/game/arenas';
-import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
+import { PLAYABLE_CAMPAIGN_LEVELS, campaignChapterForLevel } from '../src/game/campaign';
 import { MAX_PLAYERS } from '../src/game/config';
 import { World } from '../src/game/world';
 
@@ -37,7 +37,7 @@ const world = new World(
   level.clearKills,
   false,
   level.boss ?? -1,
-  level.primitivesOnly === true,
+  campaignChapterForLevel(level),
 );
 
 const inside = (r: Rect, x: number, y: number) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h;

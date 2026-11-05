@@ -135,6 +135,7 @@ import {
   type ArenaUsbDef,
   type DiscDef,
 } from './arenas';
+import { campaignPortFamily, campaignThreatAllowed } from './campaign';
 import type { CampaignDataCrate, CampaignIntro, CampaignOpening } from './campaign';
 import {
   CALIBRATION_POWER_TUTORIAL,
@@ -863,8 +864,12 @@ export class World {
     return (this.arena.bounds.top + this.arena.bounds.bottom) * 0.5;
   }
 
-  /** Level rule: only the primitive family may spawn until the holding cell opens. */
-  campaignPrimitivesOnly = false;
+  /**
+   * 1-based campaign chapter. It gates which threat families may spawn: chapter 1 is
+   * primitives and worms, chapter 2 adds viruses. 0 means no roster gate (gauntlet,
+   * infection and probes).
+   */
+  campaignChapter = 0;
 
   constructor(
     mode: GameMode,
@@ -882,7 +887,7 @@ export class World {
     campaignClearKills = 0,
     bossRush = false,
     campaignBoss = -1,
-    primitivesOnly = false,
+    campaignChapter = 0,
     campaignOpening: CampaignOpening | null = null,
     campaignFinale = false,
     campaignDeadBots = 0,
@@ -895,7 +900,7 @@ export class World {
     this.infectionMode = infectionMode;
     this.bossRush = bossRush;
     this.campaignBoss = campaignBoss;
-    this.campaignPrimitivesOnly = primitivesOnly;
+    this.campaignChapter = campaignChapter;
     this.campaignOpening = campaignOpening;
     this.campaignFinale = campaignFinale;
     this.campaignBlurb = campaignBlurb;
@@ -1586,7 +1591,7 @@ export class World {
         ty: 0,
         fixed: true,
         portal: true,
-        portalFamily: p.family,
+        portalFamily: campaignPortFamily(this.campaignChapter, p.family),
         portalInterval: p.interval,
         // Stagger the first emission so two ports never fire on the same frame.
         portalT: 1.4 + i * 0.9,
@@ -1709,7 +1714,7 @@ export class World {
     if (fam === 1) {
       let live = 0;
       for (let i = 0; i < this.viruses.length; i++) if (this.viruses[i].active) live++;
-      if (!this.campaignPrimitivesOnly && live < this.virusLimit()) this.spawnVirus(x, y);
+      if (live < this.virusLimit()) this.spawnVirus(x, y);
     } else if (fam === 2) {
       let live = 0;
       for (let i = 0; i < this.worms.length; i++) if (this.worms[i].active && this.worms[i].bossKind < 0) live++;
@@ -1893,7 +1898,8 @@ export class World {
     }
     const opening = this.campaignOpening;
     const sentryCount = opening?.sentries ?? 1;
-    const virusCount = opening?.viruses ?? 0;
+    const virusCount =
+      opening && campaignThreatAllowed(this.campaignChapter, 'viruses') ? opening.viruses : 0;
     const wormCount = opening?.worms ?? 0;
     for (let i = 0; i < zones.length; i++) {
       const { cx, cy } = zones[i];
@@ -2022,7 +2028,7 @@ export class World {
       this.tutorialGrace = 0;
     }
     // The release is a scripted cut, not a cheap hit: give the player a beat to see the
-    // bars go before the first virus can touch them.
+    // bars go before the released bodies can touch them.
     for (let i = 0; i < this.players.length; i++) {
       if (this.players[i].active) this.players[i].iframes = Math.max(this.players[i].iframes, 1.2);
     }
@@ -2040,17 +2046,16 @@ export class World {
     if (!cells) {
       const player = this.players[0];
       this.spawnWorm(player.x, player.y - 40, true);
-      this.spawnVirus(player.x - 90, player.y, true);
-      this.spawnVirus(player.x + 90, player.y, true);
+      if (campaignThreatAllowed(this.campaignChapter, 'viruses')) {
+        this.spawnVirus(player.x - 90, player.y, true);
+        this.spawnVirus(player.x + 90, player.y, true);
+      }
       return;
     }
-    // Two full chains and eight viruses. The cell wave used to be three bodies, so the
-    // bars opened onto a nearly empty block; this is a breakout, not a trickle.
-    for (let k = 0; k < 2; k++) {
-      const cell = k === 0 ? 0 : cells.cellCount - 1;
+    // Face up so a chain runs down the cell behind its painted caged silhouette.
+    const holdChain = (cell: number): void => {
       const worm = this.spawnWorm(cells.left + cells.cellW * (cell + 0.5), cells.top + 52, true);
-      if (!worm) continue;
-      // Face up so the chain runs down the cell behind the painted caged silhouette.
+      if (!worm) return;
       worm.angle = -Math.PI / 2;
       worm.biteDirX = 0;
       worm.biteDirY = -1;
@@ -2065,10 +2070,19 @@ export class World {
         worm.segPrevY[i] = sy;
         worm.segAngle[i] = worm.angle;
       }
-    }
-    for (let k = 1; k <= 8; k++) {
-      const cell = k % cells.cellCount;
-      this.spawnVirus(cells.left + cells.cellW * (cell + 0.5), cells.top + 52 + (k % 3) * 17, true);
+    };
+    // Two full chains hold the end cells. The middle cells are the chapter's new-body
+    // slots: eight viruses once the roster unlocks them, two short chains before that.
+    holdChain(0);
+    holdChain(cells.cellCount - 1);
+    if (campaignThreatAllowed(this.campaignChapter, 'viruses')) {
+      for (let k = 1; k <= 8; k++) {
+        const cell = k % cells.cellCount;
+        this.spawnVirus(cells.left + cells.cellW * (cell + 0.5), cells.top + 52 + (k % 3) * 17, true);
+      }
+    } else {
+      holdChain(3);
+      holdChain(6);
     }
   }
 
@@ -20960,8 +20974,9 @@ export class World {
   }
 
   private spawnVirus(x: number, y: number, held = false, edge = true): Virus | null {
-    // Holding-cell rule: a primitives-only node never seeds a virus, from any path.
-    if (this.campaignPrimitivesOnly) return null;
+    // The chapter roster is enforced here so no path (opening squad, port emission or
+    // cell release) can put a family on the floor before its chapter introduces it.
+    if (this.campaign && !campaignThreatAllowed(this.campaignChapter, 'viruses')) return null;
     let v: Virus | null = null;
     for (let i = 0; i < this.viruses.length; i++) {
       if (!this.viruses[i].active) {

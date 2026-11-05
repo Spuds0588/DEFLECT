@@ -10163,52 +10163,30 @@ export class Renderer {
   private drawHoldingCagedThreats(layout: HoldingCellLayout, t: number, alpha: number): void {
     const ctx = this.ctx;
     ctx.save();
-    // Two full chains at the end cells. The painted body is deliberately longer than
-    // the old four-block stub so the block reads as crowded before it opens.
-    for (let w = 0; w < 2; w++) {
-      const cell = w === 0 ? 0 : layout.cellCount - 1;
-      const wx = layout.left + layout.cellW * (cell + 0.5);
-      const wy = layout.top + 52;
+    // Chapter 1 releases worms only. Two full chains hold the end cells and two short
+    // chains fill the middle, matching `spawnHeldCellThreats` one-for-one.
+    const chain = (cell: number, count: number, phase: number): void => {
+      const x = layout.left + layout.cellW * (cell + 0.5);
+      const y = layout.top + 52;
       ctx.globalAlpha = 0.9 * alpha;
       ctx.fillStyle = THREAT_COLORS.worm;
       ctx.strokeStyle = 'rgba(17, 9, 12, 0.9)';
       ctx.lineWidth = 1.2;
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < count; i++) {
         const s = i === 0 ? 10 : 8 - i * 0.32;
-        const x = wx + Math.sin(t * 1.8 + i * 0.65 + w) * 2.5;
-        const y = wy + i * 9;
-        ctx.fillRect(x - s * 0.5, y - s * 0.5, s, s);
-        ctx.strokeRect(x - s * 0.5, y - s * 0.5, s, s);
+        const sx = x + Math.sin(t * 1.8 + i * 0.65 + phase) * 2.5;
+        const sy = y + i * 9;
+        ctx.fillRect(sx - s * 0.5, sy - s * 0.5, s, s);
+        ctx.strokeRect(sx - s * 0.5, sy - s * 0.5, s, s);
       }
       ctx.fillStyle = '#241217';
-      ctx.fillRect(wx - 3, wy - 2, 2, 2);
-      ctx.fillRect(wx + 1, wy - 2, 2, 2);
-    }
-
-    // Eight magenta diamonds across the middle cells: the same count the breakout
-    // actually releases.
-    ctx.strokeStyle = 'rgba(34, 8, 30, 0.9)';
-    ctx.fillStyle = THREAT_COLORS.virus;
-    for (let i = 0; i < 8; i++) {
-      const cell = (i + 1) % layout.cellCount;
-      const x = layout.left + layout.cellW * (cell + 0.5) + Math.sin(t * 1.5 + i * 2.1) * 2.5;
-      const y = layout.top + 52 + (i % 3) * 17 + Math.cos(t * 1.2 + i) * 2;
-      const r = i % 2 === 0 ? 6.5 : 5.5;
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(t * 1.2 + i * 0.9);
-      ctx.beginPath();
-      ctx.moveTo(0, -r);
-      ctx.lineTo(r * 0.72, 0);
-      ctx.lineTo(0, r);
-      ctx.lineTo(-r * 0.72, 0);
-      ctx.closePath();
-      ctx.globalAlpha = 0.9 * alpha;
-      ctx.fill();
-      ctx.globalAlpha = 0.65 * alpha;
-      ctx.stroke();
-      ctx.restore();
-    }
+      ctx.fillRect(x - 3, y - 2, 2, 2);
+      ctx.fillRect(x + 1, y - 2, 2, 2);
+    };
+    chain(0, 7, 0);
+    chain(layout.cellCount - 1, 7, 1);
+    chain(3, 5, 2);
+    chain(6, 5, 3);
     ctx.restore();
   }
 

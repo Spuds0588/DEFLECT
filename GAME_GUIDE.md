@@ -211,7 +211,7 @@ solid while it is sealed, so the held wave cannot leave early and you cannot wal
 civilian monitors in that office are lost in the breakout, dropping any files they carry, and script_kitty
 watches from the middle cell. The Warden teaches your **skill**
 while wave 1 is live. Clear all six and finish that lesson to make the cell block lose power: the bars
-retract unexpectedly and release **wave 2**, two worms and eight viruses, while the Warden teaches your
+retract unexpectedly and release **wave 2**, four worms, while the Warden teaches your
 **power attack**. They are already in the cells behind the bars and spill out toward open-floor waypoints,
 so the release is a breakout rather than a row of targets waiting to be shot through the bars. Clear wave 2 and finish the heavy lesson to open the next portal. The quarantine
 route is four rooms: `INTAKE` (the Warden lesson), `HOLDING` (the cells), `MAINBOARD` (two feeds) and
@@ -236,8 +236,8 @@ bonus, and the best score and sweep count stay in the slot. A clear saves the su
 a bot lost in an earlier room does not return on the next one.
 
 Clearing writes the slot and opens the portal. `BUILD ROOT` hops straight to `REBOOT` on `GRID ZERO`: the
-cat gets you out of quarantine, then six corner feeds fill the arena with sentries, viruses, worms and
-errors. Clear all six feeds and every body before the **Mega Worm** is announced. Its entrance is a slow,
+cat gets you out of quarantine, then six corner feeds fill the arena with sentries and worms. Clear all
+six feeds and every body before the **Mega Worm** is announced. Its entrance is a slow,
 harmless fly-past with a roar; you keep moving and fighting during it, and the camera stays centered on
 the wide arena rather than chasing it offscreen. It then repeats four fixed straight lanes with a pause
 between passes, and no little enemies spawn between runs. At 35% health it screams again and its passes
@@ -260,6 +260,11 @@ the drill, you come back on the training timer and the lesson keeps its place, s
 rather than the run. **The assault is one life** — going down once the fight starts ends the node, and
 the result screen offers `RETRY` or `SLOTS`. The
 layout brief and handoff checklist live in [CAMPAIGN.md](CAMPAIGN.md).
+
+Each chapter adds one threat family. BUILD ROOT and REBOOT are sentries and worms; viruses start at
+NETWORK SWITCH and stay in the mix. AIRPORT and the arcade/food-court chapter are scheduled to add
+spinning bots and magic users, but those kits are not built yet, so their floors use the families already
+unlocked. SPACE and KISSINGFACE add nothing new: they are there to test the mix.
 
 ### Online status
 

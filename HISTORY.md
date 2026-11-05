@@ -8436,3 +8436,43 @@ forth, and a waveform that changes as the station periodically retunes.
 
 **Next:** run a real host/guest room through a camera file, a full signal cycle, a crosswalk swap and a tuner
 reversal; confirm only the host spends HP.
+
+## 2026-11-05 — Campaign threat rollout by chapter (v0.1.208)
+
+**Goal:** make the campaign introduce one enemy family per chapter: sentries and worms in BUILD ROOT +
+REBOOT, viruses from OFFICE LAN, spinning bots reserved for AIRPORT, magic users reserved for the arcade /
+food court, and no new body in SPACE or KISSINGFACE.
+
+**Changes.**
+- Added `CAMPAIGN_CHAPTERS` and `campaignChapterForLevel` / `campaignChapterForNode` to `campaign.ts`; the
+  six route chapters map to the existing node ids. `campaignThreatAllowed` is the single membership gate, and
+  `spawnVirus` enforces it so an opening squad, a port emission or the HOLDING cell release cannot bypass it.
+- `campaignPortFamily` remaps a feed whose family is locked: a chapter-1 virus feed becomes a worm feed
+  instead of a port the player can never satisfy.
+- Removed the unused `CampaignLevel.primitivesOnly` switch and `World.campaignPrimitivesOnly`. `World` takes
+  a 1-based `campaignChapter` (0 = no roster for gauntlet, infection and legacy probes), and `main.ts`
+  resolves it per node.
+- Chapter 1 data: MAINBOARD `3/0/1`, ROUTER `3/0/1` and REBOOT `4/0/1`; HOLDING's release is four worm chains
+  (two full end chains and two short middle chains) with no viruses. The caged art and the Warden power line
+  match the worm-only wave.
+- AIRPORT (3) reserves spinning bots and ARCADE // FOOD COURT (5) reserves magic users. Both are `pending`:
+  no silhouette, kit, spawner or tuning exists, and `IMPLEMENTED_THREAT_FAMILIES` excludes them, so the gate
+  cannot put them on a floor. These are reservations, not shipped enemies.
+- Updated AGENTS D76, CAMPAIGN, README, GAME_GUIDE, TODO and all version stamps.
+
+**Verification.**
+- `.tmp/chapter-threats-check.ts` 0: six-chapter roster, chapter 1 sentries/worms, chapter 2 viruses, pending
+  spinners/magic blocked, chapter-1 openings at 0 viruses, MAINBOARD port remap, HOLDING 4 worms / 0
+  viruses, NETWORK SWITCH still loads its 2-virus opening.
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,203.16 kB JS / 335.53 kB gzip; existing chunk-size warning);
+  `npm run bench` clean (8P max proj 0.095 ms avg / 0.247 ms p99; gauntlet 0.305 ms avg / 0.865 ms p99 at
+  30.5 live threats); `git diff --check` clean.
+- campaign-rules, campaign2, campaign-chapter, holding-layout, port-route, feedback-pass, network-switch,
+  reboot-boss, boss-warning and campaign-finale probes green.
+- The broad 30-level bot probe (`campaign-playthrough-check`) was not used as a gate: it fails at NETWORK
+  SWITCH, whose spawn behavior is identical before and after this change (chapter 2 allows viruses), so the
+  failure is pre-existing and not evidence about the chapter roster. No human playthrough of the worm-only
+  HOLDING release yet.
+
+**Next:** designer supplies the spinning-bot kit and the magic-user references; add each to
+`IMPLEMENTED_THREAT_FAMILIES` when its spawner lands. Human pass on the four-worm HOLDING release.

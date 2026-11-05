@@ -113,8 +113,8 @@ on kitty's first-hop line: "IT WORKED! I CAN'T BELIEVE IT WORKED." then "OKAY. I
 INFECTION AND GET ME OUT OF HERE." HOLDING's six subjects are already awake as **wave 1** and carry the
 skill lesson. The ten shallow cells line the whole north wall, so the held wave reads from the floor. The
 block is a body solid while it is powered. Clearing all six and finishing the
-skill beat makes the block fail: the bars retract unexpectedly and release **wave 2**, two worms and eight
-viruses, for the power-attack lesson. The bodies are already in the cells, frozen and untargetable while the
+skill beat makes the block fail: the bars retract unexpectedly and release **wave 2** for the power-attack
+lesson — four worm chains in chapter 1, or two worms and eight viruses once OFFICE LAN unlocks them. The bodies are already in the cells, frozen and untargetable while the
 block is powered; the power-down wakes them and gives them open-floor waypoints, so they walk out instead of
 waiting behind the bars to be shot in a barrel. Clear that wave and the heavy
 beat to open the portal to MAINBOARD.
@@ -341,6 +341,20 @@ phases, a `CampaignLevel.opening` squad on the first frame, one data crate on a 
 level has one, and no new snapshot fields. The airport, arcade, food-court and server arenas carry their
 own local hazards; the space arenas use existing cover, the ROCKET NAVIGATION reflector and the satellite
 void. The final node is NETWORK BOARD, where the USER finale holds the ceiling over the fabric.
+
+### Threat rollout (2026-11-05)
+
+Each chapter introduces one family. `CAMPAIGN_CHAPTERS` owns the mapping and `campaignThreatAllowed` is the
+spawn gate; an authored feed locked by the roster remaps to a legal family instead of becoming a dead port.
+
+1. **BUILD ROOT + REBOOT:** sentries and worms. No viruses in MAINBOARD, ROUTER, REBOOT or HOLDING's cell
+   wave; a virus feed becomes a worm feed.
+2. **OFFICE LAN:** viruses unlock and stay in every later pool.
+3. **AIRPORT:** spinning bots are reserved (`pending`); the kit is not designed yet.
+4. **SPACE:** no new family; inherits the pool.
+5. **ARCADE // FOOD COURT:** magic users are reserved (`pending`); references are still required before
+   their shapes or attacks are authored.
+6. **KISSINGFACE:** no new family; the full mix is the test.
 
 ### Built foundations (2026-11-05)
 

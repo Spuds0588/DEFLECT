@@ -1,13 +1,13 @@
 import { World } from '../src/game/world';
 import { ARENAS } from '../src/game/arenas';
-import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
+import { PLAYABLE_CAMPAIGN_LEVELS, campaignChapterForLevel } from '../src/game/campaign';
 import { MAX_PLAYERS } from '../src/game/config';
 import { writeFileSync } from 'node:fs';
 const level = PLAYABLE_CAMPAIGN_LEVELS[0];
 const arena = ARENAS.find((a) => a.id === level.arenaId)!;
 const names = new Array<string>(MAX_PLAYERS).fill(''); names[0] = 'P';
 const w = new World('gauntlet', names, 0, arena, false, 0, 0, null, true, level.dataCrates,
-  false, level.intro, level.clearKills, false, level.boss ?? -1, true) as any;
+  false, level.intro, level.clearKills, false, level.boss ?? -1, campaignChapterForLevel(level)) as any;
 const b = arena.bounds; const step = 16;
 const open = (x: number, y: number) => !w.offFloor(x, y) && x > b.left + 50 && x < b.right - 50 && y > b.top + 50 && y < b.bottom - 50;
 const seen = new Set<string>(); const start = arena.spawns[0];

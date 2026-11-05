@@ -44,8 +44,6 @@ export interface CampaignLevel {
   blurb?: readonly TutorialStep[];
   /** Threats deleted to clear the assault. 0 uses `CAMPAIGN.killsToClear`. */
   clearKills: number;
-  /** Keep the floor to the primitive family (worms) for this level. */
-  primitivesOnly?: boolean;
   /** False keeps an authored level out of the live campaign route until it ships. */
   playable?: boolean;
   /** Bodies already fighting when the assault starts, instead of waiting on the ports. */
@@ -66,6 +64,118 @@ export interface CampaignLevel {
 }
 
 export type CampaignIntro = 'none' | 'warden' | 'holding' | 'assault' | 'kitty';
+
+/**
+ * The campaign introduces one threat family per chapter. Chapters 4 and 6 add no new
+ * body, so those fights are about surviving the mix that is already unlocked.
+ */
+export type CampaignThreatFamily = 'sentries' | 'worms' | 'viruses' | 'spinners' | 'magic';
+
+export interface CampaignChapterDef {
+  /** 1-based chapter index used by the route's six themed stops. */
+  id: number;
+  label: string;
+  /** Campaign node ids that belong to this chapter. */
+  nodeIds: readonly string[];
+  /** The family this chapter introduces, or null when it adds no new enemy. */
+  introduces: CampaignThreatFamily | null;
+  /** The family is scheduled but has no approved kit yet, so it cannot spawn. */
+  pending?: boolean;
+}
+
+/**
+ * The rollout the campaign is authored around. `spinners` and `magic` are reserved
+ * slots: the chapters exist before the kits do, so the gate must never invent them.
+ */
+export const CAMPAIGN_CHAPTERS: readonly CampaignChapterDef[] = [
+  {
+    id: 1,
+    label: 'BUILD ROOT',
+    nodeIds: ['build-root', 'script-kitty'],
+    introduces: null,
+  },
+  {
+    id: 2,
+    label: 'OFFICE LAN',
+    nodeIds: ['network-switch', 'document-scanner', 'fax-machine', 'smart-watch', 'business-laptop'],
+    introduces: 'viruses',
+  },
+  {
+    id: 3,
+    label: 'AIRPORT',
+    nodeIds: ['airport'],
+    introduces: 'spinners',
+    pending: true,
+  },
+  {
+    id: 4,
+    label: 'SPACE',
+    nodeIds: ['orbit'],
+    introduces: null,
+  },
+  {
+    id: 5,
+    label: 'ARCADE // FOOD COURT',
+    nodeIds: ['arcade', 'food-court'],
+    introduces: 'magic',
+    pending: true,
+  },
+  {
+    id: 6,
+    label: 'KISSINGFACE',
+    nodeIds: ['ai-core'],
+    introduces: null,
+  },
+];
+
+/** Families with a shipped spawner. A scheduled-but-pending family joins this list. */
+const IMPLEMENTED_THREAT_FAMILIES: readonly CampaignThreatFamily[] = [
+  'sentries',
+  'worms',
+  'viruses',
+];
+
+/** Chapter that first introduces a family. The opening pair is the baseline. */
+const THREAT_INTRODUCED_IN: Record<CampaignThreatFamily, number> = {
+  sentries: 1,
+  worms: 1,
+  viruses: 2,
+  spinners: 3,
+  magic: 5,
+};
+
+export function campaignChapterForNode(nodeId: string): number {
+  for (let i = 0; i < CAMPAIGN_CHAPTERS.length; i++) {
+    if (CAMPAIGN_CHAPTERS[i].nodeIds.includes(nodeId)) return CAMPAIGN_CHAPTERS[i].id;
+  }
+  // A new route node inherits the latest chapter until it is authored into the table.
+  return CAMPAIGN_CHAPTERS[CAMPAIGN_CHAPTERS.length - 1].id;
+}
+
+export function campaignChapterForLevel(level: CampaignLevel): number {
+  return campaignChapterForNode(level.nodeId);
+}
+
+/**
+ * Chapter 0 is the no-roster case (gauntlet, infection and legacy probes): every
+ * implemented family is legal. A campaign passes its 1-based chapter index.
+ */
+export function campaignThreatAllowed(chapter: number, family: CampaignThreatFamily): boolean {
+  if (!IMPLEMENTED_THREAT_FAMILIES.includes(family)) return false;
+  if (chapter <= 0) return true;
+  return chapter >= THREAT_INTRODUCED_IN[family];
+}
+
+/**
+ * A port authored for a family the chapter has not introduced yet feeds the nearest
+ * legal family instead of becoming a dead source the player still has to close.
+ */
+export function campaignPortFamily(chapter: number, family: number): number {
+  if (chapter <= 0) return family;
+  if (family === 1 && !campaignThreatAllowed(chapter, 'viruses')) return 2;
+  if (family === 2 && !campaignThreatAllowed(chapter, 'worms')) return 0;
+  return family;
+}
 
 /**
  * A stop on the between-level route plate. The route is data so a future branch can
@@ -136,7 +246,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
       'THE INFECTION IS IN THE TRACES. FOLLOW THEM AND BURN THEM OUT.',
     ),
     clearKills: 8,
-    opening: { sentries: 3, viruses: 1, worms: 0 },
+    opening: { sentries: 3, viruses: 0, worms: 1 },
     dataCrates: [
       { x: 1250, y: 620, kind: PROP.DOC },
       { x: 1700, y: 680, kind: PROP.AUDIO },
@@ -156,7 +266,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
       'THE INFECTION OPENED A FEED. CLOSE IT BEFORE IT ROUTES AROUND US.',
     ),
     clearKills: 6,
-    opening: { sentries: 3, viruses: 1, worms: 1 },
+    opening: { sentries: 3, viruses: 0, worms: 1 },
     dataCrates: [
       { x: 1240, y: 400, kind: PROP.ZIP },
       { x: 1760, y: 900, kind: PROP.VIDEO },
@@ -175,7 +285,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     // frame. The Mega Worm arrives only after every port and every body is gone, then
     // its death opens the scripted finale portal.
     clearKills: 0,
-    opening: { sentries: 4, viruses: 2, worms: 1 },
+    opening: { sentries: 4, viruses: 0, worms: 1 },
     boss: MINIBOSS.MEGA_WORM,
     dataCrates: [],
   },

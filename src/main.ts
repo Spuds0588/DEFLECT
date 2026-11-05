@@ -1,6 +1,6 @@
 import { MINIBOSS, MINIBOSSES } from './game/minibosses';
 import { ATTRACT, AUTO_ATTACK, CAMERA, CAMPAIGN, HAPTICS, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
-import { FIRST_CAMPAIGN_LEVEL, PLAYABLE_CAMPAIGN_LEVELS, migrateCampaignLevel } from './game/campaign';
+import { FIRST_CAMPAIGN_LEVEL, PLAYABLE_CAMPAIGN_LEVELS, campaignChapterForLevel, migrateCampaignLevel } from './game/campaign';
 import { ARENAS, drawArenaPreview, getArena, type ArenaDef } from './game/arenas';
 import { LocalSeats, type LocalSeat } from './game/localplay';
 import { BOT_NAMES, BOT_TIERS, BOT_TIER_LABELS, BotBrain, type BotTier } from './game/bot';
@@ -61,7 +61,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.207';
+const BUILD = '0.1.208';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -1832,7 +1832,7 @@ function startCampaignLevel(viaPortal = false, retrySameArena = false): void {
     level.clearKills,
     false,
     level.boss ?? -1,
-    level.primitivesOnly === true,
+    campaignChapterForLevel(level),
     level.opening ?? null,
     level.finale === true,
     campaignBotDead,

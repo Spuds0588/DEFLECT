@@ -241,7 +241,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
       damages the boss
 - [x] Probe's heavy beam stops at the Worm body and every hit sparks at the contact point
 - [x] Campaign exit portal pulls the camera back to the room before the mouth opens and the party is drawn in
-- [x] HOLDING's cell block releases two worms and eight viruses that walk out to open-floor waypoints
+- [x] HOLDING's cell block releases a wave that walks out to open-floor waypoints (superseded 0.1.208: four worm chains in chapter 1, two worms and eight viruses from OFFICE LAN on)
 - [x] Probes green: `megaworm-check`, `reboot-boss-check`, `assault-check`, `campaign-playthrough-check`
       (3/3), `campaign-finale-check`; `npm run build`; `npm run bench`
 - [x] User playtest of the campaign build (0.1.188) and feedback pass
@@ -291,6 +291,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 ## Campaign roadmap after level 1 (2026-11-04)
 
 > Forward notes from the designer, not scheduled work. Level 1 is the quarantine / REBOOT run above.
+> The live chapter mapping is the themed table in CAMPAIGN.md; this list predates that pass.
 
 - **Level 2 — NETWORK SWITCH:** the switch arena, business-laptop variants, the scanner, the fax,
   `SWIPE RIGHT`, then `SMART WATCH`; File Blob is the mini-boss.
@@ -301,6 +302,22 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - **Level 5 — SPEAK & SPELL:** the Speak & Spell, disk-drive and home-server-video devices.
 - **Level 6 — “KISSINGFACE”:** the server infrastructure (a riff on the Hugging Face/AI-agent hack), working
   up to the rogue AI agent as the final boss.
+
+## Campaign threat rollout (2026-11-05)
+
+> One new enemy family per chapter. Chapters 4 and 6 add no new body; they test the mix.
+
+- [x] **Chapter 1 — BUILD ROOT + REBOOT:** sentries and worms only. HOLDING releases four chains; MAINBOARD,
+      ROUTER and REBOOT openings carry no viruses; virus feeds remap to worms.
+- [x] **Chapter 2 — OFFICE LAN:** viruses unlock and stay in the pool.
+- [x] **Chapter 4 — SPACE:** no new family.
+- [x] **Chapter 6 — KISSINGFACE:** no new family.
+- [ ] **Chapter 3 — AIRPORT:** **spinning bots** are reserved as `pending`. Needs the designer's silhouette,
+      one readable attack/projectile, tuning and a spawner. Do not fill the slot with an existing family.
+- [ ] **Chapter 5 — ARCADE // FOOD COURT:** **magic users** are reserved as `pending`. The magic-user
+      placeholder below still applies: references and descriptions first, then shapes, attacks and tuning.
+- [x] `campaignThreatAllowed` gates every spawn path; `campaignPortFamily` remaps locked feeds.
+- [x] `.tmp/chapter-threats-check.ts` green.
 
 ## Campaign playtest fixes (2026-11-04, v0.1.181)
 

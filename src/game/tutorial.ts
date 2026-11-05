@@ -383,7 +383,7 @@ export const CALIBRATION_POWER_TUTORIAL: readonly TutorialStep[] = [
   {
     id: 'power',
     speaker: 'WARDEN',
-    line: 'WORMS AND VIRUSES. HOLD Y / E FOR YOUR HEAVY. RELEASE TO STOP.',
+    line: 'WORMS. HOLD Y / E FOR YOUR HEAVY. RELEASE TO STOP.',
     prompt: 'HOLD Y / E (POWER ATTACK)',
     readTime: 4.4,
   },

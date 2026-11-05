@@ -1,6 +1,6 @@
 /** Every BUILD ROOT ingress port must have walkable floor beside it on the flat device. */
 import { ARENAS } from '../src/game/arenas';
-import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
+import { PLAYABLE_CAMPAIGN_LEVELS, campaignChapterForLevel } from '../src/game/campaign';
 import { MAX_PLAYERS } from '../src/game/config';
 import { World } from '../src/game/world';
 
@@ -26,7 +26,7 @@ const world = new World(
   level.clearKills,
   false,
   level.boss ?? -1,
-  level.primitivesOnly === true,
+  campaignChapterForLevel(level),
 );
 const b = arena.bounds;
 const step = 16;

@@ -3,7 +3,7 @@
  * warning and then arrives. This is a presentation check, so the pilot is held invulnerable
  * (like campaign2-check); it says nothing about surviving the fight.
  */
-import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
+import { PLAYABLE_CAMPAIGN_LEVELS, campaignChapterForLevel } from '../src/game/campaign';
 import { MAX_PLAYERS, SIM_DT } from '../src/game/config';
 import { ARENAS } from '../src/game/arenas';
 import { World } from '../src/game/world';
@@ -17,8 +17,8 @@ const names = new Array<string>(MAX_PLAYERS).fill('');
 names[0] = 'PILOT';
 for (let i = 1; i < MAX_PLAYERS; i++) names[i] = `BOT${i}`;
 const world = new World('gauntlet', names, 0, arena, false, 0, 3, null, true,
-  level.dataCrates, false, level.intro, level.clearKills, false, level.boss ?? -1, false,
-  level.opening ?? null, level.finale === true);
+  level.dataCrates, false, level.intro, level.clearKills, false, level.boss ?? -1,
+  campaignChapterForLevel(level), level.opening ?? null, level.finale === true);
 const priv = world as any;
 priv.tutorial = null;
 priv.campaignPhase = 'assault';

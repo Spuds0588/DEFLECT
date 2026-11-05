@@ -7,7 +7,7 @@
  *
  * Run with `npx tsx .tmp/campaign-finale-check.ts`.
  */
-import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
+import { PLAYABLE_CAMPAIGN_LEVELS, campaignChapterForLevel } from '../src/game/campaign';
 import { MAX_PLAYERS, SIM_DT } from '../src/game/config';
 import { getArena } from '../src/game/arenas';
 import { World } from '../src/game/world';
@@ -39,7 +39,7 @@ function make(level: (typeof PLAYABLE_CAMPAIGN_LEVELS)[number]): World {
     level.clearKills,
     false,
     level.boss ?? -1,
-    level.primitivesOnly === true,
+    campaignChapterForLevel(level),
     level.opening ?? null,
     level.finale === true,
   );

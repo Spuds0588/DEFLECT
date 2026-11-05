@@ -9,7 +9,7 @@
  * Run with `npx tsx .tmp/reboot-boss-check.ts`.
  */
 import { getArena } from '../src/game/arenas';
-import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
+import { PLAYABLE_CAMPAIGN_LEVELS, campaignChapterForLevel } from '../src/game/campaign';
 import { MAX_PLAYERS, MEGA_WORM, SIM_DT } from '../src/game/config';
 import { World } from '../src/game/world';
 
@@ -25,8 +25,8 @@ names[0] = 'REBOOT';
 const idle = new Array(MAX_PLAYERS).fill(null);
 const world = new World(
   'gauntlet', names, 0, arena, false, 0, 0, null, true,
-  level.dataCrates, false, 'assault', level.clearKills, false, level.boss ?? -1, false,
-  level.opening ?? null, level.finale === true,
+  level.dataCrates, false, 'assault', level.clearKills, false, level.boss ?? -1,
+  campaignChapterForLevel(level), level.opening ?? null, level.finale === true,
 );
 const player = world.players[0];
 player.iframes = 1e9;
@@ -56,7 +56,7 @@ if (arena.walls === 'open') fail('GRID ZERO must keep its body floor bounded');
 if (MEGA_WORM.spacing >= MEGA_WORM.segmentRadius * 1.6) {
   fail(`Mega Worm spacing ${MEGA_WORM.spacing} leaves visible seams between plates`);
 }
-if (liveSentryCount() !== 4 || liveVirusCount() !== 2 || liveWorms() !== 1) {
+if (liveSentryCount() !== 4 || liveVirusCount() !== 0 || liveWorms() !== 1) {
   fail(`the boss node opening squad is ${liveSentryCount()} sentries / ${liveVirusCount()} viruses / ${liveWorms()} worms`);
 }
 // The warning is about the live floor, not the opening squad. Clear the authored bodies

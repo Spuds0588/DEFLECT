@@ -1,5 +1,5 @@
 import { ARENAS } from '../src/game/arenas';
-import { PLAYABLE_CAMPAIGN_LEVELS } from '../src/game/campaign';
+import { PLAYABLE_CAMPAIGN_LEVELS, campaignChapterForLevel } from '../src/game/campaign';
 import { MAX_PLAYERS, PLAYER, WORM } from '../src/game/config';
 import { SRC } from '../src/game/types';
 import { TutorialRunner, WARDEN_TUTORIAL } from '../src/game/tutorial';
@@ -34,7 +34,7 @@ const buildCampaign = (index: number, bots: number): World => {
     level.clearKills,
     false,
     level.boss ?? -1,
-    level.primitivesOnly === true,
+    campaignChapterForLevel(level),
     level.opening ?? null,
     level.finale === true,
   );

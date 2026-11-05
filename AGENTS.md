@@ -357,6 +357,30 @@ food-court machines are the FOOD COURT campaign stop; the four cabinets are the 
 - `.tmp/arcade-arena-check.ts` owns spawn clearance, drops, soda shrink and isolation, race reversal,
   fighter telegraph/fireball, duck fall, Tetris landing and the local-only checks.
 
+### D76 — Campaign threat roster is chapter data (decided 2026-11-05)
+
+The campaign introduces one threat family at a time. `CAMPAIGN_CHAPTERS` in `campaign.ts` maps the six
+route chapters to their node ids and names the family each one introduces; `CAMPAIGN_LEVELS` stay free of
+per-level threat switches. `campaignThreatAllowed(chapter, family)` is the only spawn gate, and it is
+enforced inside `spawnVirus` (not at a call site) so an opening squad, a port emission or the HOLDING cell
+release cannot bypass it. `campaignPortFamily` remaps an authored family the chapter has not unlocked, so a
+virus feed becomes a worm feed in chapter 1 instead of a dead source the player still has to close.
+
+- Chapter 1 (BUILD ROOT + REBOOT) is sentries and worms. Do not restore viruses to MAINBOARD, ROUTER,
+  REBOOT or HOLDING's cell wave. The HOLDING caged art and the power-lesson line match the worm-only wave.
+- Chapter 2 (OFFICE LAN) unlocks viruses; chapters 4 (SPACE) and 6 (KISSINGFACE) introduce no new body and
+  inherit the pool.
+- Chapter 3 reserves **spinning bots** and chapter 5 reserves **magic users**. Both entries are `pending`:
+  no kit, silhouette, attack or tuning exists, and `campaignThreatAllowed` returns false because the family
+  is not in `IMPLEMENTED_THREAT_FAMILIES`. Do not invent either kit to fill the slot. When an approved kit
+  lands, add its spawner/family to that list; the roster then unlocks it in its chapter and every later
+  chapter.
+- `CampaignLevel` does not store a chapter. `campaignChapterForLevel` resolves it from `nodeId`, so a new
+  route node must be added to `CAMPAIGN_CHAPTERS` or it inherits the latest chapter (6).
+- Chapter 0 means no roster gate: gauntlet, infection and probes that do not pass a chapter keep every
+  implemented family. A campaign `World` always passes its 1-based chapter.
+- `.tmp/chapter-threats-check.ts` owns the roster, opening-squad, port-remap and HOLDING wave checks.
+
 ### ROCKET NAVIGATION reflector (decided 2026-11-02)
 
 The rocket's flown trajectory is a **shot-only dotted reflector**, not a wall. Projectiles bounce off the
@@ -794,7 +818,7 @@ link is a `portal`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   subjects (one of each primary) only when the lock step runs. HOLDING's six subjects are already awake
   when the party lands and chase the civilian staff; Kitty's arrival line plays over that opening, then
   `CALIBRATION_SKILL_TUTORIAL` teaches the skill. Clearing wave 1 powers the sealed cell block down and
-  `CALIBRATION_POWER_TUTORIAL` teaches the heavy over wave 2 (two worms and eight viruses). `REBOOT` opens
+  `CALIBRATION_POWER_TUTORIAL` teaches the heavy over wave 2 (four worm chains in chapter 1; two worms and eight viruses once OFFICE LAN unlocks viruses). `REBOOT` opens
   with `KITTY_TUTORIAL`, a narration-only briefing; skill and heavy lessons live only in HOLDING and are
   not repeated. Narration lines auto-advance; action steps wait for the input; `SKIP TUTORIAL` ends the
   lesson and the level continues on the same beat. Campaign setup carries `SKIP TUTORIALS`, a persisted
@@ -971,7 +995,7 @@ mode string stays `gauntlet` so no threat branch forks. The script lives in `Wor
   one very fast shared dash. This pack is deliberately **untelegraphed**: no lane, arrow or link lines,
   because the switch from passive to attacking is the fear beat. The cell block is a solid body while
   it is sealed. Clear all six and finish the skill beat to make the block fail: `beginCellRelease`
-  removes the bar solid, retracts the bars and spawns wave 2, two worms and eight viruses, in the cells.
+  removes the bar solid, retracts the bars and spawns wave 2 in the cells: four worm chains in chapter 1, or two worms and eight viruses once OFFICE LAN unlocks viruses.
   The released bodies get open-floor roam/patrol waypoints on the same frame, so they walk out instead of
   waiting behind the bars to be shot in a barrel.
   `CALIBRATION_POWER_TUTORIAL` then asks for the heavy; clear wave 2 and finish that lesson before the drill.

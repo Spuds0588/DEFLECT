@@ -233,8 +233,9 @@ and a held burst can delete the fight before the shock beat. HOLDING's ten-cell 
 wall and is only 170 units deep, so the held threats are easy to read; the open floor is in front, and the
 cells remain a local barrier, not an island gate. Its six-subject class is already awake when the party
 lands, chasing the civilian staff; Kitty's arrival line runs over the start, then the skill briefing.
-Clearing that class powers the block down and releases two worms and eight viruses, already walking toward
-open-floor waypoints instead of waiting behind the bars to be picked off. A clear holds the room for
+Clearing that class powers the block down. In chapter 1 it releases four worm chains; from OFFICE LAN on
+it releases two worms and eight viruses, all already walking toward open-floor waypoints instead of waiting
+behind the bars to be picked off. A clear holds the room for
 `CAMPAIGN.clearDelay` (2.0 s) after the last port or hostile dies, so death animations finish before the
 right-wall portal opens. The exit camera pulls back to `CAMERA.portalArenaZoom` for `CAMPAIGN.portalLead`
 before the mouth opens, so the party can be watched crossing the room into it. An arrival holds the body at the left mouth for
@@ -253,7 +254,7 @@ is removed in the same frame; `PORTAL_BREAK` throws the red-square burst, with n
 ROUTER mount their feeds on a wall with a 9-unit gap; REBOOT keeps its six tuned corner feeds. Ports are
 local content — campaign and infection only, never in a snapshot. REBOOT is fed by six corner ports; the
 Mega Worm is announced only after all six and their delivered bodies are cleared. REBOOT opens with its
-authored squad already on the floor (four sentries, two viruses and a worm), so the arena is never an empty
+authored squad already on the floor (four sentries and a worm), so the arena is never an empty
 wait. During a pass the Worm fires jagged red balls to both sides; guard or lash one back into its body to
 damage it. The heavy beam stops at the Worm instead of drawing through it, and every hit sparks at the
 contact point. A lethal hit starts one last flyover: the body crosses the floor, bursts plate by plate from
@@ -277,6 +278,12 @@ Every live-fire node opens with a short script_kitty landing blurb over play. Ca
 now means zero, not a forced drill companion. Companions are allies until the player damages that specific
 bot while locked on it. A dead companion stays lost across later nodes and a save written after a clear;
 a TPK retry restores only the bots lost in that arena.
+
+Each chapter introduces one threat family. BUILD ROOT and REBOOT are sentries and worms only; viruses
+unlock with NETWORK SWITCH and stay in the pool. AIRPORT reserves spinning bots and the arcade/food court
+reserves magic users, but neither kit exists yet, so `campaignThreatAllowed` keeps them off the floor.
+SPACE and KISSINGFACE introduce nothing new: they are mix tests. An authored feed locked by the roster
+remaps to a legal family instead of becoming a dead port.
 
 Every round-based match hops the same way. When a round ends, a white portal opens on the right wall and
 pulls every standing body in; the next round is thrown out of the left-wall mouth with a decaying eastward
