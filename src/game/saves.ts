@@ -7,6 +7,8 @@
  */
 export const STORY_SLOT_COUNT = 3;
 export const STORY_SAVE_VERSION = 1;
+/** Bump when authored level order changes; old slots migrate against this. */
+export const STORY_ROUTE_VERSION = 2;
 
 export interface StorySave {
   version: number;
@@ -18,6 +20,8 @@ export interface StorySave {
   nodeId: string;
   /** Levels completed inside the campaign so far. */
   level: number;
+  /** Authored route revision this slot was saved against. Missing on pre-v0.1.204 slots. */
+  routeVersion: number;
   /** Human players in the run. The slot readout shows this instead of the programs. */
   players: number;
   /** Bot companions chosen for the run, 0-3. Bots take programs the players did not pick. */
@@ -57,6 +61,10 @@ export function loadStorySlots(): (StorySave | null)[] {
         sector: Math.floor(entry.sector),
         nodeId: entry.nodeId,
         level: typeof entry.level === 'number' ? Math.max(0, Math.floor(entry.level)) : 0,
+        routeVersion:
+          typeof entry.routeVersion === 'number' && Number.isFinite(entry.routeVersion)
+            ? Math.max(1, Math.floor(entry.routeVersion))
+            : 1,
         players: typeof entry.players === 'number' ? Math.max(1, Math.min(4, Math.floor(entry.players))) : 1,
         bots: typeof entry.bots === 'number' ? Math.max(0, Math.min(3, Math.floor(entry.bots))) : 0,
         playSeconds: typeof entry.playSeconds === 'number' ? Math.max(0, entry.playSeconds) : 0,
@@ -100,10 +108,18 @@ function writeStorySlots(slots: (StorySave | null)[]): void {
  * Called after a level completes. A new run creates the slot, a resumed run overwrites
  * it, so the save always points at the next level rather than the one just cleared.
  */
-export function saveStoryProgress(slot: number, save: Omit<StorySave, 'version' | 'updatedAt'>): void {
+export function saveStoryProgress(
+  slot: number,
+  save: Omit<StorySave, 'version' | 'routeVersion' | 'updatedAt'>,
+): void {
   if (slot < 0 || slot >= STORY_SLOT_COUNT) return;
   const slots = loadStorySlots();
-  slots[slot] = { ...save, version: STORY_SAVE_VERSION, updatedAt: Date.now() };
+  slots[slot] = {
+    ...save,
+    version: STORY_SAVE_VERSION,
+    routeVersion: STORY_ROUTE_VERSION,
+    updatedAt: Date.now(),
+  };
   writeStorySlots(slots);
 }
 

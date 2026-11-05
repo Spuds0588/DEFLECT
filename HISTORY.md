@@ -8294,3 +8294,36 @@ can point at the feed mouth itself.
 
 **Next:** play a feed room with auto lock on and confirm the reticle and auto-attack read correctly while
 other bodies are on the floor.
+
+## 2026-11-05 — TETRIS joins the arcade; NETWORK BOARD ends the campaign (v0.1.204)
+
+**Goal:** the designer's correction: TETRIS belongs in the arcade chapter, and the USER finale plays on
+the network motherboard at the end of KISSINGFACE.
+
+**Changes.**
+- `CAMPAIGN_LEVELS` is still 30 nodes. TETRIS is now the seventh arcade node, id 21, after DUCK HUNTER,
+  with `clearKills` 8, its arcade opening squad and its AUDIO crate. SNACK MACHINE, TOKEN DISPENSER and
+  SODA MACHINE shift to ids 22-24, CPU BOARD and GPU BOARD to 25-26, DISPATCH YARD and LOAD BALANCER to
+  27-28, and NETWORK BOARD is the single `finale: true` node at id 29 with the USER boss.
+- `SECTORS[7]` routes DUCK -> TETRIS -> SNACK; `SECTORS[8]` routes CPU -> GPU -> DISPATCH -> LOAD -> NETWORK,
+  exits `network`, and drops the old CPU-to-network branch.
+- `STORY_ROUTE_VERSION` 2 plus `StorySave.routeVersion`; `migrateCampaignLevel` in `campaign.ts` remaps old
+  slots (21-26 shift one arena, 27-29 and the old finale index stay) and both the resume path and the slot
+  readout use it. A completed 30-level save resumes on the new finale; a pre-food-court save keeps its
+  TETRIS/SNACK point.
+- TETRIS is a normal assault again; USER, its kit and the campaign boss gate are unchanged, only the node
+  moved. `.tmp/campaign-save-migration-check.ts` is new; the campaign rules, chapter and USER probes now
+  assert the new order and finale.
+- Updated AGENTS D66/D73, CAMPAIGN, README, GAME_GUIDE and TODO; bumped all version stamps to 0.1.204.
+
+**Verification.**
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,169.57 kB JS, 325.65 kB gzip).
+- `campaign-save-migration-check` 0: old 21-30 mapping, current slots untouched, TETRIS index 21,
+  NETWORK BOARD index 29.
+- `campaign-rules-check` 0 with the new 30-arena route; `campaign-chapter-check` 0 (30 levels, 12 stops,
+  TETRIS assault, NETWORK BOARD the only finale); `user-boss-check` 0 on arena 39.
+- `npm run bench` clean: 8P max proj 0.114 ms avg / 0.342 ms p99; gauntlet max 0.298 ms avg / 0.882 ms p99.
+- `git diff --check` clean.
+
+**Next:** human pass on DUCK HUNTER -> TETRIS -> food court -> NETWORK BOARD, and a resume smoke test from
+a real v0.1.203 slot.

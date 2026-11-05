@@ -11,22 +11,25 @@ if (CAMPAIGN_ROUTE.length !== 12) {
   throw new Error(`expected 12 chapter stops, got ${CAMPAIGN_ROUTE.length}`);
 }
 const tail = PLAYABLE_CAMPAIGN_LEVELS.slice(21).map((level) => level.arenaId);
-if (tail.join(',') !== '42,43,44,37,38,39,40,41,48') {
-  throw new Error(`KISSINGFACE route is ${tail.join(',')}`);
+if (tail.join(',') !== '48,42,43,44,37,38,40,41,39') {
+  throw new Error(`ARCADE + KISSINGFACE route is ${tail.join(',')}`);
 }
 if (CAMPAIGN_ROUTE[10].nodeId !== 'food-court' || CAMPAIGN_ROUTE[11].nodeId !== 'ai-core') {
   throw new Error('the food court and AI core are not separate route stops');
 }
-if (!SECTORS[8] || SECTORS[8].name !== 'KISSINGFACE' || SECTORS[8].entry !== 'cpu' || SECTORS[8].exit !== 'tetris') {
+if (!SECTORS[8] || SECTORS[8].name !== 'KISSINGFACE' || SECTORS[8].entry !== 'cpu' || SECTORS[8].exit !== 'network') {
   throw new Error('KISSINGFACE is not the authored sector 8 route');
 }
-if (PLAYABLE_CAMPAIGN_LEVELS[21].sector !== 7 || PLAYABLE_CAMPAIGN_LEVELS[24].sector !== 8) {
+if (PLAYABLE_CAMPAIGN_LEVELS[24].sector !== 7 || PLAYABLE_CAMPAIGN_LEVELS[25].sector !== 8) {
   throw new Error('food court and KISSINGFACE levels point at the wrong sectors');
 }
 const finale = PLAYABLE_CAMPAIGN_LEVELS.filter((level) => level.finale);
-if (finale.length !== 1 || finale[0].arenaId !== 48) {
-  throw new Error(`expected TETRIS as the only finale, got ${finale.map((level) => level.name).join(', ')}`);
+if (finale.length !== 1 || finale[0].arenaId !== 39 || finale[0].name !== 'NETWORK BOARD') {
+  throw new Error(`expected NETWORK BOARD as the only finale, got ${finale.map((level) => level.name).join(', ')}`);
 }
+const tetris = PLAYABLE_CAMPAIGN_LEVELS.find((level) => level.arenaId === 48);
+if (!tetris || tetris.boss !== undefined || tetris.finale) throw new Error('TETRIS is not a normal arcade assault');
+if (PLAYABLE_CAMPAIGN_LEVELS[29].boss === undefined) throw new Error('NETWORK BOARD does not carry the USER finale');
 if (PLAYABLE_CAMPAIGN_LEVELS[9].finale) throw new Error('BUSINESS LAPTOP is still marked finale');
 
 const newIds = Array.from({ length: 20 }, (_, index) => index + 10);
@@ -89,4 +92,4 @@ for (const id of newIds) {
   console.log(`${level.name}: ${world.campaignPhase}, bodies ${world.sentries.filter((s) => s.active).length}/${world.viruses.filter((v) => v.active).length}/${world.worms.filter((w) => w.active).length}, crates ${world.dataTotal}`);
 }
 
-console.log('campaign-chapter-check: OK (30 levels, 12 stops, food court + KISSINGFACE, TETRIS finale)');
+console.log('campaign-chapter-check: OK (30 levels, 12 stops, TETRIS in arcade, NETWORK BOARD finale)');

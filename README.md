@@ -262,9 +262,10 @@ can be hit on its staged approach before it crosses the lip.
 
 The campaign continues after REBOOT through NETWORK SWITCH, DOCUMENT SCANNER, FAX MACHINE, SMART WATCH
 and BUSINESS LAPTOP, then through the airport chapter (AIRPORT with FILE BLOB, AIR TRAFFIC with STORM
-CLOUD), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE with IDLE HANDS) and the arcade chapter
-(SPACE CADET, PONG, SPACE INVADERS with STARFISH, ARCADE RACING, FIGHTING GAME, DUCK HUNTER, TETRIS with
-the USER finale). A clear saves
+CLOUD), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE with IDLE HANDS), the arcade chapter
+(SPACE CADET, PONG, SPACE INVADERS with STARFISH, ARCADE RACING, FIGHTING GAME, DUCK HUNTER, TETRIS), the
+food court (SNACK MACHINE, TOKEN DISPENSER, SODA MACHINE) and KISSINGFACE (CPU BOARD, GPU BOARD, DISPATCH
+YARD, LOAD BALANCER, NETWORK BOARD with the USER finale). A clear saves
 the slot. The route plate opens only when the next stop is a new chapter (`nodeId` changes); BUILD ROOT's
 four rooms and each themed chapter portal straight through. Completed stops stay lit, the current stop is
 ringed, the next stop is named, and unseen stops are dim generic nodes. The route is data (`CAMPAIGN_ROUTE`)
@@ -490,7 +491,7 @@ a player into a file cage that has to be shot or swung off.
 rows of shootable drops, and throws a telegraphed bolt whose reflection is the fight's biggest punish. Bots
 step out of its rain lane through the same hazard-steering layer that handles emitter corridors.
 
-`USER` is the campaign finale, not a gauntlet-ladder boss: one giant 👤 bust pinned to the top of TETRIS,
+`USER` is the campaign finale, not a gauntlet-ladder boss: one giant 👤 bust pinned to the top of NETWORK BOARD,
 with a 330-unit hit circle and 480 HP. It alternates two-fist floor slams that burst into reflectable
 shock rings, a converging eye-laser fan, portal drops of sentries, viruses and a worm, and a staged Mega
 Worm fly-over. Every damaging shot is an ordinary hostile projectile, so guard, lash and reflected fire

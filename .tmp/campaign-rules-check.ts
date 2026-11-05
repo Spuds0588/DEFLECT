@@ -19,7 +19,7 @@ if (t.current?.id !== 'dash') throw new Error('tutorial did not advance after th
 const route = PLAYABLE_CAMPAIGN_LEVELS.map((level) => [level.arenaId, level.intro]);
 console.log('route:', route.map(([id, intro]) => `${id}:${intro}`).join(' -> '));
 if (PLAYABLE_CAMPAIGN_LEVELS.length !== 30) throw new Error(`expected thirty playable levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
-const expectedArenas = [14, 34, 35, 36, 1, 9, 12, 25, 28, 29, 23, 33, 32, 18, 17, 10, 22, 24, 45, 46, 47, 42, 43, 44, 37, 38, 39, 40, 41, 48];
+const expectedArenas = [14, 34, 35, 36, 1, 9, 12, 25, 28, 29, 23, 33, 32, 18, 17, 10, 22, 24, 45, 46, 47, 48, 42, 43, 44, 37, 38, 40, 41, 39];
 if (route.some(([id], i) => id !== expectedArenas[i])) {
   throw new Error('campaign route does not match the authored level-2 sequence');
 }

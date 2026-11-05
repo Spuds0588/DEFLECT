@@ -1,6 +1,6 @@
 import { MINIBOSS, MINIBOSSES } from './game/minibosses';
 import { ATTRACT, AUTO_ATTACK, CAMERA, CAMPAIGN, HAPTICS, MAX_PLAYERS, NET, ROUND, SIM_DT } from './game/config';
-import { FIRST_CAMPAIGN_LEVEL, PLAYABLE_CAMPAIGN_LEVELS } from './game/campaign';
+import { FIRST_CAMPAIGN_LEVEL, PLAYABLE_CAMPAIGN_LEVELS, migrateCampaignLevel } from './game/campaign';
 import { ARENAS, drawArenaPreview, getArena, type ArenaDef } from './game/arenas';
 import { LocalSeats, type LocalSeat } from './game/localplay';
 import { BOT_NAMES, BOT_TIERS, BOT_TIER_LABELS, BotBrain, type BotTier } from './game/bot';
@@ -61,7 +61,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.203';
+const BUILD = '0.1.204';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -1776,8 +1776,9 @@ function resumeCampaign(index: number, save: StorySave): void {
   campaignRetryRevives = false;
   for (let i = 0; i < MAX_PLAYERS; i++) campaignMemory[i] = save.memory?.[i] ?? 0;
   campaignShards = save.shards ? save.shards.slice(0, MAX_PLAYERS) : [];
+  const resumeLevel = migrateCampaignLevel(save.level, save.nodeId, save.routeVersion);
   // `level` is the number of completed levels, so it is also the next index.
-  if (save.level >= PLAYABLE_CAMPAIGN_LEVELS.length) {
+  if (resumeLevel >= PLAYABLE_CAMPAIGN_LEVELS.length) {
     campaignLevelIndex = 0;
     campaignSaved = true;
     storyStatusLine.textContent = 'CAMPAIGN COMPLETE // MORE LEVELS COMING SOON';
@@ -1785,14 +1786,8 @@ function resumeCampaign(index: number, save: StorySave): void {
     renderStorySlots();
     return;
   }
-  // v0.1.202 inserted the food-court and KISSINGFACE chapters before TETRIS. An old
-  // completed slot still points at the arcade node; resume it at the new first stop
-  // instead of skipping SNACK MACHINE. A fresh slot saved after SNACK carries the
-  // food-court node id and resumes normally at TOKEN DISPENSER.
-  let resumeLevel = Math.max(0, save.level);
-  if (resumeLevel === 22 && save.nodeId === 'arcade') resumeLevel = 21;
   campaignLevelIndex = resumeLevel;
-  campaignDebug?.mark('resume-campaign', `slot ${index + 1} // level ${save.level + 1}`);
+  campaignDebug?.mark('resume-campaign', `slot ${index + 1} // level ${resumeLevel + 1}`);
   startCampaignLevel();
 }
 
@@ -1915,9 +1910,10 @@ function programStageBack(): void {
 function storySlotSummary(save: StorySave): { label: string; value: string } {
   const sector = SECTORS[save.sector];
   const where = sector ? sector.name : `CAMPAIGN ${save.sector + 1}`;
-  const complete = save.level >= PLAYABLE_CAMPAIGN_LEVELS.length;
+  const level = migrateCampaignLevel(save.level, save.nodeId, save.routeVersion);
+  const complete = level >= PLAYABLE_CAMPAIGN_LEVELS.length;
   return {
-    label: complete ? `${where} // COMPLETE` : save.level > 0 ? `${where} // LV ${save.level}` : where,
+    label: complete ? `${where} // COMPLETE` : level > 0 ? `${where} // LV ${level}` : where,
     value: complete ? 'MORE LEVELS SOON' : `${save.players} PLAYER${save.players === 1 ? '' : 'S'}`,
   };
 }

@@ -9,6 +9,7 @@
  */
 import { ARENAS } from './arenas';
 import { MINIBOSS } from './minibosses';
+import { STORY_ROUTE_VERSION } from './saves';
 import type { TutorialStep } from './tutorial';
 import { PROP } from './types';
 
@@ -457,6 +458,23 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
   {
     id: 21,
     sector: 7,
+    nodeId: 'arcade',
+    name: 'TETRIS',
+    code: 'LINE CLEAR',
+    arenaId: 48,
+    intro: 'assault',
+    blurb: kitty(
+      'tetris-arcade',
+      'TETRIS. TEN COLUMNS WIDE AND THE INFECTION IS STACKING THE DECK.',
+      'THE STACK IS COVER. CLEAR THE LINES BEFORE IT REACHES THE CEILING.',
+    ),
+    clearKills: 8,
+    opening: { sentries: 4, viruses: 3, worms: 1 },
+    dataCrates: [crate(48, PROP.AUDIO)],
+  },
+  {
+    id: 22,
+    sector: 7,
     nodeId: 'food-court',
     name: 'SNACK MACHINE',
     code: 'CHUTE 03',
@@ -472,7 +490,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(42, PROP.DOC)],
   },
   {
-    id: 22,
+    id: 23,
     sector: 7,
     nodeId: 'food-court',
     name: 'TOKEN DISPENSER',
@@ -489,7 +507,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(43, PROP.ZIP)],
   },
   {
-    id: 23,
+    id: 24,
     sector: 7,
     nodeId: 'food-court',
     name: 'SODA MACHINE',
@@ -506,7 +524,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(44, PROP.AUDIO)],
   },
   {
-    id: 24,
+    id: 25,
     sector: 8,
     nodeId: 'ai-core',
     name: 'CPU BOARD',
@@ -523,7 +541,7 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     dataCrates: [crate(37, PROP.ZIP)],
   },
   {
-    id: 25,
+    id: 26,
     sector: 8,
     nodeId: 'ai-core',
     name: 'GPU BOARD',
@@ -538,23 +556,6 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     clearKills: 9,
     opening: { sentries: 5, viruses: 3, worms: 1 },
     dataCrates: [crate(38, PROP.VIDEO)],
-  },
-  {
-    id: 26,
-    sector: 8,
-    nodeId: 'ai-core',
-    name: 'NETWORK BOARD',
-    code: 'FABRIC',
-    arenaId: 39,
-    intro: 'assault',
-    blurb: kitty(
-      'network-board',
-      'NETWORK BOARD. LEAF, SPINE, AND ONE CLEAR LANE ACROSS THE FABRIC.',
-      'CUT THE SWITCHES AND THE INFECTION LOSES ITS SHORTCUTS.',
-    ),
-    clearKills: 9,
-    opening: { sentries: 5, viruses: 3, worms: 1 },
-    dataCrates: [crate(39, PROP.AUDIO)],
   },
   {
     id: 27,
@@ -594,14 +595,14 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     id: 29,
     sector: 8,
     nodeId: 'ai-core',
-    name: 'TETRIS',
-    code: 'LINE CLEAR',
-    arenaId: 48,
+    name: 'NETWORK BOARD',
+    code: 'FABRIC // FINAL',
+    arenaId: 39,
     intro: 'assault',
     blurb: kitty(
-      'tetris',
-      'TETRIS. TEN COLUMNS WIDE AND THE INFECTION IS STACKING THE DECK.',
-      'THE USER IS IN THE STACK. CLEAR THE LINES AND BRING IT DOWN.',
+      'network-board-final',
+      'NETWORK BOARD. THE LAST MOTHERBOARD BETWEEN THE INFECTION AND THE OPEN NETWORK.',
+      'THE USER IS HOLDING THE BACKBONE. CUT IT OUT.',
     ),
     clearKills: 0,
     finale: true,
@@ -613,6 +614,25 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
 
 /** Levels the live campaign can start and advance through. */
 export const PLAYABLE_CAMPAIGN_LEVELS = CAMPAIGN_LEVELS.filter((level) => level.playable !== false);
+
+/**
+ * Map a slot authored against an older route onto the current level order. `level` is the
+ * completed count, so it is also the next level index. The v0.1.204 order moves TETRIS
+ * into the arcade and puts the server boards after the food court, so a slot parked on
+ * SNACK MACHINE through the old NETWORK BOARD (21-26) shifts one arena later. The old
+ * request floor and the old TETRIS finale already sit at their new indices, and a save
+ * from before the food court did not clear that content, so those cases stay put.
+ */
+export function migrateCampaignLevel(level: number, nodeId: string, routeVersion: number): number {
+  const next = Math.max(0, Math.min(PLAYABLE_CAMPAIGN_LEVELS.length, Math.floor(level)));
+  if (routeVersion >= STORY_ROUTE_VERSION) return next;
+  // Pre-food-court slots: level 21 was the TETRIS finale, level 22 was a completed run.
+  if (nodeId === 'arcade' && (next === 21 || next === 22)) return next;
+  // A completed 30-level route gets one more run at the new NETWORK BOARD finale.
+  if (next >= PLAYABLE_CAMPAIGN_LEVELS.length) return PLAYABLE_CAMPAIGN_LEVELS.length - 1;
+  if (next >= 21 && next <= 26) return next + 1;
+  return next;
+}
 
 /** The first authored level. Everything campaign-shaped starts here for now. */
 export const FIRST_CAMPAIGN_LEVEL: CampaignLevel = PLAYABLE_CAMPAIGN_LEVELS[0] ?? CAMPAIGN_LEVELS[0];

@@ -2,6 +2,19 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Campaign order: TETRIS in the arcade, NETWORK BOARD finale (2026-11-05, v0.1.204)
+
+- [x] TETRIS is the seventh arcade node after DUCK HUNTER and a normal 8-kill assault; NETWORK BOARD is
+      the last KISSINGFACE node and the only `finale: true` level, carrying the USER fight
+- [x] `SECTORS[8]` runs CPU -> GPU -> DISPATCH -> LOAD -> NETWORK and exits `network`; the old branch
+      link from CPU to the network board is gone
+- [x] `STORY_ROUTE_VERSION` 2 migrates pre-reorder slots: levels 21-26 shift one arena later, the request
+      floor and the old finale index stay put, and a completed 30-level run resumes on the new finale
+- [x] `.tmp/campaign-save-migration-check.ts` covers the mapping; campaign rules, chapter and USER probes
+      updated and green
+- [ ] Human playthrough of DUCK HUNTER -> TETRIS -> SNACK MACHINE -> ... -> NETWORK BOARD, and one resume
+      from a real v0.1.203 slot
+
 ## Enemy portal lock-on (2026-11-05, v0.1.203)
 
 - [x] Live enemy ingress ports and replicators join lock acquisition, angular cycling, aim assist and the
@@ -17,7 +30,8 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 
 - [x] 30-node route: after DUCK HUNTER add SNACK MACHINE, TOKEN DISPENSER and SODA MACHINE as FOOD COURT,
       then CPU BOARD, GPU BOARD, NETWORK BOARD, DISPATCH YARD and LOAD BALANCER as KISSINGFACE, before
-      TETRIS and the USER finale
+      TETRIS and the USER finale (superseded in v0.1.204: TETRIS is the last arcade node and NETWORK BOARD
+      ends KISSINGFACE with USER)
 - [x] `SECTORS[7]` carries the food-court nodes and ends at SODA; new `SECTORS[8]` KISSINGFACE carries the
       server boards, request floor and TETRIS
 - [x] `?campaign=N&program=P&bots=B` QA boot starts at any authored node without a save slot; a clear still
@@ -30,7 +44,8 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 
 - [x] Spread the roaming mini-bosses: REBOOT MEGA WORM, AIRPORT FILE BLOB, AIR TRAFFIC STORM CLOUD,
       SATELLITE IDLE HANDS, SPACE INVADERS STARFISH; BUSINESS LAPTOP is a normal assault again
-- [x] Add the USER finale to TETRIS: giant 👤 body, 330-radius hit circle, 480 HP
+- [x] Add the USER finale to TETRIS: giant 👤 body, 330-radius hit circle, 480 HP (superseded in v0.1.204:
+      the body, kit and gate are unchanged, but the finale node is NETWORK BOARD and TETRIS is an arcade assault)
 - [x] Fist slams with latched telegraphs, segment damage and rings of reflectable shock bolts
 - [x] Converging eye fans, portal drops (2 sentries, 2 viruses, 1 worm) and a two-volley Mega Worm fly-over
 - [x] `Worm.user` is local-only; USER is excluded from `BOSS_RUSH_ORDER` and hosted rooms

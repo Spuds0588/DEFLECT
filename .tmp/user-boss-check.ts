@@ -2,9 +2,9 @@
  * USER finale probe.
  *
  * Verifies the giant 👤 body is registered outside the gauntlet ladder, stages at the
- * top of TETRIS with the full 330-unit hit circle and 480 HP, and that every attack in
- * its kit puts ordinary hostile projectiles or gauntlet bodies on the floor. Also pins
- * the campaign redistribution so a future edit cannot silently move a mini-boss.
+ * top of NETWORK BOARD with the full 330-unit hit circle and 480 HP, and that every
+ * attack in its kit puts ordinary hostile projectiles or gauntlet bodies on the floor.
+ * Also pins the campaign redistribution so a future edit cannot silently move a mini-boss.
  *
  * Run with `npx tsx .tmp/user-boss-check.ts`.
  */
@@ -19,7 +19,7 @@ const fail = (message: string): never => {
   throw new Error(message);
 };
 
-const arena = ARENAS.find((entry) => entry.id === 48) ?? fail('TETRIS (arena 48) is missing');
+const arena = ARENAS.find((entry) => entry.id === 39) ?? fail('NETWORK BOARD (arena 39) is missing');
 
 function fresh(): { world: World; priv: any; p: any; user: Worm } {
   const world = new World('gauntlet', ['USER'], 0, arena);
@@ -155,7 +155,7 @@ const hostile = (world: World, type: number) =>
     [33, MINIBOSS.STORM_CLOUD],
     [17, MINIBOSS.IDLE_HANDS],
     [24, MINIBOSS.STARFISH],
-    [48, MINIBOSS.USER],
+    [39, MINIBOSS.USER],
   ] as const;
   for (const [arenaId, boss] of expect) {
     const entry = level(arenaId);
@@ -163,8 +163,11 @@ const hostile = (world: World, type: number) =>
   }
   const laptop = level(29);
   if (laptop.boss !== undefined) fail('BUSINESS LAPTOP still authors a mini-boss');
-  const finale = level(48);
-  if (!finale.finale) fail('TETRIS is not the finale');
+  const finale = level(39);
+  if (!finale.finale) fail('NETWORK BOARD is not the finale');
+  if (finale.name !== 'NETWORK BOARD') fail(`finale is ${finale.name}`);
+  const tetris = level(48);
+  if (tetris.finale || tetris.boss !== undefined) fail('TETRIS is still a boss finale');
   if (PLAYABLE_CAMPAIGN_LEVELS.filter((entry) => entry.finale).length !== 1) fail('more than one finale');
   console.log(
     JSON.stringify({

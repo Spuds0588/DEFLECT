@@ -250,9 +250,9 @@ route plate names the next device; unseen stops are dim generic nodes. The live 
 `NETWORK SWITCH`, `DOCUMENT SCANNER`, `FAX MACHINE`, `SMART WATCH` and `BUSINESS LAPTOP`, then the airport
 chapter (`AIRPORT` with FILE BLOB, `AIR TRAFFIC` with STORM CLOUD), the space chapter (`CAPCOM`,
 `ROCKET NAVIGATION`, `SATELLITE` with IDLE HANDS), the arcade chapter (`SPACE CADET`, `PONG`,
-`SPACE INVADERS` with STARFISH, `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`), the food court (`SNACK
-MACHINE`, `TOKEN DISPENSER`, `SODA MACHINE`) and the KISSINGFACE datacenter (`CPU BOARD`, `GPU BOARD`,
-`NETWORK BOARD`, `DISPATCH YARD`, `LOAD BALANCER`, `TETRIS` with the USER finale). BUSINESS LAPTOP is a
+`SPACE INVADERS` with STARFISH, `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`, `TETRIS`), the food court
+(`SNACK MACHINE`, `TOKEN DISPENSER`, `SODA MACHINE`) and the KISSINGFACE datacenter (`CPU BOARD`, `GPU
+BOARD`, `DISPATCH YARD`, `LOAD BALANCER`, `NETWORK BOARD` with the USER finale). BUSINESS LAPTOP is a
 normal assault again. Each
 live-fire arena opens with a short script_kitty landing line. A run is never saved mid-level.
 Everything before the assault is practice: if you fall off a plate or get caught during orientation or
@@ -424,7 +424,7 @@ Pick a card on the title screen; the host can also cycle the arena in the lobby 
 | `SATELLITE` | A long orbital hull joined to two solar wings by narrow bridges, with a telescoping mast below and three capacitor pods above. Only those plates are floor; the gaps are open space. The wings warn, then burn anyone standing on them on independent 16 s cycles. Micro-meteors fall every 12.5 s. Destroy all three capacitors and the thrusters fire: a heat front climbs the whole map from the bottom for 14 s, then the satellite cools and the pods return. A hull-side **replicator** prints pulse units onto the deck every 4 s until it is destroyed: a satellite has no standing network port, so the infection left a machine behind instead. Online: the satellite clock, live meteors, capacitor states and reentry front are synced; the host still resolves every hit. |
 | `CPU BOARD` | A final-level motherboard blockout: four CPU sockets, two DIMM banks and a central chipset. Every module is solid cover; the perimeter ring and the cross-shaped gaps are the lanes. No live hazard yet. Local-only KISSINGFACE route node. |
 | `GPU BOARD` | Four long accelerator cards around a central NVSwitch. The cards wall off the north and south approaches, leaving a wide central lane and two tight side channels. Each card runs a 12 s thermal cycle: a 3 s warning, then 4.2 s live, with a 46-unit hot skirt around the card that takes one segment every 0.8 s. The cycle rolls across the cards, so the safe aisle keeps moving. Local-only KISSINGFACE route node. |
-| `NETWORK BOARD` | A leaf-spine fabric floor: three leaf switches north, three spine switches south and a fabric block at the centre. Long east-west lanes connect the switch banks. No live hazard yet. Local-only KISSINGFACE route node. |
+| `NETWORK BOARD` | A leaf-spine fabric floor: three leaf switches north, three spine switches south and a fabric block at the centre. Long east-west lanes connect the switch banks. No live hazard yet. Local-only KISSINGFACE route node and the campaign finale, where the USER holds the ceiling. |
 | `DISPATCH YARD` | One inbound request line splits at a three-position switch to three platforms. A three-car train arrives every 5.6 s; the signal lights the next platform before the switch. Each car takes one health segment and shoves the body across the rail, clear of the remaining cars. The yard's control cabinets are cover; the rails are not. Local-only: the request clock and cars are not in the snapshot. |
 | `LOAD BALANCER` | Four lanes on a round-robin switch. Two-car requests arrive every 3.8 s and leave through the lit lane, while the central rotor shows the cycle. A hit takes one segment and pushes the body clear of the rail. The four server cabinets are cover; the lanes are not. Local-only: the switch clock and cars are not in the snapshot. |
 | `SNACK MACHINE` | Six chutes cycle a snack selection. A packet blinks at its mouth, drops, and can take one segment before landing in the collection tray. The tray and machine face are presentation; the drop and the body hit are the hazard. Local-only. |
@@ -704,7 +704,7 @@ the reveal finishes.
 - **Mega Worm:** it swims in from beyond the arena on a slower arc, crosses around the fight and holds a longer roar before its first pass.
 - **Idle Hands:** the palms rise slowly while yawing through a full turn—front, back, front—then grow and bounce up to their full size.
 - **Starfish:** the center and its arms hang overhead for a beat, then drop under their own weight and land with a thud.
-- **USER:** the giant 👤 bust fades in at the ceiling and settles while the camera holds on the TETRIS stack.
+- **USER:** the giant 👤 bust fades in at the ceiling and settles while the camera holds on the network fabric.
 
 ### Mega Worm
 
@@ -740,7 +740,7 @@ worms, it is one damage sponge: every hit anywhere on the body drains the same b
 
 ## USER (final boss)
 
-The last node of the campaign. A giant 👤 bust fills the top of TETRIS; it does not chase. Its hit circle is
+The last node of the campaign. A giant 👤 bust fills the top of NETWORK BOARD; it does not chase. Its hit circle is
 the whole head-and-shoulders silhouette, 330 units across, so every shot that reaches the top of the arena
 connects. It has 480 HP.
 

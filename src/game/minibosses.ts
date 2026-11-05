@@ -80,8 +80,8 @@ export const MINIBOSSES: readonly MinibossDef[] = [
 
 /**
  * BOSS RUSH ladder: registry order, walked once. USER is deliberately excluded: it is
- * the authored campaign finale, staged for the full width of TETRIS, not a gauntlet
- * ladder round. The campaign spawns it through `spawnMiniboss` directly.
+ * the authored campaign finale, staged for the full width of NETWORK BOARD, not a
+ * gauntlet ladder round. The campaign spawns it through `spawnMiniboss` directly.
  */
 export const BOSS_RUSH_ORDER: readonly number[] = MINIBOSSES.filter(
   (d) => d.id !== MINIBOSS.USER,
