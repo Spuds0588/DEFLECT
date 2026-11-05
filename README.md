@@ -411,12 +411,19 @@ packaging step rather than a rewrite.
 
 ```bash
 npm install
-npm run dev       # http://127.0.0.1:5173
-npm run build     # strict typecheck + production PWA build into dist/
+npm run dev          # http://127.0.0.1:5173
+npm run dev:campaign # http://127.0.0.1:5173/?campaignDebug=1&debug=1
+npm run build        # strict typecheck + production PWA build into dist/
 npm run preview   # serve the production build locally
 npm run bench     # headless 60 Hz sim benchmark
 npm run icons     # regenerate PWA icons
 ```
+
+For campaign QA without typing a command, double-click **`DEFLECT Campaign Debug.desktop`** in the repo
+root. It runs `npm run dev:campaign`, which starts Vite and opens the campaign debug URL; if DEFLECT is
+already running on port 5173, it only opens the page. Close the terminal it opens or press Ctrl+C to stop
+the server. KDE may ask you to allow the launcher the first time. Its `Path` entry points at this checkout;
+update it if you move the folder.
 
 The alpha is deployed to GitHub Pages by `.github/workflows/pages.yml` on every push to `main`
 (`npm ci`, `npm run build`, Pages artifact upload). The repository's Pages source must be **GitHub

@@ -7,6 +7,7 @@
   "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:campaign": "vite --host 127.0.0.1 --port 5173 --strictPort --open \"/?campaignDebug=1&debug=1\"",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "bench": "tsx scripts/bench.ts",

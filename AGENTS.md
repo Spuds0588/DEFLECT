@@ -2860,10 +2860,15 @@ the entrance ends. Do not restore the room freeze for the Mega Worm.
 
 ```bash
 npm install
-npm run build      # tsc --noEmit && vite build
-npm run bench      # headless sim benchmark
-npm run dev        # manual playtest
+npm run build        # tsc --noEmit && vite build
+npm run bench        # headless sim benchmark
+npm run dev          # manual playtest
+npm run dev:campaign # campaign debug page + local capture sink
 ```
+
+`DEFLECT Campaign Debug.desktop` is the double-click wrapper for `npm run dev:campaign`; it is dev-only
+tooling and never part of the build. The launcher reuses a DEFLECT server already on port 5173 rather than
+starting a duplicate.
 
 Headless harnesses (`balance.ts`, `bench`) are for the first pass and for repeatable comparisons. Switch to
 a headed browser session when the headless data is surprising, noisy, or cannot answer the question: attack

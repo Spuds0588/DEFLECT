@@ -7980,3 +7980,29 @@ training-timer respawns, with a TPK retry exception for the current arena.
 **Next:** human campaign debug run on 0.1.194: check ally betrayal by locked melee and ranged damage, a
 companion staying gone across a node and a save resume, a TPK retry restoring only that arena's losses, and
 no route plate between the four BUILD ROOT rooms.
+
+## 2026-11-05 — Clickable campaign-debug launcher (tooling)
+
+**Goal:** let the designer start a campaign debug run without asking an agent or typing a command, and
+without opening `index.html` directly (which cannot load the TypeScript/module graph over `file://`).
+
+**Changes.**
+- Added `npm run dev:campaign`: Vite on `127.0.0.1:5173` with `--strictPort` and
+  `--open "/?campaignDebug=1&debug=1"`.
+- Added `campaign-debug.sh` and `DEFLECT Campaign Debug.desktop`. The launcher installs missing dependencies,
+  reuses an existing DEFLECT server on 5173, otherwise starts Vite and opens the campaign debug page; its
+  terminal is the server, so closing it or pressing Ctrl+C stops the run.
+- Documented the shortcut in README and PLAYTEST, and the command in AGENTS §9.
+- Tooling-only: no game code, snapshot, build output or version stamp changed; the playable build remains
+  0.1.194.
+
+**Verification.**
+- `bash -n campaign-debug.sh` 0; `desktop-file-validate "DEFLECT Campaign Debug.desktop"` 0; `git diff --check` 0.
+- Stubbed `xdg-open` run: Vite ready on 5173, page returned HTTP 200 with `<title>DEFLECT</title>`, and the
+  browser call was exactly `http://127.0.0.1:5173/?campaignDebug=1&debug=1`.
+- Second launch reused the running server, exited 0 and opened the same URL again. Test server stopped;
+  stub and log removed; no listener remains on 5173.
+- `npm run build` 0.
+
+**Next:** double-click the launcher and run the 0.1.194 campaign checks. No version bump because this is
+developer tooling, not a player-facing build change.

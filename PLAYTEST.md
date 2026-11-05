@@ -141,8 +141,10 @@ Related files: `src/main.ts` (the tour), `src/game/world.ts` (`deflectTelemetry`
 
 ## 4. Silent campaign capture (`?campaignDebug=1`)
 
-Run the campaign at `http://127.0.0.1:5173/?campaignDebug=1`. While the Vite dev server is up, the
-recorder captures without prompting or downloading:
+Run the campaign at `http://127.0.0.1:5173/?campaignDebug=1`. From the repo root, double-click
+**`DEFLECT Campaign Debug.desktop`** (or run `npm run dev:campaign`); it starts Vite and opens this URL, or
+reuses a DEFLECT server already on port 5173. Closing the launcher's terminal stops the server. While the
+Vite dev server is up, the recorder captures without prompting or downloading:
 
 - a compact report every 5 seconds to `.tmp/campaign-debug/latest.json`, with a per-session copy at
   `report-<sessionId>.json`;

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=DEFLECT Campaign Debug
+GenericName=DEFLECT Development Server
+Comment=Start Vite and open the campaign debug page
+Exec=bash campaign-debug.sh
+Path=/home/coreyb/Coding Projects/Games/DEFLECT
+Icon=applications-games
+Terminal=true
+Categories=Development;
+Keywords=DEFLECT;campaign;debug;vite;
+StartupNotify=true
