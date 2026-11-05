@@ -51,9 +51,30 @@ export interface ArenaServerModuleDef extends Rect {
 }
 
 /**
+ * A timed thermal cycle around accelerator cards. Each `kind: 'card'` module owns a
+ * padded AOE; while it is hot, a body standing on that skirt takes `damage` every
+ * `tick` seconds. Local-only, like the rest of the board.
+ */
+export interface ArenaServerHeatDef {
+  /** Full cycle length per card, in seconds. */
+  period: number;
+  /** Warning lead before the card goes live. */
+  warn: number;
+  /** Seconds the card stays hot. */
+  hot: number;
+  /** Seconds between damage ticks while standing in a hot AOE. */
+  tick: number;
+  damage: number;
+  /** AOE inflation around each card module. The card itself stays solid cover. */
+  pad: number;
+  /** Phase offset between cards, so the heat rolls across the board. */
+  phaseStep: number;
+}
+
+/**
  * A final-level motherboard. The board is presentation; `modules` are copied into
  * `pillars` at authoring time, so collision, pathfinding and spawning see ordinary cover.
- * No hazard state lives here yet; the board-specific hazard pass comes later.
+ * Only the GPU board carries a live hazard so far; the rest is still a blockout.
  */
 export interface ArenaServerDef {
   kind: ArenaServerKind;
@@ -62,6 +83,8 @@ export interface ArenaServerDef {
   label: string;
   sub: string;
   modules: readonly ArenaServerModuleDef[];
+  /** GPU thermal cycle. Absent on CPU and NETWORK, which are still foundations. */
+  heat?: ArenaServerHeatDef;
 }
 
 /** Two request-traffic silhouettes share one local-only hazard. */
@@ -1703,6 +1726,47 @@ const NETWORK_BOARD_MODULES: readonly ArenaServerModuleDef[] = [
 
 function serverPillars(modules: readonly ArenaServerModuleDef[]): Rect[] {
   return modules.map(({ x, y, w, h }) => ({ x, y, w, h }));
+}
+
+export const SERVER_HEAT_STATE = {
+  rest: 0,
+  warn: 1,
+  hot: 2,
+} as const;
+
+/** Offset local time of one accelerator card. Cards share the authored period. */
+export function serverHeatPhaseAt(heat: ArenaServerHeatDef, card: number, t: number): number {
+  const period = Math.max(0.001, heat.period);
+  const local = (t + card * heat.phaseStep) % period;
+  return local < 0 ? local + period : local;
+}
+
+export function serverHeatStateAt(heat: ArenaServerHeatDef, card: number, t: number): number {
+  const phase = serverHeatPhaseAt(heat, card, t);
+  if (phase < heat.warn) return SERVER_HEAT_STATE.warn;
+  if (phase < heat.warn + heat.hot) return SERVER_HEAT_STATE.hot;
+  return SERVER_HEAT_STATE.rest;
+}
+
+/**
+ * Fill `out` with one padded AOE per accelerator card, in module order. The renderer
+ * and the damage tick both read these, so the glowing skirt and the burn cannot drift.
+ */
+export function serverHeatZoneRects(srv: ArenaServerDef, out: Rect[]): number {
+  const heat = srv.heat;
+  if (!heat) return 0;
+  let count = 0;
+  for (let i = 0; i < srv.modules.length && count < out.length; i++) {
+    const m = srv.modules[i];
+    if (m.kind !== 'card') continue;
+    const zone = out[count];
+    zone.x = m.x - heat.pad;
+    zone.y = m.y - heat.pad;
+    zone.w = m.w + heat.pad * 2;
+    zone.h = m.h + heat.pad * 2;
+    count++;
+  }
+  return count;
 }
 
 // Request arenas use a custom top/bottom ring so the entry and outbound tracks do not
@@ -3868,6 +3932,9 @@ const ARENAS_BASE: readonly ArenaDef[] = [
       board: { x: 96, y: 96, w: 1798, h: 902 },
       label: 'GPU FARM // REV 01',
       sub: 'FOUR ACCELERATORS // WIDE BUS // HOT AISLE',
+      // A rolling thermal cycle: one card warns and then burns its skirt, then the
+      // next. The 46-unit pad leaves a narrow safe seam between the hot aisles.
+      heat: { period: 12, warn: 3, hot: 4.2, tick: 0.8, damage: 1, pad: 46, phaseStep: 3 },
       modules: GPU_BOARD_MODULES,
     },
   },

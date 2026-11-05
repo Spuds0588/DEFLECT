@@ -8152,3 +8152,29 @@ node should split the worm in two, and the rear half should turn its old tail in
 
 **Next:** play a body-only gauntlet run and judge whether 2 node HP and the four-worm cap make head targeting
 read clearly without turning a split into unreadable clutter.
+
+## 2026-11-05 — GPU board runs a timed thermal cycle (v0.1.199)
+
+**Goal:** make the GPU board dangerous on its own. The accelerators should heat up, and standing in the
+aisle around a hot card should cost health like the other hot-floor hazards.
+
+**Changes.**
+- Added `ArenaServerHeatDef` and `server.heat` on `GPU BOARD`: 12 s cycle, 3 s warning, 4.2 s hot, 0.8 s
+  damage tick, one segment per tick, a 46-unit AOE skirt and a 3 s phase step between cards.
+- `serverHeatZoneRects` derives each AOE from the same `kind: 'card'` modules that become cover, so the
+  painted skirt and the damage rect cannot drift. `serverHeatPhaseAt` / `serverHeatStateAt` own the cycle.
+- `World.serverHeatT` is local-only, advances only while the arena can act, and resets on round and
+  gauntlet start. Standing on a hot skirt damages players, worms, viruses, sentries, errors and the
+  training drone, matching the other hot-floor hazards; damage uses `SRC.SERVER_HEAT` for the death camera.
+- The renderer draws a resting outline, an amber dashed warning with a countdown, and a pulsing orange
+  skirt with rising ticks while live. No `shadowBlur`; no snapshot fields.
+- Updated AGENTS D68, README, GAME_GUIDE, CAMPAIGN and TODO; bumped all version stamps to 0.1.199.
+
+**Verification.**
+- `.tmp/server-board-check.ts` 0: four heat zones contain their cards, stay in bounds, do not overlap,
+  clear every spawn, and each reaches warn, hot and rest; only the GPU board has heat.
+- `npm run build` 0, `npm run bench` 0, `git diff --check` 0.
+- Not tested: a human visual pass on four overlapping warning/live skirts, and a full-squad fight.
+
+**Next:** play the GPU board with a full local squad and tune the pad, period and tick if the moving safe
+lane reads as clutter rather than a route.

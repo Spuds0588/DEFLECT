@@ -20,8 +20,9 @@ MACHINE, SMART PLUG, SMOKE DETECTOR, SMART WATCH, BUSINESS LAPTOP, SPREADSHEET a
 arenas: their launch walls, cockpit consoles, toy cards, car routes, rally balls, flip boards, simulated
 cannons, moving print heads, live circuit rings, alarm sirens, sweeping watch hands, scrolling mail,
 breakable sheet cells and rising chat bubbles are not synced online.
-The three final-level server boards (`CPU BOARD`, `GPU BOARD`, `NETWORK BOARD`) are local blockouts:
-their sockets, accelerator cards and network switches are cover, and their hazard pass is still open.
+The three final-level server boards (`CPU BOARD`, `GPU BOARD`, `NETWORK BOARD`) are local: their sockets,
+accelerator cards and network switches are cover. `GPU BOARD` adds a timed thermal cycle around its
+accelerator cards, and the other two boards' hazard pass is still open.
 `DISPATCH YARD` and `LOAD BALANCER` are local request-traffic arenas: authored train routes split at a
 switch, warn the next lane, and shove a hit body clear of the rail. Their cars are not in the snapshot.
 The food-court and arcade row adds `SNACK MACHINE`, `TOKEN DISPENSER`, `SODA MACHINE`, `ARCADE RACING`,

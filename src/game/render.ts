@@ -30,6 +30,9 @@ import {
   satelliteSolarStateAt,
   satelliteTelescopeExtensionAt,
   SATELLITE_SOLAR_STATE,
+  serverHeatPhaseAt,
+  serverHeatStateAt,
+  SERVER_HEAT_STATE,
   carProgressAt,
   carRouteAt,
   carRouteLength,
@@ -191,6 +194,8 @@ export interface RenderState {
   carProgress?: number;
   /** Food-court and arcade hazards. Local-only. */
   arcade?: ArcadeRuntime | null;
+  /** GPU-board thermal cycle clock. Local-only. */
+  serverHeatT?: number;
   /** DISPATCH / LOAD BALANCER live request traffic and its switch signal. Local-only. */
   requestCars?: readonly RequestCar[];
   requestT?: number;
@@ -7043,14 +7048,15 @@ export class Renderer {
 
   /**
    * Final-level server boards: a PCB substrate, a bus, and authored modules that are
-   * also the arena's `pillars`. Nothing here has a clock or a hit path yet; the board
-   * is a readable room first, so the hazard pass can add fixtures without re-laying it.
+   * also the arena's `pillars`. The GPU board carries a live thermal cycle; the CPU
+   * and NETWORK boards are still readable blockouts waiting for their hazard pass.
    */
   private drawServerArena(
     arena: ArenaDef,
     t: number,
     groundA: number,
     frameA: number,
+    state: RenderState | null,
   ): void {
     const srv = arena.server;
     if (!srv) return;
@@ -7101,6 +7107,73 @@ export class Renderer {
       }
     }
     ctx.stroke();
+
+    // GPU thermal cycle: each accelerator card owns a padded hot skirt. The fill is
+    // drawn under the modules, so cover stays solid while the aisle reads as the AOE.
+    const heat = srv.heat;
+    if (heat) {
+      const heatT = state?.serverHeatT ?? 0;
+      let card = 0;
+      for (let i = 0; i < srv.modules.length; i++) {
+        const m = srv.modules[i];
+        if (m.kind !== 'card') continue;
+        const zoneState = serverHeatStateAt(heat, card, heatT);
+        const phase = serverHeatPhaseAt(heat, card, heatT);
+        const zx = m.x - heat.pad;
+        const zy = m.y - heat.pad;
+        const zw = m.w + heat.pad * 2;
+        const zh = m.h + heat.pad * 2;
+        const pulse = 0.5 + 0.5 * Math.sin(t * (zoneState === SERVER_HEAT_STATE.hot ? 11 : 7) + card);
+        ctx.save();
+        if (zoneState === SERVER_HEAT_STATE.hot) {
+          ctx.globalAlpha = groundA * (0.14 + 0.08 * pulse);
+          ctx.fillStyle = '#ff4a1e';
+          ctx.fillRect(zx, zy, zw, zh);
+          ctx.globalAlpha = frameA * (0.55 + 0.3 * pulse);
+          ctx.strokeStyle = '#ff7a55';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(zx + 1, zy + 1, zw - 2, zh - 2);
+          // Rising ticks along the lower skirt: readable even when the fill is dim.
+          ctx.globalAlpha = frameA * (0.3 + 0.35 * pulse);
+          ctx.fillStyle = '#ffb08a';
+          for (let k = 0; k < 6; k++) {
+            const hx = zx + 20 + ((k * 97 + card * 31) % Math.max(1, zw - 40));
+            const lift = (t * 34 + k * 23) % 26;
+            ctx.fillRect(hx, zy + zh - 10 - lift, 2, 7);
+          }
+        } else if (zoneState === SERVER_HEAT_STATE.warn) {
+          ctx.globalAlpha = groundA * (0.06 + 0.04 * pulse);
+          ctx.fillStyle = '#ffc45e';
+          ctx.fillRect(zx, zy, zw, zh);
+          ctx.globalAlpha = frameA * (0.4 + 0.25 * pulse);
+          ctx.strokeStyle = '#ffc45e';
+          ctx.lineWidth = 1.6;
+          ctx.setLineDash([10, 8]);
+          ctx.strokeRect(zx + 1, zy + 1, zw - 2, zh - 2);
+          ctx.setLineDash([]);
+        } else {
+          ctx.globalAlpha = groundA * 0.16;
+          ctx.strokeStyle = arena.accentSoft;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(zx + 0.5, zy + 0.5, zw - 1, zh - 1);
+        }
+        // The countdown sits on the top skirt, outside the card silkscreen.
+        if (zoneState !== SERVER_HEAT_STATE.rest) {
+          ctx.globalAlpha = frameA * 0.85;
+          ctx.fillStyle = zoneState === SERVER_HEAT_STATE.hot ? '#ffb08a' : '#ffc45e';
+          ctx.font = '600 11px ui-monospace, monospace';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'alphabetic';
+          const label =
+            zoneState === SERVER_HEAT_STATE.hot
+              ? 'THERMAL LIMIT // MOVE'
+              : `THERMAL // HOT IN ${Math.max(0, heat.warn - phase).toFixed(1)}`;
+          ctx.fillText(label, zx + 8, zy + 15);
+        }
+        ctx.restore();
+        card++;
+      }
+    }
 
     const modA = Math.max(0, Math.min(1, frameA));
     for (let i = 0; i < srv.modules.length; i++) {
@@ -8516,7 +8589,7 @@ export class Renderer {
       return;
     }
     if (arena.server) {
-      this.drawServerArena(arena, t, groundA, frameA);
+      this.drawServerArena(arena, t, groundA, frameA, satelliteState ?? null);
       return;
     }
     if (arena.laptop) {

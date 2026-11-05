@@ -297,10 +297,15 @@ stay inside the board footprint and every spawn must stay clear of them. `drawSe
 substrate, bus traces, module art and wall edge; `drawArenaPreview` draws the same board in the picker. No
 `shadowBlur`.
 
-These are blockouts, not campaign nodes. They have no emitters, moving parts, pickups or threat state, and
-`isOnlineArena` skips `a.server` so they cannot enter hosted rooms or series. The Level-6 hazard pass is
-still open; until it lands, do not add them to `CAMPAIGN_ROUTE`, `CAMPAIGN_LEVELS` or a boss flow. When
-hazards arrive, they need an explicit snapshot decision or must stay local like the other fixture arenas.
+These are blockouts, not campaign nodes. `isOnlineArena` skips `a.server` so they cannot enter hosted rooms
+or series. The Level-6 hazard pass is only partly open: `GPU BOARD` now carries `server.heat`, a timed
+thermal cycle around its `kind: 'card'` modules (`ArenaServerHeatDef`: 12 s period, 3 s warning, 4.2 s hot,
+0.8 s tick, 1 damage, 46-unit pad, 3 s phase step). `serverHeatZoneRects` derives the padded AOE from the
+same module list the renderer paints, so the glowing skirt and the burn cannot drift; the card itself
+stays solid cover. `World.serverHeatT` is local-only and never enters `Snapshot`. CPU and NETWORK remain
+hazard-free foundations. Until the full pass lands, do not add any of them to `CAMPAIGN_ROUTE`,
+`CAMPAIGN_LEVELS` or a boss flow. New board hazards need an explicit snapshot decision or must stay local
+like the other fixture arenas.
 
 ### D69 — Final-level request traffic is one shared local hazard (decided 2026-11-05)
 

@@ -2,6 +2,16 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## GPU board thermal hazard (2026-11-05, v0.1.199)
+
+- [x] `ArenaServerHeatDef` on GPU BOARD: 12 s cycle, 3 s warning, 4.2 s hot, one segment per 0.8 s
+- [x] `serverHeatZoneRects` derives a 46-unit padded AOE from the card modules, so paint and damage agree
+- [x] Local-only `World.serverHeatT`; resets on round and gauntlet start and never enters `Snapshot`
+- [x] Warning glow/countdown, live skirt, rising ticks and `SRC.SERVER_HEAT` death attribution
+- [x] `.tmp/server-board-check.ts` green; `npm run build` and `npm run bench` green
+- [ ] Human readability pass on four overlapping warning/live skirts in a full local squad fight
+- [ ] CPU and NETWORK board hazards; decide whether any board becomes a Level-6 campaign node
+
 ## Worm chain severing (2026-11-05, v0.1.198)
 
 - [x] Standard worm body nodes carry their own `WORM.segmentHp`; shots no longer feed the worm for free

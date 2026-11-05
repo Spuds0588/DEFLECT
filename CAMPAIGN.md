@@ -322,9 +322,10 @@ final arena should be readable in one screen even if the approach is multi-scree
 The first three server-board blockouts are in `arenas.ts` as local-only arenas: `CPU BOARD` (37),
 `GPU BOARD` (38) and `NETWORK BOARD` (39). CPU has four sockets, two DIMM banks and a central chipset;
 GPU has four long accelerator cards around an NVSwitch; network is three leaf and three spine switches
-around a fabric block. Their modules are ordinary cover, they use the perimeter spawn ring, and they have
-no hazards yet. They are **not** route nodes: wiring them into Level 6 waits for the hazard pass and the
-finale sequence. Treat them as the floor plan the RACK/COOLANT/SUCCESSOR levels can grow from.
+around a fabric block. Their modules are ordinary cover, and they use the perimeter spawn ring. GPU BOARD
+now has a timed thermal cycle: each accelerator card warns, then burns a padded skirt around itself for one
+segment per 0.8 s, and the phases roll from card to card. CPU and NETWORK still have no hazards. They are
+**not** route nodes: wiring them into Level 6 waits for the full hazard pass and the finale sequence. Treat them as the floor plan the RACK/COOLANT/SUCCESSOR levels can grow from.
 
 `DISPATCH YARD` (40) and `LOAD BALANCER` (41) extend that foundation with live request traffic. Dispatch
 has one inbound line, a three-way switch and three destinations; Load Balancer has four lanes and a

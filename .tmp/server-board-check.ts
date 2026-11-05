@@ -4,12 +4,14 @@
  *   2. every module is inside the board, becomes exactly one pillar, and modules do not
  *      overlap each other;
  *   3. every perimeter spawn is clear of module cover and inside the playfield;
- *   4. the boards carry no hazard/fixture state yet, and no room/portal state that would
- *      accidentally make them a campaign node or an online arena.
+ *   4. only the GPU board carries the thermal cycle; its AOE is derived from the card
+ *      modules, stays inside the playfield, clears every spawn and reaches every state;
+ *   5. the boards carry no room/portal state that would accidentally make them a
+ *      campaign node or an online arena.
  *
  * Run with `npx tsx .tmp/server-board-check.ts`.
  */
-import { ARENAS, arenaSolids } from '../src/game/arenas';
+import { ARENAS, arenaSolids, serverHeatStateAt, serverHeatZoneRects } from '../src/game/arenas';
 
 const fail = (message: string): never => {
   throw new Error(message);
@@ -81,6 +83,46 @@ for (let i = 0; i < expected.length; i++) {
     }
   }
 
+  const heat = server.heat;
+  if (want.kind === 'gpu') {
+    if (!heat) fail(`${arena.name} has no thermal cycle`);
+    if (!(heat.period > heat.warn + heat.hot)) fail(`${arena.name} heat period leaves no cooling window`);
+    if (!(heat.tick > 0) || !(heat.damage > 0)) fail(`${arena.name} heat tick is degenerate`);
+    if (!(heat.pad > 0) || !(heat.phaseStep > 0)) fail(`${arena.name} heat AOE is degenerate`);
+
+    const cards = server.modules.filter((m) => m.kind === 'card');
+    if (cards.length !== 4) fail(`${arena.name} has ${cards.length} cards, want 4`);
+    const zones: { x: number; y: number; w: number; h: number }[] = cards.map(() => ({ x: 0, y: 0, w: 0, h: 0 }));
+    const zoneCount = serverHeatZoneRects(server, zones);
+    if (zoneCount !== cards.length) fail(`${arena.name} filled ${zoneCount} heat zones for ${cards.length} cards`);
+    for (let z = 0; z < zoneCount; z++) {
+      const zone = zones[z];
+      const card = cards[z];
+      if (zone.x > card.x || zone.y > card.y || zone.x + zone.w < card.x + card.w || zone.y + zone.h < card.y + card.h) {
+        fail(`${arena.name} heat zone ${z} does not contain ${card.label}`);
+      }
+      if (zone.x < bounds.left || zone.y < bounds.top || zone.x + zone.w > bounds.right || zone.y + zone.h > bounds.bottom) {
+        fail(`${arena.name} heat zone ${z} leaves the playfield`);
+      }
+      for (let o = z + 1; o < zoneCount; o++) {
+        const other = zones[o];
+        if (zone.x < other.x + other.w && zone.x + zone.w > other.x && zone.y < other.y + other.h && zone.y + zone.h > other.y) {
+          fail(`${arena.name} heat zones ${z} and ${o} overlap`);
+        }
+      }
+      for (let s = 0; s < arena.spawns.length; s++) {
+        if (rectGap(zone, arena.spawns[s].x, arena.spawns[s].y) < 24) {
+          fail(`${arena.name} heat zone ${z} crowds spawn ${s}`);
+        }
+      }
+      const seen = new Set<number>();
+      for (let step = 0; step < 64; step++) seen.add(serverHeatStateAt(heat, z, (step / 64) * heat.period));
+      if (seen.size < 3) fail(`${arena.name} heat zone ${z} never reaches warn, hot and rest`);
+    }
+  } else if (heat) {
+    fail(`${arena.name} gained a thermal cycle`);
+  }
+
   const hazards = [
     arena.emitters,
     arena.disc,
@@ -113,7 +155,7 @@ for (let i = 0; i < expected.length; i++) {
   if (arenaSolids(arena).length !== arena.pillars.length) fail(`${arena.name} has extra body solids`);
 }
 
-if (ARENAS[40]?.id !== 90) fail(`QA arena moved: index 40 is ${ARENAS[40]?.id}`);
+if (ARENAS[49]?.id !== 90) fail(`QA arena moved: index 49 is ${ARENAS[49]?.id}`);
 
 const names = expected.map((e) => ARENAS[e.id].name).join(', ');
 console.log(`server boards ok: ${names} // modules and spawns are clear`);

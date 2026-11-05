@@ -98,6 +98,9 @@ import {
   satelliteSolarStateAt,
   satelliteTelescopeRectAt,
   SATELLITE_SOLAR_STATE,
+  serverHeatStateAt,
+  serverHeatZoneRects,
+  SERVER_HEAT_STATE,
   carRouteAt,
   carProgressAt,
   carRouteLength,
@@ -765,6 +768,10 @@ export class World {
   private requestRouteIndex = 0;
   /** Food-court and arcade hazards. Local-only; never part of a snapshot. */
   readonly arcade: ArcadeRuntime | null;
+  /** GPU-board thermal cycle clock. Local-only; never part of a snapshot. */
+  serverHeatT = 0;
+  private serverHeatTickT = 0;
+  private readonly serverHeatAreas: Rect[] = [];
   private sodaStaticPillars: Rect[] = [];
   private tetrisStaticPillars: Rect[] = [];
   private sodaRectScratch: Rect = { x: 0, y: 0, w: 0, h: 0 };
@@ -925,6 +932,13 @@ export class World {
     this.sodaStaticPillars = this.arena.soda ? this.arena.pillars.slice() : [];
     this.tetrisStaticPillars = this.arena.tetris ? this.arena.pillars.slice() : [];
     this.arcade = this.makeArcadeRuntime();
+    const serverHeatDef = this.arena.server;
+    if (serverHeatDef?.heat) {
+      for (let i = 0; i < serverHeatDef.modules.length; i++) {
+        if (serverHeatDef.modules[i].kind === 'card') this.serverHeatAreas.push({ x: 0, y: 0, w: 0, h: 0 });
+      }
+      this.resetServerHeat();
+    }
     this.flip = arena.flip ?? null;
     this.flipStates = new Uint8Array(this.flip?.rows.length ?? 0);
     this.flipPrevStates = new Uint8Array(this.flipStates.length);
@@ -1302,6 +1316,7 @@ export class World {
     if (this.satellite) this.resetSatellite();
     if (this.requests) this.resetRequests();
     if (this.arcade) this.resetArcade();
+    this.resetServerHeat();
     for (let i = 0; i < this.pipes.length; i++) {
       const pipe = this.pipes[i];
       pipe.active = true;
@@ -3580,6 +3595,7 @@ export class World {
     if (this.pong) this.resetPong();
     if (this.requests) this.resetRequests();
     if (this.arcade) this.resetArcade();
+    this.resetServerHeat();
     if (this.flip) this.resetFlip();
     if (this.invaders) this.resetInvaders();
     const active = this.activeCount();
@@ -3749,6 +3765,7 @@ export class World {
     if (this.pong && canAct) this.tickPong(dt);
     if (this.requests && canAct) this.tickRequests(dt);
     if (this.arcade && canAct) this.tickArcade(dt);
+    if (this.arena.server?.heat && canAct) this.tickServerHeat(dt);
     if (this.radar && canAct) this.tickRadar(dt);
     if (this.flip && canAct) this.tickFlip(dt);
     if (this.invaders && canAct) this.tickInvaders(dt);
@@ -10472,6 +10489,72 @@ export class World {
       car.dirY = 0;
       car.horizontal = true;
       car.hitPlayers = 0;
+    }
+  }
+
+  /** Put the GPU thermal cycle back to its opening state. */
+  private resetServerHeat(): void {
+    this.serverHeatT = 0;
+    this.serverHeatTickT = 0;
+    const srv = this.arena.server;
+    if (srv?.heat) serverHeatZoneRects(srv, this.serverHeatAreas);
+  }
+
+  /**
+   * Advance the GPU thermal cycle. Each accelerator card owns a padded skirt; while
+   * the card is hot, every body standing on that skirt takes the shared tick. The
+   * clock is local-only and never enters a snapshot.
+   */
+  private tickServerHeat(dt: number): void {
+    const srv = this.arena.server;
+    const heat = srv?.heat;
+    if (!srv || !heat) return;
+    this.serverHeatT += dt;
+    this.serverHeatTickT -= dt;
+    if (this.serverHeatTickT > 0) return;
+    let hot = false;
+    for (let i = 0; i < this.serverHeatAreas.length; i++) {
+      if (serverHeatStateAt(heat, i, this.serverHeatT) !== SERVER_HEAT_STATE.hot) continue;
+      hot = true;
+      this.damageServerHeatRect(this.serverHeatAreas[i], heat.damage);
+    }
+    if (hot) this.serverHeatTickT = Math.max(0.1, heat.tick);
+  }
+
+  /** A hot card burns every body on its skirt. The card itself stays solid cover. */
+  private damageServerHeatRect(rect: Rect, damage: number): void {
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive) continue;
+      if (p.x < rect.x || p.x > rect.x + rect.w || p.y < rect.y || p.y > rect.y + rect.h) continue;
+      this.damagePlayer(p, damage, -1, 0, 0, 0, SRC.SERVER_HEAT, -1);
+    }
+    for (let i = 0; i < this.worms.length; i++) {
+      const w = this.worms[i];
+      if (!w.active || w.held) continue;
+      if (w.x < rect.x || w.x > rect.x + rect.w || w.y < rect.y || w.y > rect.y + rect.h) continue;
+      this.damageWorm(w, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.viruses.length; i++) {
+      const v = this.viruses[i];
+      if (!v.active || v.held) continue;
+      if (v.x < rect.x || v.x > rect.x + rect.w || v.y < rect.y || v.y > rect.y + rect.h) continue;
+      this.damageVirus(v, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.sentries.length; i++) {
+      const s = this.sentries[i];
+      if (!s.active) continue;
+      if (s.x < rect.x || s.x > rect.x + rect.w || s.y < rect.y || s.y > rect.y + rect.h) continue;
+      this.damageSentry(s, damage, -1, 0, 0, 0);
+    }
+    for (let i = 0; i < this.errors.length; i++) {
+      const e = this.errors[i];
+      if (!e.active) continue;
+      if (e.x < rect.x || e.x > rect.x + rect.w || e.y < rect.y || e.y > rect.y + rect.h) continue;
+      this.damageError(e, damage, -1, 0, 0);
+    }
+    if (this.drone.active && this.drone.x >= rect.x && this.drone.x <= rect.x + rect.w && this.drone.y >= rect.y && this.drone.y <= rect.y + rect.h) {
+      this.damageDrone(damage, -1);
     }
   }
 

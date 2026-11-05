@@ -124,6 +124,8 @@ export const SRC = {
   DUCK: 26,
   /** TETRIS landed block. */
   TETRIS: 27,
+  /** GPU BOARD thermal AOE. No body, so the death camera falls through. */
+  SERVER_HEAT: 28,
 } as const;
 
 export const EV = {
