@@ -366,18 +366,23 @@ the solid band. The car route is unaffected and remains body geometry.
 
 ### D66 — Campaign route and the 2026-11-04 feedback pass (decided 2026-11-04)
 
-- `CAMPAIGN_LEVELS` is now 22 nodes: the four quarantine rooms, REBOOT, NETWORK SWITCH,
-  DOCUMENT SCANNER, FAX MACHINE, SMART WATCH, BUSINESS LAPTOP (BLOB chapter boss), then the airport
-  chapter (AIRPORT, AIR TRAFFIC), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE), and the
-  arcade chapter (SPACE CADET, PONG, SPACE INVADERS, ARCADE RACING, FIGHTING GAME, DUCK HUNTER, TETRIS
-  with STORM CLOUD as the finale). The live route is data in `CAMPAIGN_ROUTE`; `drawCampaignRoad`
+- `CAMPAIGN_LEVELS` is now 22 nodes: the four quarantine rooms, REBOOT (MEGA WORM), NETWORK SWITCH,
+  DOCUMENT SCANNER, FAX MACHINE, SMART WATCH, BUSINESS LAPTOP, then the airport chapter (AIRPORT with
+  FILE BLOB, AIR TRAFFIC with STORM CLOUD), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE with
+  IDLE HANDS), and the arcade chapter (SPACE CADET, PONG, SPACE INVADERS with STARFISH, ARCADE RACING,
+  FIGHTING GAME, DUCK HUNTER, TETRIS with USER as the finale). The live route is data in `CAMPAIGN_ROUTE`; `drawCampaignRoad`
   renders completed, current, revealed and generic future stops. A clear shows the route plate only at a
   level boundary (`cleared.nodeId !== next.nodeId`); the four BUILD ROOT rooms and each themed chapter
   share one node and portal straight through. Sector is not the gate. Future branches are just extra
   `links` entries, and unseen stops stay dim generic nodes until the preceding node is cleared.
 - A live-fire node may carry `CampaignLevel.blurb`, a two-beat script_kitty landing line. `setupCampaign`
   starts that `TutorialRunner` before `beginAssault`; it is narration only, so it never gates the clear,
-  never replaces the Warden/Holding/REBOOT lessons, and never enters `Snapshot`.
+  never replaces the Warden/Holding/REBOOT lessons, and  never enters `Snapshot`.
+- **Mini-boss distribution (v0.1.201).** Six authored boss nodes: REBOOT (MEGA WORM), AIRPORT (FILE BLOB),
+  AIR TRAFFIC (STORM CLOUD), SATELLITE (IDLE HANDS), SPACE INVADERS (STARFISH) and TETRIS (USER).
+  BUSINESS LAPTOP is a normal assault again. Assigning a boss moves the node onto the boss-clear path:
+  `clearKills` is ignored and the level ends only when that boss kind is gone. Do not scatter a boss onto
+  a node without an entrance-sized arena and a clear run-up squad.
 - Campaign bots are selected through `World.botSlots`; `0` means no bots. `activateCampaignBots` puts
   every selected bot on the floor from the first campaign frame, and the main loop keeps their brains
   live through calibration, breach and assault. Do not restore the old minimum-one clamp or deactivate
@@ -3269,7 +3274,7 @@ apply; nothing here is a second collision system.
 ### D72 — BOSS RUSH: the mini-boss ladder (built 2026-11-02)
 
 BOSS RUSH is a gauntlet-mode ladder: no wave ramp, no fodder, one registered mini-boss at a time in
-`BOSS_RUSH_ORDER` (registry order). It exists for boss testing, balance passes and performance tuning, and
+`BOSS_RUSH_ORDER` (registry order, with the campaign-only USER excluded). It exists for boss testing, balance passes and performance tuning, and
 as a playable local mode.
 
 - **Entry.** `SINGLE PLAYER > GAUNTLET` setup has a `BOSS RUSH` mode toggle; the local multiplayer stage has
@@ -3292,6 +3297,27 @@ as a playable local mode.
 - **QA.** `?bossrush=1` boots the solo ladder immediately. `.tmp/bossrush-check.ts` covers ladder order,
   zero fodder, the inter-boss gap, clear state, co-op seating/respawn and that a scored gauntlet still ends
   on a death.
+
+### D73 — USER is the campaign finale, not a ladder boss (decided 2026-11-05)
+
+`USER` (`MINIBOSS.USER = 5`, body `user`) is the TETRIS finale: one giant 👤 bust pinned to the ceiling
+band, `USER.radius` 330 and `USER.hp` 480. It is a `Worm` in the pool, so every player weapon, deflect, bot
+scan and minimap read already sees it. It is deliberately excluded from `BOSS_RUSH_ORDER`: the gauntlet
+ladder still runs the five roaming mini-bosses, while the campaign stages USER directly through the same
+`campaignBoss` path as every other boss node.
+
+- **Attacks are shared systems.** Fists slam two latched floor points (one segment each, then a ring of
+  type-3 shock bolts); eyes fire a converging fan of type-20 bolts; portals drop sentries, viruses and a
+  worm at clear floor pockets; the fly-over is a staged Mega Worm silhouette that fires two strafing
+  volleys. Every damaging shot is an ordinary hostile projectile, so guard, lash and player fire apply.
+- **Keep it local.** `Worm.user` never enters `Snapshot`, and TETRIS is already excluded from hosted rooms.
+  Do not add a guest-side boss, a second collision system or a snapshot field for it.
+- **Body budget.** 480 HP and the 330 radius are the boss's identity; tune windups, cooldowns, fist AOE and
+  projectile counts first. Do not change `USER.hp` or `USER.radius` without explicit approval.
+- **Campaign gate.** The existing `campaignBoss` path owns the spawn and the clear: USER arrives after the
+  TETRIS opening squad and ports are gone, and the node clears only when `minibossLiveCount(USER)` is 0.
+- **Probe.** `.tmp/user-boss-check.ts` covers the body, fists, eyes, portals, fly-over, death and every
+  campaign boss assignment. Extend it when a new USER attack is added; do not add a second boss harness.
 
 
 ## TEST RANGE sandbox

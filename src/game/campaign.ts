@@ -257,11 +257,10 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     blurb: kitty(
       'business-laptop',
       'BUSINESS LAPTOP. EVERY MISSING EMAIL IN THE COMPANY LIVES IN THIS INBOX.',
-      'THE BLOB IS IN HERE. CLEAR THE FOLDER AND I WILL PULL THE PLUG.',
+      'THE INFECTION KEEPS A HOST FILE HERE. CLEAR THE FOLDER AND I WILL PULL THE PLUG.',
     ),
-    clearKills: 0,
+    clearKills: 8,
     opening: { sentries: 5, viruses: 3, worms: 1 },
-    boss: MINIBOSS.BLOB,
     dataCrates: [],
   },
   {
@@ -275,11 +274,12 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     blurb: kitty(
       'airport',
       'AIRPORT. DEPARTURES IS CANCELLED. ARRIVALS IS A FIREFIGHT.',
-      'THE INFECTION BOOKED A ONE-WAY FLIGHT. GROUND IT.',
+      'A FILE BLOB IS HOLDING THE DEPARTURES BOARD HOSTAGE. GROUND IT.',
     ),
-    clearKills: 7,
+    clearKills: 0,
     opening: { sentries: 4, viruses: 2, worms: 1 },
-    dataCrates: [crate(23, PROP.DOC)],
+    boss: MINIBOSS.BLOB,
+    dataCrates: [],
   },
   {
     id: 11,
@@ -292,11 +292,12 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     blurb: kitty(
       'air-traffic',
       'AIR TRAFFIC CONTROL. EVERY BLIP ON THIS SCOPE IS A BAD PACKET.',
-      'KEEP THE INFECTION OFF THE TOWER AND THE PLANES STAY UP.',
+      'A STORM CELL IS PARKED OVER THE TOWER. KEEP IT OFF THE PLANES.',
     ),
-    clearKills: 7,
+    clearKills: 0,
     opening: { sentries: 4, viruses: 2, worms: 1 },
-    dataCrates: [crate(33, PROP.AUDIO)],
+    boss: MINIBOSS.STORM_CLOUD,
+    dataCrates: [],
   },
   {
     id: 12,
@@ -343,11 +344,12 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     blurb: kitty(
       'satellite',
       'SATELLITE. THE VIEW IS GREAT. THE SOLAR WINGS ARE ON FIRE.',
-      'THE INFECTION RODE AN UPLINK UP HERE. BURN IT OUT.',
+      'A PAIR OF HANDS IS WORKING THE SOLAR WINGS. CUT THEM OFF.',
     ),
-    clearKills: 7,
+    clearKills: 0,
     opening: { sentries: 4, viruses: 2, worms: 1 },
-    dataCrates: [crate(17, PROP.DOC)],
+    boss: MINIBOSS.IDLE_HANDS,
+    dataCrates: [],
   },
   {
     id: 15,
@@ -394,11 +396,12 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     blurb: kitty(
       'space-invaders',
       'SPACE INVADERS. THE FLEET IS THE FLOOR. THE INFECTION BROUGHT FRIENDS.',
-      'CLEAR THE FORMATION. IT IS NOT A HIGH SCORE.',
+      'SOMETHING WITH FIVE ARMS IS HATCHING IN THE FORMATION.',
     ),
-    clearKills: 8,
+    clearKills: 0,
     opening: { sentries: 4, viruses: 3, worms: 1 },
-    dataCrates: [crate(24, PROP.DOC)],
+    boss: MINIBOSS.STARFISH,
+    dataCrates: [],
   },
   {
     id: 18,
@@ -462,12 +465,12 @@ export const CAMPAIGN_LEVELS: readonly CampaignLevel[] = [
     blurb: kitty(
       'tetris',
       'TETRIS. TEN COLUMNS WIDE AND THE INFECTION IS STACKING THE DECK.',
-      'CLEAR THE LINES. I WILL HANDLE THE REST.',
+      'THE USER IS IN THE STACK. CLEAR THE LINES AND BRING IT DOWN.',
     ),
     clearKills: 0,
     finale: true,
     opening: { sentries: 5, viruses: 3, worms: 1 },
-    boss: MINIBOSS.STORM_CLOUD,
+    boss: MINIBOSS.USER,
     dataCrates: [],
   },
 ];

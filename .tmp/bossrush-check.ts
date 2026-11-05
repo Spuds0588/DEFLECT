@@ -1,6 +1,6 @@
 /** Boss rush probe: ladder order, no fodder, gaps, clear state and co-op respawns. */
 import { BOSS_RUSH, SIM_DT } from '../src/game/config';
-import { BOSS_RUSH_ORDER, MINIBOSSES } from '../src/game/minibosses';
+import { BOSS_RUSH_ORDER } from '../src/game/minibosses';
 import { ARENAS } from '../src/game/arenas';
 import { World } from '../src/game/world';
 import type { Worm } from '../src/game/types';
@@ -33,7 +33,7 @@ function liveBoss(world: World): Worm | null {
 {
   const { world, priv } = rush();
   if (!world.bossRush) fail('the world is not in boss-rush mode');
-  if (world.bossRushTotal !== MINIBOSSES.length) fail('the ladder does not cover every registered mini-boss');
+  if (world.bossRushTotal !== BOSS_RUSH_ORDER.length) fail('the ladder does not cover every staged mini-boss');
   const seen: number[] = [];
   for (let i = 0; i < 600 && !liveBoss(world); i++) priv.updateBossRush(SIM_DT);
   if (!liveBoss(world)) fail('the first boss never arrived');

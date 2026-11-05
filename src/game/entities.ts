@@ -417,6 +417,7 @@ export function createWorm(): Worm {
     armState: null,
     blob: null,
     storm: null,
+    user: null,
     mega: false,
     flyPhase: 0,
     flyT: 0,

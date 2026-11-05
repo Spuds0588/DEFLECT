@@ -1,5 +1,5 @@
 import type { AssaultPortal, Fragment } from './types';
-import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, STARFISH, BLOB, STORM_CLOUD, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, STARFISH, BLOB, STORM_CLOUD, USER, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
 import type { AimMark, BossIntro, CopyMark, InvaderShot } from './types';
 import {
   discArmAngle,
@@ -10566,6 +10566,10 @@ export class Renderer {
         this.drawStormCloud(w, alpha, t);
         continue;
       }
+      if (w.bossKind === MINIBOSS.USER) {
+        this.drawUser(w, alpha, t);
+        continue;
+      }
       if (w.mega) {
         this.drawMegaWorm(w, alpha, t);
         continue;
@@ -11341,6 +11345,252 @@ export class Renderer {
       ctx.ellipse(0, r * 0.35, r * 0.85, r * 0.4, 0, 0, TWO_PI);
       ctx.fill();
     }
+    ctx.restore();
+  }
+
+  /**
+   * The USER finale: a giant 👤 bust at the ceiling with its fist slams, converging
+   * eye volley, portal rings and staged Mega Worm fly-over drawn around it. The body is
+   * deliberately a backdrop: the fight's bodies and shots stay readable in front.
+   */
+  private drawUser(w: Worm, alpha: number, t: number): void {
+    const st = w.user;
+    if (!st) return;
+    const cfg = USER;
+    const ctx = this.ctx;
+    const x = lerp(w.prevX, w.x, alpha);
+    const y = lerp(w.prevY, w.y, alpha);
+    const r = w.hitR;
+    const introRaw =
+      w.spawnT > 0 ? Math.max(0, Math.min(1, 1 - w.spawnT / Math.max(0.001, cfg.introTime))) : 1;
+    const intro = introRaw * introRaw * (3 - 2 * introRaw);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+
+    // Faint footprint so the body still reads as a target without painting a health
+    // bar over the arena.
+    ctx.globalAlpha = 0.1 * alpha * intro;
+    ctx.fillStyle = cfg.rim;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.08, 0, TWO_PI);
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(x, y);
+    const s = r * (0.82 + 0.18 * intro);
+    // Vector bust fallback: a platform without a colour emoji font still gets a body.
+    ctx.globalAlpha = 0.46 * alpha * intro;
+    ctx.fillStyle = cfg.ink;
+    ctx.beginPath();
+    ctx.arc(0, -s * 0.22, s * 0.5, 0, TWO_PI);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.92, s * 0.98);
+    ctx.quadraticCurveTo(-s * 0.82, s * 0.32, -s * 0.34, s * 0.24);
+    ctx.lineTo(s * 0.34, s * 0.24);
+    ctx.quadraticCurveTo(s * 0.82, s * 0.32, s * 0.92, s * 0.98);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 0.34 * alpha * intro;
+    ctx.strokeStyle = cfg.rim;
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.arc(0, -s * 0.22, s * 0.5, 0, TWO_PI);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.92, s * 0.98);
+    ctx.quadraticCurveTo(-s * 0.82, s * 0.32, -s * 0.34, s * 0.24);
+    ctx.lineTo(s * 0.34, s * 0.24);
+    ctx.quadraticCurveTo(s * 0.82, s * 0.32, s * 0.92, s * 0.98);
+    ctx.stroke();
+
+    // The body: the USER emoji, giant. The rim pass keeps the bust legible where a
+    // platform renders the glyph nearly black.
+    const glyph = r * 2.25;
+    ctx.globalAlpha = 0.82 * alpha * intro;
+    ctx.font = `${glyph}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Segoe UI Symbol", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#e8f6ff';
+    ctx.fillText('👤', 0, r * 0.04);
+    ctx.globalAlpha = 0.34 * alpha * intro;
+    ctx.strokeStyle = cfg.rim;
+    ctx.lineWidth = Math.max(2, r * 0.009);
+    ctx.strokeText('👤', 0, r * 0.04);
+
+    if (w.hitFlash > 0) {
+      ctx.globalAlpha = Math.min(0.55, w.hitFlash * 2.5) * alpha;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.96, 0, TWO_PI);
+      ctx.stroke();
+    }
+
+    const eyeY = -r * 0.14;
+    const eyeOff = r * 0.33;
+    for (let side = -1; side <= 1; side += 2) {
+      ctx.globalAlpha = (0.55 + 0.25 * Math.sin(st.clock * 3.1 + side * 1.7)) * alpha * intro;
+      ctx.fillStyle = cfg.eye;
+      ctx.beginPath();
+      ctx.ellipse(side * eyeOff, eyeY, r * 0.062, r * 0.038, 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.globalAlpha *= 0.35;
+      ctx.beginPath();
+      ctx.arc(side * eyeOff, eyeY, r * 0.13, 0, TWO_PI);
+      ctx.fill();
+    }
+
+    // Eye tell: two converging dashed lines, then the short afterglow.
+    if (st.state === 4) {
+      const u = Math.max(0, Math.min(1, st.t / cfg.eyes.windup));
+      ctx.globalAlpha = (0.22 + 0.55 * u) * alpha;
+      ctx.strokeStyle = cfg.eye;
+      ctx.lineWidth = 1.5 + u * 2.2;
+      ctx.setLineDash([10, 8]);
+      for (let side = -1; side <= 1; side += 2) {
+        ctx.beginPath();
+        ctx.moveTo(side * eyeOff, eyeY);
+        ctx.lineTo(st.eyeX - x, st.eyeY - y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.28 * alpha;
+      ctx.beginPath();
+      ctx.arc(st.eyeX - x, st.eyeY - y, 20 + u * 12, 0, TWO_PI);
+      ctx.stroke();
+    } else if (st.state === 5) {
+      ctx.globalAlpha = Math.max(0, 1 - st.t / Math.max(0.001, cfg.eyes.active)) * 0.7 * alpha;
+      ctx.strokeStyle = cfg.eye;
+      ctx.lineWidth = 5;
+      for (let side = -1; side <= 1; side += 2) {
+        ctx.beginPath();
+        ctx.moveTo(side * eyeOff, eyeY);
+        ctx.lineTo(st.eyeX - x, st.eyeY - y);
+        ctx.stroke();
+      }
+    }
+
+    // Fists: a floor telegraph and a massive palm dropping onto it.
+    if (st.state >= 1 && st.state <= 3) {
+      const h = cfg.hands;
+      let u = 1;
+      if (st.state === 1) u = Math.max(0, Math.min(1, st.t / h.windup));
+      else if (st.state === 3) u = Math.max(0, Math.min(1, 1 - st.t / h.recover));
+      const fall = u * u;
+      for (let side = 0; side < 2; side++) {
+        const tx = (side === 0 ? st.fistX : st.fist2X) - x;
+        const ty = (side === 0 ? st.fistY : st.fist2Y) - y;
+        const startY = r * 0.55;
+        const fy = startY + (ty - startY) * fall;
+        ctx.globalAlpha = (0.16 + 0.3 * (1 - u)) * alpha;
+        ctx.strokeStyle = cfg.fist;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([9, 9]);
+        ctx.beginPath();
+        ctx.arc(tx, ty, h.aoe, 0, TWO_PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.5 * alpha;
+        ctx.strokeStyle = cfg.fist;
+        ctx.lineWidth = r * 0.13;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(tx * 0.55, r * 0.12);
+        ctx.lineTo(tx, fy - r * 0.13);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+        const fw = r * 0.31;
+        const fh = r * 0.26;
+        ctx.globalAlpha = 0.88 * alpha;
+        ctx.fillStyle = cfg.fist;
+        ctx.fillRect(tx - fw * 0.5, fy - fh * 0.5, fw, fh);
+        for (let k = 0; k < 4; k++) {
+          ctx.beginPath();
+          ctx.arc(tx - fw * 0.36 + k * fw * 0.24, fy + fh * 0.3, fw * 0.12, 0, TWO_PI);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 0.45 * alpha;
+        ctx.strokeStyle = cfg.ink;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(tx - fw * 0.5, fy - fh * 0.5, fw, fh);
+        if (st.state === 2) {
+          const burst = Math.min(1, st.t / Math.max(0.001, h.active));
+          ctx.globalAlpha = (1 - burst) * 0.8 * alpha;
+          ctx.strokeStyle = cfg.rim;
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.arc(tx, ty, h.aoe * (0.35 + 0.65 * burst), 0, TWO_PI);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Portal rings at the floor pockets where the squad will land.
+    if (st.state >= 7 && st.state <= 9 && st.portalCount > 0) {
+      const u = st.state === 7 ? Math.max(0, Math.min(1, st.t / cfg.portals.windup)) : 1;
+      for (let i = 0; i < st.portalCount; i++) {
+        const px = st.portalX[i] - x;
+        const py = st.portalY[i] - y;
+        const rr = 30 + 34 * u;
+        ctx.globalAlpha = (0.3 + 0.45 * u) * alpha;
+        ctx.strokeStyle = cfg.rim;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.ellipse(px, py, rr, rr * 0.42, 0, 0, TWO_PI);
+        ctx.stroke();
+        ctx.globalAlpha *= 0.4;
+        ctx.fillStyle = cfg.eye;
+        ctx.beginPath();
+        ctx.ellipse(px, py, rr * 0.64, rr * 0.24, 0, 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+
+    // Mega Worm fly-over: a staged silhouette, not a second boss body on the floor.
+    if (st.state >= 10 && st.state <= 12) {
+      const headX = st.flyX - x;
+      const headY = st.flyY - y;
+      const dir = st.flyDir;
+      for (let i = 11; i >= 0; i--) {
+        const back = (i + 1) * 34;
+        const sx = headX - dir * back;
+        const sy = headY + Math.sin(t * 3.2 - i * 0.5) * 12;
+        const size = 26 - i * 0.8;
+        ctx.globalAlpha = Math.max(0, 0.8 - i * 0.035) * alpha;
+        ctx.fillStyle = i === 11 ? '#ff8a7a' : '#ff5a4a';
+        ctx.fillRect(sx - size * 0.5, sy - size * 0.5, size, size);
+        ctx.globalAlpha *= 0.7;
+        ctx.strokeStyle = '#ffd9cf';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(sx - size * 0.5, sy - size * 0.5, size, size);
+      }
+      ctx.globalAlpha = 0.95 * alpha;
+      ctx.fillStyle = '#ff6a58';
+      ctx.beginPath();
+      ctx.arc(headX, headY, 34, 0, TWO_PI);
+      ctx.fill();
+      ctx.globalAlpha = 0.9 * alpha;
+      ctx.fillStyle = cfg.ink;
+      ctx.beginPath();
+      ctx.arc(headX + dir * 8, headY - 6, 10, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = cfg.eye;
+      ctx.beginPath();
+      ctx.arc(headX + dir * 8, headY - 6, 4, 0, TWO_PI);
+      ctx.fill();
+    }
+
+    if (st.flash > 0) {
+      ctx.globalAlpha = Math.min(0.5, st.flash * 2) * alpha;
+      ctx.strokeStyle = cfg.rim;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.02, 0, TWO_PI);
+      ctx.stroke();
+    }
+    ctx.restore();
     ctx.restore();
   }
 

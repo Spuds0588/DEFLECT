@@ -52,6 +52,7 @@ import {
   STARFISH,
   BLOB,
   STORM_CLOUD,
+  USER,
   type Rect,
 } from './config';
 import {
@@ -1018,7 +1019,13 @@ export class World {
     this.projectiles = createProjectilePool();
     this.drone = createDrone();
     this.worms = new Array(
-      GAUNTLET.maxWorms + MEGA_WORM.slots + IDLE_HANDS.hands + STARFISH.slots + BLOB.slots + STORM_CLOUD.slots,
+      GAUNTLET.maxWorms +
+        MEGA_WORM.slots +
+        IDLE_HANDS.hands +
+        STARFISH.slots +
+        BLOB.slots +
+        STORM_CLOUD.slots +
+        USER.slots,
     );
     for (let i = 0; i < this.worms.length; i++) this.worms[i] = createWorm();
     // INFECTION floods the floor, so that run owns a larger pool. Every other local mode
@@ -17413,6 +17420,8 @@ export class World {
     w.starfish = null;
     w.armState = null;
     w.blob = null;
+    w.storm = null;
+    w.user = null;
     w.held = held;
     // A pooled slot may have carried a boss. Reset the radii with the body, or a normal
     // worm inherits a 138-unit hit circle from the Mega Worm that last used the slot.
@@ -18741,6 +18750,465 @@ export class World {
     }
   }
 
+  // --- USER finale ---------------------------------------------------------
+  //
+  // One giant body pinned to the ceiling. Every attack it owns is expressed through
+  // the existing hostile projectile pool, so the player's guard, lash and ranged kit
+  // already answer it. The two fists slam the floor and burst into reflectable rings;
+  // the eyes throw a converging fan; the portals drop the gauntlet families; the
+  // fly-over is a staged Mega Worm silhouette that strafes the top of the arena.
+
+  private spawnUser(_x?: number, _y?: number): Worm | null {
+    const cfg = USER;
+    const b = this.arena.bounds;
+    const w = this.spawnWorm(this.centerX, b.top + cfg.hoverY);
+    if (!w) return null;
+    w.bossKind = MINIBOSS.USER;
+    w.mega = false;
+    w.segCount = 0;
+    w.hand = null;
+    w.starfish = null;
+    w.armState = null;
+    w.blob = null;
+    w.storm = null;
+    w.hitR = cfg.radius;
+    w.segR = cfg.radius * 0.7;
+    w.hp = w.maxHp = cfg.hp;
+    // The entrance assembles the body from the top of the frame. Holding spawnT also
+    // keeps it inert for the intro beat, like the Storm Cloud.
+    w.spawnT = cfg.introTime;
+    w.x = this.centerX;
+    w.y = b.top + cfg.hoverY;
+    w.prevX = w.x;
+    w.prevY = w.y;
+    w.angle = Math.PI * 0.5;
+    w.user = {
+      state: 0,
+      t: 0,
+      cd: 0.85,
+      clock: 0,
+      flash: 0,
+      contactCd: 0,
+      handCd: 0.9,
+      eyeCd: 2.4,
+      portalCd: 5.4,
+      flyCd: 8.6,
+      fistX: w.x,
+      fistY: w.y,
+      fist2X: w.x,
+      fist2Y: w.y,
+      eyeX: w.x,
+      eyeY: w.y,
+      fired: false,
+      flyX: w.x,
+      flyY: w.y,
+      flyAngle: 0,
+      flyDir: 1,
+      flyVolleys: 0,
+      portalX: new Float32Array(8),
+      portalY: new Float32Array(8),
+      portalCount: 0,
+    };
+    this.emit(EV.PROP_BREAK, 0, w.x, w.y, 180);
+    this.emit(EV.MEGA_CRY, -1, w.x, w.y, cfg.radius);
+    return w;
+  }
+
+  private updateUser(w: Worm, dt: number): void {
+    const cfg = USER;
+    const st = w.user;
+    if (!st) return;
+    w.prevX = w.x;
+    w.prevY = w.y;
+    st.clock += dt;
+    if (w.hitFlash > 0) w.hitFlash = Math.max(0, w.hitFlash - dt);
+    if (st.flash > 0) st.flash = Math.max(0, st.flash - dt);
+    if (st.contactCd > 0) st.contactCd = Math.max(0, st.contactCd - dt);
+    if (w.spawnT > 0) {
+      w.spawnT = Math.max(0, w.spawnT - dt);
+      return;
+    }
+    if (w.pinT > 0) w.pinT = Math.max(0, w.pinT - dt);
+
+    const b = this.arena.bounds;
+    const p = this.threatTarget(w.x, w.y);
+    // The body is a backdrop that breathes, not a chaser. It drifts across the ceiling
+    // and keeps its underside at roughly the same height above the floor.
+    const homeX = this.centerX + Math.sin(st.clock * 0.22) * cfg.drift;
+    const homeY = b.top + cfg.hoverY + Math.sin(st.clock * 0.72) * cfg.bob;
+    w.x += (homeX - w.x) * Math.min(1, dt * 2.2);
+    w.y += (homeY - w.y) * Math.min(1, dt * 2.2);
+    w.angle = Math.PI * 0.5;
+
+    if (p.alive && p.cloakT <= 0 && st.contactCd <= 0) {
+      const dx = p.x - w.x;
+      const dy = p.y - w.y;
+      const reach = w.hitR * 0.92 + PLAYER.radius;
+      if (dx * dx + dy * dy <= reach * reach) {
+        const d = Math.hypot(dx, dy) || 1;
+        st.contactCd = cfg.contactCooldown;
+        this.damagePlayer(
+          p,
+          cfg.contactDamage,
+          -1,
+          dx / d,
+          dy / d,
+          cfg.contactKnockback,
+          SRC.WORM,
+          this.worms.indexOf(w),
+        );
+      }
+    }
+
+    st.handCd = Math.max(0, st.handCd - dt);
+    st.eyeCd = Math.max(0, st.eyeCd - dt);
+    st.portalCd = Math.max(0, st.portalCd - dt);
+    st.flyCd = Math.max(0, st.flyCd - dt);
+
+    if (st.state === 0) {
+      st.cd -= dt;
+      if (st.cd > 0) return;
+      if (st.handCd <= 0) {
+        this.userBeginFists(w, st, p);
+        return;
+      }
+      if (st.eyeCd <= 0) {
+        this.userBeginEyes(w, st, p);
+        return;
+      }
+      if (st.portalCd <= 0) {
+        this.userBeginPortals(w, st);
+        return;
+      }
+      if (st.flyCd <= 0) {
+        this.userBeginFlyby(w, st);
+        return;
+      }
+      st.cd = 0.25;
+      return;
+    }
+
+    st.t += dt;
+    const h = cfg.hands;
+    const e = cfg.eyes;
+    const f = cfg.flyby;
+    if (st.state === 1) {
+      // The tell tracks the player for the first half, then commits. The two palms
+      // land either side of that latched point, so a strafe can split the gap.
+      if (p.alive && st.t < h.windup * 0.6) {
+        this.userAimFists(st, p.x, p.y);
+      }
+      if (st.t >= h.windup) {
+        this.userFistImpact(w, st);
+        st.state = 2;
+        st.t = 0;
+      }
+    } else if (st.state === 2) {
+      if (st.t >= h.active) {
+        st.state = 3;
+        st.t = 0;
+      }
+    } else if (st.state === 3) {
+      if (st.t >= h.recover) {
+        st.handCd = h.cooldown;
+        st.state = 0;
+        st.t = 0;
+        st.cd = cfg.attackGap;
+      }
+    } else if (st.state === 4) {
+      if (p.alive && st.t < e.windup * 0.55) {
+        st.eyeX = p.x;
+        st.eyeY = p.y;
+      }
+      if (st.t >= e.windup) {
+        this.userEyeFire(w, st);
+        st.state = 5;
+        st.t = 0;
+      }
+    } else if (st.state === 5) {
+      if (st.t >= e.active) {
+        st.state = 6;
+        st.t = 0;
+      }
+    } else if (st.state === 6) {
+      if (st.t >= e.recover) {
+        st.eyeCd = e.cooldown;
+        st.state = 0;
+        st.t = 0;
+        st.cd = cfg.attackGap;
+      }
+    } else if (st.state === 7) {
+      if (st.t >= cfg.portals.windup) {
+        this.userPortalBurst(w, st);
+        st.state = 8;
+        st.t = 0;
+      }
+    } else if (st.state === 8) {
+      if (st.t >= 0.55) {
+        st.state = 9;
+        st.t = 0;
+      }
+    } else if (st.state === 9) {
+      if (st.t >= cfg.portals.recover) {
+        st.portalCd = cfg.portals.cooldown;
+        st.state = 0;
+        st.t = 0;
+        st.cd = cfg.attackGap;
+      }
+    } else if (st.state === 10) {
+      if (st.t >= f.windup) {
+        st.state = 11;
+        st.t = 0;
+        st.flyVolleys = 0;
+      }
+    } else if (st.state === 11) {
+      this.userFlyby(w, st, dt);
+      if (st.t >= f.duration) {
+        st.state = 12;
+        st.t = 0;
+      }
+    } else if (st.state === 12) {
+      if (st.t >= f.recover) {
+        st.flyCd = f.cooldown;
+        st.state = 0;
+        st.t = 0;
+        st.cd = cfg.attackGap;
+      }
+    }
+  }
+
+  private userAimFists(st: NonNullable<Worm['user']>, px: number, py: number): void {
+    const h = USER.hands;
+    const b = this.arena.bounds;
+    const pad = h.aoe * 0.7;
+    st.fistX = Math.max(b.left + pad, Math.min(b.right - pad, px - h.offset));
+    st.fist2X = Math.max(b.left + pad, Math.min(b.right - pad, px + h.offset));
+    st.fistY = Math.max(b.top + pad, Math.min(b.bottom - pad, py));
+    st.fist2Y = st.fistY;
+  }
+
+  private userBeginFists(w: Worm, st: NonNullable<Worm['user']>, p: Player): void {
+    const b = this.arena.bounds;
+    const px = p.alive ? p.x : this.centerX;
+    const py = p.alive ? p.y : b.top + (b.bottom - b.top) * 0.66;
+    this.userAimFists(st, px, py);
+    st.state = 1;
+    st.t = 0;
+    st.fired = false;
+    this.emit(EV.SENTRY_SHOOT, -1, w.x, w.y, Math.PI * 0.5);
+  }
+
+  private userFistImpact(w: Worm, st: NonNullable<Worm['user']>): void {
+    if (st.fired) return;
+    st.fired = true;
+    const h = USER.hands;
+    const srcId = this.worms.indexOf(w);
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p.active || !p.alive || p.thrall || p.travelT > 0) continue;
+      const d1 = Math.hypot(p.x - st.fistX, p.y - st.fistY);
+      const d2 = Math.hypot(p.x - st.fist2X, p.y - st.fist2Y);
+      if (d1 > h.aoe && d2 > h.aoe) continue;
+      const nearX = d1 <= d2 ? st.fistX : st.fist2X;
+      const nearY = d1 <= d2 ? st.fistY : st.fist2Y;
+      const dx = p.x - nearX;
+      const dy = p.y - nearY;
+      const d = Math.hypot(dx, dy) || 1;
+      this.damagePlayer(p, h.damage, -1, dx / d, dy / d, h.knockback, SRC.WORM, srcId);
+      if (p.alive) this.emit(EV.WORM_HIT, -1, p.x, p.y, 2, dx / d, dy / d);
+    }
+    st.flash = 0.3;
+    for (let side = 0; side < 2; side++) {
+      const fx = side === 0 ? st.fistX : st.fist2X;
+      const fy = side === 0 ? st.fistY : st.fist2Y;
+      this.emit(EV.EXPLODE, -1, fx, fy, 170);
+      const phase = side === 0 ? 0 : Math.PI / h.shockCount;
+      for (let i = 0; i < h.shockCount; i++) {
+        const angle = (i / h.shockCount) * Math.PI * 2 + phase;
+        this.spawnHostileProjectile(
+          fx + Math.cos(angle) * 26,
+          fy + Math.sin(angle) * 26,
+          angle,
+          h.shockSpeed,
+          h.shockRadius,
+          h.shockDamage,
+          3,
+          h.shockTtl,
+          srcId,
+          0,
+          SRC.WORM,
+        );
+      }
+    }
+  }
+
+  private userBeginEyes(w: Worm, st: NonNullable<Worm['user']>, p: Player): void {
+    st.state = 4;
+    st.t = 0;
+    st.fired = false;
+    st.eyeX = p.alive ? p.x : this.centerX;
+    st.eyeY = p.alive ? p.y : w.y + w.hitR;
+  }
+
+  private userEyeFire(w: Worm, st: NonNullable<Worm['user']>): void {
+    if (st.fired) return;
+    st.fired = true;
+    const e = USER.eyes;
+    const srcId = this.worms.indexOf(w);
+    const eyeY = w.y - w.hitR * 0.14;
+    const eyeOff = w.hitR * 0.33;
+    for (let side = -1; side <= 1; side += 2) {
+      const sx = w.x + side * eyeOff;
+      const sy = eyeY;
+      const base = Math.atan2(st.eyeY - sy, st.eyeX - sx);
+      for (let i = 0; i < e.count; i++) {
+        const u = e.count === 1 ? 0.5 : i / (e.count - 1);
+        const angle = base + (u - 0.5) * e.spread;
+        this.spawnHostileProjectile(
+          sx,
+          sy,
+          angle,
+          e.speed,
+          e.radius,
+          e.damage,
+          20,
+          e.ttl,
+          srcId,
+          0,
+          SRC.WORM,
+        );
+      }
+      this.emit(EV.EXPLODE, -1, sx, sy, 54);
+    }
+    st.flash = 0.24;
+  }
+
+  private userBeginPortals(w: Worm, st: NonNullable<Worm['user']>): void {
+    const cfg = USER.portals;
+    const b = this.arena.bounds;
+    const slots = cfg.sentries + cfg.viruses + cfg.worms;
+    st.state = 7;
+    st.t = 0;
+    st.fired = false;
+    st.portalCount = 0;
+    const span = (b.right - b.left) * 0.62;
+    for (let i = 0; i < slots; i++) {
+      const u = slots === 1 ? 0.5 : i / (slots - 1);
+      const baseX = this.centerX + (u - 0.5) * span;
+      let x = baseX;
+      let y = w.y + w.hitR * 0.72 + (i % 2) * 46;
+      // Find a clear pocket under the body; a portal ring painted inside a tower
+      // would drop its body into cover.
+      for (let attempt = 0; attempt < 6; attempt++) {
+        x = Math.max(b.left + 90, Math.min(b.right - 90, baseX));
+        y = Math.max(b.top + 260, Math.min(b.bottom - 280, w.y + w.hitR * 0.72 + (i % 2) * 46 - attempt * 54));
+        if (this.pointClearOfCover(x, y, 74)) break;
+      }
+      st.portalX[i] = x;
+      st.portalY[i] = y;
+      st.portalCount++;
+    }
+    this.emit(EV.SENTRY_SHOOT, -1, w.x, w.y, Math.PI * 0.5);
+  }
+
+  private userPortalBurst(w: Worm, st: NonNullable<Worm['user']>): void {
+    if (st.fired) return;
+    st.fired = true;
+    const cfg = USER.portals;
+    let index = 0;
+    for (let i = 0; i < cfg.sentries && index < st.portalCount; i++, index++) {
+      const kind = (i % 2 === 0 ? 0 : 1) as 0 | 1;
+      this.spawnSentry(kind, st.portalX[index], st.portalY[index], true);
+      this.emit(EV.PROP_BREAK, -1, st.portalX[index], st.portalY[index], 80);
+    }
+    for (let i = 0; i < cfg.viruses && index < st.portalCount; i++, index++) {
+      this.spawnVirus(st.portalX[index], st.portalY[index], false, false);
+      this.emit(EV.PROP_BREAK, -1, st.portalX[index], st.portalY[index], 60);
+    }
+    for (let i = 0; i < cfg.worms && index < st.portalCount; i++, index++) {
+      this.spawnWorm(st.portalX[index], st.portalY[index]);
+      this.emit(EV.PROP_BREAK, -1, st.portalX[index], st.portalY[index], 90);
+    }
+    st.flash = 0.3;
+    this.emit(EV.MEGA_CRY, -1, w.x, w.y, 160);
+  }
+
+  private userBeginFlyby(w: Worm, st: NonNullable<Worm['user']>): void {
+    const b = this.arena.bounds;
+    st.state = 10;
+    st.t = 0;
+    st.fired = false;
+    st.flyVolleys = 0;
+    st.flyDir = this.rng.next() < 0.5 ? 1 : -1;
+    st.flyX = st.flyDir > 0 ? b.left - 500 : b.right + 500;
+    st.flyY = b.top + USER.hoverY;
+    st.flyAngle = st.flyDir > 0 ? 0 : Math.PI;
+    this.emit(EV.MEGA_CRY, -1, w.x, w.y, 220);
+  }
+
+  private userFlyby(w: Worm, st: NonNullable<Worm['user']>, _dt: number): void {
+    const f = USER.flyby;
+    const b = this.arena.bounds;
+    const u = Math.max(0, Math.min(1, st.t / f.duration));
+    const span = b.right - b.left + 1000;
+    st.flyX = st.flyDir > 0 ? b.left - 500 + span * u : b.right + 500 - span * u;
+    st.flyY = b.top + USER.hoverY + Math.sin(u * Math.PI) * 90;
+    st.flyAngle = st.flyDir > 0 ? 0 : Math.PI;
+    // Two strafing volleys per pass, from the head. They are ordinary bolts, so they
+    // are caught by the same guard and lash as everything else.
+    const nextAt = st.flyVolleys === 0 ? 0.28 : 0.62;
+    if (st.flyVolleys < f.volleyCount && u >= nextAt) {
+      st.flyVolleys++;
+      const target = this.threatTarget(st.flyX, st.flyY);
+      const base = Math.atan2(target.y - st.flyY, target.x - st.flyX);
+      for (let i = 0; i < f.volley; i++) {
+        const offset = (i - (f.volley - 1) * 0.5) * f.spread;
+        this.spawnHostileProjectile(
+          st.flyX,
+          st.flyY + 40,
+          base + offset,
+          f.speed,
+          f.radius,
+          f.damage,
+          3,
+          f.ttl,
+          this.worms.indexOf(w),
+          0,
+          SRC.WORM,
+        );
+      }
+      this.emit(EV.EXPLODE, -1, st.flyX, st.flyY, 80);
+    }
+  }
+
+  private damageUser(
+    w: Worm,
+    amount: number,
+    sourceSlot: number,
+    dirX: number,
+    dirY: number,
+    hitX: number,
+    hitY: number,
+  ): void {
+    const st = w.user;
+    if (!st || !w.active) return;
+    w.hp -= amount;
+    w.hitFlash = 0.2;
+    st.flash = Math.max(st.flash, 0.1);
+    const hx = Number.isFinite(hitX) ? hitX : w.x;
+    const hy = Number.isFinite(hitY) ? hitY : w.y;
+    this.emit(EV.WORM_HIT, sourceSlot, hx, hy, amount, dirX, dirY);
+    if (w.hp > 0) return;
+    w.hp = 0;
+    w.active = false;
+    w.user = null;
+    this.emit(EV.WORM_KILL, sourceSlot, w.x, w.y, 620, dirX, dirY);
+    if (sourceSlot === 0) {
+      this.gauntletKills++;
+      this.dropPickupFromKill(w.x, w.y, true);
+    }
+  }
+
   // --- Mega Worm -----------------------------------------------------------
   //
   // The boss is still a Worm: it lives in the same pool, so bots, projectiles,
@@ -18881,6 +19349,10 @@ export class World {
       boss = this.spawnBlob(p.x, p.y);
     } else if (def.body === 'storm-cloud') {
       boss = this.spawnStormCloud(x ?? this.centerX, (y ?? this.centerY) - 180);
+    } else if (def.body === 'user') {
+      // The finale owns the whole top of the arena, so its staged position is authored
+      // by the body, not by the caller's hint.
+      boss = this.spawnUser(x, y);
     }
     // Every staged boss owns the room for its entrance beat, including the storm,
     // which assembles from a single square while the camera holds on it.
@@ -18904,10 +19376,12 @@ export class World {
             ? IDLE_HANDS.introTime
             : kind === MINIBOSS.STORM_CLOUD
               ? STORM_CLOUD.introTime
-              : STARFISH.introTime;
+              : kind === MINIBOSS.USER
+                ? USER.introTime
+                : STARFISH.introTime;
     // The storm's entrance is drawn from `spawnT`: hold the body on its assembly clock
     // for the whole beat, so the last square lands as the title card clears.
-    if (kind === MINIBOSS.STORM_CLOUD) boss.spawnT = duration;
+    if (kind === MINIBOSS.STORM_CLOUD || kind === MINIBOSS.USER) boss.spawnT = duration;
     this.bossIntro = { kind, label: def.label, t: 0, duration, x: boss.x, y: boss.y };
   }
 
@@ -19523,6 +19997,10 @@ export class World {
       this.updateStormCloud(w, dt);
       return;
     }
+    if (w.bossKind === MINIBOSS.USER) {
+      this.updateUser(w, dt);
+      return;
+    }
     if (w.mega) {
       this.updateMegaWorm(w, dt);
       return;
@@ -19988,6 +20466,10 @@ export class World {
     }
     if (w.bossKind === MINIBOSS.STORM_CLOUD) {
       this.damageStormCloud(w, amount, sourceSlot, dirX, dirY);
+      return;
+    }
+    if (w.bossKind === MINIBOSS.USER) {
+      this.damageUser(w, amount, sourceSlot, dirX, dirY, hitX, hitY);
       return;
     }
     if (w.mega) {

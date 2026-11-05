@@ -261,9 +261,10 @@ result with
 can be hit on its staged approach before it crosses the lip.
 
 The campaign continues after REBOOT through NETWORK SWITCH, DOCUMENT SCANNER, FAX MACHINE, SMART WATCH
-and BUSINESS LAPTOP (the BLOB chapter boss), then through the airport chapter (AIRPORT, AIR TRAFFIC), the
-space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE) and the arcade chapter (SPACE CADET, PONG, SPACE
-INVADERS, ARCADE RACING, FIGHTING GAME, DUCK HUNTER, TETRIS with STORM CLOUD as the finale). A clear saves
+and BUSINESS LAPTOP, then through the airport chapter (AIRPORT with FILE BLOB, AIR TRAFFIC with STORM
+CLOUD), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE with IDLE HANDS) and the arcade chapter
+(SPACE CADET, PONG, SPACE INVADERS with STARFISH, ARCADE RACING, FIGHTING GAME, DUCK HUNTER, TETRIS with
+the USER finale). A clear saves
 the slot. The route plate opens only when the next stop is a new chapter (`nodeId` changes); BUILD ROOT's
 four rooms and each themed chapter portal straight through. Completed stops stay lit, the current stop is
 ringed, the next stop is named, and unseen stops are dim generic nodes. The route is data (`CAMPAIGN_ROUTE`)
@@ -466,9 +467,10 @@ for the full terms.
 
 ## Mini-bosses
 
-`src/game/minibosses.ts` registers two bosses. `MEGA WORM` is a segmented chain with per-plate health;
-`IDLE HANDS` is three floating palms with Unicode eyes that slam and charge, and can be dashed into each
-other. Both arrive through the gauntlet ingress and live in the worm body pool.
+`src/game/minibosses.ts` registers six bosses: five roaming mini-bosses and the USER finale. `MEGA WORM`
+is a segmented chain with per-plate health; `IDLE HANDS` is two floating palms with Unicode eyes that slam
+and charge, and can be dashed into each other. Both arrive through the gauntlet ingress and live in the
+worm body pool.
 
 ## Memory fragments
 
@@ -487,6 +489,12 @@ a player into a file cage that has to be shot or swung off.
 `STORM CLOUD` is the fifth mini-boss: one boss-scale body that holds the ceiling band, rains alternating
 rows of shootable drops, and throws a telegraphed bolt whose reflection is the fight's biggest punish. Bots
 step out of its rain lane through the same hazard-steering layer that handles emitter corridors.
+
+`USER` is the campaign finale, not a gauntlet-ladder boss: one giant 👤 bust pinned to the top of TETRIS,
+with a 330-unit hit circle and 480 HP. It alternates two-fist floor slams that burst into reflectable
+shock rings, a converging eye-laser fan, portal drops of sentries, viruses and a worm, and a staged Mega
+Worm fly-over. Every damaging shot is an ordinary hostile projectile, so guard, lash and reflected fire
+all work. Its state is local-only and never enters `Snapshot`.
 
 Mini-bosses are allowed to overhang the arena edge by up to half their radius (`bossEdgePad`), so a boss
 silhouette is never squeezed to fit the playfield. Ordinary worms, players and projectiles keep
@@ -514,4 +522,4 @@ the plates tail-first and spins the head before the final explosion.
 The attract loop and `?demo=1` run ordinary seeded wave sessions on the standalone arena pool, rotating
 one, two and three local pilots. Opening and refill threats use the same edge ingress portals as a played
 gauntlet, so a capture never shows enemies materializing around the squad. The public demo has no boss
-sessions. `?boss=1` is the QA-only review loop that cycles the five registry mini-bosses on TEST RANGE.
+sessions. `?boss=1` is the QA-only review loop that cycles the six registry bosses on TEST RANGE.

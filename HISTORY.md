@@ -8210,3 +8210,35 @@ landing line that says where the party is and why the infection is there.
 
 **Next:** play the airport, space and arcade chapters in order and judge whether the two-beat blurbs read
 over the opening fight or need a shorter single line.
+
+## 2026-11-05 — USER finale and mini-boss distribution (v0.1.201)
+
+**Goal:** spread the existing mini-bosses across the campaign and end TETRIS on a giant USER emoji that
+mixes their attacks into one finale.
+
+**Changes.**
+- Campaign bosses are now data-assigned: REBOOT (MEGA WORM), AIRPORT (FILE BLOB), AIR TRAFFIC (STORM
+  CLOUD), SATELLITE (IDLE HANDS), SPACE INVADERS (STARFISH), TETRIS (USER). BUSINESS LAPTOP is a normal
+  assault again with an eight-kill clear.
+- Added `MINIBOSS.USER = 5` and the `USER` tuning block. The boss is one `Worm` body with `Worm.user`
+  state: a giant 👤 bust at the ceiling, a 330-unit hit circle and 480 HP. It is excluded from
+  `BOSS_RUSH_ORDER` and never enters `Snapshot`.
+- Its attacks use the existing projectile pool and spawn paths: two-fist slams with latched floor points
+  and rings of type-3 shock bolts; a converging type-20 eye fan; portal drops of sentries, viruses and a
+  worm at clear floor pockets; and a staged Mega Worm fly-over with two strafing volleys.
+- `drawUser` renders the emoji over a vector bust fallback, with fist, eye, portal and fly-over tells. No
+  new arena, snapshot field or network path.
+- Updated AGENTS D66/D72/D73, CAMPAIGN, README, GAME_GUIDE and TODO; bumped all version stamps to 0.1.201.
+
+**Verification.**
+- `.tmp/user-boss-check.ts` 0: registry and BOSS RUSH exclusion, 480/330 body, 20 shock bolts, 10 eye
+  bolts, 5 portal bodies, 6 fly-over bolts, death and all six campaign boss assignments.
+- `.tmp/bossintro-check.ts` 0 including USER; `.tmp/bossrush-check.ts` 0 (five-boss ladder);
+  `.tmp/campaign-chapter-check.ts` 0; `.tmp/campaign-rules-check.ts` 0; `.tmp/campaign-finale-check.ts`
+  0; `.tmp/boss-matrix.ts` 0 after extending its Mega Worm death wait; `npm run build` 0; `npm run bench` 0;
+  `git diff --check` 0.
+- Not tested: a human playthrough of the USER fight, the final arena at couch distance, or a visual pass on
+  the emoji font fallback on every platform.
+
+**Next:** play the USER finale with each program and judge whether the two-fist tell, eye fan and portal
+adds stay readable while the TETRIS stack is tall.

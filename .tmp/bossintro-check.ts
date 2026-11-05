@@ -24,7 +24,14 @@ function fresh(): { world: World; p: any } {
   return { world, p };
 }
 
-const cases = [MINIBOSS.MEGA_WORM, MINIBOSS.IDLE_HANDS, MINIBOSS.STARFISH, MINIBOSS.BLOB, MINIBOSS.STORM_CLOUD];
+const cases = [
+  MINIBOSS.MEGA_WORM,
+  MINIBOSS.IDLE_HANDS,
+  MINIBOSS.STARFISH,
+  MINIBOSS.BLOB,
+  MINIBOSS.STORM_CLOUD,
+  MINIBOSS.USER,
+];
 for (const kind of cases) {
   const { world, p } = fresh();
   const boss = world.spawnMiniboss(kind, p.x + 320, p.y - 60) ?? fail(`boss ${kind} did not spawn`);

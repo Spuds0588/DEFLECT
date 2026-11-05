@@ -248,9 +248,10 @@ end on a kill count or a port sweep; it ends when the boss is dead. After the ki
 got into the network here and patches the party into the backbone. Her portal pulls the party through and a
 route plate names the next device; unseen stops are dim generic nodes. The live chain continues through
 `NETWORK SWITCH`, `DOCUMENT SCANNER`, `FAX MACHINE`, `SMART WATCH` and `BUSINESS LAPTOP`, then the airport
-chapter (`AIRPORT`, `AIR TRAFFIC`), the space chapter (`CAPCOM`, `ROCKET NAVIGATION`, `SATELLITE`) and the
-arcade chapter (`SPACE CADET`, `PONG`, `SPACE INVADERS`, `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`,
-`TETRIS`). BUSINESS LAPTOP ends on the BLOB; TETRIS is the finale, with STORM CLOUD as the last boss. Each
+chapter (`AIRPORT` with FILE BLOB, `AIR TRAFFIC` with STORM CLOUD), the space chapter (`CAPCOM`,
+`ROCKET NAVIGATION`, `SATELLITE` with IDLE HANDS) and the arcade chapter (`SPACE CADET`, `PONG`,
+`SPACE INVADERS` with STARFISH, `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`, `TETRIS` with the USER
+finale). BUSINESS LAPTOP is a normal assault again. Each
 live-fire arena opens with a short script_kitty landing line. A run is never saved mid-level.
 Everything before the assault is practice: if you fall off a plate or get caught during orientation or
 the drill, you come back on the training timer and the lesson keeps its place, so a bad start costs time
@@ -698,6 +699,7 @@ the reveal finishes.
 - **Mega Worm:** it swims in from beyond the arena on a slower arc, crosses around the fight and holds a longer roar before its first pass.
 - **Idle Hands:** the palms rise slowly while yawing through a full turn—front, back, front—then grow and bounce up to their full size.
 - **Starfish:** the center and its arms hang overhead for a beat, then drop under their own weight and land with a thud.
+- **USER:** the giant 👤 bust fades in at the ceiling and settles while the camera holds on the TETRIS stack.
 
 ### Mega Worm
 
@@ -731,9 +733,27 @@ worms, it is one damage sponge: every hit anywhere on the body drains the same b
 - **Hex plates.** The plates are hexagons, not square tiles. Cracks spread across the hex faces, and
   loose code flakes off the body as it takes damage.
 
+## USER (final boss)
+
+The last node of the campaign. A giant 👤 bust fills the top of TETRIS; it does not chase. Its hit circle is
+the whole head-and-shoulders silhouette, 330 units across, so every shot that reaches the top of the arena
+connects. It has 480 HP.
+
+- **Fists.** Two palms drop onto latched points either side of your last position. Each landing takes a
+  segment and bursts into a ring of slow, reflectable shock bolts. Watch the dashed floor rings and step
+  out; the ring is the attack, not the palm alone.
+- **Eyes.** Two converging laser fans track you for half the tell, then commit. The bolts are ordinary
+  hostile shots, so guard or lash sends them back.
+- **Portals.** Rings open under the body and drop a squad of sentries, viruses and a worm. Clear the adds
+  or use them for health and powerup drops; the boss keeps attacking.
+- **Mega Worm fly-over.** A giant segmented silhouette crosses the top and fires two strafing volleys.
+  The fly-over itself is a set piece; the volley is real.
+- **No health bar.** Damage cracks the body and flashes the rim. Keep firing: it is a sponge, not a puzzle.
+
 ## BOSS RUSH (single player and local co-op)
 
-A ladder through every mini-boss, one at a time, with no fodder between them. Turn it on with `BOSS RUSH` in
+A ladder through the five roaming mini-bosses, one at a time, with no fodder between them. The USER campaign
+finale is not in the ladder. Turn it on with `BOSS RUSH` in
 the gauntlet setup, or with `BOSS RUSH` in the local multiplayer lobby for same-screen co-op. Online rooms
 stay versus-only: those bosses are local bodies and are not sent over the network.
 

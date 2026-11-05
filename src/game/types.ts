@@ -1019,6 +1019,47 @@ export interface StormState {
   puff: Float32Array;
 }
 
+/**
+ * The USER finale. A single giant body anchored to the top of the arena. It cycles a
+ * fist slam, an eye volley, a portal summon and a Mega Worm fly-over; every damaging
+ * shot it fires is an ordinary hostile projectile so guard, lash and player fire apply.
+ * Local-only campaign state, never in Snapshot.
+ */
+export interface UserState {
+  /** 0 idle, 1 fist windup, 2 fist impact, 3 fist recover, 4 eye windup, 5 eye fire, 6 eye recover, 7 portal windup, 8 portal burst, 9 portal recover, 10 flyby windup, 11 flyby active, 12 flyby recover. */
+  state: number;
+  t: number;
+  /** Idle gap between attacks. */
+  cd: number;
+  clock: number;
+  flash: number;
+  contactCd: number;
+  /** Per-attack clocks so the kit rotates instead of repeating one move. */
+  handCd: number;
+  eyeCd: number;
+  portalCd: number;
+  flyCd: number;
+  /** Latched fist impact points, one per palm. */
+  fistX: number;
+  fistY: number;
+  fist2X: number;
+  fist2Y: number;
+  /** Latched eye-volley aim point. */
+  eyeX: number;
+  eyeY: number;
+  fired: boolean;
+  /** Fly-over head pose and the volleys already fired on this pass. */
+  flyX: number;
+  flyY: number;
+  flyAngle: number;
+  flyDir: number;
+  flyVolleys: number;
+  /** Portal rings drawn for the current summon. */
+  portalX: Float32Array;
+  portalY: Float32Array;
+  portalCount: number;
+}
+
 export interface Worm {
   active: boolean;
   /** Campaign holding cell: present, frozen and invulnerable until the power-down. */
@@ -1085,6 +1126,8 @@ export interface Worm {
   blob: BlobState | null;
   /** Storm cloud state; null on every other body. */
   storm: StormState | null;
+  /** USER finale state; null on every other body. */
+  user: UserState | null;
   /** Mega Worm: a boss chain whose nodes carry their own health. */
   mega: boolean;
   /** Mega Worm flight: 0 orbit, 1 committed pass, 2 climb-out. */

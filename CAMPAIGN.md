@@ -4,7 +4,9 @@ Status: 22 levels are playable. The live route runs BUILD ROOT
 (INTAKE -> HOLDING -> MAINBOARD -> ROUTER) -> REBOOT -> NETWORK SWITCH -> DOCUMENT SCANNER -> FAX MACHINE ->
 SMART WATCH -> BUSINESS LAPTOP -> AIRPORT -> AIR TRAFFIC -> CAPCOM -> ROCKET NAVIGATION -> SATELLITE ->
 SPACE CADET -> PONG -> SPACE INVADERS -> ARCADE RACING -> FIGHTING GAME -> DUCK HUNTER -> TETRIS.
-BUSINESS LAPTOP is the BLOB chapter boss; TETRIS ends the route with STORM CLOUD. A clear shows the route
+Bosses are spread across the route: REBOOT ends on MEGA WORM, AIRPORT on FILE BLOB, AIR TRAFFIC on STORM
+CLOUD, SATELLITE on IDLE HANDS, SPACE INVADERS on STARFISH, and TETRIS on the USER finale. BUSINESS LAPTOP
+is a normal assault again. A clear shows the route
 plate before script_kitty's portal opens, so the next device is a named reveal and unseen stops stay dim
 generic nodes. The route is data in `CAMPAIGN_ROUTE`, with explicit per-stop links ready for a future branch.
 Consecutive levels that share a `nodeId` are one route stop: the plate is the network map between chapters,
@@ -334,7 +336,7 @@ Level 3 is the airport chapter (`AIRPORT`, `AIR TRAFFIC`), level 4 is the space 
 runtime as the earlier devices: local-only assault phases, a `CampaignLevel.opening` squad on the first
 frame, one data crate on a clear spawn pad where the level has one, and no new snapshot fields. The airport
 and arcade arenas carry their own local hazards; the space arenas use existing cover, the ROCKET
-NAVIGATION reflector and the satellite void. The final node is TETRIS, where STORM CLOUD is the last boss.
+NAVIGATION reflector and the satellite void. The final node is TETRIS, where the USER finale holds the top of the stack.
 
 ### Built foundations (2026-11-05)
 

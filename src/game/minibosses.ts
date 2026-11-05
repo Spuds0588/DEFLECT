@@ -1,4 +1,4 @@
-import { BLOB, IDLE_HANDS, MEGA_WORM, STARFISH, STORM_CLOUD } from './config';
+import { BLOB, IDLE_HANDS, MEGA_WORM, STARFISH, STORM_CLOUD, USER } from './config';
 
 /**
  * Mini-boss registry. A mini-boss is an ordinary gauntlet arrival with boss-scale
@@ -12,16 +12,23 @@ export const MINIBOSS = {
   STARFISH: 2,
   BLOB: 3,
   STORM_CLOUD: 4,
+  USER: 5,
 } as const;
 
-export type MinibossBody = 'segmented-worm' | 'idle-hands' | 'starfish' | 'blob' | 'storm-cloud';
+export type MinibossBody = 'segmented-worm' | 'idle-hands' | 'starfish' | 'blob' | 'storm-cloud' | 'user';
 
 export interface MinibossDef {
   id: number;
   key: string;
   label: string;
   /** Tuning block the body reads. */
-  tuning: typeof MEGA_WORM | typeof IDLE_HANDS | typeof STARFISH | typeof BLOB | typeof STORM_CLOUD;
+  tuning:
+    | typeof MEGA_WORM
+    | typeof IDLE_HANDS
+    | typeof STARFISH
+    | typeof BLOB
+    | typeof STORM_CLOUD
+    | typeof USER;
   /** Which body builder and renderer this boss uses. */
   body: MinibossBody;
 }
@@ -62,13 +69,23 @@ export const MINIBOSSES: readonly MinibossDef[] = [
     tuning: STORM_CLOUD,
     body: 'storm-cloud',
   },
+  {
+    id: MINIBOSS.USER,
+    key: 'user',
+    label: 'USER',
+    tuning: USER,
+    body: 'user',
+  },
 ];
 
 /**
- * BOSS RUSH ladder: registry order, walked once. Keeping it derived means a new
- * mini-boss joins the rush by being registered, not by a second hand-written list.
+ * BOSS RUSH ladder: registry order, walked once. USER is deliberately excluded: it is
+ * the authored campaign finale, staged for the full width of TETRIS, not a gauntlet
+ * ladder round. The campaign spawns it through `spawnMiniboss` directly.
  */
-export const BOSS_RUSH_ORDER: readonly number[] = MINIBOSSES.map((d) => d.id);
+export const BOSS_RUSH_ORDER: readonly number[] = MINIBOSSES.filter(
+  (d) => d.id !== MINIBOSS.USER,
+).map((d) => d.id);
 
 export function minibossDef(id: number): MinibossDef | null {
   for (let i = 0; i < MINIBOSSES.length; i++) if (MINIBOSSES[i].id === id) return MINIBOSSES[i];

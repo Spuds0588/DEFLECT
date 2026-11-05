@@ -2,12 +2,25 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## USER finale and mini-boss distribution (2026-11-05, v0.1.201)
+
+- [x] Spread the roaming mini-bosses: REBOOT MEGA WORM, AIRPORT FILE BLOB, AIR TRAFFIC STORM CLOUD,
+      SATELLITE IDLE HANDS, SPACE INVADERS STARFISH; BUSINESS LAPTOP is a normal assault again
+- [x] Add the USER finale to TETRIS: giant 👤 body, 330-radius hit circle, 480 HP
+- [x] Fist slams with latched telegraphs, segment damage and rings of reflectable shock bolts
+- [x] Converging eye fans, portal drops (2 sentries, 2 viruses, 1 worm) and a two-volley Mega Worm fly-over
+- [x] `Worm.user` is local-only; USER is excluded from `BOSS_RUSH_ORDER` and hosted rooms
+- [x] `.tmp/user-boss-check.ts` covers the body, attacks, death and campaign assignments; boss intro, boss
+      rush, campaign chapter, campaign rules, campaign finale and boss matrix probes green
+- [ ] Human playtest: read the fists and eye tell at couch distance, and confirm the portal adds do not
+      bury the boss's own projectiles
+
 ## Campaign themed chapters and landing blurbs (2026-11-05, v0.1.200)
 
 - [x] Campaign route is 22 levels: airport (`AIRPORT`, `AIR TRAFFIC`), space (`CAPCOM`,
       `ROCKET NAVIGATION`, `SATELLITE`) and arcade (`SPACE CADET`, `PONG`, `SPACE INVADERS`,
       `ARCADE RACING`, `FIGHTING GAME`, `DUCK HUNTER`, `TETRIS`)
-- [x] `BUSINESS LAPTOP` is the BLOB chapter boss; `TETRIS` carries STORM CLOUD and the finale
+- [x] (Superseded in v0.1.201 — see the USER finale section) BUSINESS LAPTOP was the BLOB boss; TETRIS carried STORM CLOUD.
 - [x] Every live-fire node opens with a two-beat `CampaignLevel.blurb` from script_kitty; narration only,
       no snapshot state, no replacement for the Warden/Holding/REBOOT lessons
 - [x] Route plate groups levels by `nodeId`, so a chapter is one stop and the 22-level route stays readable
@@ -3798,7 +3811,7 @@ arrive.
 
 ## BOSS BOUNDS
 
-- [x] `bossEdgePad`: mini-boss bodies may overhang the arena edge by half their radius, applied to all five
+- [x] `bossEdgePad`: mini-boss bodies may overhang the arena edge by half their radius, applied to all six
 
 - [x] Starfish at 1.5x (core 75, arm 69, reach 435) with mouth/chomp and spines scaled to match; its center
       and arms cross cover like the Mega Worm (v0.1.145).

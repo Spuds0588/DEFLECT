@@ -69,8 +69,10 @@ for (const arena of arenas) {
       if (Math.hypot(w.x - p.x, w.y - p.y) > 6000) fail(`${def.key} left the map on ${arena.name}`);
     }
     // Kill every body of the boss. Starfish arms and Idle Hands' pair are bodies too.
+    // The Mega Worm spends several seconds de-rezzing plate by plate after the lethal
+    // hit, so the wait has to outlast its death choreography, not just its health pool.
     let guard = 0;
-    while (liveBosses(world, def.id).length > 0 && guard++ < 40) {
+    while (liveBosses(world, def.id).length > 0 && guard++ < 400) {
       for (const w of liveBosses(world, def.id)) {
         priv.damageWorm(w, w.hp + 10, 0, 0, 0, 0, w.x, w.y);
       }
