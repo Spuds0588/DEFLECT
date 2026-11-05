@@ -200,5 +200,5 @@ for (let s = 0; s < requestSpecs.length; s++) {
   );
 }
 
-if (ARENAS[52]?.id !== 90) fail(`QA arena moved: index 52 is ${ARENAS[52]?.id}`);
+if (ARENAS[53]?.id !== 90) fail(`QA arena moved: index 53 is ${ARENAS[53]?.id}`);
 console.log('request arenas ok: dispatch + balancer before the QA range');

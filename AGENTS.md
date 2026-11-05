@@ -353,7 +353,7 @@ food-court machines are the FOOD COURT campaign stop; the four cabinets are the 
 - `ArenaTetrisDef` is a 10×12 grid. `TETROMINO_SHAPES` is the only cell table. A landed piece is rebuilt
   into `baseSolids` and `baseDashSolids`; a full row clears and shifts the stack. Dynamic cover is
   local-only and must never enter a guest path.
-- QA `TEST RANGE` is now `ARENAS[52]`; update index assertions when adding another arena before it.
+- QA `TEST RANGE` is now `ARENAS[53]`; update index assertions when adding another arena before it.
 - `.tmp/arcade-arena-check.ts` owns spawn clearance, drops, soda shrink and isolation, race reversal,
   fighter telegraph/fireball, duck fall, Tetris landing and the local-only checks.
 
@@ -3334,7 +3334,7 @@ ladder still runs the five roaming mini-bosses, while the campaign stages USER d
 ### D74 — The street-fixture row is one local traffic runtime (decided 2026-11-05)
 
 `TRAFFIC CAMERA` (49), `TRAFFIC LIGHT` (50) and `CROSSWALK SIGN` (51) are authored local arenas inserted
-immediately before QA `TEST RANGE` (now 52). One `TrafficRuntime` on `World`, built once and preallocated,
+immediately before QA `TEST RANGE` (now 53). One `TrafficRuntime` on `World`, built once and preallocated,
 owns photos, pipe flashes, the signal clock and both crosswalk layouts; none of it enters `Snapshot`.
 `isOnlineArena` skips `a.camera`, `a.light` and `a.crosswalk`, so hosted rooms never see the fixtures. A
 local bot match still runs them. `spawns` use `arcadeSpawns`, and both crosswalk layouts must stay clear of
@@ -3355,6 +3355,27 @@ them. These are standalone arenas, not campaign nodes.
   `arenaSolids` for it.
 - **Probe.** `.tmp/traffic-arena-check.ts` owns ids/spawn clearance, camera launch/route/pipe/damage,
   light warning/live damage/stage advance, crosswalk swap/ejection and the local-only checks.
+
+
+### D75 — CAR RADIO is a local dial-and-needle arena (decided 2026-11-05)
+
+`CAR RADIO` (52) is a local arena inserted before QA `TEST RANGE` (now 53). One preallocated
+`CarRadioRuntime` on `World` owns the two dial needles, the tuner sweep and the station clock; none of it
+enters `Snapshot` or `SnapshotHazards`. `isOnlineArena` skips `a.radio`, so hosted rooms never see it; a
+local bot match still runs it. It uses the full 48,48 -> 1942,1046 floor, `arcadeSpawns`, and no static
+pillars. It is standalone content, not a campaign node.
+
+- **Tuner.** The tuner is a vertical needle that sweeps a horizontal track at `slider.speed` and reverses at
+  each end. It is the only damage source: one body hit per pass, `slider.damage`, shoved along the sweep
+  with `slider.knockback`. The hit mask clears on reversal so the return pass can hit again. Do not turn the
+  two dial housings into collision cover; they are faceplate presentation.
+- **Dials.** The two circular dials are presentation. Their needle angles advance at `dials[i].rate` from
+  `dials[i].phase` and reset with the round.
+- **Station clock.** `stations` are the four authored wave families (sine, square, saw, pulse). The radio
+  holds `stationTime` seconds per station, shows a `warn` lead, then advances and flashes the readout. The
+  waveform phase and station index drive render-only animation; they never alter collision or snapshot data.
+- **Probe.** `.tmp/car-radio-check.ts` owns the id/index, spawn bounds, tuner movement/damage/reversal,
+  dial animation, station warning/advance and the local-only checks.
 
 
 ## TEST RANGE sandbox

@@ -263,6 +263,47 @@ export interface ArenaTrafficLightDef {
   sub: string;
 }
 
+/** CAR RADIO: two dials, a sweeping tuner needle and a station clock. */
+export interface ArenaCarRadioDialDef {
+  x: number;
+  y: number;
+  radius: number;
+  /** Radians per second for the indicator needle. */
+  rate: number;
+  /** Starting needle angle in radians. */
+  phase: number;
+  label: string;
+}
+
+export interface ArenaCarRadioStationDef {
+  name: string;
+  freq: string;
+  color: string;
+  /** Waveform family: 0 sine, 1 square, 2 saw, 3 pulse. */
+  wave: number;
+}
+
+export interface ArenaCarRadioDef {
+  dials: readonly ArenaCarRadioDialDef[];
+  slider: {
+    path: readonly SpawnPoint[];
+    speed: number;
+    /** Width of the vertical tuning needle. */
+    width: number;
+    /** Height of the vertical tuning needle. */
+    length: number;
+    damage: number;
+    knockback: number;
+  };
+  stations: readonly ArenaCarRadioStationDef[];
+  /** Seconds each station holds before the radio retunes. */
+  stationTime: number;
+  /** Warning lead before the station changes. */
+  warn: number;
+  label: string;
+  sub: string;
+}
+
 /** CROSSWALK SIGN: the sign swaps two authored cover layouts. */
 export interface ArenaCrosswalkDef {
   sign: SpawnPoint;
@@ -1738,6 +1779,8 @@ export interface ArenaDef {
   light?: ArenaTrafficLightDef;
   /** CROSSWALK SIGN. Local-only cover that swaps between two layouts. */
   crosswalk?: ArenaCrosswalkDef;
+  /** CAR RADIO. Local-only dials, sweeping tuner and station waveform. */
+  radio?: ArenaCarRadioDef;
   /** A round spinning platter with a read arm. Implies an open drop around the rim. */
   disc?: DiscDef;
 }
@@ -2156,6 +2199,34 @@ const CROSSWALK: ArenaCrosswalkDef = {
   warn: 0.7,
   label: 'CROSSWALK SIGN // INTERSECTION 04',
   sub: "DON'T WALK // THE TEXT IS COVER // THE SIGN SWAPS IT",
+};
+
+const CAR_RADIO: ArenaCarRadioDef = {
+  dials: [
+    { x: 250, y: 300, radius: 132, rate: 0.55, phase: 0.2, label: 'TUNE' },
+    { x: 250, y: 760, radius: 132, rate: -0.38, phase: 2.4, label: 'VOLUME' },
+  ],
+  slider: {
+    path: [
+      { x: 560, y: 548 },
+      { x: 1780, y: 548 },
+    ],
+    speed: 250,
+    width: 34,
+    length: 430,
+    damage: 1,
+    knockback: 340,
+  },
+  stations: [
+    { name: 'NIGHT DRIVE', freq: '88.3', color: '#6fe8ff', wave: 0 },
+    { name: 'STATIC BLOOM', freq: '94.7', color: '#ffb35c', wave: 1 },
+    { name: 'LOW TIDE', freq: '101.1', color: '#8dffb0', wave: 2 },
+    { name: 'CHROME SUN', freq: '106.9', color: '#ff7ad9', wave: 3 },
+  ],
+  stationTime: 8.4,
+  warn: 0.9,
+  label: 'CAR RADIO // DASH 04',
+  sub: 'TUNE // VOLUME // THE SIGNAL MOVES',
 };
 
 /** Point at `t` on a ping-pong path. Reuses `out`; no allocation per tick. */
@@ -4400,6 +4471,20 @@ const ARENAS_BASE: readonly ArenaDef[] = [
     crosswalk: CROSSWALK,
   },
   {
+    id: 52,
+    name: 'CAR RADIO',
+    tagline: 'Four stations. One moving needle.',
+    hudLabel: 'ARENA // CAR RADIO',
+    accent: '#6fe8ff',
+    accentSoft: 'rgba(111, 232, 255, 0.32)',
+    accentFaint: 'rgba(111, 232, 255, 0.032)',
+    signature: 4,
+    bounds: { left: 48, top: 48, right: 1942, bottom: 1046 },
+    pillars: [],
+    spawns: arcadeSpawns,
+    radio: CAR_RADIO,
+  },
+  {
     id: 90,
     qa: true,
     name: 'TEST RANGE',
@@ -5229,6 +5314,40 @@ export function drawArenaPreview(canvas: HTMLCanvasElement, arena: ArenaDef): vo
     ctx.font = '700 6px ui-monospace, monospace';
     ctx.textAlign = 'center';
     ctx.fillText("CROSSWALK // DON'T WALK COVER", mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
+    return;
+  }
+
+  if (arena.radio) {
+    const def = arena.radio;
+    ctx.fillStyle = '#070b10';
+    ctx.fillRect(mapX(bounds.left), mapY(bounds.top), previewW, previewH);
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i <= 32; i++) {
+      const x = mapX(bounds.left) + (previewW * i) / 32;
+      const y = mapY((bounds.top + bounds.bottom) * 0.58) + Math.sin(i * 0.7) * 5;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    for (const dial of def.dials) {
+      ctx.strokeStyle = arena.accent;
+      ctx.beginPath();
+      ctx.arc(mapX(dial.x), mapY(dial.y), Math.max(4, dial.radius * sx), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(mapX(dial.x), mapY(dial.y));
+      ctx.lineTo(mapX(dial.x + Math.cos(dial.phase) * dial.radius * 0.7), mapY(dial.y + Math.sin(dial.phase) * dial.radius * 0.7));
+      ctx.stroke();
+    }
+    const start = def.slider.path[0];
+    ctx.strokeStyle = arena.accent;
+    ctx.strokeRect(mapX(start.x) - 1, mapY(start.y - def.slider.length * 0.5), 3, Math.max(5, def.slider.length * sy));
+    ctx.fillStyle = arena.accent;
+    ctx.font = '700 6px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('CAR RADIO // FM DIAL', mapX((bounds.left + bounds.right) * 0.5), mapY(bounds.bottom) - 4);
     return;
   }
 

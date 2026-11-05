@@ -8370,3 +8370,38 @@ level's cover between `DON'T WALK` text and the walking figure.
 
 **Next:** human visual pass on the camera routes and flash, a full green -> amber -> red cycle, and both
 crosswalk layouts at full and low health.
+
+## 2026-11-05 — CAR RADIO arena (v0.1.206)
+
+**Goal:** build the designer's car-radio idea: two circular dials, a line-based tuner that moves back and
+forth, and a waveform that changes as the station periodically retunes.
+
+**Changes.**
+- Added `CAR RADIO` (52) immediately before QA `TEST RANGE`, which moved to `ARENAS[53]`. It uses the full
+  48,48 -> 1942,1046 floor, `arcadeSpawns` and no static pillars. It is standalone content, not a campaign
+  node.
+- Added one preallocated `CarRadioRuntime` on `World`: two dial needle angles, the tuner sweep and per-pass
+  hit mask, the station index and clock, and the waveform phase. It is local-only and never enters
+  `Snapshot` or `SnapshotHazards`; `isOnlineArena` skips `a.radio`. A local bot match still runs it.
+- Tuner: a vertical needle sweeps a horizontal track at 250 units/s, damages one body once per pass for one
+  segment, shoves it along the sweep, and reverses at each end. The hit mask clears on reversal.
+- Dials: two large animated circular dials (`TUNE`, `VOLUME`) with tick rings and moving indicator needles.
+  They are presentation, not collision cover.
+- Stations: four authored stations (`NIGHT DRIVE`, `STATIC BLOOM`, `LOW TIDE`, `CHROME SUN`) hold 8.4 s
+  each, warn for 0.9 s, then advance. Each has its own waveform family, color, frequency and readout; the
+  renderer draws three animated waveform layers behind the faceplate and a station header.
+- Added the faceplate, brushed inset, station waveform, two dials, tuner track/needle/handle and picker
+  preview to `render.ts`; wired the runtime into `World` construction, reset, round reset and step.
+- Updated AGENTS D75 and the current TEST RANGE index under D70/D74, README/GAME_GUIDE counts and arena
+  table, TODO, and the four existing QA-index probe assertions. Bumped all version stamps to 0.1.206.
+
+**Verification.**
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,196.36 kB JS, 333.42 kB gzip).
+- `.tmp/car-radio-check.ts` 0: id/index, spawn bounds, tuner movement/damage/reversal, dial animation,
+  station warning/advance and local-only checks.
+- `.tmp/traffic-arena-check.ts`, `.tmp/arcade-arena-check.ts`, `.tmp/request-arena-check.ts` and
+  `.tmp/server-board-check.ts` 0 with QA `TEST RANGE` at index 53.
+- `npm run bench` clean: 8P max proj 0.100 ms avg / 0.242 ms p99; gauntlet max 0.255 ms avg / 0.781 ms p99.
+- `git diff --check` clean.
+
+**Next:** human visual pass on the dials, a full tuner pass and all four station waveforms at fight scale.

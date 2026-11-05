@@ -71,7 +71,7 @@ for (const [index, name] of specs) {
   if (makeWorld(index, 'match').traffic === null) fail(`${name} is absent from a local match`);
 }
 
-if (ARENAS[52]?.id !== 90) fail(`QA arena moved: index 52 is ${ARENAS[52]?.id}`);
+if (ARENAS[53]?.id !== 90) fail(`QA arena moved: index 53 is ${ARENAS[53]?.id}`);
 
 // A camera photo warns, launches, crosses the floor and lands in its feed.
 {

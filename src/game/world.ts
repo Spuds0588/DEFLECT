@@ -200,6 +200,7 @@ import {
   type Projectile,
   type Prop,
   type RequestCar,
+  type CarRadioRuntime,
   type TrafficPhoto,
   type TrafficRuntime,
   type Sentry,
@@ -776,6 +777,8 @@ export class World {
   readonly arcade: ArcadeRuntime | null;
   /** Traffic camera, traffic light and crosswalk fixtures. Local-only. */
   readonly traffic: TrafficRuntime | null;
+  /** Car-radio dials, tuner needle and station clock. Local-only. */
+  readonly radio: CarRadioRuntime | null;
   private readonly trafficPoint = { x: 0, y: 0 };
   /** GPU-board thermal cycle clock. Local-only; never part of a snapshot. */
   serverHeatT = 0;
@@ -944,6 +947,7 @@ export class World {
     this.tetrisStaticPillars = this.arena.tetris ? this.arena.pillars.slice() : [];
     this.arcade = this.makeArcadeRuntime();
     this.traffic = this.makeTrafficRuntime();
+    this.radio = this.makeRadioRuntime();
     const serverHeatDef = this.arena.server;
     if (serverHeatDef?.heat) {
       for (let i = 0; i < serverHeatDef.modules.length; i++) {
@@ -1225,6 +1229,7 @@ export class World {
     // out of a stack that would otherwise overlap its spawn.
     if (this.arcade) this.resetArcade();
     if (this.traffic) this.resetTraffic();
+    if (this.radio) this.resetRadio();
 
     for (let i = 0; i < MAX_PLAYERS; i++) {
       const name = names[i];
@@ -1336,6 +1341,7 @@ export class World {
     if (this.requests) this.resetRequests();
     if (this.arcade) this.resetArcade();
     if (this.traffic) this.resetTraffic();
+    if (this.radio) this.resetRadio();
     this.resetServerHeat();
     for (let i = 0; i < this.pipes.length; i++) {
       const pipe = this.pipes[i];
@@ -3620,6 +3626,7 @@ export class World {
     if (this.requests) this.resetRequests();
     if (this.arcade) this.resetArcade();
     if (this.traffic) this.resetTraffic();
+    if (this.radio) this.resetRadio();
     this.resetServerHeat();
     if (this.flip) this.resetFlip();
     if (this.invaders) this.resetInvaders();
@@ -3791,6 +3798,7 @@ export class World {
     if (this.requests && canAct) this.tickRequests(dt);
     if (this.arcade && canAct) this.tickArcade(dt);
     if (this.traffic && canAct) this.tickTraffic(dt);
+    if (this.radio && canAct) this.tickRadio(dt);
     if (this.arena.server?.heat && canAct) this.tickServerHeat(dt);
     if (this.radar && canAct) this.tickRadar(dt);
     if (this.flip && canAct) this.tickFlip(dt);
@@ -10738,6 +10746,120 @@ export class World {
       );
       // A three-car train takes ~0.74 s to clear one body; one train is one hit.
       p.iframes = Math.max(p.iframes, 0.9);
+    }
+  }
+
+  /** Build the car-radio runtime once. The dial arrays are preallocated. */
+  private makeRadioRuntime(): CarRadioRuntime | null {
+    const def = this.arena.radio;
+    if (!def) return null;
+    const dialAngle = new Float32Array(def.dials.length);
+    for (let i = 0; i < def.dials.length; i++) dialAngle[i] = def.dials[i].phase;
+    const start = def.slider.path[0] ?? { x: 0, y: 0 };
+    return {
+      dialAngle,
+      sliderT: 0,
+      sliderDir: 1,
+      sliderX: start.x,
+      sliderY: start.y,
+      sliderHitPlayers: 0,
+      station: 0,
+      stationT: 0,
+      stationWarnT: 0,
+      stationFlashT: 0,
+      wavePhase: 0,
+    };
+  }
+
+  /** Put the radio back on its first station and first tuner pass. */
+  private resetRadio(): void {
+    const def = this.arena.radio;
+    const radio = this.radio;
+    if (!def || !radio) return;
+    for (let i = 0; i < def.dials.length; i++) radio.dialAngle[i] = def.dials[i].phase;
+    radio.sliderT = 0;
+    radio.sliderDir = 1;
+    const start = def.slider.path[0] ?? { x: 0, y: 0 };
+    radio.sliderX = start.x;
+    radio.sliderY = start.y;
+    radio.sliderHitPlayers = 0;
+    radio.station = 0;
+    radio.stationT = 0;
+    radio.stationWarnT = 0;
+    radio.stationFlashT = 0;
+    radio.wavePhase = 0;
+  }
+
+  /**
+   * Advance the radio. The tuner needle is the hazard: a vertical line that crosses
+   * the faceplate and shoves one body per pass. The station clock only changes the
+   * local waveform, never a snapshot field.
+   */
+  private tickRadio(dt: number): void {
+    const def = this.arena.radio;
+    const radio = this.radio;
+    if (!def || !radio) return;
+    for (let i = 0; i < def.dials.length; i++) {
+      radio.dialAngle[i] += def.dials[i].rate * dt;
+    }
+    radio.wavePhase += dt * (1.4 + radio.station * 0.35);
+    radio.stationT += dt;
+    const remaining = Math.max(0, def.stationTime - radio.stationT);
+    radio.stationWarnT = remaining <= def.warn ? remaining : 0;
+    if (radio.stationT >= def.stationTime) {
+      radio.stationT = 0;
+      radio.station = (radio.station + 1) % Math.max(1, def.stations.length);
+      radio.stationWarnT = 0;
+      radio.stationFlashT = 0.55;
+    }
+    radio.stationFlashT = Math.max(0, radio.stationFlashT - dt);
+
+    const a = def.slider.path[0];
+    const b = def.slider.path[def.slider.path.length - 1];
+    if (!a || !b) return;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (len <= 0.001) return;
+    radio.sliderT += ((def.slider.speed * radio.sliderDir) / len) * dt;
+    if (radio.sliderT >= 1) {
+      radio.sliderT = 1;
+      radio.sliderDir = -1;
+      radio.sliderHitPlayers = 0;
+    } else if (radio.sliderT <= 0) {
+      radio.sliderT = 0;
+      radio.sliderDir = 1;
+      radio.sliderHitPlayers = 0;
+    }
+    radio.sliderX = a.x + dx * radio.sliderT;
+    radio.sliderY = a.y + dy * radio.sliderT;
+
+    const halfW = def.slider.width * 0.5;
+    const halfL = def.slider.length * 0.5;
+    const ux = dx / len;
+    const uy = dy / len;
+    for (let i = 0; i < this.players.length; i++) {
+      const player = this.players[i];
+      if (!player.active || !player.alive) continue;
+      const bit = 1 << player.slot;
+      if ((radio.sliderHitPlayers & bit) !== 0) continue;
+      const reach = PLAYER.radius * player.shrink;
+      const qx = Math.max(-halfW, Math.min(halfW, player.x - radio.sliderX));
+      const qy = Math.max(-halfL, Math.min(halfL, player.y - radio.sliderY));
+      const ox = player.x - (radio.sliderX + qx);
+      const oy = player.y - (radio.sliderY + qy);
+      if (ox * ox + oy * oy > reach * reach) continue;
+      radio.sliderHitPlayers |= bit;
+      this.damagePlayer(
+        player,
+        def.slider.damage,
+        -1,
+        ux * radio.sliderDir,
+        uy * radio.sliderDir,
+        def.slider.knockback,
+        SRC.CAR_RADIO,
+        -1,
+      );
     }
   }
 

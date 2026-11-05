@@ -130,6 +130,8 @@ export const SRC = {
   TRAFFIC_CAMERA: 29,
   /** TRAFFIC LIGHT live floor circle. No body, so the death camera falls through. */
   TRAFFIC_LIGHT: 30,
+  /** CAR RADIO tuner needle. No body, so the death camera falls through. */
+  CAR_RADIO: 31,
 } as const;
 
 export const EV = {
@@ -421,6 +423,25 @@ export interface TrafficRuntime {
   crosswalkT: number;
   crosswalkWarnT: number;
   crosswalkFlashT: number;
+}
+
+/** Local-only CAR RADIO state: two dial needles, the tuner sweep and station clock. */
+export interface CarRadioRuntime {
+  dialAngle: Float32Array;
+  /** 0..1 along the tuner path. */
+  sliderT: number;
+  /** 1 or -1; flips at each end of the track. */
+  sliderDir: number;
+  sliderX: number;
+  sliderY: number;
+  /** One bit per player already hit by this pass. Cleared at each end. */
+  sliderHitPlayers: number;
+  station: number;
+  stationT: number;
+  /** Seconds of warning left before the station changes; zero when settled. */
+  stationWarnT: number;
+  stationFlashT: number;
+  wavePhase: number;
 }
 
 export interface SatelliteMeteor {

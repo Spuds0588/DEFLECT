@@ -1,6 +1,6 @@
 import type { AssaultPortal, Fragment } from './types';
 import { AIMBOT, ATOMIZE, BOLT, BROWSER, BUFFER, BUG, CALIBRATION, CAMERA, CAMERA_ZOOM, CAMPAIGN, CASCADING_ERROR, COLORS, COMPRESS, COPYPASTA, EMITTER, FILE_PROP, FIREWALL, FISHER, GHOST, IDLE_HANDS, STARFISH, BLOB, STORM_CLOUD, USER, KABOOM, KEYPAD, MAX_PLAYERS, MEGA_WORM, MINE, NETWORK, PINBALL, PLAYER, POWERUP, ROUND, SCANNER, SENTRY, SWEEP, TRAIL_LEN, TRAVEL, TRAVERSE, VIEW_H, VIEW_W, VIRUS, WEDGE, WORM } from './config';
-import type { AimMark, BossIntro, CopyMark, InvaderShot, TrafficRuntime } from './types';
+import type { AimMark, BossIntro, CarRadioRuntime, CopyMark, InvaderShot, TrafficRuntime } from './types';
 import {
   discArmAngle,
   discArmLength,
@@ -196,6 +196,8 @@ export interface RenderState {
   arcade?: ArcadeRuntime | null;
   /** TRAFFIC CAMERA / LIGHT / CROSSWALK fixtures. Local-only. */
   traffic?: TrafficRuntime | null;
+  /** CAR RADIO dials, tuner and station clock. Local-only. */
+  radio?: CarRadioRuntime | null;
   /** GPU-board thermal cycle clock. Local-only. */
   serverHeatT?: number;
   /** DISPATCH / LOAD BALANCER live request traffic and its switch signal. Local-only. */
@@ -7333,6 +7335,187 @@ export class Renderer {
   }
 
   /**
+   * CAR RADIO: a faceplate with two dials, a tuner needle sweeping across the floor and
+   * a station waveform behind it. Everything here reads local runtime state.
+   */
+  private drawCarRadioArena(
+    arena: ArenaDef,
+    state: RenderState | undefined,
+    groundA: number,
+    frameA: number,
+    t: number,
+  ): void {
+    const def = arena.radio;
+    if (!def) return;
+    const radio = state?.radio;
+    const station = def.stations[radio?.station ?? 0] ?? def.stations[0];
+    const accent = station?.color ?? arena.accent;
+    const waveT = radio?.wavePhase ?? t;
+    const warn = (radio?.stationWarnT ?? 0) > 0;
+    const ctx = this.ctx;
+    const b = arena.bounds;
+    const cx = (b.left + b.right) * 0.5;
+
+    ctx.save();
+    // Faceplate and its brushed inset. Keep the centre darker so the waveform reads.
+    ctx.globalAlpha = groundA;
+    ctx.fillStyle = '#070b10';
+    ctx.fillRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    ctx.globalAlpha = groundA * 0.72;
+    ctx.fillStyle = '#0b141b';
+    ctx.fillRect(b.left + 18, b.top + 18, b.right - b.left - 36, b.bottom - b.top - 36);
+    ctx.globalAlpha = groundA * 0.2;
+    ctx.strokeStyle = arena.accentSoft;
+    ctx.lineWidth = 1;
+    for (let y = b.top + 36; y < b.bottom - 20; y += 14) {
+      ctx.beginPath();
+      ctx.moveTo(b.left + 22, y + 0.5);
+      ctx.lineTo(b.right - 22, y + 0.5);
+      ctx.stroke();
+    }
+
+    // The station waveform is the background animation. Each station has its own family.
+    for (let layer = 0; layer < 3; layer++) {
+      const baseY = 560 + (layer - 1) * 150;
+      const amp = 42 + layer * 12;
+      ctx.globalAlpha = frameA * (layer === 1 ? 0.2 : 0.1);
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = layer === 1 ? 2.5 : 1.5;
+      ctx.beginPath();
+      for (let x = b.left + 52; x <= b.right - 52; x += 14) {
+        const k = (x - (b.left + 52)) / (b.right - b.left - 104);
+        const freq = 3.2 + (station?.wave ?? 0) * 0.9 + layer * 0.55;
+        const phase = waveT * (1.1 + layer * 0.18);
+        const raw = Math.sin(k * Math.PI * 2 * freq + phase);
+        let v = raw;
+        if (station?.wave === 1) v = Math.tanh(raw * 5) * 0.82;
+        else if (station?.wave === 2) v = (2 * ((k * freq + phase / (Math.PI * 2)) % 1) - 1) * 0.82;
+        else if (station?.wave === 3) v = raw * (0.42 + 0.58 * Math.abs(Math.sin(waveT * 2.3)));
+        const y = baseY + v * amp;
+        if (x === b.left + 52) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // Signal readout. The frequency and station name are the player-facing station state.
+    ctx.globalAlpha = frameA;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = accent;
+    ctx.font = '700 30px ui-monospace, monospace';
+    ctx.fillText(`FM ${station?.freq ?? '88.3'}`, cx, b.top + 66);
+    ctx.fillStyle = '#eaffff';
+    ctx.font = '700 13px ui-monospace, monospace';
+    ctx.fillText(station?.name ?? 'NIGHT DRIVE', cx, b.top + 88);
+    ctx.fillStyle = warn ? accent : 'rgba(220, 245, 255, 0.44)';
+    ctx.font = '600 10px ui-monospace, monospace';
+    ctx.fillText(warn ? 'SCANNING // RETUNE' : 'SIGNAL LOCKED', cx, b.top + 106);
+
+    // Two circular dials. The inner needle animates; the housings stay put.
+    for (let i = 0; i < def.dials.length; i++) {
+      const dial = def.dials[i];
+      const angle = radio?.dialAngle[i] ?? dial.phase;
+      ctx.globalAlpha = frameA;
+      ctx.fillStyle = '#091117';
+      ctx.beginPath();
+      ctx.arc(dial.x, dial.y, dial.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#2b3c45';
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.arc(dial.x, dial.y, dial.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(dial.x, dial.y, dial.radius * 0.86, 0, Math.PI * 2);
+      ctx.stroke();
+      for (let k = 0; k < 24; k++) {
+        const a = (k / 24) * Math.PI * 2;
+        const inner = dial.radius * (k % 3 === 0 ? 0.72 : 0.78);
+        const outer = dial.radius * 0.84;
+        ctx.globalAlpha = frameA * (k % 3 === 0 ? 0.8 : 0.35);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = k % 3 === 0 ? 2 : 1;
+        ctx.beginPath();
+        ctx.moveTo(dial.x + Math.cos(a) * inner, dial.y + Math.sin(a) * inner);
+        ctx.lineTo(dial.x + Math.cos(a) * outer, dial.y + Math.sin(a) * outer);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = frameA;
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(dial.x, dial.y);
+      ctx.lineTo(dial.x + Math.cos(angle) * dial.radius * 0.64, dial.y + Math.sin(angle) * dial.radius * 0.64);
+      ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.arc(dial.x, dial.y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(225, 245, 255, 0.72)';
+      ctx.font = '700 11px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(dial.label, dial.x, dial.y + dial.radius * 0.52);
+    }
+
+    // Tuner track and the vertical needle. The needle is the hazard; the track is the read.
+    const start = def.slider.path[0];
+    const end = def.slider.path[def.slider.path.length - 1];
+    const sx = radio?.sliderX ?? start.x;
+    const sy = radio?.sliderY ?? start.y;
+    const half = def.slider.length * 0.5;
+    ctx.globalAlpha = frameA * 0.55;
+    ctx.strokeStyle = '#3a4d56';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    for (let i = 0; i <= 16; i++) {
+      const x = start.x + ((end.x - start.x) * i) / 16;
+      ctx.globalAlpha = frameA * (i % 4 === 0 ? 0.7 : 0.32);
+      ctx.strokeStyle = arena.accentSoft;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, start.y - 8);
+      ctx.lineTo(x, start.y + 8);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = frameA * 0.16;
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = def.slider.width;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - half);
+    ctx.lineTo(sx, sy + half);
+    ctx.stroke();
+    ctx.globalAlpha = frameA;
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - half);
+    ctx.lineTo(sx, sy + half);
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.fillRect(sx - 11, sy - half - 10, 22, 7);
+    ctx.fillRect(sx - 11, sy + half + 3, 22, 7);
+    ctx.fillStyle = '#0b141b';
+    ctx.fillRect(sx - 25, sy - 16, 50, 32);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx - 25, sy - 16, 50, 32);
+    ctx.fillStyle = accent;
+    ctx.fillRect(sx - 4, sy - 10, 8, 20);
+
+    ctx.globalAlpha = frameA;
+    ctx.textAlign = 'right';
+    ctx.fillStyle = arena.accentSoft;
+    ctx.font = '600 10px ui-monospace, monospace';
+    ctx.fillText(def.label, b.right - 24, b.bottom - 18);
+    ctx.restore();
+  }
+
+  /**
    * The street-fixture row: one asphalt pass and a dispatch to the camera, signal or
    * crosswalk. Everything drawn here is local state; hosted rooms never see the arenas.
    */
@@ -9036,6 +9219,10 @@ export class Renderer {
     const frameA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 0.7) / 0.75));
     const pillarA = intro >= INTRO_LEN ? 1 : Math.max(0, Math.min(1, (intro - 1.15) / 0.8));
     const pillarDrop = (1 - pillarA) * 30;
+    if (arena.radio) {
+      this.drawCarRadioArena(arena, satelliteState, groundA, frameA, t);
+      return;
+    }
     if (arena.camera || arena.light || arena.crosswalk) {
       this.drawTrafficArena(arena, satelliteState, groundA, frameA, t);
       return;

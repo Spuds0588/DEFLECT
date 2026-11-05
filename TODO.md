@@ -2,6 +2,18 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Car radio arena (2026-11-05, v0.1.206)
+
+- [x] `CAR RADIO` (52): two animated circular dials, a vertical tuner needle sweeping a horizontal track,
+      one segment of damage and a shove per pass, reversing at each end
+- [x] Four authored stations on an 8.4 s clock, each changing the waveform family, color and readout behind
+      the fight; a warning lead precedes every retune
+- [x] One preallocated `CarRadioRuntime`, no static pillars, excluded from hosted rooms and `Snapshot`; QA
+      `TEST RANGE` moves to `ARENAS[53]`
+- [x] `.tmp/car-radio-check.ts` covers id/index, spawns, tuner movement/damage/reversal, dial animation,
+      station warning/advance and local-only checks
+- [ ] Human visual pass: read the two dials, a full tuner pass and all four station waveforms at fight scale
+
 ## Traffic fixtures: camera, light, crosswalk (2026-11-05, v0.1.205)
 
 - [x] `TRAFFIC CAMERA` (49): a west-wall lens flashes and launches an image file along one of three
@@ -11,7 +23,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] `CROSSWALK SIGN` (51): the hanging sign swaps the level between pixel `DON'T WALK` text cover and
       walking-figure cover, ejecting bodies from the incoming layout
 - [x] All three use one preallocated `TrafficRuntime`, stay out of hosted rooms and `Snapshot`, and do not
-      enter the 30-level campaign route; QA `TEST RANGE` moves to `ARENAS[52]`
+      enter the 30-level campaign route; QA `TEST RANGE` moves to `ARENAS[53]`
 - [x] `.tmp/traffic-arena-check.ts` covers spawn clearance, camera launch/route/pipe/damage, light
       warning/live damage/stage advance and crosswalk swap/ejection
 - [ ] Human visual pass: read the camera routes and flash, the three light circles through a full cycle,
