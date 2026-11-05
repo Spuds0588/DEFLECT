@@ -90,7 +90,9 @@ Consequences that are part of the design, not bugs:
   an enemy while you strafe; dashing then goes sideways, not at the target.
 - Target lock (`LT` hold, `Q` toggle) holds facing only. It never grants a second aim stick, and the
   beam still sweeps at `PLAYER.laserTurnRate`. `RB` and right-stick left/right step the lock around the
-  available targets while it is active; that is target selection, not aim.
+  available targets while it is active; that is target selection, not aim. Enemy ingress ports and
+  replicators are valid lock targets too; the lock point is the centre of the port, and a closed port
+  drops the lock.
 
 ### D3 — N players, host-authoritative star (decided 2026-10-28)
 Not a two-player game. Target cap is **8** for v1 (`MAX_PLAYERS` in `src/game/config.ts`), measured rather

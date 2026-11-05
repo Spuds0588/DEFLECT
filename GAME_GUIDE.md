@@ -315,6 +315,9 @@ on-screen input-mode badge. A phone or tablet gets the touch layout automaticall
 | Mute | — | `M` |
 | Perf HUD | — | `F3` |
 
+Enemy ingress ports and replicators are valid lock targets too. The reticle sits on the port's centre,
+and auto lock / auto attack can hold and fire on it until the port closes.
+
 **Touch layout:** a stick at the bottom left and `SHIELD`, `SKILL` and `DASH` buttons at the bottom right.
 The stick sets facing by movement, exactly like a pad: it is not a second aim stick. Tap `SHIELD` for the
 lash and hold it for guard/reflect. Tap `SKILL` for the program skill and hold it for the power attack.

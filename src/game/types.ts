@@ -735,7 +735,7 @@ export interface Player {
   orbitDur: number;
   orbitDir: number;
 
-  /** 0 none, 1 player, 2 worm, 3 virus, 4 drone, 5 sentry, 6 cascading error. */
+  /** 0 none, 1 player, 2 worm, 3 virus, 4 drone, 5 sentry, 6 cascading error, 7 enemy portal. */
   lockKind: number;
   lockId: number;
   lockT: number;

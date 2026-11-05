@@ -5590,6 +5590,24 @@ export class World {
         tx = target.x;
         ty = target.y;
       }
+      // Enemy ingress ports and replicators are valid lock targets. The lock point is
+      // the centre of the square, not its top-left corner, so facing and auto-attack
+      // point at the device rather than the wall beside it.
+      for (let i = 0; i < this.props.length; i++) {
+        const target = this.props[i];
+        if (!target.active || !target.portal || target.portalExit || target.hp <= 0) continue;
+        const cx = target.x + target.w * 0.5;
+        const cy = target.y + target.h * 0.5;
+        const dx = cx - p.x;
+        const dy = cy - p.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= best || this.lineBlocked(p.x, p.y, cx, cy)) continue;
+        best = d2;
+        p.lockKind = 7;
+        p.lockId = i;
+        tx = cx;
+        ty = cy;
+      }
       if (this.mode === 'training' && this.drone.active) {
         const dx = this.drone.x - p.x;
         const dy = this.drone.y - p.y;
@@ -5695,6 +5713,13 @@ export class World {
         this.lockTY = target.y;
         return true;
       }
+    } else if (p.lockKind === 7) {
+      const target = this.props[p.lockId];
+      if (target && target.active && target.portal && !target.portalExit && target.hp > 0) {
+        this.lockTX = target.x + target.w * 0.5;
+        this.lockTY = target.y + target.h * 0.5;
+        return true;
+      }
     }
     return false;
   }
@@ -5736,6 +5761,12 @@ export class World {
     for (let i = 0; i < this.errors.length; i++) {
       const t = this.errors[i];
       if (t.active) this.offerCycle(6, i, t.x, t.y);
+    }
+    for (let i = 0; i < this.props.length; i++) {
+      const t = this.props[i];
+      if (t.active && t.portal && !t.portalExit && t.hp > 0) {
+        this.offerCycle(7, i, t.x + t.w * 0.5, t.y + t.h * 0.5);
+      }
     }
     if (this.mode === 'training' && this.drone.active) this.offerCycle(4, 0, this.drone.x, this.drone.y);
 

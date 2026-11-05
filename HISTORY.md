@@ -8271,3 +8271,26 @@ a test pass.
 
 **Next:** play SNACK MACHINE through USER, judge hazard density and the route plate, then tune the new
 nodes from play.
+
+## 2026-11-05 — Enemy portal lock-on (v0.1.203)
+
+**Goal:** let players hold target lock on an enemy portal spawner so the one-stick facing and auto-attack
+can point at the feed mouth itself.
+
+**Changes.**
+- Added `lockKind = 7` for active, damageable enemy ports (`Prop.portal`, excluding `portalExit` and
+  including replicators). They join nearest-target acquisition, `RB`/`R`/`F` cycling, `readLockTarget`
+  aim assist and the local lock reticle.
+- The lock point is the centre of the port square, not its top-left corner, so facing and auto-attack aim
+  at the device. A closed port or the white party exit drops the lock.
+- Updated AGENTS D2, GAME_GUIDE and TODO; bumped all version stamps to 0.1.203.
+
+**Verification.**
+- `.tmp/portal-lock-check.ts` covers live acquisition on MAINBOARD's two feed mouths, centre/facing, and
+  cycling from one port to the other. `npm run build`, `npx tsc --noEmit`, `npm run bench` and the
+  campaign chapter/rules probes green.
+- Not tested: a human visual pass on the reticle over wall-mounted ports or auto-attack against a live
+  portal in a full fight.
+
+**Next:** play a feed room with auto lock on and confirm the reticle and auto-attack read correctly while
+other bodies are on the floor.

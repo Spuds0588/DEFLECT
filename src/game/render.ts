@@ -14629,6 +14629,12 @@ export class Renderer {
       tx = target.x;
       ty = target.y;
       radius = CASCADING_ERROR.blockSize * 0.5;
+    } else if (p.lockKind === 7) {
+      const target = state.props?.[p.lockId];
+      if (!target || !target.active || !target.portal || target.portalExit || target.hp <= 0) return;
+      tx = target.x + target.w * 0.5;
+      ty = target.y + target.h * 0.5;
+      radius = Math.max(target.w, target.h) * 0.5;
     } else {
       return;
     }

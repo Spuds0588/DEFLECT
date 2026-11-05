@@ -2,6 +2,17 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Enemy portal lock-on (2026-11-05, v0.1.203)
+
+- [x] Live enemy ingress ports and replicators join lock acquisition, angular cycling, aim assist and the
+      lock reticle; closed ports and the white party exit are never candidates
+- [x] The lock point is the centre of the port square, so facing and auto-attack aim at the device rather
+      than its top-left corner
+- [x] `.tmp/portal-lock-check.ts` covers acquisition, centre/facing, and cycling between MAINBOARD's two
+      live feeds; `npm run build`, `npm run bench` and the campaign probes green
+- [ ] Human pass: confirm the reticle reads on wall-mounted feed mouths and auto-attack fires on a locked
+      port while it is still open
+
 ## KISSINGFACE campaign wiring (2026-11-05, v0.1.202)
 
 - [x] 30-node route: after DUCK HUNTER add SNACK MACHINE, TOKEN DISPENSER and SODA MACHINE as FOOD COURT,
