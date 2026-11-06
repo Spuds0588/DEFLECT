@@ -2,14 +2,14 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
-## Campaign objective routing (2026-11-06, v0.1.216)
+## Campaign objective routing (2026-11-06, v0.1.217)
 
 - [x] DOCUMENT SCANNER: the port objective circles the platen to the nearest above/below lane, crosses there, and approaches from the port's side instead of re-entering the read line after every sidestep. Pinball 1P clears in 20.8 s (previously died at 18.7 s); Aim Bot 1P clears in 23.8 s (previously died at 23.7 s).
 - [x] A virus inside 150 units now outranks the port shot; Aim Bot's remaining scanner death was a virus at the already-closed port, not the scanner line.
-- [x] CAPCOM: the pilot fires from an inward station toward the containing island's centre. The fallback port is 180 units from two plate edges, so the earlier 160-unit orbit crossed the central trench. Compress 4P CAPCOM clears in 30.1 s.
-- [x] Compress / SIEGE / three companions release gate: **36/36**, zero deaths. CAPCOM 30.1 s, DOCUMENT SCANNER 21.4 s, SPACE INVADERS 45.5 s, NETWORK BOARD 85.8 s.
+- [x] CAPCOM: the pilot fires from an inward station toward the containing island's centre, routes over the authored bridges, and only dashes to a scored on-plate endpoint. Compress 4P CAPCOM clears in 36.0 s.
+- [x] Compress / SIEGE / three companions release gate: **36/36**, zero deaths. CAPCOM 36.0 s, DOCUMENT SCANNER 21.4 s, SPACE INVADERS 45.5 s, NETWORK BOARD 85.8 s.
 - [x] DOCUMENT SCANNER Compress 4P control: 21.4 s, no deaths.
-- [ ] CAPCOM light kits still lose the worm fight at the port: Aim Bot 1P dies at 8.0 s, Pinball 1P at 11.6 s, both before the port closes. This is combat pressure, not the plate route; do not reintroduce the shared nav floor change that stalled Compress.
+- [~] CAPCOM light kits: Pinball 1P now clears in 83.3 s (2 HP, 33 kills). Aim Bot 1P still dies at 10.9 s to the worm pack at the port, before the port closes. This remains combat pressure, not the plate route; do not weaken the island floor checks or buff player health.
 - [ ] SPACE INVADERS STARFISH and NETWORK BOARD USER still outlast the light kits. The arm-station and below-USER experiments were measured and reverted; do not ship either without a green Compress control.
 - [ ] Full 26-config matrix not rerun for this increment; the last full baseline is 784/936 (v0.1.214).
 

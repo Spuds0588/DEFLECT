@@ -60,6 +60,30 @@ export class ArenaNav {
         // SATELLITE's floor is a union of plates with open space between them. A route
         // must stay on the hull/wings instead of cutting across the drop.
         let blocked = arena.satellite && !satelliteFloorAt(arena, x, y) ? 1 : 0;
+        // Plate arenas (CAPCOM) are the same problem: islands are the only floor and
+        // the gap between them is a drop. Their authored bridges are walkable, so bake
+        // the union into the nav grid and let A* find the ring route instead of walking
+        // the port objective straight into the trench.
+        if (!blocked && arena.islands) {
+          let onFloor = false;
+          for (let i = 0; i < arena.islands.length; i++) {
+            const r = arena.islands[i];
+            if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+              onFloor = true;
+              break;
+            }
+          }
+          if (!onFloor && arena.bridges) {
+            for (let i = 0; i < arena.bridges.length; i++) {
+              const r = arena.bridges[i];
+              if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+                onFloor = true;
+                break;
+              }
+            }
+          }
+          if (!onFloor) blocked = 1;
+        }
         if (blocked) {
           this.blocked[r * this.cols + c] = 1;
           continue;

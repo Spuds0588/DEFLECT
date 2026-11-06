@@ -8787,3 +8787,33 @@ light kits and the two boss fights remain tuning work, not shipped claims.
 
 **Next:** reduce the CAPCOM worm pressure without changing the plate floor, then tune STARFISH arm priority
 and USER add pressure with the full Compress gate as the control. Rerun the 26-config matrix after that.
+
+## 2026-11-06 — CAPCOM island routing and Pinball survival (v0.1.217)
+
+**Goal:** Clear the CAPCOM worm fight with the light kits without disturbing the Compress release gate,
+and keep the recovered STARFISH control green.
+
+**Changes.**
+- `ArenaNav` bakes CAPCOM's islands and authored bridges into its occupancy grid. The port objective uses
+  `lineOffFloor` to reject a straight route across the enclosing trench and takes the bridge route instead.
+- `closeBodyDash` now keeps the shipped straight-away dash on ordinary arenas and only scores the 16
+  floor-safe escape endpoints on island arenas, so an emergency dash does not leave the plate.
+- The CAPCOM port objective breaks off at 300 units of body threat instead of 210; this is the local worm
+  squad on the port plate, not a change to the shared combat threshold.
+- Reverted the unmeasured reserve, objective-dash and combat-layer additions. The temporary probe debug
+  flags were removed rather than committed.
+
+**Verification.**
+- Full release gate, Compress / SIEGE / three companions: **36/36**, zero deaths. CAPCOM 36.0 s,
+  DOCUMENT SCANNER 21.4 s, SPACE INVADERS 45.5 s, NETWORK BOARD 85.8 s.
+- CAPCOM Pinball 1P: **CLEAR 83.3 s**, 2 HP, 33 kills.
+- CAPCOM Aim Bot 1P: **FAIL 10.9 s** to the worm pack at the port, 2 kills, branch `port-standoff`.
+  The saved pre-experiment tree also failed (12.1 s), so there is no older clear to recover.
+- SPACE INVADERS STARFISH Compress 4P control: **CLEAR 45.5 s**, 0 deaths.
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,217.00 kB JS / 340.16 kB gzip); `npm run bench` clean (8P max projectiles 0.103 ms avg / 0.241 ms p99 / 0.868 ms max; bot swarm 0.182 ms avg / 0.515 ms p99 / 1.572 ms max; gauntlet 0.282 ms avg / 0.874 ms p99 / 1.697 ms max).
+
+**Decisions:** the island nav/dash pass ships because the release gate is green. CAPCOM Aim Bot remains
+open combat tuning; do not claim both light kits clear and do not buff health for positioning.
+
+**Next:** reduce the CAPCOM worm pressure for Aim Bot without changing the island floor, then retune
+STARFISH/USER light kits and rerun the 26-config matrix.

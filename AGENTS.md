@@ -271,9 +271,12 @@ centre, not a radial orbit around the port: the fallback port is 180 units from 
 above/below lane, crosses there and approaches from the port's side; walking straight back in re-entered
 the scan line after every sidestep. A virus inside 150 units also outranks the port shot; distance-only
 worm and sentry accounting let a virus spend the last segment at the closed port. These are local pilot
-rules. Do not solve CAPCOM by adding its islands to the shared nav floor: that change existed and stalled
-the Compress 4P control. CAPCOM light kits still lose the worm fight at the port; the inward station does
-not make them a release-gate configuration.
+rules. CAPCOM's islands and authored bridges are baked into `ArenaNav`, `lineOffFloor` rejects a straight
+objective line across a trench, and the island branch of `closeBodyDash` scores an emergency dash back onto
+a plate; non-island arenas keep the shipped straight-away dash. This island pass is allowed only while the
+Compress 4P gate stays green (36/36, CAPCOM 36.0 s on v0.1.217). CAPCOM Pinball 1P clears in 83.3 s; Aim
+Bot still loses the worm fight at the port (10.9 s), so the light kits are not a release-gate
+configuration.
 
 ### D7 — Networking transport (decided 2026-10-28)
 `peerjs` with PeerJS's public cloud broker for v1 and BinaryPack serialization of nested numeric arrays.

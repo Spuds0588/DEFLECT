@@ -1580,7 +1580,8 @@ export class BotBrain {
       // face on the target (and a solid prop just stops the body in place). Cover in the
       // direct line gets the same A* detour the combat objective uses.
       const covered = this.lineBlocked(me, cx, cy, world.arena.pillars)
-        || this.gapBlocked(me, cx, cy, world.arena);
+        || this.gapBlocked(me, cx, cy, world.arena)
+        || (!!world.arena.islands && this.lineOffFloor(world, me.x, me.y, cx, cy));
       if (covered && this.followPath(me, cx, cy, world.arena)) {
         out.mx = this.detourX;
         out.my = this.detourY;
@@ -1610,7 +1611,9 @@ export class BotBrain {
       }
       return;
     }
-    if (threatD < 210 || virusD < 150) return;
+    // CAPCOM's worm squad starts on the port plate; break off at the lunge range there.
+    // Every other arena keeps the shipped 210 threshold.
+    if (threatD < (world.arena.islands ? 300 : 210) || virusD < 150) return;
     let port: any = null; let pd = Infinity;
     for (const b of world.props as any[]) {
       if (!b.active || !b.portal || b.portalExit) continue;
@@ -1973,20 +1976,65 @@ export class BotBrain {
     // In a boss room, a non-boss worm is an add. Let the boss-add branch fight it;
     // dashing away from it every cooldown only bought time and kept the boss alive.
     const hasBoss = world.worms.some((w) => w.active && w.bossKind >= 0);
+    if (!world.arena.islands) {
+      for (let i = 0; i < world.worms.length; i++) {
+        const w = world.worms[i];
+        if (!w.active) continue;
+        if (hasBoss && w.bossKind < 0) continue;
+        const dx = me.x - w.x;
+        const dy = me.y - w.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (d > (w.bossKind >= 0 ? 210 : 130)) continue;
+        out.mx = dx / d;
+        out.my = dy / d;
+        out.pressed |= ACTION.DASH;
+        return true;
+      }
+      return false;
+    }
+    let threat: any = null;
+    let threatD = Infinity;
     for (let i = 0; i < world.worms.length; i++) {
-      const w = world.worms[i];
+      const w = world.worms[i] as any;
       if (!w.active) continue;
       if (hasBoss && w.bossKind < 0) continue;
-      const dx = me.x - w.x;
-      const dy = me.y - w.y;
-      const d = Math.hypot(dx, dy) || 1;
-      if (d > (w.bossKind >= 0 ? 210 : 130)) continue;
-      out.mx = dx / d;
-      out.my = dy / d;
-      out.pressed |= ACTION.DASH;
-      return true;
+      const d = Math.hypot(me.x - w.x, me.y - w.y) || 1;
+      if (d > (w.bossKind >= 0 ? 210 : 130) || d >= threatD) continue;
+      threatD = d;
+      threat = w;
     }
-    return false;
+    if (!threat) return false;
+    const b = world.arena.bounds;
+    let bestX = 0;
+    let bestY = 0;
+    let bestScore = -Infinity;
+    const reach = PLAYER.dashSpeed * PLAYER.dashTime + PLAYER.radius + 24;
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      const dx = Math.cos(a);
+      const dy = Math.sin(a);
+      if (!this.dashSafe(world.arena, me.x, me.y, dx, dy, world.usbT)) continue;
+      const ex = me.x + dx * reach;
+      const ey = me.y + dy * reach;
+      if (ex < b.left + 54 || ex > b.right - 54 || ey < b.top + 54 || ey > b.bottom - 54) continue;
+      let clearance = 900;
+      for (let i = 0; i < world.worms.length; i++) {
+        const w = world.worms[i];
+        if (!w.active || (hasBoss && w.bossKind < 0)) continue;
+        clearance = Math.min(clearance, Math.hypot(ex - w.x, ey - w.y));
+      }
+      const away = ((me.x - threat.x) * dx + (me.y - threat.y) * dy) / (threatD || 1);
+      const score = clearance + away * 24;
+      if (score <= bestScore) continue;
+      bestScore = score;
+      bestX = dx;
+      bestY = dy;
+    }
+    if (bestScore === -Infinity) return false;
+    out.mx = bestX;
+    out.my = bestY;
+    out.pressed |= ACTION.DASH;
+    return true;
   }
 
   /**
@@ -2294,6 +2342,19 @@ export class BotBrain {
     return true;
   }
 
+  /** True when a straight walk would leave the authored floor (islands only). */
+  private lineOffFloor(world: World, x0: number, y0: number, x1: number, y1: number): boolean {
+    if (!world.arena.islands) return false;
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const steps = Math.min(32, Math.max(4, Math.ceil(Math.hypot(dx, dy) / 24)));
+    for (let s = 1; s < steps; s++) {
+      const t = s / steps;
+      if (world.offFloor(x0 + dx * t, y0 + dy * t)) return true;
+    }
+    return false;
+  }
+
   private lineBlocked(me: Player, tx: number, ty: number, pillars: readonly Rect[]): boolean {
     return this.firstBlocking(me.x, me.y, tx, ty, pillars, 10) >= 0;
   }
@@ -2464,11 +2525,34 @@ export class BotBrain {
    * collects it; on an open one that is a fall, so refuse the ones that end in the void.
    */
   private dashSafe(arena: ArenaDef, x: number, y: number, dx: number, dy: number, usbT = 0): boolean {
-    if (arena.walls !== 'open') return true;
     const reach = PLAYER.dashSpeed * PLAYER.dashTime + PLAYER.radius + 24;
     const ex = x + dx * reach;
     const ey = y + dy * reach;
     const b = arena.bounds;
+    // CAPCOM is walled but its floor is four plates. The old early return skipped this
+    // check on every walled arena, so an emergency dash could leave the plate over the
+    // trench and the fall grace could not walk back.
+    if (arena.islands) {
+      let onFloor = false;
+      for (let i = 0; i < arena.islands.length; i++) {
+        const r = arena.islands[i];
+        if (ex >= r.x + 8 && ex <= r.x + r.w - 8 && ey >= r.y + 8 && ey <= r.y + r.h - 8) {
+          onFloor = true;
+          break;
+        }
+      }
+      if (!onFloor && arena.bridges) {
+        for (let i = 0; i < arena.bridges.length; i++) {
+          const r = arena.bridges[i];
+          if (ex >= r.x + 8 && ex <= r.x + r.w - 8 && ey >= r.y + 8 && ey <= r.y + r.h - 8) {
+            onFloor = true;
+            break;
+          }
+        }
+      }
+      if (!onFloor) return false;
+    }
+    if (arena.walls !== 'open') return true;
     if (ex <= b.left + 24 || ex >= b.right - 24 || ey <= b.top + 24 || ey >= b.bottom - 24) return false;
     const disc = arena.disc;
     if (disc) {
