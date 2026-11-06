@@ -266,7 +266,10 @@ result with
 `MORE LEVELS COMING SOON`. GRID ZERO's outer edge is open to shots and beams (but not bodies), so the Worm
 can be hit on its staged approach before it crosses the lip. Bot QA now stations beside the announced
 lane instead of chasing the head, and holds a clamped floor station under the Storm Cloud;
-`.tmp/campaign-solo-bot-check.ts` runs that audit across all 36 nodes.
+`.tmp/campaign-solo-bot-check.ts` runs that audit across all 36 nodes. The normal completion gate is
+Compress, SIEGE, three companions (`PROGRAM=9 BOTS=3 STYLE=2`): it clears 36/36 without invulnerability.
+An `INVULN=1` clear is reachability evidence only; other programs and party sizes are recorded as tuning
+data, not release gates.
 
 The campaign continues after REBOOT through NETWORK SWITCH, DOCUMENT SCANNER, FAX MACHINE, SMART WATCH
 and BUSINESS LAPTOP, then through the road-trip chapter (CROSSROADS, CAR NAVIGATION, CAR RADIO, TRAFFIC

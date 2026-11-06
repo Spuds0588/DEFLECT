@@ -236,7 +236,7 @@
       "riseHeight": 360,
       "aoe": 240,
       "damage": 1,
-      "knockback": 1050,
+      "knockback": 760,
       "cooldown": 3.2
     },
     "charge": {
@@ -245,7 +245,7 @@
       "speed": 800,
       "dashTime": 0.62,
       "damage": 1,
-      "knockback": 1520,
+      "knockback": 960,
       "cooldown": 4.2,
       "deflectSpeed": 1100,
       "deflectDamage": 14,
@@ -382,7 +382,7 @@
   "USER": {
     "slots": 1,
     "radius": 330,
-    "hp": 480,
+    "hp": 400,
     "introTime": 3.2,
     "hoverY": 176,
     "bob": 18,

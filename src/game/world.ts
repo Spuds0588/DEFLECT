@@ -13221,6 +13221,17 @@ export class World {
   ): void {
     amount = this.memoryDamage(sourceSlot, amount);
     if (!p.alive || p.iframes > 0 || phased(p) || p.travelT > 0) return;
+    // A campaign boss is the clear condition. Once its body is down, a fist ring or an
+    // add already in the room must not turn that win into a failure during the clear
+    // hold. The authored boss is gone; the node is won even if the last bolt lands.
+    if (
+      this.campaign &&
+      this.campaignBoss >= 0 &&
+      this.campaignBossSpawned &&
+      this.minibossLiveCount(this.campaignBoss) === 0
+    ) {
+      return;
+    }
     // Campaign is a party run: no member's fire damages another member, including
     // the human's own shots. This is stronger than the gauntlet crossfire toggle and
     // is what keeps a companion from ever becoming an aggro target or a traitor.

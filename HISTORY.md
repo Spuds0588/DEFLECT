@@ -8588,3 +8588,61 @@ Storm Cloud, then compare the three bot styles on the same 36-node run.
 **Next:** tune the shared solo death nodes (MAINBOARD, SMART WATCH, AIRPORT, AIR TRAFFIC, CAPCOM,
 SATELLITE, SPACE INVADERS, NETWORK BOARD) and decide whether the Mega Worm fight should fit a shorter
 session; human-check the two boss stations.
+
+## 2026-11-06 — Campaign completion audit and party-target fix
+
+**Goal:** Run the shipped IMPOSSIBLE campaign pilot through all 36 nodes, then compare player programs and
+party sizes.
+
+**Changes.**
+- `BotBrain.pickTarget` now treats every campaign player as an ally, including slot 0. The audit host no
+  longer targets its own companions.
+- `BotBrain.dashSafe` rejects a satellite dash endpoint off the hull; `floorSweep` clears an unsafe dash
+  before it commits.
+- Extended the local campaign probe with `BOTS=0..3` and campaign party bots.
+- Updated AGENTS.md D67 for the all-slot campaign ally rule.
+
+**Verification.**
+- Compress 4P, invulnerable: 36/36. Every objective and boss is reachable after the satellite dash guard.
+- Compress 4P, normal: 34/36. SATELLITE ends in a VOID fall at 22.8 s; NETWORK BOARD ends in a boss death
+  at 45.8 s.
+- Probe after the party-target fix: 1P 29/36, 2P 30/36, 3P 29/36, 4P 29/36.
+- Compress after the party-target fix: 1P 31/36, 2P 29/36, 3P 30/36, 4P 34/36.
+- Solo program matrix: 23–31/36; no program clears all 36 normally.
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,208.76 kB JS / 337.33 kB gzip; existing chunk warning);
+  `npm run bench` clean; `git diff --check` clean.
+
+**Next:** Normal completion is still blocked by a SATELLITE hit/knockback fall and the NETWORK BOARD boss
+survival check. 36/36 is objective reachability, not a normal one-life clear. Do not publish this as a
+completed campaign release until those two runs pass without invulnerability.
+
+## 2026-11-06 — Campaign normal completion (v0.1.212)
+
+**Goal:** Make the shipped IMPOSSIBLE campaign pilot clear all 36 authored nodes without invulnerability,
+then record which other programs and party sizes still need tuning.
+
+**Changes.**
+- SATELLITE: `floorSweep` now finds the nearest plate when the body is already off the hull, keeps a
+  150-unit inward margin near the lip, and clears a dash whose endpoint is in space. `IDLE_HANDS` slam and
+  charge knockback are 760/960, down from 1050/1520, so an edge shove is recoverable inside the fall grace.
+- USER: the finale pilot holds a `hitR + 95` body-surface station, dashes perpendicular to the committed
+  fist circles at 60% of the windup, and treats that tell ahead of an add. USER HP is 400.
+- Campaign boss death now ends damage against the party once the authored boss body is gone and no other
+  body of that kind remains. A lingering fist ring or add cannot turn a cleared node into a failure.
+- Campaign target selection already treats every player slot as an ally; this pass keeps that rule for
+  the local audit host as well as companions.
+
+**Verification.**
+- Normal gate, Compress / SIEGE / three companions: **36/36**, 0 deaths, exit 0. SATELLITE 34.2 s,
+  NETWORK BOARD 63.0 s, REBOOT 206.9 s.
+- Cross-config sample: Probe 4P **30/36** (REBOOT timeout; CAR NAVIGATION, AIR TRAFFIC, PONG, SPACE
+  INVADERS and NETWORK BOARD deaths); Compress 1P **32/36** (AIR TRAFFIC, CAPCOM, SPACE INVADERS and
+  NETWORK BOARD deaths). These are tuning data, not the release gate.
+- `npm run build` 0 (1,209.98 kB JS / 337.76 kB gzip); `npm run bench` clean (8P max projectiles 0.167 ms
+  avg / 0.408 ms p99; gauntlet max 0.479 ms avg / 3.348 ms p99, 8.750 ms max); `git diff --check` 0.
+- Version stamps bumped to **0.1.212** in `package.json`, `package-lock.json`, `index.html`, `src/main.ts`
+  and `public/sw.js`.
+
+**Next:** tune the remaining solo and non-Compress death nodes, then human-check the campaign. The
+Compress 4P normal clear is the current reproducible gate; invulnerable runs remain reachability evidence
+only.

@@ -1,4 +1,4 @@
-import { AIMBOT, ATOMIZE, BOLT, BUFFER, BUG, COMPRESS, COPYPASTA, EMITTER, FISHER, GHOST, KABOOM, PINBALL, PLAYER, SIM_DT, STORM_CLOUD, TOXIC, WEDGE, type Rect } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BUFFER, BUG, COMPRESS, COPYPASTA, EMITTER, FISHER, GHOST, KABOOM, PINBALL, PLAYER, SIM_DT, STORM_CLOUD, TOXIC, USER, WEDGE, type Rect } from './config';
 import { MINIBOSS } from './minibosses';
 import { PROGRAM_ID } from './programs';
 import { POWERUP_KIND } from './powerups';
@@ -11,6 +11,7 @@ import {
   usbCenterX,
   usbCenterY,
   usbFloorAt,
+  satelliteFloorAt,
   KEYPAD_STATE,
   type ArenaDef,
 } from './arenas';
@@ -1177,6 +1178,81 @@ export class BotBrain {
       for (let i = 1; i <= 10; i++) { const k = (travel * i) / 10; if (!on(me.x + mx * k, me.y + my * k)) return false; }
       return true;
     };
+    // Once a body is past the lip, the short lookahead below cannot find a clear step
+    // (the nearest plate is farther than one quarter-second of walking). Search for the
+    // nearest floor and commit to it before any combat branch, or reversing a bad input
+    // just walks farther into space. The fall grace is steerable for this recovery.
+    if (!on(me.x, me.y)) {
+      let bx = 0;
+      let by = 0;
+      let bd = Infinity;
+      for (let r = 6; r <= 140; r += 6) {
+        for (let i = 0; i < 16; i++) {
+          const a = (i / 16) * Math.PI * 2;
+          const px = me.x + Math.cos(a) * r;
+          const py = me.y + Math.sin(a) * r;
+          if (!on(px, py)) continue;
+          if (r < bd) {
+            bd = r;
+            bx = px;
+            by = py;
+          }
+        }
+        if (bd < Infinity) break;
+      }
+      out.held = 0;
+      out.pressed = 0;
+      if (bd < Infinity) {
+        out.mx = (bx - me.x) / (bd || 1);
+        out.my = (by - me.y) / (bd || 1);
+      }
+      return;
+    }
+    // SATELLITE is a narrow hull with real drops on every side. A boss shove can carry a
+    // body far enough past the lip that the 0.6 s fall grace cannot walk it back. Keep a
+    // margin from the nearest void and lean inward; the combat branch still owns facing
+    // and attacks, but it does not get to station the body on the edge.
+    if (world.arena.satellite) {
+      let vx = 0;
+      let vy = 0;
+      let vd = Infinity;
+      for (let r = 6; r <= 150; r += 6) {
+        for (let i = 0; i < 16; i++) {
+          const a = (i / 16) * Math.PI * 2;
+          const px = me.x + Math.cos(a) * r;
+          const py = me.y + Math.sin(a) * r;
+          if (on(px, py)) continue;
+          if (r < vd) {
+            vd = r;
+            vx = px;
+            vy = py;
+          }
+        }
+        if (vd < Infinity) break;
+      }
+      if (vd < 150) {
+        const dx = me.x - vx;
+        const dy = me.y - vy;
+        const d = Math.hypot(dx, dy) || 1;
+        let mx = out.mx * 0.35 + dx / d;
+        let my = out.my * 0.35 + dy / d;
+        const len = Math.hypot(mx, my);
+        if (len > 1) {
+          mx /= len;
+          my /= len;
+        }
+        out.mx = mx;
+        out.my = my;
+      }
+    }
+    // A dash covers far more than this sweep. Never let a branch commit one whose
+    // endpoint is in space, even when the short walk ahead of it is still on the hull.
+    if ((out.pressed & ACTION.DASH) !== 0 && (out.mx !== 0 || out.my !== 0)) {
+      const len = Math.hypot(out.mx, out.my) || 1;
+      if (!this.dashSafe(world.arena, me.x, me.y, out.mx / len, out.my / len, world.usbT)) {
+        out.pressed &= ~ACTION.DASH;
+      }
+    }
     if (out.mx !== 0 || out.my !== 0) {
       const len = Math.hypot(out.mx, out.my) || 1; const mx = out.mx / len; const my = out.my / len;
       if (clear(mx, my)) return;
@@ -1305,6 +1381,32 @@ export class BotBrain {
     }
     const guardUp = nearBolts > 0;
 
+    // USER commits both palms after 60% of the fist windup. The two impact circles are
+    // separated horizontally, so the only clean escape is perpendicular to them: dash
+    // down or up, whichever side has more arena. A sentry in the room does not get to
+    // outrank this tell, or the pilot trades its last segment for a chip shot.
+    if (boss.bossKind === MINIBOSS.USER && boss.user && boss.user.state === 1) {
+      const st = boss.user;
+      if (st.t >= USER.hands.windup * 0.6) {
+        const reach = USER.hands.aoe + PLAYER.radius + 6;
+        const d1 = Math.hypot(me.x - st.fistX, me.y - st.fistY);
+        const d2 = Math.hypot(me.x - st.fist2X, me.y - st.fist2Y);
+        if (Math.min(d1, d2) < reach) {
+          const b = world.arena.bounds;
+          out.mx = 0;
+          const down = b.bottom - me.y;
+          const up = me.y - b.top;
+          // USER owns the ceiling. Prefer the lower half unless it has no room left.
+          out.my = down >= 260 ? 1 : up >= 260 ? -1 : down >= up ? 1 : -1;
+          out.held = 0;
+          out.pressed = 0;
+          if (((me as any).dashCharges ?? 0) > 0) out.pressed |= ACTION.DASH;
+          this.steerBranch = 'user-fist';
+          return true;
+        }
+      }
+    }
+
     // Anything already inside its own reach outranks the plan.
     if (this.closeBodyDash(world, me, out)) {
       this.steerBranch = 'dash-out';
@@ -1316,11 +1418,14 @@ export class BotBrain {
     const crx = me.x - boss.x;
     const cry = me.y - boss.y;
     const cbd = Math.hypot(crx, cry) || 1;
-    if (cbd < 260) {
+    // USER is a 330-radius ceiling body, not a small duel boss. Its contact reach is
+    // roughly 330 + a player radius, so a 260 centre-stop stands inside the body.
+    const clearR = boss.bossKind === MINIBOSS.USER ? Math.max(0, boss.hitR ?? 0) + 80 : 260;
+    if (cbd < clearR) {
       out.mx = crx / cbd;
       out.my = cry / cbd;
       out.held |= ACTION.LOCK | ACTION.BOLT;
-      if (cbd < 200 && ((me as any).dashCharges ?? 0) > 0) out.pressed |= ACTION.DASH;
+      if (cbd < clearR - 40 && ((me as any).dashCharges ?? 0) > 0) out.pressed |= ACTION.DASH;
       this.steerBranch = 'clear';
       return true;
     }
@@ -1471,15 +1576,17 @@ export class BotBrain {
       const prx0 = me.x - boss.x;
       const pry0 = me.y - boss.y;
       const side = prx0 * -fy + pry0 * fx >= 0 ? 1 : -1;
-      const tx = boss.x + -fy * side * this.punishR;
-      const ty = boss.y + fx * side * this.punishR;
+      // USER's surface is its body, so the punish station is measured from that surface.
+      const parkR = boss.bossKind === MINIBOSS.USER ? bossR + 95 : this.punishR;
+      const tx = boss.x + -fy * side * parkR;
+      const ty = boss.y + fx * side * parkR;
       const dx = tx - me.x;
       const dy = ty - me.y;
       const d = Math.hypot(dx, dy) || 1;
       const prx = me.x - boss.x;
       const pry = me.y - boss.y;
       const pbd = Math.hypot(prx, pry) || 1;
-      if (pbd < this.punishR + 80) {
+      if (pbd < parkR + 80) {
         // Getting behind the body must not mean walking through it: orbit at radius while
         // sliding around the head, never let the straight line to the punish spot cross it.
         out.mx = (-pry / pbd) * this.strafeDir + (prx / pbd) * 0.7;
@@ -1654,13 +1761,14 @@ export class BotBrain {
   private pickTarget(world: World, me: Player): void {
     let best = -1;
     let bestScore = 1e12;
-    // Campaign companions are on the player's side for the whole run. They never
-    // target another player or bot, even if the human shoots them. Their fire is
-    // filtered in `World.damagePlayer`, so this is a rule, not a temporary truce.
-    const companion = world.campaign && this.slot > 0;
+    // Every player body in a campaign is on the same side for the whole run. No
+    // campaign brain targets another player or bot, even if the human shoots them.
+    // Their fire is filtered in `World.damagePlayer`, so this is a rule, not a
+    // temporary truce. Slot 0 matters for local AI pilots and campaign audits.
+    const ally = world.campaign;
     for (let i = 0; i < world.players.length; i++) {
       if (i === this.slot) continue;
-      if (companion) continue;
+      if (ally) continue;
       const p = world.players[i];
       if (!p.active || !p.alive || p.cloakT > 0) continue;
       const dx = p.x - me.x;
@@ -2005,6 +2113,7 @@ export class BotBrain {
       }
     }
     if (arena.usb && !usbFloorAt(arena, ex, ey, usbT)) return false;
+    if (arena.satellite && !satelliteFloorAt(arena, ex, ey)) return false;
     return true;
   }
 

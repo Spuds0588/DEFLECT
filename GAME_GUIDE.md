@@ -585,6 +585,9 @@ a permanent, non-interactive display loop, `?ui=0` hides the canvas UI for one l
 phone layout and `?debug=1` exposes a read-only inspection handle. None of them appear in a menu or a
 snapshot.
 
+Campaign bot completion uses `PROGRAM=9 BOTS=3 STYLE=2`: Compress, SIEGE, three companions must clear all
+36 nodes without invulnerability. `INVULN=1` is a separate reachability check, not a completed run.
+
 ## Things to test
 
 This build is a test rig as much as a game. A useful pass:

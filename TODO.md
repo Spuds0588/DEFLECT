@@ -2,6 +2,16 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Campaign normal completion (2026-11-06, v0.1.212)
+
+- [x] Compress / SIEGE / three companions clears all 36 nodes without invulnerability: 36/36, 0 deaths.
+- [x] SATELLITE recovers an off-hull body to the nearest plate, keeps a 150-unit edge margin, and rejects unsafe dash endpoints; IDLE_HANDS knockback is 760/960.
+- [x] USER holds a body-surface station, evades the committed fist circles, and is tuned to 400 HP; post-boss campaign damage cannot fail a won node.
+- [x] Cross-config sample recorded: Probe 4P 30/36, Compress 1P 32/36. Remaining failures are REBOOT timeout, CAR NAVIGATION, AIR TRAFFIC, PONG, SPACE INVADERS, CAPCOM and NETWORK BOARD.
+- [x] `npx tsc --noEmit`, `npm run build`, `npm run bench` and `git diff --check` pass.
+- [ ] Tune the remaining solo and non-Compress death nodes; these are not release gates yet.
+- [ ] Human pass on the campaign, especially REBOOT, AIR TRAFFIC and the USER finale.
+
 ## Campaign solo bot audit + staged boss fix (2026-11-06, v0.1.211)
 
 - [x] `BotBrain.fightBoss` measures large bosses by body surface (`hitR`), not centre distance.
@@ -4089,3 +4099,12 @@ Neither is a network arena; if one becomes a campaign node it follows D13/D41 an
 - Reserve a static band around the screen edge for enemy portals; no screen element may intrude on it.
 - Open decisions: cycle trigger/time per screen, whether the ticket print is a live safe window or a
   hazard, whether the ticket itself is cover, and how the screen phase is stored and reset.
+
+## CAMPAIGN BOT COMPLETION — 2026-11-06 (superseded by v0.1.212)
+
+- [x] Historical baseline: best configuration was Compress with three companions at 34/36. Resolved in
+      v0.1.212; the normal gate now clears 36/36.
+- [x] Satellite edge/knockback recovery: `floorSweep` finds the nearest plate, keeps a 150-unit edge margin,
+      and clears unsafe dash endpoints.
+- [x] Tuned the two encounters: IDLE_HANDS knockback reduced and USER HP/station/evade adjusted. Normal
+      Compress 4P clears SATELLITE and NETWORK BOARD.

@@ -399,6 +399,27 @@ separates reachability from combat death; `STYLE=0..2` runs DUELIST/TRICKSTER/SI
 clear at 358.9 s and 154.8 s respectively with invulnerability. This remains local-only bot behavior; no
 snapshot fields.
 
+### D78 — Campaign normal completion guardrails (decided 2026-11-06)
+
+The shipped IMPOSSIBLE pilot must clear the authored campaign **without** invulnerability. A 36/36
+`INVULN=1` run only proves objective reachability; it is not completion. The release gate is Compress,
+SIEGE, three companions (`PROGRAM=9 BOTS=3 STYLE=2`), and it must clear 36/36 with no failures.
+
+- SATELLITE: `floorSweep` recovers a body that is already off the hull to the nearest plate before any
+  combat branch, keeps a 150-unit inward margin from the lip, and strips a dash whose endpoint is in
+  space. `IDLE_HANDS.slam.knockback`/`charge.knockback` are 760/960 so an edge shove is recoverable inside
+  the 0.6 s grace. Do not restore the old 1050/1520 values or replace the steerable fall with an instant
+  satellite-only save.
+- USER: the finale is a 330-radius ceiling body. The pilot holds a body-surface station (`hitR + 95`),
+  dashes perpendicular to the committed fist circles at 60% of the windup, and prioritizes that tell over
+  a live add. USER HP is 400; do not restore 480 without rerunning the full normal gate.
+- A campaign boss is the clear condition. Once `campaignBossSpawned` is true and
+  `minibossLiveCount(campaignBoss) === 0`, `World.damagePlayer` ignores later damage, so a lingering fist
+  ring or add cannot turn a won node into a failed run. This is campaign-only; gauntlet death rules do not
+  change.
+- `.tmp/campaign-solo-bot-check.ts` is the reusable gate. Keep normal and `INVULN=1` results separate.
+  Any change to these paths needs the full 36-node normal run, not only the two blocker nodes.
+
 ### ROCKET NAVIGATION reflector (decided 2026-11-02)
 
 The rocket's flown trajectory is a **shot-only dotted reflector**, not a wall. Projectiles bounce off the
@@ -472,8 +493,9 @@ the solid band. The car route is unaffected and remains body geometry.
 
 ### D67 — Campaign companions: permanent allies, permanent loss (decided 2026-11-04)
 
-Campaign companions are **permanent allies**. `BotBrain.pickTarget` skips every other player when
-`world.campaign && slot > 0`, so a companion never acquires a human or bot target, even after being shot.
+Campaign companions are **permanent allies**. `BotBrain.pickTarget` skips every other player whenever
+`world.campaign` is true, including slot 0, so no campaign brain acquires a human or bot target even
+after being shot. Slot 0 matters for a local AI pilot and the campaign audit.
 `World.damagePlayer` rejects party-on-party damage in campaign runs in both directions; there is no
 `campaignAllyAggro`/`campaignAllyHostile` turn path and no lock-intent betrayal. Campaign friendly fire is
 a locked rule, not a setup option, and the `World` constructor forces it off. This is local-only state and
