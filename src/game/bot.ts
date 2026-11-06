@@ -1,4 +1,4 @@
-import { AIMBOT, ATOMIZE, BOLT, BUFFER, BUG, COMPRESS, COPYPASTA, EMITTER, FISHER, GHOST, KABOOM, PINBALL, PLAYER, SIM_DT, STORM_CLOUD, TOXIC, USER, WEDGE, type Rect } from './config';
+import { AIMBOT, ATOMIZE, BOLT, BUFFER, BUG, COMPRESS, COPYPASTA, EMITTER, FISHER, GHOST, KABOOM, PINBALL, PLAYER, SCANNER, SIM_DT, STORM_CLOUD, TOXIC, USER, WEDGE, type Rect } from './config';
 import { MINIBOSS } from './minibosses';
 import { PROGRAM_ID } from './programs';
 import { POWERUP_KIND } from './powerups';
@@ -13,6 +13,12 @@ import {
   usbFloorAt,
   satelliteFloorAt,
   KEYPAD_STATE,
+  FLIP_STATE,
+  flipRowRectAt,
+  SCANNER_STATE,
+  scannerLaserY,
+  SERVER_HEAT_STATE,
+  serverHeatStateAt,
   type ArenaDef,
 } from './arenas';
 import { circleRect, hitScratch } from './collision';
@@ -103,6 +109,36 @@ const STYLES: readonly BotStyle[] = [
 ];
 
 /**
+ * How much room a program gives a predictable floor hazard, and how early it will spend
+ * a dash to clear one. The light, no-self-heal kits need the most respect: Aim Bot has
+ * no defensive skill, Bad Lag's escape is a speed window, and Pinball survives by
+ * keeping its dash bank. Six-segment programs can afford to hold their ground.
+ */
+interface SurvivalProfile {
+  /** Multiplier on every hazard clearance radius. */
+  hazard: number;
+  /** Normalized danger (0..1) at which an escape dash is allowed. */
+  dashAt: number;
+}
+
+const BASE_SURVIVAL: SurvivalProfile = { hazard: 1, dashAt: 1 };
+const SURVIVAL: Readonly<Partial<Record<number, SurvivalProfile>>> = {
+  [PROGRAM_ID.PROBE]: { hazard: 1, dashAt: 0.95 },
+  [PROGRAM_ID.WEDGE]: { hazard: 1, dashAt: 0.95 },
+  [PROGRAM_ID.FISHER]: { hazard: 1.05, dashAt: 0.95 },
+  [PROGRAM_ID.SWEEP]: { hazard: 1, dashAt: 0.95 },
+  [PROGRAM_ID.TOXIC]: { hazard: 1.05, dashAt: 0.95 },
+  [PROGRAM_ID.KABOOM]: { hazard: 1.05, dashAt: 0.95 },
+  [PROGRAM_ID.BUFFER]: { hazard: 1.25, dashAt: 0.8 },
+  [PROGRAM_ID.ATOMIZE]: { hazard: 0.9, dashAt: 1.1 },
+  [PROGRAM_ID.GHOST]: { hazard: 1.05, dashAt: 0.9 },
+  [PROGRAM_ID.COMPRESS]: { hazard: 0.9, dashAt: 1.1 },
+  [PROGRAM_ID.PINBALL]: { hazard: 1.15, dashAt: 0.75 },
+  [PROGRAM_ID.COPYPASTA]: { hazard: 1.05, dashAt: 0.9 },
+  [PROGRAM_ID.AIMBOT]: { hazard: 1.4, dashAt: 0.7 },
+};
+
+/**
  * Shot types a guard or lash can send back. Mines (1), bug walls (2) and the two
  * bomber shells (8, 9) are excluded by the world's deflect branches; a threat that
  * cannot be returned must be dodged instead.
@@ -172,6 +208,7 @@ export class BotBrain {
   private detourY = 0;
   private readonly pathX = new Float32Array(NAV_MAX_PATH);
   private readonly pathY = new Float32Array(NAV_MAX_PATH);
+  private readonly hazardRect: Rect = { x: 0, y: 0, w: 0, h: 0 };
   private pathCount = 0;
   private pathIndex = 0;
   private pathTimer = 0;
@@ -225,6 +262,7 @@ export class BotBrain {
     if (!body || !body.active || !body.alive) return;
     if (world.phase !== 'live' && world.phase !== 'practice') return;
     this.objectiveFrame(world, body, out);
+    this.hazardFrame(world, body, out);
     this.floorSweep(world, body, out);
   }
 
@@ -1170,6 +1208,168 @@ export class BotBrain {
    * plan the pilot just made.
    */
   /** Boss model on every exit: the assault must not be skipped by an early return. */
+  /**
+   * Predictable floor hazards outrank the current firing plan. This is deliberately
+   * separate from `avoidFurniture`: the boss and objective branches return before the
+   * normal steering path, so a scanner line or a flapping row used to catch a pilot that
+   * was busy aiming. The first hazard in the strongest band wins; two opposing pushes
+   * would otherwise cancel and stand the body in both.
+   */
+  private hazardFrame(world: World, me: Player, out: InputFrame): void {
+    const profile = SURVIVAL[me.program] ?? BASE_SURVIVAL;
+    const hpScale = me.hp <= 1 ? 1.25 : 1;
+    const pad = profile.hazard * hpScale;
+    let bestX = 0;
+    let bestY = 0;
+    let bestWeight = 0;
+    let wantsDash = false;
+    const add = (x: number, y: number, weight: number, dash: boolean): void => {
+      if (weight <= bestWeight) return;
+      bestX = x;
+      bestY = y;
+      bestWeight = weight;
+      wantsDash = dash;
+    };
+
+    const scanner = world.scanner;
+    if (
+      scanner &&
+      (world.scannerPhase === SCANNER_STATE.warn ||
+        world.scannerPhase === SCANNER_STATE.down ||
+        world.scannerPhase === SCANNER_STATE.up)
+    ) {
+      // The warning beat is the only clean setup window. Start leaving the platen
+      // before the head drops, not after the live line is already on the body.
+      const line = world.scannerPhase === SCANNER_STATE.warn
+        ? scanner.y
+        : scannerLaserY(scanner, world.scannerT);
+      const half = SCANNER.width * 0.5 + PLAYER.radius * me.shrink + 90 * pad;
+      if (
+        line >= 0 &&
+        me.x > scanner.x - 40 &&
+        me.x < scanner.x + scanner.w + 40 &&
+        Math.abs(me.y - line) < half
+      ) {
+        const left = me.x - (scanner.x - 28);
+        const right = scanner.x + scanner.w + 28 - me.x;
+        const weight = 1 - Math.abs(me.y - line) / half;
+        add(left < right ? -1 : 1, 0, 0.55 + weight * 0.45, Math.abs(me.y - line) < 90 * pad);
+      }
+    }
+
+    const flip = world.flip;
+    if (flip) {
+      for (let i = 0; i < world.flipStates.length; i++) {
+        const state = world.flipStates[i];
+        if (state !== FLIP_STATE.warn && state !== FLIP_STATE.flap) continue;
+        const row = flipRowRectAt(flip, i, this.hazardRect);
+        const margin = (state === FLIP_STATE.flap ? 18 : 46) * pad;
+        if (
+          me.x < row.x - margin ||
+          me.x > row.x + row.w + margin ||
+          me.y < row.y - margin ||
+          me.y > row.y + row.h + margin
+        ) {
+          continue;
+        }
+        const dl = me.x - (row.x - margin);
+        const dr = row.x + row.w + margin - me.x;
+        const dt = me.y - (row.y - margin);
+        const db = row.y + row.h + margin - me.y;
+        const nearest = Math.min(dl, dr, dt, db);
+        if (nearest === dl) add(-1, 0, state === FLIP_STATE.flap ? 1 : 0.62, false);
+        else if (nearest === dr) add(1, 0, state === FLIP_STATE.flap ? 1 : 0.62, false);
+        else if (nearest === dt) add(0, -1, state === FLIP_STATE.flap ? 1 : 0.62, false);
+        else add(0, 1, state === FLIP_STATE.flap ? 1 : 0.62, false);
+      }
+    }
+
+    const server = world.arena.server;
+    const heat = server?.heat;
+    if (server && heat) {
+      let card = 0;
+      for (let i = 0; i < server.modules.length; i++) {
+        const module = server.modules[i];
+        if (module.kind !== 'card') continue;
+        const state = serverHeatStateAt(heat, card++, world.serverHeatT);
+        if (state === SERVER_HEAT_STATE.rest) continue;
+        const x = module.x - heat.pad;
+        const y = module.y - heat.pad;
+        const w = module.w + heat.pad * 2;
+        const h = module.h + heat.pad * 2;
+        const margin = (state === SERVER_HEAT_STATE.hot ? 30 : 62) * pad;
+        if (me.x < x - margin || me.x > x + w + margin || me.y < y - margin || me.y > y + h + margin) {
+          continue;
+        }
+        const dl = me.x - (x - margin);
+        const dr = x + w + margin - me.x;
+        const dt = me.y - (y - margin);
+        const db = y + h + margin - me.y;
+        const nearest = Math.min(dl, dr, dt, db);
+        const weight = state === SERVER_HEAT_STATE.hot ? 1 : 0.55;
+        if (nearest === dl) add(-1, 0, weight, false);
+        else if (nearest === dr) add(1, 0, weight, false);
+        else if (nearest === dt) add(0, -1, weight, false);
+        else add(0, 1, weight, false);
+      }
+    }
+
+    const watch = world.watch;
+    if (watch) {
+      const cx = watch.face.x + watch.face.w * 0.5;
+      const cy = watch.face.y + watch.face.h * 0.5;
+      const rx = me.x - cx;
+      const ry = me.y - cy;
+      const radius = Math.hypot(rx, ry) || 1;
+      const handX = Math.cos(world.watchAngle);
+      const handY = Math.sin(world.watchAngle);
+      const along = rx * handX + ry * handY;
+      const lateral = -rx * handY + ry * handX;
+      const clearance = watch.handWidth * 0.5 + PLAYER.radius + 54 * pad;
+      if (
+        along > 4 &&
+        radius < watch.handLength + PLAYER.radius + 52 * pad &&
+        Math.abs(lateral) < clearance
+      ) {
+        const side = lateral >= 0 ? 1 : -1;
+        const weight = 1 - Math.abs(lateral) / clearance;
+        add(-handY * side, handX * side, 0.65 + weight * 0.35, Math.abs(lateral) < 24 * pad);
+      }
+    }
+
+    const light = world.arena.light;
+    const traffic = world.traffic;
+    if (light && traffic && (traffic.lightWarnT > 0 || traffic.lightActive)) {
+      const stage = light.stages[traffic.lightStage];
+      const zone = stage ? light.zones[stage.zone] : undefined;
+      if (stage && zone) {
+        const dx = me.x - traffic.zoneX[stage.zone];
+        const dy = me.y - traffic.zoneY[stage.zone];
+        const d = Math.hypot(dx, dy) || 1;
+        const reach = zone.radius + PLAYER.radius + 46 * pad;
+        if (d < reach) {
+          add(dx / d, dy / d, traffic.lightActive ? 1 : 0.58, false);
+        }
+      }
+    }
+
+    if (bestWeight <= 0.15) return;
+    const len = Math.hypot(bestX, bestY) || 1;
+    out.mx = bestX / len;
+    out.my = bestY / len;
+    // Keep the current guard/lock/fire intent. The old branch cleared every held
+    // action, which made a scanner escape drop its port damage and take another pass.
+    if (
+      wantsDash &&
+      bestWeight >= profile.dashAt &&
+      me.dashT <= 0 &&
+      me.dashCharges > 0 &&
+      this.dashSafe(world.arena, me.x, me.y, out.mx, out.my, world.usbT)
+    ) {
+      out.pressed |= ACTION.DASH;
+    }
+  }
+
   /** Swept floor contact: a narrow seam is invisible to an endpoint lookahead. */
   private floorSweep(world: World, me: Player, out: InputFrame): void {
     const on = (x: number, y: number) => !world.offFloor(x, y);

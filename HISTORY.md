@@ -8678,3 +8678,40 @@ allied bodies easier to kill.
 
 **Next:** tune Bad Lag's host survival and the remaining Aim Bot/Pinball death nodes, then human-check the
 campaign. The time field itself no longer penalizes the party.
+
+## 2026-11-06 — Bot survivability profiles (v0.1.214)
+
+**Goal:** Run the whole roster at 1P and 4P, find the shared survivability failures, and tune the pilot
+and light kits rather than adding health segments.
+
+**Baseline.** 26 configurations, IMPOSSIBLE / SIEGE / 420 s. 1P cleared **369/468** nodes and 4P cleared
+**391/468**; only Compress 4P cleared all 36. The shared deaths were AIRPORT flip rows, SMART WATCH hand,
+DOCUMENT SCANNER, GPU heat and traffic-light circles, not one program-specific kit failure.
+
+**Changes.**
+- Added `BotBrain.hazardFrame`: it reads the scanner warning/live line, flip rows, GPU heat cards, watch
+  hand and traffic-light circles after objective/boss intent and before `floorSweep`.
+- The escape now preserves the current held/pressed attack and guard intent. Clearing it made a scanner
+  escape drop port damage, take another pass, and was the main regression in the first tuning pass.
+- Added local `SurvivalProfile`s: Aim Bot `1.4×`, Bad Lag `1.25×`, Pinball `1.15×` hazard clearance and
+  earlier escape dashes; Compress and Atomize stay at `0.9×`. No health segments were added.
+- Scanner avoidance starts on the warning beat, not only once the live line is close.
+
+**Verification.**
+- Final matrix: 1P **380/468** (+11), 4P **404/468** (+13), aggregate **784/936** (+24). Compress 4P
+  remains **36/36**.
+- Aim Bot 1P 25→**28**, 4P 28→**31**. Bad Lag 1P 32→31, 4P 30→**32**. Pinball 1P 27→**29**, 4P
+  32→32. Probe 1P 30→31; Wedge 4P 29→30; Fisher 1P 27→29; Sweep 1P 27→28 and 4P 29→30; Toxic 4P
+  30→31; Kaboom 1P 25→26 and 4P 28→31; Atomize 1P 29→30 and 4P 29→30; Ghost 4P 29→30; Copy Pasta
+  1P 28→29. One regression: Bad Lag 1P 32→31.
+- Remaining blockers are still DOCUMENT SCANNER, AIR TRAFFIC, SPACE INVADERS and NETWORK BOARD, with CAPCOM
+  in several solo runs. These are objective/boss pacing and damage problems; more hazard clearance will not
+  fix them.
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,212.99 kB JS / 338.95 kB gzip); `npm run bench` clean (8P max
+  projectiles 0.109 ms avg / 0.283 ms p99; gauntlet 0.282 ms avg / 0.791 ms p99, 2.032 ms max);
+  `git diff --check` 0.
+- Version stamps bumped to **0.1.214** in `package.json`, `package-lock.json`, `index.html`, `src/main.ts`
+  and `public/sw.js`.
+
+**Next:** tune DOCUMENT SCANNER port damage/scan pacing, AIR TRAFFIC, SPACE INVADERS and NETWORK BOARD.
+The pilot now survives floor hazards better, but it cannot out-heal a boss or an objective race.

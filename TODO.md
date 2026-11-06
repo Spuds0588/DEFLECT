@@ -2,6 +2,16 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Bot survivability profiles (2026-11-06, v0.1.214)
+
+- [x] Full 26-config baseline: 1P 369/468, 4P 391/468. Only Compress 4P cleared 36/36; scanner, AIRPORT, SMART WATCH, GPU heat and traffic-light deaths were shared.
+- [x] `BotBrain.hazardFrame` reads scanner warning/live line, flip rows, GPU heat cards, watch hand and traffic circles after objective/boss intent and before floor recovery.
+- [x] `SurvivalProfile` gives Aim Bot 1.4×, Bad Lag 1.25× and Pinball 1.15× hazard clearance plus earlier escape dashes; Compress and Atomize stay at 0.9×. The escape preserves current fire/guard intent.
+- [x] Final matrix: 1P 380/468 (+11), 4P 404/468 (+13), aggregate 784/936 (+24). Compress 4P remains 36/36. Aim Bot 25→28 (1P) and 28→31 (4P); Bad Lag 32→31 and 30→32; Pinball 27→29 and 32→32.
+- [x] `npx tsc --noEmit`, `npm run build`, `npm run bench` and `git diff --check` pass.
+- [ ] Remaining failures are still concentrated at DOCUMENT SCANNER, AIR TRAFFIC, SPACE INVADERS and NETWORK BOARD, with CAPCOM in several solo runs; these need objective/boss tuning rather than more hazard clearance.
+- [ ] Human pass on the campaign after the bot profiles.
+
 ## Bad Lag time dilation + program matrix (2026-11-06, v0.1.213)
 
 - [x] Bad Lag's time dilation is an enemy-only field in party modes. Campaign companions, infection runners and the local gauntlet squad keep full movement, attack rate, cooldowns and projectile speed; local PvP opponents and training bots still slow.

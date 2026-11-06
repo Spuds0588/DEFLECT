@@ -249,6 +249,16 @@ sentry fire is type 3 and missile pods are type 4, and the old type-0 filter mad
 the shield in the attract demo. Close shots are swatted; bombs, mines and bug walls are dodged. Do not
 narrow the bot threat filter back to the player bolt type.
 
+Bots also read the **telegraphed floor hazards**: the scanner line and its warning beat, flapping AIRPORT
+rows, GPU heat skirts, the SMART WATCH hand and live TRAFFIC LIGHT circles. `BotBrain.hazardFrame` runs
+after the objective/boss intent and before `floorSweep`, so a hazard cannot be skipped just because a
+combat branch returned early. It changes footing and may spend a dash, but it **keeps the current held /
+pressed intent**; the scanner regression came from clearing fire and guard during the escape, which made
+the pilot leave the port, lose damage, and take another scan pass. Per-program `SurvivalProfile`s widen
+the hazard margin and lower the dash threshold for the light kits: Aim Bot `1.4`, Bad Lag `1.25`, Pinball
+`1.15`, while six-segment Compress and Atomize stay conservative at `0.9`. These are local-only pilot
+profiles and never enter `Snapshot`; do not add health segments to solve a positioning problem.
+
 ### D7 — Networking transport (decided 2026-10-28)
 `peerjs` with PeerJS's public cloud broker for v1 and BinaryPack serialization of nested numeric arrays.
 No JSON. Room code = 4 base-32 characters → peer id `defl-arena-v1-<CODE>`. Self-hosting the broker and

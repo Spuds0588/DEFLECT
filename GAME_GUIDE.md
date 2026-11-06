@@ -71,9 +71,11 @@ deflections, and `SIEGE` holds range and charges beams. Wedge bots plant their b
 and incoming fire, and Fisher bots drop a lure before stepping away; a bot never chases its own beacon.
 Bots raise the guard against incoming shots outside melee reach, including sentry bolts and missiles in
 the gauntlet, and swat the ones that arrive close. Bots route around cover with a small per-arena grid
-path instead of hugging the nearest wall. Against staged bosses, a bot holds the announced Mega Worm
-lane from the side and a floor station under the Storm Cloud; it does not chase either body off the map.
-They are local-only test opponents; they do not occupy multiplayer room slots.
+path instead of hugging the nearest wall. They also step off scanner lines, flapping rows, GPU heat
+cards, the SMART WATCH hand and active TRAFFIC LIGHT circles; Aim Bot, Bad Lag and Pinball give those
+hazards the widest berth. Against staged bosses, a bot holds the announced Mega Worm lane from the side
+and a floor station under the Storm Cloud; it does not chase either body off the map. They are local-only
+test opponents; they do not occupy multiplayer room slots.
 
 ### Gauntlet
 
