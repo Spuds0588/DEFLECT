@@ -264,7 +264,9 @@ the tail, then spins its head before the final red-square explosion; the room cl
 A final-node clear plays Kitty's trail beat, pulls the party through the portal, then parks on the level
 result with
 `MORE LEVELS COMING SOON`. GRID ZERO's outer edge is open to shots and beams (but not bodies), so the Worm
-can be hit on its staged approach before it crosses the lip.
+can be hit on its staged approach before it crosses the lip. Bot QA now stations beside the announced
+lane instead of chasing the head, and holds a clamped floor station under the Storm Cloud;
+`.tmp/campaign-solo-bot-check.ts` runs that audit across all 36 nodes.
 
 The campaign continues after REBOOT through NETWORK SWITCH, DOCUMENT SCANNER, FAX MACHINE, SMART WATCH
 and BUSINESS LAPTOP, then through the road-trip chapter (CROSSROADS, CAR NAVIGATION, CAR RADIO, TRAFFIC

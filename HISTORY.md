@@ -8554,3 +8554,37 @@ brief, the temporary music shutdown, Mega Worm visual/volley fixes, and a wider 
 
 **Next:** hand off a fresh-slot campaign debug run through OFFICE LAN, checking permanent allies, the
 NETWORK SWITCH fallback source, next-only device reveal, worm dash, pipe/firewall feedback and Mega Worm.
+
+## 2026-11-06 — Staged-boss bot reachability fix (v0.1.211)
+
+**Goal:** finish the solo campaign audit by making the IMPOSSIBLE pilot able to reach the Mega Worm and
+Storm Cloud, then compare the three bot styles on the same 36-node run.
+
+**Changes.**
+- `BotBrain.fightBoss` now measures large bosses by body surface (`hitR`) instead of centre distance; this
+  is the range gate that kept the pilot silent against the 312-radius Storm Cloud.
+- The Mega Worm pilot stations 220 units perpendicular to the announced lane anchor and uses the existing
+  A* route when cover blocks the approach. It no longer holds the arena centre or tries to chase an
+  off-map head; the central GRID ZERO pillar was pinning it for the whole REBOOT fight.
+- The Storm Cloud pilot holds a floor station clamped inside the arena below the body and fires by surface
+  distance, instead of walking into the wall after the cloud drifts past the lip.
+- Added the reusable `.tmp/campaign-solo-bot-check.ts` audit: one player, no companions, tutorials skipped,
+  `STYLE=0..2`, optional `INVULN=1`, per-node time budget.
+- Bumped all version stamps to 0.1.211 and recorded D77 in AGENTS.md, the QA section in README/GAME_GUIDE,
+  and the new TODO section.
+
+**Verification.**
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,208.61 kB JS / 337.28 kB gzip; existing chunk-size warning);
+  `npm run bench` clean (8P max projectiles 0.193 ms avg / 0.405 ms p99; gauntlet max 0.505 ms avg /
+  4.515 ms p99 at 29.1 live threats); `git diff --check` clean.
+- Staged-boss probes: `LEVEL=4 SECONDS=420 INVULN=1` clears at 358.9 s; `LEVEL=17 SECONDS=300 INVULN=1`
+  clears at 154.8 s. Before the patch the same runs stalled at full Mega Worm HP and 92 Storm Cloud HP.
+- One-life style audit at 240 s, Probe / IMPOSSIBLE: DUELIST 27/36, TRICKSTER 28/36, SIEGE 28/36. All three
+  time out on REBOOT with 46 boss HP left; the remaining failures are shared combat deaths, not a
+  style-specific reachability bug. SIEGE is not the weak point.
+- Baseline before this pass: 28/36 one-life, with eight deaths; invulnerable reruns cleared six and left
+  only the two staged-boss stalls.
+
+**Next:** tune the shared solo death nodes (MAINBOARD, SMART WATCH, AIRPORT, AIR TRAFFIC, CAPCOM,
+SATELLITE, SPACE INVADERS, NETWORK BOARD) and decide whether the Mega Worm fight should fit a shorter
+session; human-check the two boss stations.

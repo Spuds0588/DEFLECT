@@ -1397,6 +1397,67 @@ export class BotBrain {
     const rx = me.x - boss.x;
     const ry = me.y - boss.y;
     const bd = Math.hypot(rx, ry) || 1;
+    const bossR = Math.max(0, boss.hitR ?? 0);
+    // Fire control reads the body surface, not its centre. A storm cloud is 312 units
+    // across and a Mega Worm head is 138; centre-distance gating kept the pilot outside
+    // its own bolt range while the body was already hittable.
+    const surfaceD = Math.max(0, bd - bossR);
+    const b = world.arena.bounds;
+
+    // The Mega Worm's later passes are staged off the map and cross four fixed lanes. A
+    // pilot pinned to an edge cannot chase it into the void, and the arena centre only
+    // covers two of the four lanes. Stand beside the staged lane, out of the sweep, and
+    // shoot the head as it crosses. `anchor*` is the lane the game is about to fly, so
+    // this is the same telegraph the player sees rather than a guess at the next angle.
+    if (boss.mega && Number.isFinite(boss.anchorX) && Number.isFinite(boss.anchorY)) {
+      const lane = Math.hypot(Math.cos(boss.angle ?? 0), Math.sin(boss.angle ?? 0)) || 1;
+      const perpX = -Math.sin(boss.angle ?? 0) / lane;
+      const perpY = Math.cos(boss.angle ?? 0) / lane;
+      const station = 220;
+      const tx = boss.anchorX + perpX * station;
+      const ty = boss.anchorY + perpY * station;
+      const dx = tx - me.x;
+      const dy = ty - me.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const covered =
+        this.lineBlocked(me, tx, ty, world.arena.pillars) || this.gapBlocked(me, tx, ty, world.arena);
+      if (covered && this.followPath(me, tx, ty, world.arena)) {
+        out.mx = this.detourX;
+        out.my = this.detourY;
+      } else if (d > 18) {
+        out.mx = dx / d;
+        out.my = dy / d;
+      }
+      out.held |= ACTION.LOCK;
+      if (surfaceD < 360 && !this.lineBlocked(me, boss.x, boss.y, world.arena.pillars)) {
+        out.held |= ACTION.BOLT;
+      }
+      this.steerBranch = 'boss-lane';
+      return true;
+    }
+
+    // The Storm Cloud owns the ceiling rather than the floor. Chasing its centre walks
+    // the pilot into the wall and under its rain; hold a firing station below the body's
+    // arena-clamped horizontal position instead. Its own wall overhang is intentional,
+    // so the station, not the boss, is what has to stay on the floor.
+    if (boss.bossKind === MINIBOSS.STORM_CLOUD) {
+      const targetX = Math.max(b.left + 90, Math.min(b.right - 90, boss.x));
+      const targetY = Math.min(b.bottom - 140, boss.y + bossR + 220);
+      const dx = targetX - me.x;
+      const dy = targetY - me.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d > 20) {
+        out.mx = dx / d;
+        out.my = dy / d;
+      }
+      out.held |= ACTION.LOCK;
+      if (surfaceD < 360 && !this.lineBlocked(me, boss.x, boss.y, world.arena.pillars)) {
+        out.held |= ACTION.BOLT;
+      }
+      if (guardUp || (this.threatSerial >= 0 && this.threatTime < 0.9)) out.held |= ACTION.SWING;
+      this.steerBranch = 'storm-station';
+      return true;
+    }
 
     if (bSpeed <= 120) {
       // Punish the park from behind the side the body will leave toward: the latched pass

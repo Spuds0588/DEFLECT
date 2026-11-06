@@ -381,6 +381,24 @@ virus feed becomes a worm feed in chapter 1 instead of a dead source the player 
   implemented family. A campaign `World` always passes its 1-based chapter.
 - `.tmp/chapter-threats-check.ts` owns the roster, opening-squad, port-remap and HOLDING wave checks.
 
+### D77 — Staged bosses are bot stations, not chases (decided 2026-11-06)
+
+`BotBrain.fightBoss` reads the body surface (`hitR`), not the centre, for range. A Storm Cloud's radius
+is 312 and it can drift beyond the arena lip; centre distance kept the pilot at the wall and silent while
+the body was already hittable. The pilot holds a station below the cloud's clamped horizontal position
+and fires when the surface is inside bolt range.
+
+The Mega Worm's later lanes are staged off-map and its four lanes are fixed. The pilot stations 220 units
+perpendicular to the announced `anchorX/anchorY` lane, using A* when the direct line crosses cover, then
+shoots the head as it crosses. The arena centre covers only the two horizontal lanes, and a centre-hold
+left the bot pinned on GRID ZERO's central pillar. Do not turn either boss approach into a chase, and do
+not fire on centre distance alone.
+
+`.tmp/campaign-solo-bot-check.ts` is the one-player, no-companion, tutorials-skipped audit. `INVULN=1`
+separates reachability from combat death; `STYLE=0..2` runs DUELIST/TRICKSTER/SIEGE. The two fixed bosses
+clear at 358.9 s and 154.8 s respectively with invulnerability. This remains local-only bot behavior; no
+snapshot fields.
+
 ### ROCKET NAVIGATION reflector (decided 2026-11-02)
 
 The rocket's flown trajectory is a **shot-only dotted reflector**, not a wall. Projectiles bounce off the

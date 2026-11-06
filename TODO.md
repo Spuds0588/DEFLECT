@@ -2,6 +2,17 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Campaign solo bot audit + staged boss fix (2026-11-06, v0.1.211)
+
+- [x] `BotBrain.fightBoss` measures large bosses by body surface (`hitR`), not centre distance.
+- [x] Mega Worm pilot stations 220 units beside the announced lane and routes around cover with A*; it no longer pins on GRID ZERO's central pillar or chases the head off-map.
+- [x] Storm Cloud pilot holds a floor station clamped inside the arena and fires by surface distance; it no longer walks into the wall after the off-map body.
+- [x] `.tmp/campaign-solo-bot-check.ts` covers one player, no companions, tutorials skipped, `STYLE=0..2` and `INVULN=1`. Both stalled bosses clear with invulnerability (REBOOT 358.9 s, AIR TRAFFIC 154.8 s).
+- [x] One-life style audit at 240 s, Probe / IMPOSSIBLE: DUELIST 27/36, TRICKSTER 28/36, SIEGE 28/36. SIEGE is not the weak point; all three time out on REBOOT with the Mega Worm at 46 HP, so the shared issue is combat length/difficulty, not a style-specific reach failure.
+- [x] `npx tsc --noEmit`, `npm run build` (1,208.61 kB JS / 337.28 kB gzip), `npm run bench` and `git diff --check` pass.
+- [ ] Tune the shared one-life death nodes and decide whether a 359 s Mega Worm clear is acceptable for a 240 s audit/player session.
+- [ ] Human pass on REBOOT and AIR TRAFFIC with the new bot station; the audit is headless only.
+
 ## Campaign debug feedback (2026-11-06, v0.1.210)
 
 - [x] Campaign companions are permanent allies: never target a player, never turn hostile, and party fire is blocked in both directions at `World.damagePlayer`; `World` forces campaign friendly fire off.
