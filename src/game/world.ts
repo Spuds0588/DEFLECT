@@ -3888,11 +3888,12 @@ export class World {
       p.prevFacing = p.facing;
       if (this.usb) this.applyUsbPlayer(p, dt);
 
-      // Time effects. Fast-forward burns every per-player timer and attack at 2.5x;
-      // a slowed body (Bad Lag's dilation, everyone but the caster) runs at 0.3x.
+      // Time effects. Fast-forward burns every per-player timer and attack at 2.8x;
+      // Bad Lag's dilation is a hostile-field debuff: campaign companions and other
+      // party bodies keep their own clock, while local PvP opponents still slow.
       // Both effects run on the real clock, so their own timers tick on raw `dt`.
       const fast = p.fastT > 0;
-      const chilled = this.timeSlowT > 0 && p.slot !== this.timeSlowOwner;
+      const chilled = this.timeSlowT > 0 && this.timeSlowAffectsPlayer(p);
       const timeScale = (fast ? BUFFER.fastScale : 1) * (chilled ? BUFFER.slowScale : 1);
       // Walking is scaled here; dashes and plows keep their committed distance.
       p.speedMult = timeScale;
@@ -8995,9 +8996,23 @@ export class World {
   }
 
   /**
-   * Bad Lag's power: an hourglass burst that dilates the room. Every other body and
-   * every hostile projectile runs at 0.3x for five real seconds; the caster keeps
-   * their own clock, so the window is theirs to spend.
+   * Time dilation is a hostile-field debuff in a party run. Campaign companions,
+   * infection runners and the local gauntlet squad keep their own clock; enemy
+   * players in a local match and training bots still slow. A thrall is hostile even
+   * when the surrounding mode is co-op.
+   */
+  private timeSlowAffectsPlayer(p: Player): boolean {
+    if (p.slot === this.timeSlowOwner) return false;
+    if (p.thrall) return true;
+    if (this.campaign || this.infectionMode) return false;
+    if (this.mode === 'gauntlet' && this.attractMode && p.slot < this.attractSquad) return false;
+    return true;
+  }
+
+  /**
+   * Bad Lag's power: an hourglass burst that dilates hostile time. Enemy bodies and
+   * hostile projectiles run at 0.25x for 6.2 real seconds; the caster and their party
+   * keep full speed, so an ally is never punished for standing in the field.
    */
   private startTimeSlow(p: Player): void {
     p.laserChargeHeld = false;
@@ -9411,13 +9426,16 @@ export class World {
       proj.prevX = proj.x;
       proj.prevY = proj.y;
 
-      // Time dilation: a hostile shot, or one fired by a slowed body, crawls with its
-      // owner. The caster's own fire keeps full speed.
-      const pdt =
+      // Time dilation: hostile shots and shots from slowed enemy players crawl.
+      // Party projectiles keep full speed because their owners do. A projectile with
+      // no player owner is hostile when its type is 3 or higher.
+      const ownerPlayer = proj.owner >= 0 ? this.players[proj.owner] : null;
+      const dilated =
         this.timeSlowT > 0 &&
-        (proj.owner < 0 ? proj.type >= 3 : proj.owner !== this.timeSlowOwner)
-          ? dt * BUFFER.slowScale
-          : dt;
+        (proj.owner < 0
+          ? proj.type >= 3
+          : ownerPlayer !== null && this.timeSlowAffectsPlayer(ownerPlayer));
+      const pdt = dilated ? dt * BUFFER.slowScale : dt;
 
       if (proj.type === 1) {
         // Mines never travel. They arm and then wait until a hostile steps in; there

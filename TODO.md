@@ -2,6 +2,16 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Bad Lag time dilation + program matrix (2026-11-06, v0.1.213)
+
+- [x] Bad Lag's time dilation is an enemy-only field in party modes. Campaign companions, infection runners and the local gauntlet squad keep full movement, attack rate, cooldowns and projectile speed; local PvP opponents and training bots still slow.
+- [x] Arena hazards stay on the real clock; this is now safe because no allied body is slowed by them. Thralls remain hostile.
+- [x] `.tmp/badlag-party-check.ts`: campaign ally 1.00x movement, local PvP opponent 0.25x, ally projectile full time, compactor clock 1.00 s.
+- [x] Campaign matrix: Compress 4P 36/36; Bad Lag 4P 30/36; Bad Lag 1P 32/36; Pinball 4P 32/36; Aim Bot 4P 28/36. Prior Probe 4P 30/36 and Compress 1P 32/36 remain.
+- [x] `npm run build`, `npm run bench` and `git diff --check` pass.
+- [ ] Bad Lag host still dies at DOCUMENT SCANNER, AIRPORT, SATELLITE, SPACE INVADERS, GPU BOARD and NETWORK BOARD; 1P CAPCOM times out. Tune the host, not the party field.
+- [ ] Aim Bot and Pinball need their own death-node tuning; human pass remains.
+
 ## Campaign normal completion (2026-11-06, v0.1.212)
 
 - [x] Compress / SIEGE / three companions clears all 36 nodes without invulnerability: 36/36, 0 deaths.

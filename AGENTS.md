@@ -1251,11 +1251,14 @@ snapshots do not move. Identity:
   that body only. It is driven by `Player.fastT` (local-only) and a per-player `pdt` that scales
   cooldown/attack timers; `Player.speedMult` scales walking only, so dash and plow keep their committed
   distance. The duration runs on the real clock. Its skill cooldown is 7.5 s.
-- **Power**: **time dilation** for `6.2 s`. Every body except the caster, every hostile projectile, and the
-  whole gauntlet/drone simulation run at `0.25x` (`World.timeSlowT`/`timeSlowOwner`). The field runs on
-  the real clock and never enters `Snapshot`; a guest never sees it because online still runs Probe. The
-  charge takes 0.45 s and the cooldown is 7.25 s. The renderer washes the frame edges in Bad Lag pink while
-  it is live and marks the caster's dock as the live heavy.
+- **Power**: **time dilation** for `6.2 s`. Hostile bodies, hostile projectiles, and the whole
+gauntlet/drone simulation run at `0.25x` (`World.timeSlowT`/`timeSlowOwner`). Campaign companions,
+  infection runners and the local gauntlet squad keep full movement, attack rate, cooldowns and projectile
+  speed; local PvP opponents and training bots still slow. This is the co-op convention: an ally standing
+  in the field must not lose agency or eat a raw arena-hazard clock while their body crawls. Thralls are
+  hostile even in a party mode. The field runs on the real clock and never enters `Snapshot`; a guest never
+  sees it because online still runs Probe. The charge takes 0.45 s and the cooldown is 7.25 s. The renderer
+  washes the frame edges in Bad Lag pink while it is live and marks the caster's dock as the live heavy.
 - **Bots**: tap fast-forward when a target sits 40–320 units away; the generic heavy hold builds the
   dilation. Bot lead and engagement range use the true 740-speed, 2.1-second hourglass. Both ride the same
   `InputFrame` path as a human.

@@ -8646,3 +8646,35 @@ then record which other programs and party sizes still need tuning.
 **Next:** tune the remaining solo and non-Compress death nodes, then human-check the campaign. The
 Compress 4P normal clear is the current reproducible gate; invulnerable runs remain reachability evidence
 only.
+
+## 2026-11-06 — Bad Lag time dilation is party-safe (v0.1.213)
+
+**Goal:** test different player programs and party sizes, and stop Bad Lag's time dilation from making
+allied bodies easier to kill.
+
+**Changes.**
+- `World.timeSlowAffectsPlayer` makes the dilation an enemy-only debuff in party modes. Campaign
+  companions, infection runners and the local gauntlet squad keep full movement, attack rate, cooldowns
+  and projectile speed. Local PvP opponents and training bots still slow; thralls stay hostile.
+- `updateProjectiles` uses the same rule, so a party shot no longer crawls while its owner moves normally.
+  Arena hazards remain on the real clock, which is now safe because no allied body is slowed against them.
+- Added `.tmp/badlag-party-check.ts` and documented the convention in AGENTS D21 and the game guide.
+- Bumped all version stamps to 0.1.213.
+
+**Verification.**
+- Probe: campaign ally movement `1.00x` (was about `0.26x`), local PvP opponent `0.25x`, ally projectile
+  keeps full time, compactor clock advances `1.00 s` in one real second. Probe exits 0.
+- Campaign matrix, all IMPOSSIBLE / SIEGE / 420 s: Compress 4P **36/36** (control, 0 failures); Bad Lag
+  4P **30/36**; Bad Lag 1P **32/36**; Pinball 4P **32/36**; Aim Bot 4P **28/36**. Prior Probe 4P 30/36
+  and Compress 1P 32/36 remain.
+- Bad Lag 4P failures: DOCUMENT SCANNER 7.3 s, AIRPORT 15.5 s, SATELLITE 14.6 s, SPACE INVADERS 85.7 s,
+  GPU BOARD 4.8 s, NETWORK BOARD 28.2 s. Every one was the host dying (or the host plus companions in
+  SPACE INVADERS), not an ally killed by the dilated clock. Bad Lag 1P adds an AIR TRAFFIC death and a
+  CAPCOM timeout.
+- `npm run build` 0 (1,210.22 kB JS / 337.85 kB gzip); `npm run bench` clean (8P max projectiles 0.096 ms
+  avg / 0.221 ms p99; gauntlet max 0.397 ms avg / 1.968 ms p99, 8.695 ms max); `git diff --check` 0.
+- Version stamps bumped to **0.1.213** in `package.json`, `package-lock.json`, `index.html`, `src/main.ts`
+  and `public/sw.js`.
+
+**Next:** tune Bad Lag's host survival and the remaining Aim Bot/Pinball death nodes, then human-check the
+campaign. The time field itself no longer penalizes the party.
