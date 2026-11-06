@@ -12,6 +12,11 @@ const STORAGE_VOLUME = 'deflect.volume';
 const STORAGE_MUSIC_VOLUME = 'deflect.musicVolume';
 const STORAGE_SFX_VOLUME = 'deflect.sfxVolume';
 const STORAGE_MENU_VOLUME = 'deflect.menuVolume';
+/**
+ * Licensed soundtrack hook. The old synth bed is deliberately muted until a licensed
+ * track is installed; the scheduler stays intact so the replacement is a data swap.
+ */
+const MUSIC_ENABLED = false;
 const MASTER_LEVEL = 0.6;
 /**
  * Music sits on its own bus so the soundtrack never fights the combat cues.
@@ -446,6 +451,7 @@ export class AudioEngine {
 
   /** Match loop. Called by every session start; a mode change restarts the scheduler. */
   startMusic(mode: MusicMode = 'match'): void {
+    if (!MUSIC_ENABLED) return;
     if (!this.musicWanted || !this.ctx || !this.musicBus) return;
     const modeChanged = this.musicMode !== mode;
     if (this.musicPlaying && !modeChanged) return;

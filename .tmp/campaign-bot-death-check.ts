@@ -45,7 +45,8 @@ world.tutorial = null;
 world.phase = 'practice';
 world.campaignPhase = 'assault';
 const bot = world.players[1];
-world.damagePlayer(bot, 99, 0, 0, 0, 0);
+// Campaign party fire is locked off, so a death probe uses an environmental source.
+world.damagePlayer(bot, 99, -1, 0, 0, 0);
 if (bot.alive) fail('the companion survived lethal damage');
 if (bot.active) fail('the dead companion was still on the floor');
 if ((world.campaignBotsLost & 2) === 0) fail('the world did not record the lost companion');

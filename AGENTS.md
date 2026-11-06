@@ -398,13 +398,14 @@ the solid band. The car route is unaffected and remains body geometry.
   CAR NAVIGATION, CAR RADIO, TRAFFIC CAMERA, TRAFFIC LIGHT, CROSSWALK SIGN), the airport chapter (AIRPORT
   with FILE BLOB, AIR TRAFFIC with STORM CLOUD), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE
   with IDLE HANDS), the arcade chapter (SPACE CADET, PONG, SPACE INVADERS with STARFISH, ARCADE RACING,
-  FIGHTING GAME, DUCK HUNTER, TETRIS), the food-court trio (SNACK MACHINE, TOKEN DISPENSER, SODA MACHINE),
-  and the KISSINGFACE chapter (CPU BOARD, GPU BOARD, DISPATCH YARD, LOAD BALANCER, NETWORK BOARD with
-  USER as the finale). The 36 levels collapse to 13 chapter stops. The live route is data in `CAMPAIGN_ROUTE`; `drawCampaignRoad`
-  renders completed, current, revealed and generic future stops. A clear shows the route plate only at a
-  level boundary (`cleared.nodeId !== next.nodeId`); the four BUILD ROOT rooms and each themed chapter
-  share one node and portal straight through. Sector is not the gate. Future branches are just extra
-  `links` entries, and unseen stops stay dim generic nodes until the preceding node is cleared.
+  FIGHTING GAME, DUCK HUNTER, TETRIS), the food-court trio (SNACK MACHINE, TOKEN DISPENSER, SODA MACHINE),  and the KISSINGFACE chapter (CPU BOARD, GPU BOARD, DISPATCH YARD, LOAD BALANCER, NETWORK BOARD with
+  USER as the finale). The 36 levels are 36 route stops, not 13 collapsed nodes: `CAMPAIGN_ROUTE` mirrors
+  `PLAYABLE_CAMPAIGN_LEVELS`. `drawCampaignRoad` splits the run into its seven network tabs and draws the
+  current network's reached devices plus **only the next device**; nothing beyond it appears, and an
+  unvisited network is a sealed numbered tab. A clear always shows the route plate, then auto-advances
+  after `CAMPAIGN.routeRevealTime`; START, Enter/Space or the button continues immediately, and START on
+  the gamepad / Escape leaves the run. The four BUILD ROOT rooms are still one network and portal straight
+  through behind the plate. Sector is not the gate. Future branches are just extra `links` entries.
 - QA boot `?campaign=N&program=P&bots=B` starts at a zero-based authored level with no save slot; use it
   to enter a late chapter for testing. It never enters menus or `Snapshot`.
 - **Route revisions.** A story slot stores the completed count plus `routeVersion` (`STORY_ROUTE_VERSION`).
@@ -424,6 +425,13 @@ the solid band. The car route is unaffected and remains body geometry.
   every selected bot on the floor from the first campaign frame, and the main loop keeps their brains
   live through calibration, breach and assault. Do not restore the old minimum-one clamp or deactivate
   them on the assault transition. A companion lost under D67 is skipped instead of restored.
+- Every non-boss assault device must expose at least one live ingress. `spawnCampaignPorts` adds one
+  fallback portal on a clear floor square when an assault arena authored no `ingress`; this closed the
+  unwinnable NETWORK SWITCH opening. Ports are still cleared through the ordinary prop damage path, and
+  the fallback is local campaign content, never part of `Snapshot`.
+- Campaign combat camera is deliberately wider than the duel default: `CAMERA.zoomMin` 0.82 and
+  `CAMERA.zoomMax` 0.9. Do not restore the old maximum zoom-in; level 1 action outside the close frame was
+  invisible.
 - Melee identity: `swingReach`/`punchReach`, `punchDamage` and `punchKnockback` are the shared melee
   numbers. Preserve the health budget (D10); tune reach, damage and knockback, never `PLAYER.hp` or
   program health segments, without explicit approval.
@@ -436,22 +444,22 @@ the solid band. The car route is unaffected and remains body geometry.
 - NETWORK SWITCH pipes are transparent offscreen tubes. The renderer carries file cargo toward the
   mouth; a caught player travels to a random other mouth with `NETWORK.playerTransit` invulnerability
   and cooldown. Pipe geometry and transit remain local, never in `Snapshot`.
-- Mega Worm fly-bys fire one reflectable type-20 bolt from each side of the head. A stalled pass is
-  restaged by the `megaWatchT` recovery watchdog. Do not move the volley back to a tail node that is
-  offscreen.
+- Mega Worm fly-bys fire one reflectable type-20 bolt from each side of the head. The first volley waits
+  until the head is inside the arena lip (`flyT > 0.34`); later volleys repeat every 0.62 s. A stalled
+  pass is restaged by the `megaWatchT` recovery watchdog. Flyby speed is 1180 at full health and scales
+  through `rageSpeed` plus `rageBoost` below 35%, so the old low-health pace is now the starting pace.
+  Do not move the volley back to a tail node that is offscreen.
 - The Warden lesson combines each instruction with its bindings, catches three test shots, then catches
   three more while locked on a subject. HOLDING's clear plays `KITTY_NETWORK` before the pull.
 
-### D67 — Campaign companions: allies first, permanent loss (decided 2026-11-04)
+### D67 — Campaign companions: permanent allies, permanent loss (decided 2026-11-04)
 
-Campaign companions are allies, not free-for-all bodies. They never target another bot, and they only
-target a human after that human damages the specific bot while locked on it. A stray shot, splash or lock
-on another body never turns an ally. The lock test is `lockActive` or a retained
-`PLAYER.lockIntentWindow` (0.6 s) on `Player.lockIntentSlot`; a swing clears `lockActive` for its animation,
-so the retained intent is what makes a locked lash count. A turned bot may damage humans, never another
-bot. Allied bot fire passes through the party; only a turned bot's fire reaches a human. `World.campaignAllyAggro`
-owns the turn bits and `campaignAllyHostile(slot)` is the target gate in `BotBrain.pickTarget`. This is
-local-only state and never enters `Snapshot`.
+Campaign companions are **permanent allies**. `BotBrain.pickTarget` skips every other player when
+`world.campaign && slot > 0`, so a companion never acquires a human or bot target, even after being shot.
+`World.damagePlayer` rejects party-on-party damage in campaign runs in both directions; there is no
+`campaignAllyAggro`/`campaignAllyHostile` turn path and no lock-intent betrayal. Campaign friendly fire is
+a locked rule, not a setup option, and the `World` constructor forces it off. This is local-only state and
+never enters `Snapshot`.
 
 A companion death is permanent for the campaign run. `World.damagePlayer` sets `campaignBotsLost`, clears
 active/thrall and must not start `respawnT`; `activateCampaignBots` and `beginDrill` skip the lost mask.
@@ -498,9 +506,11 @@ solo and host-authoritative online co-op (D32); every other gauntlet threat stay
   then `chargeRecovery` and `chargeCooldown` follow. Cover and dashes beat the hit, not the commitment.
 - **Firewalls** are sweeping orange beams. They warn, then cross the arena and burn players, worms and
   viruses. Pillars cut both the visible beam and its damage; line of sight is real cover. Automatic
-  firewalls are **off**. `NETWORK SWITCH` has a manual starter at its west end; standing on it starts one
-  sweep from the opposite wall and begins a three-minute rearm. Setting `GAUNTLET.autoFirewalls` back to
-  true is still the only ambient firewall source.
+  firewalls are **off**. `NETWORK SWITCH` has a manual starter at its west end labeled `START FIREWALL` /
+  `DASH INTO PLATE`; only a body with `dashT > 0` inside the pad arms one sweep from the opposite wall, then
+  the plate begins a three-minute rearm. Standing or dwelling does nothing. The live beam is wider (74)
+  and its `enemyDamage` is 24, so it deletes most fodder instead of chipping it. Setting
+  `GAUNTLET.autoFirewalls` back to true is still the only ambient firewall source.
 - **Cascading errors** are yellow blocks with red exclamation marks. They spread outward block by block,
   damage on contact, and take three hits to delete one block. A new colony queues `GAUNTLET.errorBurst`
   blocks through the same edge ingress (assault family 4), so the first blocks arrive together at the
@@ -523,12 +533,13 @@ solo and host-authoritative online co-op (D32); every other gauntlet threat stay
   silhouettes do not ram; they keep their firing band. Cover ends both the travel and the hit.
 - Enemy fire is factional. A missed sentry shot can damage worms, viruses, and cascading errors. Sentries
   do not shoot their own pack because a projectile has no source silhouette to exclude safely.
-- **Friendly fire is a run rule, not a constant.** GAUNTLET and CAMPAIGN setup carry a `FRIENDLY FIRE`
-  toggle (default on, persisted as `deflect.friendlyFire`). On, the crossfire above works as written. Off,
-  enemy fire (hostile AI shots and the slot-1 thrall's bolts) passes through worms, viruses and error
-  blocks and only threatens players; sentry packs are still ignored because there is no source silhouette.
-  The rule never touches environmental damage (firewalls), worm/virus feeding, or the player's own shots.
-  It is local-only, set when the run is created, and never enters `Snapshot`.
+- **Friendly fire is a GAUNTLET run rule and is locked off in CAMPAIGN.** GAUNTLET setup carries a
+  `FRIENDLY FIRE` toggle (default on, persisted as `deflect.friendlyFire`). On, the crossfire above works
+  as written. Off, enemy fire (hostile AI shots and the slot-1 thrall's bolts) passes through worms,
+  viruses and error blocks and only threatens players; sentry packs are still ignored because there is no
+  source silhouette. CAMPAIGN has no toggle. The `World` constructor forces it off, `damagePlayer` blocks
+  any party source in either direction, and companions never target a party member. Environmental damage,
+  worm/virus feeding and enemy fire are unchanged. The rule is local-only and never enters `Snapshot`.
 - Every enemy assembles in over a short spawn window, holds still while its parts arrive, and de-rezzes
   into a size-scaled triangle burst on death.
 - **Floating bosses are not floor-culled.** `cullVoidThreats` skips Idle Hands: the palms hover over the
@@ -810,7 +821,8 @@ link is a `portal`, a paired `teleport`, or a shared `elevator`. Boss nodes carr
   emoji/Unicode/Wingdings mark: 👮 THE WARDEN (the LOCALHOST sector boss, not a separate character), 🐱 a
   friendly program who gets the players out when the infection breaks, and the User/Users AI antagonist at
   ROOT. Narration is **live over play** (never pauses `World`), reveals near-instantly, and is skippable per
-  line and per beat; campaign setup carries a persisted `STORY BEATS` skip toggle beside `FRIENDLY FIRE`.
+  line and per beat; campaign setup carries a persisted `STORY BEATS` skip toggle, while `FRIENDLY FIRE`
+  is a locked OFF rule rather than a control.
   Beats are cosmetic and must not gate gameplay, or a skipped replay would diverge. Cast, presentation rules
   and open questions live in `CAMPAIGN.md`. Narration is local presentation only: no new `PROGRAMS` entries,
   hulls, hitboxes, `World` bodies or `Snapshot` fields.
@@ -1798,8 +1810,10 @@ keeps it lower-left; a split view or more than one local player puts it top-cent
 ### Audio
 
 - One lazy `AudioContext`, unlocked on first gesture. Master gain + compressor. Master volume, mute,
-  soundtrack, sound-effects, and menu-sound levels persist in `localStorage` and are exposed in the
-  Audio settings tab.
+  sound-effects, and menu-sound levels persist in `localStorage`. The soundtrack slider is hidden while
+  `MUSIC_ENABLED = false`; `startMusic` returns before scheduling anything. The synth code stays as the
+  hook for a future licensed chiptune track. Do not re-enable the old bed; source/licensed music is
+  pending rights.
 - Digital timbres: square/triangle/saw oscillators with fast envelopes, short noise bursts through
   band/low-pass filters. Button click, shoot, swing, deflect chirp, wall bounce, explode, hit, dash,
   round arpeggio, victory motif. The music bed is a four-bar, 82 BPM lofi-house loop: seventh chords and

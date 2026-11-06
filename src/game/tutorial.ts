@@ -214,8 +214,8 @@ export const KITTY_NETWORK: readonly TutorialStep[] = [
   {
     id: 'network-route',
     speaker: 'SCRIPT_KITTY',
-    line: 'I AM PATCHING YOU INTO THE BACKBONE. CLEAR THE AREAS THEY ARE STILL IN, ONE BY ONE.',
-    readTime: 4.6,
+    line: 'WE ARE GOING ISLAND HOPPING: INFECTED DEVICE TO INFECTED DEVICE, NETWORK TO NETWORK, UNTIL WE FIND THE SOURCE AND DELETE IT.',
+    readTime: 5.6,
   },
 ];
 

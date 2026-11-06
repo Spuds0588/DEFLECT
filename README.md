@@ -251,8 +251,10 @@ threat family on a clock and stop when shot shut. Ports reuse the file-box damag
 entity type, respect the same live caps as a sentry pack, and gate the exit directly: the right-wall portal
 pull opens only when every port is shut **and** every live hostile from that room is gone. A destroyed port
 is removed in the same frame; `PORTAL_BREAK` throws the red-square burst, with no shrink. MAINBOARD and
-ROUTER mount their feeds on a wall with a 9-unit gap; REBOOT keeps its six tuned corner feeds. Ports are
-local content — campaign and infection only, never in a snapshot. REBOOT is fed by six corner ports; the
+ROUTER mount their feeds on a wall with a 9-unit gap; REBOOT keeps its six tuned corner feeds. Every
+non-boss assault node gets at least one live feed: if an arena authored no `ingress`, `spawnCampaignPorts`
+adds a fallback portal on a clear floor square. Ports are local content — campaign and infection only,
+never in a snapshot. REBOOT is fed by six corner ports; the
 Mega Worm is announced only after all six and their delivered bodies are cleared. REBOOT opens with its
 authored squad already on the floor (four sentries and a worm), so the arena is never an empty
 wait. During a pass the Worm fires jagged red balls to both sides; guard or lash one back into its body to
@@ -271,14 +273,17 @@ CLOUD), the space chapter (CAPCOM, ROCKET NAVIGATION, SATELLITE with IDLE HANDS)
 (SPACE CADET, PONG, SPACE INVADERS with STARFISH, ARCADE RACING, FIGHTING GAME, DUCK HUNTER, TETRIS), the
 food court (SNACK MACHINE, TOKEN DISPENSER, SODA MACHINE) and KISSINGFACE (CPU BOARD, GPU BOARD, DISPATCH
 YARD, LOAD BALANCER, NETWORK BOARD with the USER finale). A clear saves
-the slot. The route plate opens only when the next stop is a new chapter (`nodeId` changes); BUILD ROOT's
-four rooms and each themed chapter portal straight through. Completed stops stay lit, the current stop is
-ringed, the next stop is named, and unseen stops are dim generic nodes. The route is data (`CAMPAIGN_ROUTE`)
-with per-stop outgoing links, so a future branch needs another link rather than another transition system.
+the slot. Every clear shows the route plate, then auto-advances after `CAMPAIGN.routeRevealTime`; the button
+skips the wait, Enter/Space continues, and START on the gamepad or Escape leaves the run. The plate splits
+the run into its seven networks and draws the current network's reached devices plus only the next device;
+nothing beyond it is revealed. The four BUILD ROOT rooms are one network and portal straight through
+behind the plate. The route is per-level data (`CAMPAIGN_ROUTE`) with explicit outgoing links, so a future
+branch needs another link rather than another transition system.
 Every live-fire node opens with a short script_kitty landing blurb over play. Campaign bots are loaded on the first frame of every node; `NO BOTS`
-now means zero, not a forced drill companion. Companions are allies until the player damages that specific
-bot while locked on it. A dead companion stays lost across later nodes and a save written after a clear;
-a TPK retry restores only the bots lost in that arena.
+now means zero, not a forced drill companion. Campaign companions are permanent allies: they never target a
+player and party fire is locked off in both directions, even if the human shoots them. A dead companion
+stays lost across later nodes and a save written after a clear; a TPK retry restores only the bots lost in
+that arena.
 
 Each chapter introduces one threat family. BUILD ROOT and REBOOT are sentries and worms only; viruses
 unlock with NETWORK SWITCH and stay in the pool. ROAD TRIP, SPACE and KISSINGFACE introduce nothing new:
@@ -521,9 +526,11 @@ full-radius clamping.
 
 The Mega Worm now arrives at roughly three times its old silhouette, doubled health and a straight-line flight
 model. Campaign REBOOT gives it a slow harmless entrance pass and four fixed fly-by lanes with a wide arena
-camera; it never homes on the player after the entrance, and no small families spawn between passes. The
-reposition between lanes is a short beat, not a stall. Each pass fires a pair of jagged red balls to the
-Worm's sides; they are ordinary reflectable shots, and a returned one damages the boss on contact. Its body is
+camera; it never homes on the player after the entrance, and no small families spawn between passes. Its
+fly-by starts at 1180 (the old low-health pace) and scales faster below 35% health. The reposition between
+lanes is a short beat, not a stall. Each pass fires a pair of jagged red balls from the head sides; the
+first waits until the head is inside the arena lip, then repeats every 0.62 s. They are ordinary reflectable
+shots, and a returned one damages the boss on contact. Its body is
 one rigid chain with a capsule hit test, so a shot that lands between two plates still connects, and the
 heavy beam ends at the near edge of the body. Hits spark at the actual contact point. The minimap draws the
 whole segmented chain at its real footprint, not a single dot. A lethal hit plays one last pass, then bursts

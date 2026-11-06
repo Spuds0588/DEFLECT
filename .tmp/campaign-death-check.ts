@@ -56,7 +56,9 @@ function killAndWait(world: WorldType, slot: number, seconds = 4): boolean {
     p.hp = p.maxHp;
   }
   p.iframes = 0;
-  priv.damagePlayer(p, 99, 0, 1, 0, 0, 8); // SRC.VOID
+  // Environmental source: campaign party fire is locked off, so the player slot
+  // must not be used to down a companion in this probe.
+  priv.damagePlayer(p, 99, -1, 1, 0, 0, 8); // SRC.VOID
   if (p.alive) throw new Error(`slot ${slot} did not go down`);
   if (p.respawnT <= 0) throw new Error(`slot ${slot} went down without a respawn timer`);
   const frames = new Array(MAX_PLAYERS).fill(null);
@@ -65,9 +67,9 @@ function killAndWait(world: WorldType, slot: number, seconds = 4): boolean {
 }
 
 for (const phase of PRE_ASSAULT) {
-  // The pilot is downed in every phase. Drill partners only exist until the breach
-  // de-rezzes the squad, so they are only tested while they are on the roster.
-  const slots = phase === 'calibration' || phase === 'release' || phase === 'drill' ? [0, 1] : [0];
+  // Only the pilot has a training respawn. A downed companion is permanent under
+  // D67, even during the pre-assault phases; campaign-bot-death-check covers that.
+  const slots = [0];
   for (const slot of slots) {
     const world = makeWorld();
     const priv = world as unknown as { campaignPhase: string; tutorial: unknown };
@@ -89,7 +91,7 @@ for (const phase of PRE_ASSAULT) {
   priv.beginAssault();
   const p = world.players[0];
   p.iframes = 0;
-  priv.damagePlayer(p, 99, 0, 1, 0, 0, 8);
+  priv.damagePlayer(p, 99, -1, 1, 0, 0, 8);
   const frames = new Array(MAX_PLAYERS).fill(null);
   for (let t = 0; t < 5; t += SIM_DT) world.step(SIM_DT, frames);
   if (world.campaignPhase !== 'failed') throw new Error(`assault death left phase ${world.campaignPhase}`);
@@ -119,4 +121,4 @@ for (const phase of PRE_ASSAULT) {
   if (!awake) throw new Error('calibration never woke after the lesson finished');
 }
 
-console.log(`campaign-death-check: OK (${PRE_ASSAULT.length} pre-assault phases x 2 slots, assault stays fatal)`);
+console.log(`campaign-death-check: OK (${PRE_ASSAULT.length} pre-assault phases, player respawns, assault stays fatal)`);

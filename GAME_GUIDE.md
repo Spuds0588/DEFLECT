@@ -79,7 +79,8 @@ multiplayer room slots.
 `GAUNTLET` is a local threat sandbox, not ranked PvP and not networked. Pick an arena and begin a
 one-life run. Run setup has a `FRIENDLY FIRE` toggle, on by default: enemy shots can damage other threat
 families. Turn it off and hostile fire passes through worms, viruses and error blocks, so only you are at
-risk. The same saved rule applies to a campaign run. When your last health segment goes, the run ends and
+risk. Campaign has no toggle: party fire is locked off for the whole run, so companions can never turn on
+you. When your last health segment goes, the run ends and
 the results overlay records your callsign, arena, wave reached, survival time and kills. There is no
 in-run respawn; training is the practice space.
 
@@ -117,10 +118,10 @@ threats hold.
   single-stick rules. A virus that lines you up at 34–150 units winds up and **charges** in a straight
   line for 1 damage and a 540 shove; sidestep or dash to make it miss, then punish the recovery. They
   still infect worms and split on a timer.
-- **WORM DASH AND PARRY:** an ordinary worm that sees you between its bite range and dash range latches a
-  straight line, rears for 0.26 s, then lunges. A raised guard or a fresh melee swing inside the parry
-  window cancels the lunge and stuns the worm for one second. A late block still shoves both bodies apart
-  but deals no damage and stuns nobody.
+- **WORM DASH AND PARRY:** an ordinary worm that sees you between its bite range and 500 units latches a
+  straight line, rears for 0.22 s, then lunges at 620 speed. A raised guard or a fresh melee swing inside
+  the parry window cancels the lunge and stuns the worm for one second. A late block still shoves both
+  bodies apart but deals no damage and stuns nobody.
 - **SENTRIES:** pulse squares, triplex shotguns, homing trapezoids and dart flocks. They land in a zone
   and hold it, with a 100–250 unit leash instead of following you across the arena. Heavy triplex and
   homing silhouettes are much slower than the pulse and flock. A pulse square or a flock that finds you
@@ -135,8 +136,9 @@ threats hold.
   outward; the live cap grows over many waves.
 - **FIREWALLS:** orange beams that warn, then sweep across the arena burning players, worms and viruses.
   Pillars cut both the visible beam and the damage. Automatic firewalls are **off**. `NETWORK SWITCH`
-  carries one manual starter at its west end: stand on the plate to launch a sweep, then wait three
-  minutes for it to rearm.
+  carries one manual starter at its west end labeled `START FIREWALL`: dash into the plate to launch a
+  sweep from the opposite wall, then wait three minutes for it to rearm. Standing on it does nothing. The
+  beam is wide and hits enemy factions for 24, so it deletes most fodder immediately.
 - **HEALTH:** enemy hit points are deliberately low so a crowded screen can be cleared. Worms, viruses,
   errors and shooters all die faster than in v0.1.8; firewalls burn enemy factions harder.
 
@@ -180,12 +182,14 @@ room from the result screen; guests can leave. The host records the clear time l
 bot count (none to three), then your program. A filled slot shows the level and player count and resumes
 the run, skipping both steps. Bots take the programs you leave unused. A filled row also carries `CLEAR`,
 
-Bots are companions, not extra targets: they fight the room with you, and their fire passes through you.
-They only turn hostile if you damage that specific bot while locked on to it; a stray shot or splash does
-not. A companion that dies is gone for the rest of the run, across later rooms and a resumed save written
-after a clear. If the whole party goes down, `RETRY` brings back only the companions lost in that room; bots
-lost earlier stay lost. Companions do not use the training respawn. The route plate appears only when you cross to a new
-level; the four quarantine rooms are one level and portal straight through.
+Bots are permanent companions, not extra targets: they fight the room with you, never target you or
+another party member, and party fire is locked off in both directions. Shooting a companion will not make
+it turn, because campaign friendly fire is a rule of the run rather than a setup option. A companion that
+dies is gone for the rest of the run, across later rooms and a resumed save written after a clear. If the
+whole party goes down, `RETRY` brings back only the companions lost in that room; bots lost earlier stay
+lost. Companions do not use the training respawn. Every clear shows the route plate, which names the
+current network's devices reached so far and only the next device. It auto-advances after 3.6 seconds;
+Enter/Space continues now, and START on the gamepad or Escape leaves the campaign.
 which asks for confirmation before deleting the save. `START NEW GAME` takes the first empty slot; when all
 three are full it asks which save to replace. Replacing a slot deletes its old run before the new setup
 starts.
@@ -240,13 +244,14 @@ cat gets you out of quarantine, then six corner feeds fill the arena with sentri
 six feeds and every body before the **Mega Worm** is announced. Its entrance is a slow,
 harmless fly-past with a roar; you keep moving and fighting during it, and the camera stays centered on
 the wide arena rather than chasing it offscreen. It then repeats four fixed straight lanes with a pause
-between passes, and no little enemies spawn between runs. At 35% health it screams again and its passes
-speed up. Its death spends one last scream and bursts into a lot of little red squares. GRID ZERO has no
+between passes, and no little enemies spawn between runs. Its fly-by starts at 1180, the old low-health pace, and gets faster again
+below 35% health. Its death spends one last scream and bursts into a lot of little red squares. GRID ZERO has no
 outer wall: your shots and beams leave the plate, so you can open fire before the Worm crosses the lip;
 your body is still held on the floor. That node does not
 end on a kill count or a port sweep; it ends when the boss is dead. After the kill, Kitty says the infection
-got into the network here and patches the party into the backbone. Her portal pulls the party through and a
-route plate names the next device; unseen stops are dim generic nodes. The live chain continues through
+got into the network here and explains the plan: island hopping from infected device to infected device,
+network to network, until the party reaches the source and deletes it. Her portal pulls the party through
+and a route plate names only the next device. The live chain continues through
 `NETWORK SWITCH`, `DOCUMENT SCANNER`, `FAX MACHINE`, `SMART WATCH` and `BUSINESS LAPTOP`, then the road-trip
 chapter (`CROSSROADS`, `CAR NAVIGATION`, `CAR RADIO`, `TRAFFIC CAMERA`, `TRAFFIC LIGHT`, `CROSSWALK SIGN`),
 the airport chapter (`AIRPORT` with FILE BLOB, `AIR TRAFFIC` with STORM CLOUD), the space chapter (`CAPCOM`,

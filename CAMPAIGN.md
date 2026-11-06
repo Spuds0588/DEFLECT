@@ -6,14 +6,15 @@ SMART WATCH -> BUSINESS LAPTOP -> CROSSROADS -> CAR NAVIGATION -> CAR RADIO -> T
 TRAFFIC LIGHT -> CROSSWALK SIGN -> AIRPORT -> AIR TRAFFIC -> CAPCOM -> ROCKET NAVIGATION -> SATELLITE ->
 SPACE CADET -> PONG -> SPACE INVADERS -> ARCADE RACING -> FIGHTING GAME -> DUCK HUNTER -> TETRIS ->
 SNACK MACHINE -> TOKEN DISPENSER -> SODA MACHINE -> CPU BOARD -> GPU BOARD -> DISPATCH YARD ->
-LOAD BALANCER -> NETWORK BOARD. The 36 levels collapse to 13 chapter stops.
+LOAD BALANCER -> NETWORK BOARD. The 36 levels are 36 live route stops.
 Bosses are spread across the route: REBOOT ends on MEGA WORM, AIRPORT on FILE BLOB, AIR TRAFFIC on STORM
 CLOUD, SATELLITE on IDLE HANDS, SPACE INVADERS on STARFISH, and NETWORK BOARD on the USER finale. BUSINESS
 LAPTOP is a normal assault again. A clear shows the route
-plate before script_kitty's portal opens, so the next device is a named reveal and unseen stops stay dim
-generic nodes. The route is data in `CAMPAIGN_ROUTE`, with explicit per-stop links ready for a future branch.
-Consecutive levels that share a `nodeId` are one route stop: the plate is the network map between chapters,
-not a card between every arena in a chapter.
+plate after every clear, so the current network's reached devices and only the next device are named; later
+devices stay unlisted. The plate auto-advances after `CAMPAIGN.routeRevealTime`, Enter/Space continues now,
+and START/Escape leaves the run. The route is data in `CAMPAIGN_ROUTE`, one stop per playable level, with
+explicit outgoing links ready for a future branch. A non-boss assault node with no authored `ingress` gets
+one fallback port from `spawnCampaignPorts`, so every mission is clearable.
 
 Every live-fire node carries a short `CampaignLevel.blurb` from script_kitty. It names the place the party
 landed, adds one line about the infection in that device, and runs as ordinary narration over the first
@@ -184,10 +185,10 @@ health, hitboxes or `InputFrame`s, or put them in `World`.
   from short lines, not from watching characters land, and there is no per-character audio tick.
 - **Skippable.** A line can be skipped, and a whole beat can be skipped. Skipping is the player's exit from
   the read, never a fail state.
-- **A replay option, not a hidden key.** Campaign setup carries a persisted `STORY BEATS` toggle beside
-  `FRIENDLY FIRE`, default play. Set to skip, it bypasses the beats entirely for that run, so a replay goes
-  straight to play without dismissing each box. Persist it like `deflect.friendlyFire`; a resumed slot keeps
-  the setting.
+- **A replay option, not a hidden key.** Campaign setup carries a persisted `STORY BEATS` toggle, default
+  play. Set to skip, it bypasses the beats entirely for that run, so a replay goes straight to play without
+  dismissing each box. `FRIENDLY FIRE` is not beside it: campaign party fire is locked off. Persist the
+  story-beats setting like the other campaign preferences; a resumed slot keeps it.
 - **Narration is cosmetic.** A beat must never gate a spawn, unlock a door, or set a flag gameplay reads.
   That is what makes skipping safe at any moment and lets a skipped run play identically.
 - **Skip must not steal a combat button.** The skip affordance is a visible chip on the box plus a
@@ -226,11 +227,10 @@ GAME` takes the first empty slot; when all three are full it asks which slot to 
 is cleared before setup starts. The first two nodes are playable; the blueprint archive remains parked
 until the flow is wired.
 
-The illustrated route plate (`src/game/road.ts`) is built for the **between-level transition**: one wide
-picture of the whole run at a single scale, each stop drawn as the device that sector lives in (build box,
-office switch, media platter rack, worm-eaten camera rack, AI core), with the crossing named between
-stops. It is not mounted in a menu. When a sector loader exists, this plate is the load screen it should
-fade through.
+The illustrated route plate (`src/game/road.ts`) is the **between-level transition**: seven network tabs,
+the current network's reached device cards, and only the next device named. Each card is the device the
+arena actually lives in, not a generic level dot. It never lists arenas beyond the next one. It is not
+mounted in a menu; a clear mounts it, auto-advances, and START/Escape leaves the campaign.
 
 ```
 LOCALHOST --open web--> OFFICE LAN --smart TV--> CINEVAULT

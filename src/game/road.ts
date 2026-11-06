@@ -12,7 +12,7 @@
  * per-sector blueprint. It never touches `World`, `Snapshot` or a room.
  */
 import { fitCanvas } from '../ui/dom';
-import { CAMPAIGN_ROUTE, PLAYABLE_CAMPAIGN_LEVELS } from './campaign';
+import { CAMPAIGN_CHAPTERS, PLAYABLE_CAMPAIGN_LEVELS, campaignChapterForLevel } from './campaign';
 import { SECTORS, type SectorDef } from './sectors';
 
 const ROAD_W = 960;
@@ -639,35 +639,28 @@ function drawLegend(ctx: CanvasRenderingContext2D): void {
 }
 
 /**
- * The live campaign route. Completed stops stay lit, the current stop is ringed, the
- * next stop is named, and everything beyond it is a dim generic node until the run
- * clears another device. `links` is per stop, so a future branch can point at two
- * different stops without changing this renderer or the save format.
+ * The live campaign route. This is a network map, not a node counter: the current
+ * chapter is broken into the devices (arenas) the player is actually working through,
+ * completed devices stay lit, the next device is named, and nothing beyond it is drawn.
+ * A future network is only a numbered, unlabelled tab until the run reaches it.
  */
 export function drawCampaignRoad(
   canvas: HTMLCanvasElement,
-  current: number,
+  cleared: number,
   revealed: number,
 ): void {
   const ctx = fitCanvas(canvas, ROAD_W, ROAD_H);
   if (!ctx) return;
   const levels = PLAYABLE_CAMPAIGN_LEVELS;
-  const stops = CAMPAIGN_ROUTE;
-  const count = Math.max(1, stops.length);
-  // A level maps to its chapter's stop. Several arenas can share one stop, so the
-  // plate stays readable as the route grows instead of drawing a label per arena.
-  const stopForLevel = (levelIndex: number): number => {
-    let stop = 0;
-    for (let i = 0; i < stops.length; i++) if (stops[i].level <= levelIndex) stop = i;
-    return stop;
-  };
-  const currentStop = stopForLevel(current);
-  const revealedStop = stopForLevel(revealed);
-  const left = 58;
-  const right = ROAD_W - 58;
-  const span = right - left;
-  const yAt = (i: number): number => 168 + (i % 2 === 0 ? -22 : 22);
-  const xAt = (i: number): number => left + (count === 1 ? span * 0.5 : (i / (count - 1)) * span);
+  const nextIndex = Math.max(0, Math.min(levels.length - 1, revealed));
+  const nextLevel = levels[nextIndex];
+  const chapterId = campaignChapterForLevel(nextLevel);
+  const chapter = CAMPAIGN_CHAPTERS.find((entry) => entry.id === chapterId) ?? CAMPAIGN_CHAPTERS[0];
+  const devices = levels
+    .map((level, index) => ({ level, index }))
+    .filter((entry) => campaignChapterForLevel(entry.level) === chapterId);
+  const shown = devices.filter((entry) => entry.index <= nextIndex);
+  const deviceNumber = Math.max(1, devices.findIndex((entry) => entry.index === nextIndex) + 1);
 
   ctx.clearRect(0, 0, ROAD_W, ROAD_H);
   ctx.fillStyle = '#04080e';
@@ -689,85 +682,144 @@ export function drawCampaignRoad(
   ctx.strokeStyle = 'rgba(120, 214, 230, 0.16)';
   ctx.strokeRect(8.5, 8.5, ROAD_W - 17, ROAD_H - 17);
 
-  // Cables first: travelled spans are solid, unknown spans are a dashed guess.
-  for (let i = 0; i < CAMPAIGN_ROUTE.length; i++) {
-    const from = CAMPAIGN_ROUTE[i];
-    for (let k = 0; k < from.links.length; k++) {
-      const j = from.links[k];
-      if (!levels[j]) continue;
-      const live = i < currentStop;
-      const known = j <= revealedStop;
-      ctx.save();
-      ctx.setLineDash(known ? [] : [5, 8]);
-      ctx.strokeStyle = live ? '#4ce4ec' : known ? 'rgba(125, 248, 255, 0.45)' : 'rgba(125, 248, 255, 0.16)';
-      ctx.lineWidth = live ? 2.4 : 1.3;
-      ctx.beginPath();
-      ctx.moveTo(xAt(i), yAt(i));
-      ctx.lineTo(xAt(j), yAt(j));
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
+  ctx.textAlign = 'left';
+  ctx.globalAlpha = 0.62;
+  ctx.fillStyle = '#bdfbff';
+  ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  ctx.fillText('SCRIPT KITTY // NETWORK MAP', 28, 28);
+  ctx.textAlign = 'right';
+  ctx.fillText(`NETWORK ${chapter.id} OF ${CAMPAIGN_CHAPTERS.length}`, ROAD_W - 28, 28);
 
-  ctx.textAlign = 'center';
-  ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-  for (let i = 0; i < count; i++) {
-    const level = levels[stops[i].level];
-    const x = xAt(i);
-    const y = yAt(i);
-    const known = i <= revealedStop;
-    const done = i < currentStop;
-    const active = i === currentStop;
-    const color = level.finale ? '#ffb27a' : '#7df8ff';
-    ctx.save();
-    ctx.globalAlpha = known ? (done ? 0.62 : 1) : 0.26;
-    ctx.fillStyle = '#07131c';
-    ctx.strokeStyle = known ? color : 'rgba(125, 248, 255, 0.45)';
-    ctx.lineWidth = active ? 3 : 1.8;
-    if (!known) ctx.setLineDash([4, 5]);
+  // One tab per network. Cleared networks keep their names, the current one is hot,
+  // and a future network is only a number until the route reaches it.
+  const tabW = 118;
+  const tabGap = 8;
+  const tabsW = CAMPAIGN_CHAPTERS.length * tabW + (CAMPAIGN_CHAPTERS.length - 1) * tabGap;
+  const tabX = (ROAD_W - tabsW) * 0.5;
+  for (let i = 0; i < CAMPAIGN_CHAPTERS.length; i++) {
+    const def = CAMPAIGN_CHAPTERS[i];
+    const done = def.id < chapter.id;
+    const current = def.id === chapter.id;
+    const x = tabX + i * (tabW + tabGap);
+    ctx.globalAlpha = done ? 0.55 : current ? 1 : 0.24;
+    ctx.fillStyle = current ? '#102c35' : '#07131c';
+    ctx.strokeStyle = current ? '#7df8ff' : done ? 'rgba(76, 228, 236, 0.55)' : 'rgba(125, 248, 255, 0.24)';
+    ctx.lineWidth = current ? 2 : 1;
     ctx.beginPath();
-    ctx.arc(x, y, active ? 14 : 10, 0, Math.PI * 2);
+    ctx.roundRect(x, 44, tabW, 24, 5);
     ctx.fill();
     ctx.stroke();
-    ctx.setLineDash([]);
-    if (known) {
-      ctx.fillStyle = done ? color : '#dffcff';
-      ctx.beginPath();
-      ctx.arc(x, y, done ? 3.4 : 4.6, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      ctx.fillStyle = 'rgba(190, 245, 255, 0.7)';
-      ctx.font = '700 13px ui-monospace, monospace';
-      ctx.fillText('?', x, y + 4);
-      ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-    }
+    ctx.textAlign = 'center';
+    ctx.font = '600 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    ctx.fillStyle = current ? '#dffcff' : done ? '#9feff5' : 'rgba(190, 245, 255, 0.55)';
+    const label = current || done ? def.label : `NETWORK ${def.id} // SEALED`;
+    ctx.fillText(label, x + tabW * 0.5, 59, tabW - 12);
+  }
+
+  ctx.globalAlpha = 0.74;
+  ctx.fillStyle = '#dffcff';
+  ctx.textAlign = 'left';
+  ctx.font = '700 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  ctx.fillText(`${chapter.label} // DEVICE ROUTE`, 48, 100);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#9feff5';
+  ctx.font = '600 10px ui-monospace, monospace';
+  ctx.fillText(`DEVICE ${deviceNumber} OF ${devices.length}`, ROAD_W - 48, 100);
+
+  // The device chain. Only the devices already reached plus the next one exist on this
+  // plate; there are deliberately no generic future nodes to spoil the route.
+  const n = Math.max(1, shown.length);
+  const available = ROAD_W - 96;
+  const gap = n > 1 ? 10 : 0;
+  const cardW = Math.min(112, (available - gap * (n - 1)) / n);
+  const groupW = cardW * n + gap * (n - 1);
+  const startX = (ROAD_W - groupW) * 0.5;
+  const top = 136;
+  const h = 92;
+  const midY = top + h * 0.5;
+
+  if (n > 1) {
+    ctx.globalAlpha = 0.32;
+    ctx.strokeStyle = '#4ce4ec';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(startX + cardW * 0.5, midY);
+    ctx.lineTo(startX + groupW - cardW * 0.5, midY);
+    ctx.stroke();
+  }
+
+  for (let i = 0; i < n; i++) {
+    const entry = shown[i];
+    const x = startX + i * (cardW + gap);
+    const cx = x + cardW * 0.5;
+    const done = entry.index <= cleared;
+    const active = entry.index === nextIndex;
+    const color = entry.level.finale ? '#ffb27a' : '#7df8ff';
+    ctx.globalAlpha = active ? 1 : done ? 0.78 : 0.92;
+    ctx.fillStyle = active ? '#0b2530' : '#07131c';
+    ctx.strokeStyle = active ? color : done ? 'rgba(76, 228, 236, 0.58)' : 'rgba(125, 248, 255, 0.38)';
+    ctx.lineWidth = active ? 2.4 : 1.2;
+    ctx.beginPath();
+    ctx.roundRect(x, top, cardW, h, 7);
+    ctx.fill();
+    ctx.stroke();
     if (active) {
-      ctx.globalAlpha = 0.55;
+      ctx.globalAlpha = 0.36;
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(x, y, 21, 0, Math.PI * 2);
+      ctx.roundRect(x - 4, top - 4, cardW + 8, h + 8, 9);
       ctx.stroke();
     }
-    ctx.globalAlpha = known ? 0.92 : 0.28;
-    ctx.fillStyle = known ? '#dffcff' : 'rgba(190, 245, 255, 0.7)';
-    const label = known ? level.name.split('//').pop()!.trim() : 'UNKNOWN NODE';
-    const labelY = y + (i % 2 === 0 ? 36 : -26);
-    ctx.fillText(label, x, labelY);
-    if (known) {
-      ctx.globalAlpha = 0.5;
-      ctx.font = '10px ui-monospace, monospace';
-      ctx.fillText(level.code, x, labelY + 13);
-      ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-    }
-    ctx.restore();
+
+    ctx.globalAlpha = active ? 0.95 : 0.5;
+    ctx.fillStyle = active ? color : '#9feff5';
+    ctx.textAlign = 'left';
+    ctx.font = '700 9px ui-monospace, monospace';
+    ctx.fillText(String(devices.findIndex((device) => device.index === entry.index) + 1).padStart(2, '0'), x + 8, top + 16);
+
+    ctx.globalAlpha = active ? 1 : done ? 0.82 : 0.9;
+    ctx.fillStyle = '#dffcff';
+    ctx.textAlign = 'center';
+    ctx.font = '700 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    const label = (entry.level.name.split('//').pop() ?? entry.level.name).trim();
+    ctx.fillText(label, cx, top + 40, cardW - 12);
+    ctx.globalAlpha = active ? 0.74 : 0.48;
+    ctx.fillStyle = active ? '#bdfbff' : '#8fbac2';
+    ctx.font = '600 8px ui-monospace, monospace';
+    ctx.fillText(entry.level.code, cx, top + 55, cardW - 10);
+
+    ctx.globalAlpha = active ? 1 : 0.62;
+    ctx.fillStyle = active ? color : done ? '#4ce4ec' : '#8fbac2';
+    ctx.font = '700 8px ui-monospace, monospace';
+    ctx.fillText(active ? 'NEXT DEVICE' : done ? 'SECURED' : 'REACHED', cx, top + 76);
+  }
+
+  if (n > 0) {
+    const endX = startX + groupW;
+    ctx.globalAlpha = 0.36;
+    ctx.strokeStyle = '#7df8ff';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 7]);
+    ctx.beginPath();
+    ctx.moveTo(endX + 8, midY);
+    ctx.lineTo(ROAD_W - 48, midY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.textAlign = 'right';
+    ctx.font = '600 8px ui-monospace, monospace';
+    ctx.fillStyle = '#8fbac2';
+    ctx.fillText('ROUTE SEALED', ROAD_W - 48, midY - 7);
   }
 
   ctx.globalAlpha = 0.55;
   ctx.fillStyle = '#bdfbff';
-  ctx.font = '600 10px ui-monospace, monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('SCRIPT KITTY // NETWORK ROUTE', 28, 28);
+  ctx.font = '600 9px ui-monospace, monospace';
+  ctx.fillText('ONLY THE NEXT DEVICE IS DECRYPTED', 48, ROAD_H - 22);
   ctx.textAlign = 'right';
-  ctx.fillText('CLEARED', ROAD_W - 30, 28);
+  ctx.fillText('START // LEAVE RUN', ROAD_W - 48, ROAD_H - 22);
+  ctx.globalAlpha = 0.3;
+  ctx.textAlign = 'center';
+  ctx.fillText('SCRIPT KITTY // ISLAND HOPPING', ROAD_W * 0.5, ROAD_H - 22);
 }

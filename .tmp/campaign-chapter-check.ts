@@ -11,8 +11,21 @@ import { World } from '../src/game/world';
 if (PLAYABLE_CAMPAIGN_LEVELS.length !== 36) {
   throw new Error(`expected 36 levels, got ${PLAYABLE_CAMPAIGN_LEVELS.length}`);
 }
-if (CAMPAIGN_ROUTE.length !== 13) {
-  throw new Error(`expected 13 chapter stops, got ${CAMPAIGN_ROUTE.length}`);
+if (CAMPAIGN_ROUTE.length !== 36) {
+  throw new Error(`expected 36 per-level route stops, got ${CAMPAIGN_ROUTE.length}`);
+}
+if (PLAYABLE_CAMPAIGN_LEVELS.some((level, index) =>
+  CAMPAIGN_ROUTE[index]?.level !== index ||
+  CAMPAIGN_ROUTE[index]?.nodeId !== level.nodeId ||
+  CAMPAIGN_ROUTE[index]?.label !== level.name
+)) {
+  throw new Error('route stops do not mirror the playable level order');
+}
+for (let i = 0; i < CAMPAIGN_ROUTE.length; i++) {
+  const expected = i + 1 < CAMPAIGN_ROUTE.length ? [i + 1] : [];
+  if (CAMPAIGN_ROUTE[i].links.join(',') !== expected.join(',')) {
+    throw new Error(`route stop ${i} has links ${CAMPAIGN_ROUTE[i].links.join(',')}`);
+  }
 }
 const expectedArenas = [
   14, 34, 35, 36, 1, 9, 12, 25, 28, 29,
@@ -27,11 +40,13 @@ const actualArenas = PLAYABLE_CAMPAIGN_LEVELS.map((level) => level.arenaId);
 if (actualArenas.join(',') !== expectedArenas.join(',')) {
   throw new Error(`campaign route is ${actualArenas.join(',')}`);
 }
-if (CAMPAIGN_ROUTE[7].nodeId !== 'road-trip') {
+const roadTripAt = PLAYABLE_CAMPAIGN_LEVELS.findIndex((level) => level.nodeId === 'road-trip');
+if (roadTripAt < 0 || CAMPAIGN_ROUTE[roadTripAt].nodeId !== 'road-trip') {
   throw new Error('the road trip is not its own route stop');
 }
-if (CAMPAIGN_ROUTE[10].nodeId !== 'arcade' || CAMPAIGN_ROUTE[11].nodeId !== 'food-court' || CAMPAIGN_ROUTE[12].nodeId !== 'ai-core') {
-  throw new Error('the arcade, food court and AI core are not separate route stops');
+for (const nodeId of ['arcade', 'food-court', 'ai-core']) {
+  const at = PLAYABLE_CAMPAIGN_LEVELS.findIndex((level) => level.nodeId === nodeId);
+  if (at < 0 || CAMPAIGN_ROUTE[at].nodeId !== nodeId) throw new Error(`${nodeId} has no route stop`);
 }
 if (!SECTORS[8] || SECTORS[8].name !== 'KISSINGFACE' || SECTORS[8].entry !== 'cpu' || SECTORS[8].exit !== 'network') {
   throw new Error('KISSINGFACE is not the authored sector 8 route');
@@ -102,16 +117,27 @@ for (const id of newIds) {
   if (world.campaignPhase !== 'assault') throw new Error(`${level.name} did not open in assault`);
   if (world.tutorial?.current?.speaker !== 'SCRIPT_KITTY') throw new Error(`${level.name} did not start its blurb`);
   if (world.dataTotal !== level.dataCrates.length) throw new Error(`${level.name} did not load its crates`);
+  if (world.friendlyFire) throw new Error(`${level.name} opened with campaign friendly fire on`);
+  if (level.intro === 'assault' && level.boss === undefined && world.portTotal <= 0) {
+    throw new Error(`${level.name} has no ingress port or fallback spawner`);
+  }
+  if (world.portTotal > 0) {
+    for (const b of world.props) {
+      if (!b.portal) continue;
+      const inside = arena.pillars.some((r) => b.x + b.w > r.x && b.x < r.x + r.w && b.y + b.h > r.y && b.y < r.y + r.h);
+      if (inside) throw new Error(`${level.name} has a port buried in cover`);
+    }
+  }
   if (level.boss === undefined) {
     let live = 0;
     for (const s of world.sentries) if (s.active) live++;
     for (const v of world.viruses) if (v.active) live++;
     for (const w of world.worms) if (w.active) live++;
-    if (live < world.campaignKillsToClear) {
-      throw new Error(`${level.name} opened with ${live} bodies for a ${world.campaignKillsToClear}-kill clear`);
+    if (world.portTotal <= 0 && live < world.campaignKillsToClear) {
+      throw new Error(`${level.name} opened with ${live} bodies and no port for a ${world.campaignKillsToClear}-kill clear`);
     }
   }
-  console.log(`${level.name}: ${world.campaignPhase}, bodies ${world.sentries.filter((s) => s.active).length}/${world.viruses.filter((v) => v.active).length}/${world.worms.filter((w) => w.active).length}, crates ${world.dataTotal}`);
+  console.log(`${level.name}: ${world.campaignPhase}, bodies ${world.sentries.filter((s) => s.active).length}/${world.viruses.filter((v) => v.active).length}/${world.worms.filter((w) => w.active).length}, ports ${world.portTotal}, crates ${world.dataTotal}`);
 }
 
-console.log('campaign-chapter-check: OK (36 levels, 13 stops, ROAD TRIP before AIRPORT, NETWORK BOARD finale)');
+console.log('campaign-chapter-check: OK (36 levels, 36 route stops, every assault has a spawner, ROAD TRIP before AIRPORT, NETWORK BOARD finale)');

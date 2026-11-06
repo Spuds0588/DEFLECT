@@ -163,7 +163,9 @@ const outsideArena = (x: number, y: number) =>
   boss.spawnT = 0;
   boss.entryT = 0;
   boss.flyPhase = 0;
-  boss.flyT = 0.25;
+  // The first volley waits until the head has entered the arena lip (`flyT > 0.34`).
+  // Start the fixture inside that window so this checks the volley, not the gate.
+  boss.flyT = 0.4;
   boss.volleyT = 0;
   boss.x = p.x - 420;
   boss.y = p.y;

@@ -2,6 +2,23 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Campaign debug feedback (2026-11-06, v0.1.210)
+
+- [x] Campaign companions are permanent allies: never target a player, never turn hostile, and party fire is blocked in both directions at `World.damagePlayer`; `World` forces campaign friendly fire off.
+- [x] Every non-boss assault node has an ingress: authored ports stay, and `spawnCampaignPorts` adds one fallback for arenas with none. NETWORK SWITCH is the named regression case.
+- [x] Route plate is per-device (36 per-level `CAMPAIGN_ROUTE` stops), grouped into seven network tabs, and reveals only the current network's reached devices plus the next device.
+- [x] A clear always shows the route plate, auto-advances after `CAMPAIGN.routeRevealTime`, and START/Escape leaves the run.
+- [x] Bots ignore dormant calibration primitives before they wake.
+- [x] Worm dash reaches 500 units at 620 speed with a shorter 0.22 s wind-up.
+- [x] Pipe mouths are rectangular; destroying a pipe emits an enemy-scale blast.
+- [x] Firewall requires a dash into the `START FIREWALL` plate; the beam is wider and deals 24 enemy damage.
+- [x] Kitty now says island hopping from infected device to infected device, network to network, until the source is deleted.
+- [x] Mega Worm starts at 1180 speed, gets faster below 35%, restores side volleys during fly-bys, and resets interpolation at lane staging to remove the stretched red spine.
+- [x] Campaign camera pulls back (`zoomMin` 0.82, `zoomMax` 0.9).
+- [x] Music disabled behind `MUSIC_ENABLED = false`; synth retained for a future licensed chiptune track and the soundtrack slider hidden.
+- [x] Focused probes green: `campaign-ally-check`, `ally-real-check`, `campaign-spawner-check`, `check-network-switch`, `megaworm-check`, `campaign-chapter-check`; build and bench green.
+- [ ] Human debug run from a fresh slot through OFFICE LAN: verify allies never retaliate, every assault has a destructible source, the map reveals one device at a time, and the wider camera reads the fight.
+
 ## ROAD TRIP campaign chapter (2026-11-05, v0.1.209)
 
 - [x] Insert the six car/road arenas between BUSINESS LAPTOP and AIRPORT: CROSSROADS, CAR NAVIGATION,
@@ -13,7 +30,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
       spinners stay reserved for AIRPORT and magic users for the arcade
 - [x] `.tmp/campaign-chapter-check.ts`, `campaign-rules-check.ts`, `campaign-save-migration-check.ts` and
       `chapter-threats-check.ts` green; build and bench green
-- [ ] Human playthrough of the six road arenas and the route plate at 13 stops
+- [ ] Human playthrough of the six road arenas and the per-device route plate
 
 ## Street fixtures in hosted rooms (2026-11-05, v0.1.207)
 
@@ -118,7 +135,7 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] Route plate groups levels by `nodeId`, so a chapter is one stop and the 22-level route stays readable
 - [x] New levels reuse existing arena hazards and place one crate on a clear spawn pad; all local-only
 - [x] `.tmp/campaign-chapter-check.ts` and the updated `campaign-rules-check.ts` green; build and bench green
-- [ ] Human visual pass on the route plate at 13 stops, and a full 36-node playthrough
+- [ ] Human visual pass on the per-device route plate and a full 36-node playthrough
 
 ## GPU board thermal hazard (2026-11-05, v0.1.199)
 
@@ -2083,7 +2100,7 @@ The plan is written into `CAMPAIGN.md`; no runtime work has started.
 - [x] `World.friendlyFire` (default on) gates enemy-fire damage to worms, viruses and error blocks:
       hostile AI shots and the slot-1 thrall's bolts. Off, they pass through rival threat families and
       only threaten players
-- [x] `FRIENDLY FIRE` toggle in GAUNTLET run setup and the CAMPAIGN save-slot stage; the shared setting
+- [x] `FRIENDLY FIRE` toggle in GAUNTLET run setup; CAMPAIGN is locked off and shows it as a rule, not a control; the shared setting
       persists as `deflect.friendlyFire` and both stages read it, so a resumed run can change it too
 - [x] Only enemy fire is gated. Firewalls stay environmental, worm/virus feeding and player shots are
       unchanged, and sentry packs still ignore each other

@@ -82,15 +82,19 @@ check('all pipes can be destroyed', w.pipes.every((p) => !p.active));
 for (let i = 0; i < 900; i++) w.step(1 / 60, input);
 check('destroyed pipes stop feeding files', hazardCount() <= before, `${before} -> ${hazardCount()}`);
 
-// Firewall starter: stand on the pad, arm the sweep, then confirm the long rearm.
+// Firewall starter: standing on the pad does nothing; a dash into it arms the sweep.
 const sw = new World('gauntlet', ['QA'], 0, arena, false, 0, 0, null, false, null) as NetWorld;
 const pad = arena.firewallSwitch!;
 sw.players[0].iframes = 999;
 sw.players[0].x = pad.x;
 sw.players[0].y = pad.y;
-for (let i = 0; i < 60; i++) sw.step(1 / 60, input);
+for (let i = 0; i < 120; i++) sw.step(1 / 60, input);
+check('standing on the switch does nothing', sw.firewalls.every((f) => !f.active));
+
+sw.players[0].dashT = 0.2;
+sw.updateNetwork(1 / 60);
 const activeBefore = sw.firewalls.filter((f) => f.active).length;
-check('switch starts a firewall sweep', activeBefore === 1, String(activeBefore));
+check('dashing into the plate starts a firewall sweep', activeBefore === 1, String(activeBefore));
 check('switch enters its long cooldown', sw.firewallSwitchT > NETWORK.switchCooldown - 3, sw.firewallSwitchT.toFixed(1));
 sw.firewalls.forEach((f) => (f.active = false));
 sw.step(1 / 60, input);

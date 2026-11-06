@@ -856,18 +856,16 @@ export function migrateCampaignLevel(level: number, nodeId: string, routeVersion
 export const FIRST_CAMPAIGN_LEVEL: CampaignLevel = PLAYABLE_CAMPAIGN_LEVELS[0] ?? CAMPAIGN_LEVELS[0];
 
 /**
- * Linear today, branch-ready: every stop names its outgoing links explicitly. Consecutive
- * levels that share a `nodeId` are one stop, because the route plate is the network map
- * between levels, not a card between every arena in the same level.
+ * Linear today, branch-ready: every playable arena is one stop with explicit outgoing
+ * links. Keeping the route granular lets the between-level plate draw the devices in
+ * the current network instead of collapsing several arenas into one chapter dot.
  */
-const routeStops: CampaignRouteStop[] = [];
-for (let i = 0; i < PLAYABLE_CAMPAIGN_LEVELS.length; i++) {
-  const level = PLAYABLE_CAMPAIGN_LEVELS[i];
-  if (routeStops.length > 0 && routeStops[routeStops.length - 1].nodeId === level.nodeId) continue;
-  routeStops.push({ level: i, nodeId: level.nodeId, label: level.name, lane: 0, links: [] });
-}
-
-export const CAMPAIGN_ROUTE: readonly CampaignRouteStop[] = routeStops.map((stop, index) => ({
-  ...stop,
-  links: index + 1 < routeStops.length ? [index + 1] : [],
+const routeStops: CampaignRouteStop[] = PLAYABLE_CAMPAIGN_LEVELS.map((level, index) => ({
+  level: index,
+  nodeId: level.nodeId,
+  label: level.name,
+  lane: 0,
+  links: index + 1 < PLAYABLE_CAMPAIGN_LEVELS.length ? [index + 1] : [],
 }));
+
+export const CAMPAIGN_ROUTE: readonly CampaignRouteStop[] = routeStops;

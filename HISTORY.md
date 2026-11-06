@@ -8509,3 +8509,48 @@ gets from the office LAN to the airport instead of cutting straight between chap
 
 **Next:** human playthrough of the six road arenas and the 13-stop route plate; designer supplies the
 spinning-bot and magic-user kits.
+
+## 2026-11-06 — Campaign debug feedback pass (v0.1.210)
+
+**Goal:** apply the second OFFICE LAN debug-run feedback set: permanent campaign allies and locked friendly
+fire, a per-device route map with next-only reveals and auto-progress, complete assault spawners, calmer
+calibration bots, a stronger worm dash, cleaner pipe deaths, a manual firewall, Kitty's island-hopping
+brief, the temporary music shutdown, Mega Worm visual/volley fixes, and a wider campaign camera.
+
+**Changes.**
+- Campaign is a party run. `World` forces `friendlyFire = false`, `damagePlayer` rejects party-on-party
+  damage in both directions, and `BotBrain.pickTarget` skips every other player for campaign companions.
+  Removed the `campaignAllyAggro` / `campaignAllyHostile` betrayal path. Bots ignore dormant calibration
+  sentries (`kind 4..6`, `shapeState < 2`) in hostile scans, the port objective and sticky-target checks.
+- `CAMPAIGN_ROUTE` is now one stop per playable level (36), and `drawCampaignRoad` groups those stops into
+  the seven network tabs. It shows the current network's reached devices plus only the next device. Every
+  clear opens the plate, auto-advances after `CAMPAIGN.routeRevealTime`, and START/Escape leaves the run.
+- `spawnCampaignPorts` adds one fallback ingress to a non-boss assault arena with no authored `ingress`.
+  NETWORK SWITCH now has a destructible source; a headless audit checks every non-boss assault device.
+- Worm dash tuning: 0.22 wind-up, 0.32 active, 620 speed, 500 range, 3.0 cooldown.
+- Pipe mouths are rectangular; destroying a pipe emits a large `PROP_BREAK` plus `EXPLODE(190)`.
+- Firewall plate requires a dash (`dashT > 0`) and is labeled `START FIREWALL` / `DASH INTO PLATE`.
+  Beam width 74, player damage 2, enemy damage 24, so it deletes most fodder on contact.
+- Kitty's briefing now says the party is island hopping from infected device to device, network to
+  network, until the source is found and deleted.
+- Music is disabled behind `MUSIC_ENABLED = false`; the soundtrack slider/row is offline and the existing
+  synth code is retained for a future licensed chiptune track.
+- Mega Worm resets head and segment interpolation at every lane staging (no stretched red spine), starts
+  fly-bys at 1180 speed, scales faster below 35% health, and fires its side volleys after the head enters
+  the arena lip. Campaign camera pulls back with `zoomMin` 0.82 / `zoomMax` 0.9.
+- Updated AGENTS D9/D66/D67 and the audio notes, CAMPAIGN, README, GAME_GUIDE, TODO, all version stamps.
+
+**Verification.**
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,207.59 kB JS / 337.04 kB gzip; existing chunk-size warning);
+  `npm run bench` clean (8P max proj 0.136 ms avg / 0.311 ms p99; gauntlet 0.246 ms avg / 0.811 ms p99 at
+  29.1 live threats); `git diff --check` clean.
+- Campaign probes green: `campaign-ally-check`, `ally-real-check`, `dormant-primitive-check`,
+  `campaign-spawner-check`, `campaign-chapter-check`, `campaign-death-check`, `campaign-bot-death-check`.
+- Also green: `campaign-rules-check`, `campaign2-check`, `feedback-pass-check`, `campaign-finale-check`,
+  `port-sweep-check`, `port-route-check`, `campaign-save-migration-check`, `holding-layout-check`,
+  `exit-route-check`, `chapter-threats-check`, `check-network-switch`, `megaworm-check`.
+- Not run: human debug run through the new route plate, camera framing and ally behavior. No licensed
+  music track exists yet; the synth is intentionally offline.
+
+**Next:** hand off a fresh-slot campaign debug run through OFFICE LAN, checking permanent allies, the
+NETWORK SWITCH fallback source, next-only device reveal, worm dash, pipe/firewall feedback and Mega Worm.

@@ -345,7 +345,6 @@ export class World {
    * slot bitmask. A companion stays an ally until that intent signal lands; a stray
    * shot or splash never flips it. Local-only, like the rest of the campaign run.
    */
-  campaignAllyAggro = 0;
   /**
    * Campaign companions lost for the rest of the run, as a slot bitmask. A dead bot is
    * not brought back on a later arena or a resume; only a TPK retry restores the bots
@@ -897,6 +896,10 @@ export class World {
     this.campaignIntro = campaignIntro;
     this.campaignKillsToClear = campaignClearKills > 0 ? campaignClearKills : CAMPAIGN.killsToClear;
     this.campaign = campaign;
+    // Campaign is a party run: friendly fire is a locked rule, not a setup option.
+    // Enforce it on the World itself so a probe, retry or future caller cannot
+    // accidentally hand a campaign a live-fire squad.
+    if (campaign) this.friendlyFire = false;
     this.infectionMode = infectionMode;
     this.bossRush = bossRush;
     this.campaignBoss = campaignBoss;
@@ -1566,9 +1569,25 @@ export class World {
   private spawnCampaignPorts(): void {
     this.portsClosed = 0;
     this.campaignExitReady = false;
-    const ingress = this.arena.ingress;
-    this.portTotal = ingress?.length ?? 0;
-    if (!ingress) return;
+    // Every live-fire campaign device needs a source to destroy. A few authored
+    // arenas only placed an opening squad, which made a kill total above that squad
+    // unwinnable. Add one fallback ingress on a clear floor square when an assault
+    // node has no authored port; the authored ports stay untouched.
+    const fallback = !this.arena.ingress && this.campaign && this.campaignBoss < 0 && this.campaignIntro === 'assault';
+    const ingress = this.arena.ingress ? [...this.arena.ingress] : [];
+    if (fallback) {
+      const b = this.arena.bounds;
+      ingress.push({
+        x: b.right - 180,
+        y: b.top + 180,
+        size: 58,
+        hp: 18,
+        family: this.campaignChapter >= 2 ? 1 : 0,
+        interval: 4.2,
+      });
+    }
+    this.portTotal = ingress.length;
+    if (ingress.length === 0) return;
     for (let i = 0; i < ingress.length; i++) {
       const p = ingress[i];
       // A port authored inside cover is unshootable: its square sits in a pillar, so no
@@ -3532,11 +3551,6 @@ export class World {
       if (p.active && p.alive && !p.copyClone) n++;
     }
     return n;
-  }
-
-  /** True once the player deliberately attacked this campaign companion. */
-  campaignAllyHostile(slot: number): boolean {
-    return this.campaign && slot > 0 && (this.campaignAllyAggro & (1 << slot)) !== 0;
   }
 
   setName(slot: number, name: string): void {
@@ -12944,26 +12958,22 @@ export class World {
     if (!s || this.infectionMode) return;
     if (this.firewallSwitchT > 0) this.firewallSwitchT = Math.max(0, this.firewallSwitchT - dt);
     if (this.firewallSwitchFlash > 0) this.firewallSwitchFlash = Math.max(0, this.firewallSwitchFlash - dt);
-    let onPad = false;
+    // This is a physical push button: standing on it does nothing. A dash has to
+    // carry the body into the plate, exactly like a human slamming the housing.
+    let pressed = false;
     if (this.firewallSwitchT <= 0) {
       for (let i = 0; i < this.players.length; i++) {
         const p = this.players[i];
-        if (!p.active || !p.alive || p.travelT > 0) continue;
+        if (!p.active || !p.alive || p.travelT > 0 || p.dashT <= 0) continue;
         const dx = p.x - s.x;
         const dy = p.y - s.y;
-        if (dx * dx + dy * dy <= (s.radius + PLAYER.radius * 0.5) ** 2) {
-          onPad = true;
+        if (dx * dx + dy * dy <= (s.radius + PLAYER.radius * 0.55) ** 2) {
+          pressed = true;
           break;
         }
       }
     }
-    if (!onPad) {
-      this.firewallSwitchDwell = 0;
-      return;
-    }
-    this.firewallSwitchDwell += dt;
-    if (this.firewallSwitchDwell < NETWORK.switchDwell) return;
-    this.firewallSwitchDwell = 0;
+    if (!pressed) return;
     let activeFirewalls = 0;
     for (let i = 0; i < this.firewalls.length; i++) if (this.firewalls[i].active) activeFirewalls++;
     if (activeFirewalls > 0) return;
@@ -12982,7 +12992,10 @@ export class World {
     this.emit(EV.PROP_HIT, 0, x, y, amount);
     if (pipe.hp > 0) return;
     pipe.active = false;
-    this.emit(EV.PROP_BREAK, 0, pipe.x, pipe.y, pipe.radius * 2.6);
+    // A feed pipe is a machine, not a crate. Its death gets the enemy-scale blast:
+    // a pressure ring, red/orange shards and a real screen shake instead of a puff.
+    this.emit(EV.PROP_BREAK, 0, pipe.x, pipe.y, pipe.radius * 3.4);
+    this.emit(EV.EXPLODE, 0, pipe.x, pipe.y, 190);
   }
 
   /** Round posts and kickers. Shared body response; projectiles use `bounceBumpers`. */
@@ -13208,11 +13221,10 @@ export class World {
   ): void {
     amount = this.memoryDamage(sourceSlot, amount);
     if (!p.alive || p.iframes > 0 || phased(p) || p.travelT > 0) return;
-    // Campaign companions are allies. Their own fire passes through the party unless
-    // that specific companion has been turned, and it never damages another bot.
-    if (this.campaign && sourceSlot > 0 && p.slot !== sourceSlot) {
-      if (p.slot > 0 || !this.campaignAllyHostile(sourceSlot)) return;
-    }
+    // Campaign is a party run: no member's fire damages another member, including
+    // the human's own shots. This is stronger than the gauntlet crossfire toggle and
+    // is what keeps a companion from ever becoming an aggro target or a traitor.
+    if (this.campaign && sourceSlot >= 0 && p.slot !== sourceSlot) return;
     if (this.tryParryDash(p, sourceKind, sourceId, dirX, dirY, force)) return;
     // Atomize spends one shield ball per real hit, before health or campaign damage is
     // recorded. A chip tick (venom) is not a hit, and the floor is never shielded.
@@ -13230,16 +13242,6 @@ export class World {
     p.killerKind = sourceKind;
     p.killerId = sourceId >= 0 ? sourceId : sourceSlot;
     p.hp -= amount;
-    // Companion intent: the player must damage this bot while locked on it. A stray
-    // shot, splash or lock on a different body does not turn an ally.
-    if (this.campaign && p.slot > 0 && amount > 0 && sourceSlot >= 0 && sourceSlot < this.players.length) {
-      const attacker = this.players[sourceSlot];
-      const lockedOn =
-        !!attacker &&
-        ((attacker.lockActive && attacker.lockKind === 1 && attacker.lockId === p.slot) ||
-          (attacker.lockIntentT > 0 && attacker.lockIntentSlot === p.slot));
-      if (lockedOn) this.campaignAllyAggro |= 1 << p.slot;
-    }
     p.hitFlash = PLAYER.hitFlash;
     p.kx += dirX * force;
     p.ky += dirY * force;
@@ -20185,7 +20187,7 @@ export class World {
       w.y += w.vy * dt;
       this.followMegaChain(w, dt);
       w.volleyT -= dt;
-      if (w.volleyT <= 0 && w.flyT > 0.18) {
+      if (w.volleyT <= 0 && w.flyT > 0.34) {
         this.fireMegaVolley(w);
         w.volleyT = fly.volley.interval;
       }
@@ -20237,6 +20239,11 @@ export class World {
     w.anchorY = b.top + spanY * lane.fy;
     w.x = w.anchorX - Math.cos(lane.angle) * cfg.entryDistance;
     w.y = w.anchorY - Math.sin(lane.angle) * cfg.entryDistance;
+    // The stage is a cut, not a one-frame flight. Without these previous positions
+    // the renderer interpolates from the old pass to the new lane and paints the
+    // dark spine across the arena as one stretched red smear.
+    w.prevX = w.x;
+    w.prevY = w.y;
     w.vx = 0;
     w.vy = 0;
     w.kx = 0;
@@ -20381,7 +20388,10 @@ export class World {
     w.flyT = 0;
     w.touchCd = Math.min(w.touchCd, 0.15);
     w.aggroT = MEGA_WORM.aggroTime;
-    w.volleyT = 0.3;
+    // Wait until the head is inside the arena lip before the first volley. The old
+    // fixed 0.3 s delay fired while the head was still staged offscreen, so the
+    // projectiles existed but no player ever saw one.
+    w.volleyT = 0.42;
     this.followMegaChain(w, 0);
   }
 

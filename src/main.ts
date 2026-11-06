@@ -61,7 +61,7 @@ type Mode = 'none' | 'training' | 'host' | 'guest' | 'bots' | 'local' | 'gauntle
 type OverlayKind = 'none' | 'round' | 'match' | 'leave' | 'runover';
 
 /** Build stamp shared by the boot log and exported playtest logs. */
-const BUILD = '0.1.209';
+const BUILD = '0.1.210';
 const PLAYTEST_ROUNDS_PER_MAP = 3;
 const PLAYTEST_STORAGE_KEY = 'deflect.playtest.last';
 
@@ -193,7 +193,7 @@ campaignRoadEl.innerHTML = `
     <h2 class="campaign-road-title">NETWORK BACKBONE</h2>
     <canvas class="campaign-road-canvas" width="960" height="340"></canvas>
     <p class="campaign-road-next"></p>
-    <button class="campaign-road-continue" type="button">CONTINUE ROUTE</button>
+    <button class="campaign-road-continue" type="button">CONTINUE NOW</button>
   </div>`;
 document.body.appendChild(campaignRoadEl);
 const campaignRoadCanvas = campaignRoadEl.querySelector<HTMLCanvasElement>('.campaign-road-canvas')!;
@@ -304,7 +304,6 @@ const menuMulti = el('menu-multi');
 const menuOnline = el('menu-online');
 const menuLocal = el('menu-local');
 const campaignBotsEl = el('campaign-bots');
-const campaignFriendlyBtn = el<HTMLButtonElement>('btn-campaign-friendly-fire');
 const campaignFriendlyValue = el('campaign-friendly-fire-value');
 const campaignSkipTutorialBtn = el<HTMLButtonElement>('btn-campaign-skip-tutorial');
 const campaignSkipTutorialValue = el('campaign-skip-tutorial-value');
@@ -742,7 +741,6 @@ function bindUi(): void {
   gauntletFriendlyBtn.addEventListener('click', toggleFriendlyFire);
   gauntletRushBtn.addEventListener('click', toggleBossRush);
   localRushBtn.addEventListener('click', toggleLocalBossRush);
-  campaignFriendlyBtn.addEventListener('click', toggleFriendlyFire);
   campaignSkipTutorialBtn.addEventListener('click', toggleCampaignSkipTutorials);
   el<HTMLButtonElement>('btn-bots-back').addEventListener('click', () => showMenuStage('soloArena'));
   el<HTMLButtonElement>('btn-tier-back').addEventListener('click', () => showMenuStage('soloBots'));
@@ -1632,8 +1630,9 @@ function renderFriendlyFire(): void {
   const label = friendlyFire ? 'ON' : 'OFF';
   gauntletFriendlyBtn.setAttribute('aria-pressed', String(friendlyFire));
   gauntletFriendlyValue.textContent = label;
-  campaignFriendlyBtn.setAttribute('aria-pressed', String(friendlyFire));
-  campaignFriendlyValue.textContent = label;
+  // Campaign friendly fire is a locked rule, not a preference. The gauntlet toggle
+  // must not leak into a story run.
+  campaignFriendlyValue.textContent = 'OFF';
 }
 
 function renderCampaignSkipTutorials(): void {
@@ -1838,7 +1837,7 @@ function startCampaignLevel(viaPortal = false, retrySameArena = false): void {
     campaignBotDead,
     level.blurb ?? null,
   );
-  world.friendlyFire = friendlyFire;
+  world.friendlyFire = false;
   for (let i = 0; i < MAX_PLAYERS; i++) world.setMemoryStacks(i, campaignMemory[i] ?? 0);
   world.restoreFragments(campaignShards);
   // The menu rule skips the lesson for the whole run. New tutorials created later
@@ -1880,7 +1879,7 @@ function startCampaignLevel(viaPortal = false, retrySameArena = false): void {
     'drill bots',
     drill,
     'friendly fire',
-    friendlyFire ? 'on' : 'off',
+    'off // campaign rule',
     viaPortal ? 'VIA PORTAL' : '',
   );
   campaignDebug?.mark(
@@ -2534,6 +2533,10 @@ function loop(now: number): void {
     menuEdges.ui
   ) {
     noteUserActivity();
+  }
+  if (!campaignRoadEl.hidden && menuEdges.menu) {
+    leaveCampaignRoad();
+    return;
   }
   handleGamepad(menuEdges);
   if (screen === 'howto' && now >= howtoDevicePollAt) {
@@ -4570,6 +4573,14 @@ function leaveLobby(): void {
   leaveToTitle();
 }
 
+/** Start / Escape while the route plate is up leaves the campaign without starting
+ *  the next level. The save already points at the cleared node. */
+function leaveCampaignRoad(): void {
+  if (campaignRoadEl.hidden) return;
+  hideCampaignRoad();
+  leaveToTitle();
+}
+
 function leaveToTitle(): void {
   clearPlaytestState();
   teardownSession();
@@ -4991,7 +5002,7 @@ function showCampaignRoad(
 ): void {
   campaignRoadAction = action;
   campaignRoadTitle.textContent = `${clearedName} SECURED`;
-  campaignRoadNextLine.textContent = `NEXT NODE REVEALED // ${nextName}`;
+  campaignRoadNextLine.textContent = `NEXT DEVICE // ${nextName} // AUTO-ADVANCE // START TO LEAVE RUN`;
   drawCampaignRoad(campaignRoadCanvas, campaignLevelIndex, nextIndex);
   campaignRoadEl.hidden = false;
   window.clearTimeout(campaignRoadTimer);
@@ -5244,14 +5255,9 @@ function handleCampaignClear(w: World): void {
         toast(`${cleared.name} SECURED // SCORE ${score}${clean ? ' // CLEAN SWEEP' : ''}`);
       });
     };
-    // The route plate is the network map between levels, not a card between every
-    // arena in the same level. The four BUILD ROOT rooms share one node, so they
-    // portal straight on; crossing to a new node gets the map beat.
-    if (cleared.nodeId !== next.nodeId) {
-      showCampaignRoad(cleared.name, next.name, campaignLevelIndex + 1, advance);
-    } else {
-      advance();
-    }
+    // Auto-progress every clear. The plate is a short device map beat, not a gate:
+    // the timer advances, the button skips the wait, and Start leaves the run.
+    showCampaignRoad(cleared.name, next.name, campaignLevelIndex + 1, advance);
     return;
   }
   const dataLine = w.dataTotal > 0 ? `DATA ${w.dataKept}/${w.dataTotal}` : 'NO DATA AT RISK';
@@ -5742,6 +5748,16 @@ function updateMpStatus(now: number): void {
 // Input routing -----------------------------------------------------------------------------
 
 function onUiKey(e: KeyboardEvent): void {
+  if (!campaignRoadEl.hidden) {
+    if (e.code === 'Escape') {
+      e.preventDefault();
+      leaveCampaignRoad();
+    } else if (e.code === 'Enter' || e.code === 'Space') {
+      e.preventDefault();
+      continueCampaignRoad();
+    }
+    return;
+  }
   if (attract) {
     // The kiosk demo is unattended: keys are swallowed. The title attract demo
     // returns to the hub on the first real keypress.

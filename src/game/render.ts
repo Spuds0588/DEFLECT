@@ -2946,76 +2946,60 @@ export class Renderer {
         }
       }
       ctx.globalAlpha = live ? 1 : 0.42;
-      // Housing and elbow.
+      // Housing and elbow. The mouth is a plain rectangular coupling; the old
+      // circular intake ring read as a second target sitting on the tube.
       ctx.fillStyle = live ? '#132a30' : '#101820';
       ctx.strokeStyle = live ? arena.accent : 'rgba(130, 160, 170, 0.35)';
       ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(-64, -15, 64, 30, 9);
-      ctx.fill();
-      ctx.stroke();
+      ctx.fillRect(-64, -tubeW * 0.5, 64, tubeW);
+      ctx.strokeRect(-64, -tubeW * 0.5, 64, tubeW);
       ctx.globalAlpha = live ? 0.55 : 0.2;
       ctx.strokeStyle = live ? arena.accent : '#7d929a';
       ctx.lineWidth = 1;
       for (let k = -50; k < -6; k += 11) {
         ctx.beginPath();
-        ctx.moveTo(k, -12);
-        ctx.lineTo(k + 6, 12);
+        ctx.moveTo(k, -tubeW * 0.42);
+        ctx.lineTo(k + 6, tubeW * 0.42);
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
-      // Mouth. A live pipe has a hot inner ring and a breathing intake halo.
-      ctx.beginPath();
-      ctx.arc(0, 0, pipe.radius, 0, Math.PI * 2);
-      ctx.fillStyle = '#071016';
-      ctx.fill();
+      // A squared collar marks the live mouth without drawing a circle.
+      ctx.fillStyle = live ? '#071016' : '#0b1116';
+      ctx.fillRect(-14, -tubeW * 0.5, 14, tubeW);
       ctx.strokeStyle = live ? arena.accent : '#566b73';
-      ctx.lineWidth = 4;
-      ctx.stroke();
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-14, -tubeW * 0.5, 14, tubeW);
       if (live) {
         const pulse = 0.62 + 0.28 * Math.sin(t * 5 + i);
         ctx.globalAlpha = 0.2 * pulse;
-        ctx.strokeStyle = arena.accent;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(0, 0, pipe.radius + 9, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 0.8;
         ctx.fillStyle = arena.accent;
-        ctx.beginPath();
-        ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillRect(-9, -tubeW * 0.5 + 4, 5, tubeW - 8);
         // Health ticks on the housing.
         for (let h = 0; h < pipe.maxHp; h++) {
           ctx.globalAlpha = h < pipe.hp ? 0.95 : 0.2;
           ctx.fillStyle = h < pipe.hp ? arena.accent : '#77909a';
-          ctx.fillRect(-55 + h * 8, 16, 5, 3);
+          ctx.fillRect(-55 + h * 8, tubeW * 0.5 + 7, 5, 3);
         }
       } else {
         ctx.strokeStyle = '#ff5a4c';
         ctx.globalAlpha = 0.5;
         ctx.beginPath();
-        ctx.moveTo(-9, -9);
-        ctx.lineTo(9, 9);
-        ctx.moveTo(9, -9);
-        ctx.lineTo(-9, 9);
+        ctx.moveTo(-10, -10);
+        ctx.lineTo(0, 0);
+        ctx.lineTo(-10, 10);
         ctx.stroke();
       }
       if (pipe.hitFlash > 0) {
         ctx.globalAlpha = Math.min(1, pipe.hitFlash * 4);
         ctx.strokeStyle = '#fff4d4';
         ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(0, 0, pipe.radius + 3, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.strokeRect(-16, -tubeW * 0.5, 16, tubeW);
       }
       if (pipe.catchFlash > 0) {
         ctx.globalAlpha = Math.min(1, pipe.catchFlash * 2);
         ctx.strokeStyle = '#d7fff0';
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(0, 0, pipe.radius - 4, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.strokeRect(-16, -tubeW * 0.5 + 3, 16, tubeW - 6);
       }
       ctx.restore();
     }
@@ -3027,7 +3011,6 @@ export class Renderer {
     if (!s) return;
     const cooldown = Math.max(0, state.firewallSwitchT ?? 0);
     const ready = cooldown <= 0;
-    const dwell = Math.max(0, Math.min(1, (state.firewallSwitchDwell ?? 0) / NETWORK.switchDwell));
     const flash = Math.max(0, state.firewallSwitchFlash ?? 0);
     const ctx = this.ctx;
     ctx.save();
@@ -3077,13 +3060,15 @@ export class Renderer {
       ctx.arc(0, 0, s.radius - 7, -Math.PI * 0.5, -Math.PI * 0.5 + pct * Math.PI * 2);
       ctx.stroke();
     }
-    if (dwell > 0) {
-      ctx.strokeStyle = '#ffe8b0';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(0, 0, s.radius - 13, -Math.PI * 0.5, -Math.PI * 0.5 + dwell * Math.PI * 2);
-      ctx.stroke();
-    }
+    // The instruction is the control now: dash into the plate, not stand on it.
+    // Labels sit to the room side so the west-wall housing never clips them.
+    ctx.textAlign = 'left';
+    ctx.font = '700 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    ctx.fillStyle = ready ? '#ffd9c8' : 'rgba(180, 202, 208, 0.52)';
+    ctx.fillText('START FIREWALL', s.radius + 12, -4);
+    ctx.font = '600 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    ctx.fillStyle = ready ? '#ff8d72' : 'rgba(180, 202, 208, 0.42)';
+    ctx.fillText(ready ? 'DASH INTO PLATE' : 'REARMING', s.radius + 12, 10);
     if (flash > 0) {
       ctx.globalAlpha = Math.min(1, flash * 2);
       ctx.strokeStyle = '#ff6a4d';

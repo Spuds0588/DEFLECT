@@ -944,6 +944,9 @@ export class BotBrain {
     for (let i = 0; i < sentries.length; i++) {
       const s = sentries[i];
       if (!s.active) continue;
+      // Calibration subjects are not enemies until the campaign wakes them. A bot
+      // must not walk over and start shooting the Warden's dormant class.
+      if (s.kind >= 4 && s.kind <= 6 && s.shapeState < 2) continue;
       const dx = s.x - me.x;
       const dy = s.y - me.y;
       const d2 = dx * dx + dy * dy;
@@ -1201,7 +1204,11 @@ export class BotBrain {
     if (world.campaignPhase !== 'assault' || world.portTotal <= 0) return;
     let threatD = Infinity;
     for (const w of world.worms as any[]) if (w.active && w.hp > 0) threatD = Math.min(threatD, Math.hypot(w.x - me.x, w.y - me.y));
-    for (const s2 of world.sentries as any[]) if (s2.active) threatD = Math.min(threatD, Math.hypot(s2.x - me.x, s2.y - me.y));
+    for (const s2 of world.sentries as any[]) {
+      if (!s2.active) continue;
+      if (s2.kind >= 4 && s2.kind <= 6 && s2.shapeState < 2) continue;
+      threatD = Math.min(threatD, Math.hypot(s2.x - me.x, s2.y - me.y));
+    }
     const target = (b: any) => {
       const cx = b.x + b.w * 0.5; const cy = b.y + b.h * 0.5;
       const dx = cx - me.x; const dy = cy - me.y; const d = Math.hypot(dx, dy) || 1;
@@ -1542,6 +1549,8 @@ export class BotBrain {
     if (!list || idx >= list.length) return false;
     const e = list[idx];
     if (!e.active) return false;
+    const sentry = e as { kind?: number; shapeState?: number };
+    if (kind === 2 && (sentry.kind ?? 0) >= 4 && (sentry.kind ?? 0) <= 6 && (sentry.shapeState ?? 0) < 2) return false;
     this.hostileX = e.x;
     this.hostileY = e.y;
     return true;
@@ -1584,15 +1593,13 @@ export class BotBrain {
   private pickTarget(world: World, me: Player): void {
     let best = -1;
     let bestScore = 1e12;
-    // Campaign companions are on the player's side. They never target another bot,
-    // and they only target the human after the human deliberately attacks this bot
-    // while locked on it (the world owns that intent bit). A stray shot does not
-    // turn an ally hostile.
+    // Campaign companions are on the player's side for the whole run. They never
+    // target another player or bot, even if the human shoots them. Their fire is
+    // filtered in `World.damagePlayer`, so this is a rule, not a temporary truce.
     const companion = world.campaign && this.slot > 0;
-    const betrayed = companion && world.campaignAllyHostile(this.slot);
     for (let i = 0; i < world.players.length; i++) {
       if (i === this.slot) continue;
-      if (companion && (i > 0 || !betrayed)) continue;
+      if (companion) continue;
       const p = world.players[i];
       if (!p.active || !p.alive || p.cloakT > 0) continue;
       const dx = p.x - me.x;
