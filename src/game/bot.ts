@@ -1253,7 +1253,9 @@ export class BotBrain {
         const left = me.x - (scanner.x - 28);
         const right = scanner.x + scanner.w + 28 - me.x;
         const weight = 1 - Math.abs(me.y - line) / half;
-        add(left < right ? -1 : 1, 0, 0.55 + weight * 0.45, Math.abs(me.y - line) < 90 * pad);
+        // The warning beat is short. Spend the dash on it even from the far edge of the
+        // platen; walking out at 0.55 speed loses the pass before the head drops.
+        add(left < right ? -1 : 1, 0, 0.8 + weight * 0.2, true);
       }
     }
 
@@ -1350,6 +1352,37 @@ export class BotBrain {
         if (d < reach) {
           add(dx / d, dy / d, traffic.lightActive ? 1 : 0.58, false);
         }
+      }
+    }
+
+    const radar = world.radar;
+    if (radar) {
+      // Aircraft are straight-line passes on the same clock the renderer draws. Read the
+      // next 0.6 s of a pass, not only its current position: at 270-360 u/s the plane is
+      // already on the body by the time a nearest-point test reacts.
+      for (let i = 0; i < radar.planes.length; i++) {
+        const def = radar.planes[i];
+        const lapDur = Math.max(def.period, def.run / def.speed + 1);
+        const pt = world.radarT - def.delay;
+        if (pt < 0) continue;
+        const lap = Math.floor(pt / lapDur);
+        const k = (pt - lap * lapDur) * def.speed;
+        if (k > def.run) continue;
+        const x = radar.cx + Math.cos(def.bearing) * def.entry + Math.cos(def.heading) * k;
+        const y = radar.cy + Math.sin(def.bearing) * def.entry + Math.sin(def.heading) * k;
+        const vx = Math.cos(def.heading) * def.speed;
+        const vy = Math.sin(def.heading) * def.speed;
+        const vm = Math.hypot(vx, vy) || 1;
+        const rx = me.x - x;
+        const ry = me.y - y;
+        const t = Math.max(0, Math.min(0.6, -(rx * vx + ry * vy) / (vm * vm)));
+        const cx = me.x - (x + vx * t);
+        const cy = me.y - (y + vy * t);
+        const d = Math.hypot(cx, cy);
+        const reach = def.radius + PLAYER.radius * me.shrink + 65 * pad;
+        if (d >= reach) continue;
+        const side = rx * -vy + ry * vx >= 0 ? 1 : -1;
+        add((-vy / vm) * side, (vx / vm) * side, 1, t < 0.35 && d < reach * 0.8);
       }
     }
 
@@ -1698,6 +1731,53 @@ export class BotBrain {
       return true;
     }
 
+    // Boss rooms keep feeding adds. Sentries are answered above, but a worm or virus that
+    // reaches the pilot is not part of the boss model and used to be ignored until it dealt
+    // the third segment. Break off while it is close, face it, and shoot; dash away once it
+    // is inside contact range. The boss resumes as soon as the add is gone.
+    let add: any = null;
+    let addD = Infinity;
+    for (const w of world.worms as any[]) {
+      if (!w.active || w.bossKind >= 0) continue;
+      const d = Math.hypot(w.x - me.x, w.y - me.y);
+      if (d < addD) {
+        addD = d;
+        add = w;
+      }
+    }
+    for (const v of world.viruses as any[]) {
+      if (!v.active) continue;
+      const d = Math.hypot(v.x - me.x, v.y - me.y);
+      if (d < addD) {
+        addD = d;
+        add = v;
+      }
+    }
+    for (const e of world.errors as any[]) {
+      if (!e.active) continue;
+      const d = Math.hypot(e.x - me.x, e.y - me.y);
+      if (d < addD) {
+        addD = d;
+        add = e;
+      }
+    }
+    if (add && addD < 215) {
+      const dx = add.x - me.x;
+      const dy = add.y - me.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (addD < 105) {
+        out.mx = -dx / d;
+        out.my = -dy / d;
+        if (((me as any).dashCharges ?? 0) > 0) out.pressed |= ACTION.DASH;
+      } else {
+        out.mx = (dx / d) * 0.55;
+        out.my = (dy / d) * 0.55;
+      }
+      out.held |= ACTION.LOCK | ACTION.BOLT | ACTION.SWING;
+      this.steerBranch = 'boss-add';
+      return true;
+    }
+
     const bSpeed = Math.hypot(boss.vx, boss.vy);
     const rx = me.x - boss.x;
     const ry = me.y - boss.y;
@@ -1837,9 +1917,13 @@ export class BotBrain {
    */
   private closeBodyDash(world: World, me: Player, out: InputFrame): boolean {
     if (((me as any).dashCharges ?? 0) <= 0) return false;
+    // In a boss room, a non-boss worm is an add. Let the boss-add branch fight it;
+    // dashing away from it every cooldown only bought time and kept the boss alive.
+    const hasBoss = world.worms.some((w) => w.active && w.bossKind >= 0);
     for (let i = 0; i < world.worms.length; i++) {
       const w = world.worms[i];
       if (!w.active) continue;
+      if (hasBoss && w.bossKind < 0) continue;
       const dx = me.x - w.x;
       const dy = me.y - w.y;
       const d = Math.hypot(dx, dy) || 1;

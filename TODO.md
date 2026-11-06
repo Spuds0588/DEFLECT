@@ -2,6 +2,17 @@
 
 Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder · `[!]` blocked
 
+## Bot hazard follow-up (2026-11-06, v0.1.215)
+
+- [x] `hazardFrame` predicts AIR TRAFFIC radar aircraft over the next 0.6 s and steers off the future pass, not only the current position.
+- [x] Scanner escape spends a dash from the warning beat even at the platen edge; the previous weight waited too long for the light kits.
+- [x] Boss rooms now clear a nearby non-boss worm, virus or error before returning to the boss; `closeBodyDash` no longer spends every cooldown dashing away from that add.
+- [x] Targeted rerun (IMPOSSIBLE / SIEGE / 420 s): Aim Bot 1P 28/36 unchanged, Pinball 1P 30/36 (+1), Copy Pasta 4P 33/36 (+1), Bad Lag 4P 32/36 unchanged, Compress 4P 36/36. Copy's NETWORK BOARD survival extended from 35 s to 55 s.
+- [x] `npx tsc --noEmit`, `npm run build`, `npm run bench` and `git diff --check` pass.
+- [ ] Full 26-config matrix not rerun for this increment; the last full baseline is 784/936 (v0.1.214).
+- [ ] CAPCOM plate-edge deaths remain; do not keep the floor-line nav change that stalled Compress 4P.
+- [ ] DOCUMENT SCANNER still kills Aim Bot and Pinball before the port dies; SPACE INVADERS and NETWORK BOARD still outlast the light kits.
+
 ## Bot survivability profiles (2026-11-06, v0.1.214)
 
 - [x] Full 26-config baseline: 1P 369/468, 4P 391/468. Only Compress 4P cleared 36/36; scanner, AIRPORT, SMART WATCH, GPU heat and traffic-light deaths were shared.

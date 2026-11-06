@@ -8715,3 +8715,35 @@ DOCUMENT SCANNER, GPU heat and traffic-light circles, not one program-specific k
 
 **Next:** tune DOCUMENT SCANNER port damage/scan pacing, AIR TRAFFIC, SPACE INVADERS and NETWORK BOARD.
 The pilot now survives floor hazards better, but it cannot out-heal a boss or an objective race.
+
+## 2026-11-06 — Bot hazard follow-up (v0.1.215)
+
+**Goal:** continue the bot campaign tuning from the remaining shared failures: scanner deaths, AIR TRAFFIC
+radar passes, and boss-room adds.
+
+**Changes.**
+- AIR TRAFFIC: `hazardFrame` predicts each aircraft's closest pass over the next 0.6 s, steers across the
+  future lane and spends a dash when the pass is already close. Reading only the current aircraft position
+  was too late at 270–360 u/s.
+- DOCUMENT SCANNER: the escape now spends a dash from the warning beat even at the far edge of the platen;
+  the old lower weight let the line drop before the body cleared the bed.
+- Boss rooms: a non-boss worm, virus or error inside 215 units is treated as an add. The pilot faces and
+  fires on it, and dashes away only inside contact range. `closeBodyDash` leaves non-boss worms to that
+  branch once a boss is live; dashing away every cooldown was why the third hit still landed.
+- Tried adding CAPCOM islands to the bot nav grid. The routes existed, but the changed floor-line steering
+  stalled Compress 4P at CAPCOM, so the nav change was reverted. CAPCOM remains a known blocker.
+
+**Verification.** Targeted rerun, same IMPOSSIBLE / SIEGE / 420 s conditions:
+- Aim Bot 1P **28/36** (unchanged, 8 failures); Pinball 1P **30/36** (was 29/36; AIR TRAFFIC no longer
+  kills it); Copy Pasta 4P **33/36** (was 32/36; DOCUMENT SCANNER now clears); Bad Lag 4P **32/36**
+  (unchanged); Compress 4P **36/36** control.
+- Copy Pasta's NETWORK BOARD death moved from 35 s to 55 s, but USER still outlasts the light kit.
+- No full 26-config matrix this increment. The last full baseline remains 784/936 from v0.1.214.
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,214.27 kB JS / 339.27 kB gzip); `npm run bench` clean
+  (8P max projectiles 0.125 ms avg / 0.331 ms p99; gauntlet 0.385 ms avg / 1.108 ms p99, 6.242 ms max);
+  `git diff --check` 0.
+- Version stamps bumped to **0.1.215** in `package.json`, `package-lock.json`, `index.html`, `src/main.ts`
+  and `public/sw.js`.
+
+**Next:** solve the CAPCOM plate objective without changing the shared nav floor, then tune the scanner
+port race and the USER/STARFISH add pressure. Run the full matrix after that branch is stable.

@@ -183,10 +183,11 @@ Content is data, not branches:
 Local bots are not part of the simulation. `BotBrain` reads public state and writes the same `InputFrame`
 a human writes, then `World.step` treats it identically. That keeps bots bound by facing locks, dash
 charges, energy and cooldowns, and it keeps AI cost out of the physics loop. The pilot also reads the
-telegraphed floor hazards — scanner lines, flapping rows, GPU heat skirts, the watch hand and traffic-light
-circles — and runs its escape pass after the objective/boss intent, keeping the current fire/guard intent.
-Program-specific survival profiles give the light kits more clearance and an earlier escape dash; this is
-local-only and never enters a snapshot.
+telegraphed floor hazards — scanner lines, flapping rows, GPU heat skirts, the watch hand, traffic-light
+circles and predicted AIR TRAFFIC radar passes — and runs its escape pass after the objective/boss intent,
+keeping the current fire/guard intent. On a boss node it breaks off to clear a nearby worm, virus or error
+add before returning to the boss. Program-specific survival profiles give the light kits more clearance and
+an earlier escape dash; this is local-only and never enters a snapshot.
 
 ### Code map
 

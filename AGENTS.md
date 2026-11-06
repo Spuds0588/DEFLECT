@@ -250,14 +250,19 @@ the shield in the attract demo. Close shots are swatted; bombs, mines and bug wa
 narrow the bot threat filter back to the player bolt type.
 
 Bots also read the **telegraphed floor hazards**: the scanner line and its warning beat, flapping AIRPORT
-rows, GPU heat skirts, the SMART WATCH hand and live TRAFFIC LIGHT circles. `BotBrain.hazardFrame` runs
+rows, GPU heat skirts, the SMART WATCH hand, live TRAFFIC LIGHT circles and the next 0.6 s of AIR TRAFFIC
+radar passes. `BotBrain.hazardFrame` runs
 after the objective/boss intent and before `floorSweep`, so a hazard cannot be skipped just because a
 combat branch returned early. It changes footing and may spend a dash, but it **keeps the current held /
 pressed intent**; the scanner regression came from clearing fire and guard during the escape, which made
 the pilot leave the port, lose damage, and take another scan pass. Per-program `SurvivalProfile`s widen
 the hazard margin and lower the dash threshold for the light kits: Aim Bot `1.4`, Bad Lag `1.25`, Pinball
 `1.15`, while six-segment Compress and Atomize stay conservative at `0.9`. These are local-only pilot
-profiles and never enter `Snapshot`; do not add health segments to solve a positioning problem.
+profiles and never enter `Snapshot`; do not add health segments to solve a positioning problem. On a boss node, a non-boss worm, virus or
+error within 215 units is an add: the pilot breaks off, faces it and fires, and dashes only when it is
+inside contact range. `closeBodyDash` must leave non-boss worms to that add branch once a boss is live;
+dashing away from the add every cooldown only postponed the third hit. This remains local-only pilot
+behavior and never enters `Snapshot`.
 
 ### D7 — Networking transport (decided 2026-10-28)
 `peerjs` with PeerJS's public cloud broker for v1 and BinaryPack serialization of nested numeric arrays.
