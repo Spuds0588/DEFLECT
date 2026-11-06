@@ -76,7 +76,9 @@ cards, the SMART WATCH hand, active TRAFFIC LIGHT circles and predicted AIR TRAF
 Aim Bot, Bad Lag and Pinball give those hazards the widest berth. In a boss room a bot breaks off to clear
 a nearby worm, virus or error add before returning to the boss. Against staged bosses, a bot holds the
 announced Mega Worm lane from the side and a floor station under the Storm Cloud; it does not chase either
-body off the map. They are local-only test opponents; they do not occupy multiplayer room slots.
+body off the map. On CAPCOM a bot shoots the port from an inward plate station instead of standing on the
+live spawner, and on DOCUMENT SCANNER it walks around the platen rather than back through the read line.
+They are local-only test opponents; they do not occupy multiplayer room slots.
 
 ### Gauntlet
 

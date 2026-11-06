@@ -264,6 +264,17 @@ inside contact range. `closeBodyDash` must leave non-boss worms to that add bran
 dashing away from the add every cooldown only postponed the third hit. This remains local-only pilot
 behavior and never enters `Snapshot`.
 
+**Campaign objective routing is local (2026-11-06).** Two arena shapes need a route the shared nav floor
+does not model. On CAPCOM, a port is approached from an **inward station** toward the containing island's
+centre, not a radial orbit around the port: the fallback port is 180 units from two plate edges, so a
+160-unit orbit crosses the trench. On DOCUMENT SCANNER, the objective circles the platen to the nearest
+above/below lane, crosses there and approaches from the port's side; walking straight back in re-entered
+the scan line after every sidestep. A virus inside 150 units also outranks the port shot; distance-only
+worm and sentry accounting let a virus spend the last segment at the closed port. These are local pilot
+rules. Do not solve CAPCOM by adding its islands to the shared nav floor: that change existed and stalled
+the Compress 4P control. CAPCOM light kits still lose the worm fight at the port; the inward station does
+not make them a release-gate configuration.
+
 ### D7 — Networking transport (decided 2026-10-28)
 `peerjs` with PeerJS's public cloud broker for v1 and BinaryPack serialization of nested numeric arrays.
 No JSON. Room code = 4 base-32 characters → peer id `defl-arena-v1-<CODE>`. Self-hosting the broker and

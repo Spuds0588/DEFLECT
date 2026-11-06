@@ -1518,9 +1518,62 @@ export class BotBrain {
       if (s2.kind >= 4 && s2.kind <= 6 && s2.shapeState < 2) continue;
       threatD = Math.min(threatD, Math.hypot(s2.x - me.x, s2.y - me.y));
     }
+    // A virus already on the port is not a distant spawn: it can spend the last segment
+    // while the objective keeps walking into it. Stop firing at the port only for a
+    // genuinely close virus; a wider radius stalled plate-arena clears.
+    let virusD = Infinity;
+    for (const v of world.viruses as any[]) {
+      if (!v.active) continue;
+      virusD = Math.min(virusD, Math.hypot(v.x - me.x, v.y - me.y));
+    }
     const target = (b: any) => {
       const cx = b.x + b.w * 0.5; const cy = b.y + b.h * 0.5;
       const dx = cx - me.x; const dy = cy - me.y; const d = Math.hypot(dx, dy) || 1;
+      // The scanner bed cuts the only direct route on READ LINE. Circle the platen
+      // rather than trading the port shot for a scan pass every cycle.
+      const scanner = this.scannerWaypoint(me, cx, cy, world.arena);
+      if (scanner) {
+        const sx = scanner.x - me.x;
+        const sy = scanner.y - me.y;
+        const sd = Math.hypot(sx, sy) || 1;
+        out.mx = sx / sd;
+        out.my = sy / sd;
+        out.held |= ACTION.BOLT;
+        this.steerBranch = 'port-scanner';
+        return;
+      }
+      // CAPCOM's fallback port sits on a live spawner beside the central trench. Walking
+      // into it put the pilot inside the worm pack that had just emerged, and a radial
+      // orbit at 160 crossed the plate edge. Hold an inward station toward the plate
+      // centre instead, where the port is still inside bolt range and the floor is safe.
+      if (world.arena.islands && d < 300) {
+        const islands = world.arena.islands;
+        let island: Rect | null = null;
+        for (const r of islands) {
+          if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) {
+            island = r;
+            break;
+          }
+        }
+        const icx = island ? island.x + island.w * 0.5 : (world.arena.bounds.left + world.arena.bounds.right) * 0.5;
+        const icy = island ? island.y + island.h * 0.5 : (world.arena.bounds.top + world.arena.bounds.bottom) * 0.5;
+        const ix = icx - cx;
+        const iy = icy - cy;
+        const il = Math.hypot(ix, iy) || 1;
+        const sx = cx + (ix / il) * 190;
+        const sy = cy + (iy / il) * 190;
+        const qx = sx - me.x;
+        const qy = sy - me.y;
+        const qd = Math.hypot(qx, qy) || 1;
+        if (qd > 18) {
+          out.mx = qx / qd;
+          out.my = qy / qd;
+        }
+        out.held |= ACTION.LOCK | ACTION.BOLT;
+        if (threatD < 340) out.held |= ACTION.SWING;
+        this.steerBranch = 'port-standoff';
+        return;
+      }
       // Keep a non-zero move vector all the way in. One-stick facing comes from movement:
       // stopping at a standoff let `floorSweep` substitute a nearest-floor step, which turned
       // the body away from the feed and sent every bolt past it. Pressing the port keeps the
@@ -1557,7 +1610,7 @@ export class BotBrain {
       }
       return;
     }
-    if (threatD < 210) return;
+    if (threatD < 210 || virusD < 150) return;
     let port: any = null; let pd = Infinity;
     for (const b of world.props as any[]) {
       if (!b.active || !b.portal || b.portalExit) continue;
@@ -2250,6 +2303,41 @@ export class BotBrain {
     const gaps = arena.traverse?.chasms;
     if (!gaps) return false;
     return this.firstBlocking(me.x, me.y, tx, ty, gaps, PLAYER.radius + 2) >= 0;
+  }
+
+  /**
+   * A scanner bed is not a wall and the port objective used to walk straight back into
+   * it after every sidestep. Walk to the nearest above/below lane, cross there, then
+   * approach the port from its own side of the platen.
+   */
+  private scannerWaypoint(
+    me: Player,
+    tx: number,
+    ty: number,
+    arena: ArenaDef,
+  ): { x: number; y: number } | null {
+    const sc = arena.scanner;
+    if (!sc) return null;
+    if (this.firstBlocking(me.x, me.y, tx, ty, [sc], PLAYER.radius + 24) < 0) return null;
+    const rightSide = tx >= sc.x + sc.w * 0.5;
+    const laneY = me.y < sc.y + sc.h * 0.5
+      ? sc.y - PLAYER.radius - 28
+      : sc.y + sc.h + PLAYER.radius + 28;
+    const outerX = rightSide
+      ? sc.x + sc.w + PLAYER.radius + 28
+      : sc.x - PLAYER.radius - 28;
+    const innerX = rightSide
+      ? sc.x - PLAYER.radius - 28
+      : sc.x + sc.w + PLAYER.radius + 28;
+    // On the port's side and clear of the bed: slide vertically outside it.
+    if (rightSide ? me.x >= outerX - 6 : me.x <= outerX + 6) {
+      if (Math.abs(me.y - ty) > 26) return { x: outerX, y: ty };
+      return null;
+    }
+    // Still on the entry side: go around the nearest horizontal edge, then cross
+    // above/below the bed to the port-side lane.
+    if (Math.abs(me.y - laneY) < 42) return { x: outerX, y: laneY };
+    return { x: innerX, y: laneY };
   }
 
   /** Returns the index of the first solid crossed by a padded line, or -1. */

@@ -187,7 +187,11 @@ telegraphed floor hazards — scanner lines, flapping rows, GPU heat skirts, the
 circles and predicted AIR TRAFFIC radar passes — and runs its escape pass after the objective/boss intent,
 keeping the current fire/guard intent. On a boss node it breaks off to clear a nearby worm, virus or error
 add before returning to the boss. Program-specific survival profiles give the light kits more clearance and
-an earlier escape dash; this is local-only and never enters a snapshot.
+an earlier escape dash; this is local-only and never enters a snapshot. Campaign objective routing is also
+local: on CAPCOM the pilot fires at the port from an inward plate station (a radial orbit can cross the
+trench), and on DOCUMENT SCANNER it circles the platen to a clear above/below lane instead of walking back
+through the scan line. A virus inside 150 units temporarily outranks the port shot, because the old
+worm/sentry-only threat distance let a virus finish the last segment at the port.
 
 ### Code map
 

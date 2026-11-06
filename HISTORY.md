@@ -8747,3 +8747,43 @@ radar passes, and boss-room adds.
 
 **Next:** solve the CAPCOM plate objective without changing the shared nav floor, then tune the scanner
 port race and the USER/STARFISH add pressure. Run the full matrix after that branch is stable.
+
+## 2026-11-06 — Objective routing and scanner port survival (v0.1.216)
+
+**Goal:** finish the remaining route failures called out after v0.1.215: DOCUMENT SCANNER port survival,
+CAPCOM plate routing, and the SPACE INVADERS / NETWORK BOARD boss pressure.
+
+**Changes.**
+- DOCUMENT SCANNER: `BotBrain.scannerWaypoint` reads the platen as a route obstruction. It goes to the
+  nearest above/below lane, crosses outside the bed, then approaches the port from its own side. The old
+  objective walked straight back into the scan line after each `hazardFrame` sidestep, so the pilot took a
+  pass every cycle even though it was reading the warning.
+- The port objective now stops for an active virus inside 150 units. Worm and sentry distance alone let
+  Aim Bot keep firing at an already-closed port while a virus spent its last segment. A wider radius was
+  previously measured as a Compress 4P CAPCOM stall; keep this threshold local.
+- CAPCOM: a port on a plate arena is approached from an inward station toward the containing island's
+  centre. The fallback port is 180 units from the top and right edges; the first 160-unit radial orbit
+  crossed the central trench, and the bridge waypoint also produced an off-plate death. The inward station
+  is the only version that kept the Compress control green.
+- Tried a STARFISH arm-station and a below-USER station. Both were measured and reverted: STARFISH still
+  died and broke the Compress 4P control; the USER station lost the single-level run the old branch cleared.
+  No unproven boss tuning remains in the tree.
+
+**Verification.**
+- DOCUMENT SCANNER 1P: Pinball clears in 20.8 s (was a death at 18.7 s); Aim Bot clears in 23.8 s (was a
+  death at 23.7 s). Compress 4P scanner control clears in 21.4 s with no deaths.
+- CAPCOM 1P still fails: Aim Bot dies at 8.0 s and Pinball at 11.6 s, before the port closes. The deaths
+  are worm-pack combat, not the plate route. Compress 4P CAPCOM clears in 30.1 s.
+- Full release gate, Compress / SIEGE / three companions: **36/36**, zero deaths. CAPCOM 30.1 s,
+  DOCUMENT SCANNER 21.4 s, SPACE INVADERS 45.5 s, NETWORK BOARD 85.8 s.
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,215.36 kB JS / 339.63 kB gzip); `npm run bench` clean
+  (8P max projectiles 0.455 ms avg / 6.254 ms p99 / 20.466 ms max; gauntlet max 1.016 ms avg /
+  8.780 ms p99 / 13.666 ms max); `git diff --check` 0.
+- Version stamps bumped to **0.1.216** in `package.json`, `package-lock.json`, `index.html`, `src/main.ts`
+  and `public/sw.js`.
+
+**Decisions:** plate and scanner routing stays in `BotBrain`; the shared nav floor is unchanged. CAPCOM
+light kits and the two boss fights remain tuning work, not shipped claims.
+
+**Next:** reduce the CAPCOM worm pressure without changing the plate floor, then tune STARFISH arm priority
+and USER add pressure with the full Compress gate as the control. Rerun the 26-config matrix after that.
