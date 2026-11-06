@@ -274,9 +274,21 @@ worm and sentry accounting let a virus spend the last segment at the closed port
 rules. CAPCOM's islands and authored bridges are baked into `ArenaNav`, `lineOffFloor` rejects a straight
 objective line across a trench, and the island branch of `closeBodyDash` scores an emergency dash back onto
 a plate; non-island arenas keep the shipped straight-away dash. This island pass is allowed only while the
-Compress 4P gate stays green (36/36, CAPCOM 36.0 s on v0.1.217). CAPCOM Pinball 1P clears in 83.3 s; Aim
-Bot still loses the worm fight at the port (10.9 s), so the light kits are not a release-gate
-configuration.
+Compress 4P gate stays green (36/36, CAPCOM 36.0 s on v0.1.218). CAPCOM Pinball 1P clears in 83.3 s and
+Aim Bot 1P clears in 96.6 s (1 HP, 18 kills, port down at 4.8 s), so both light kits clear the node; they
+are not part of the release-gate configuration.
+
+**Aim Bot's CAPCOM port line is Aim-only (2026-11-06).** At the port station, Aim Bot opens with its
+six-mark volley when at least three bodies are visible in the cone. The heavy is edge-started, so the
+branch supplies `pressed` for the first frame as well as `held`; a held bit alone never charges. Once the
+charge is near full it sets `volleyHoldT` and retreats away from the port for `volleyTelegraph + 0.25 s`.
+The marks re-check line of sight from the owner at impact, so walking toward the gimbal cancelled the
+volley in earlier runs. After the volley it taps the sight for a three-rail clip on the feed, and at one
+health it dashes away from the nearest worm/virus inside 90 units, or lashes if the dash is spent. A worm
+inside 120 or a virus inside 100 is fought at the station. Every one of these branches is gated on
+`PROGRAM_ID.AIMBOT`; the non-Aim island break-off stays at 300 and the flat-arena break-off at 210. Do not
+generalize the Aim port line: it was measured at 157.8 s on the Compress CAPCOM gate before the gate was
+restored to 36.0 s. All of it is local pilot state and never enters `Snapshot`.
 
 ### D7 — Networking transport (decided 2026-10-28)
 `peerjs` with PeerJS's public cloud broker for v1 and BinaryPack serialization of nested numeric arrays.

@@ -8817,3 +8817,34 @@ open combat tuning; do not claim both light kits clear and do not buff health fo
 
 **Next:** reduce the CAPCOM worm pressure for Aim Bot without changing the island floor, then retune
 STARFISH/USER light kits and rerun the 26-config matrix.
+
+## 2026-11-06 — Aim Bot CAPCOM port clear (v0.1.218)
+
+**Goal:** clear CAPCOM with Aim Bot 1P without touching player health or moving the Compress release gate.
+
+**Changes.**
+- Aim Bot's port line starts the six-mark volley with an edge `CANDLE` press; the old objective supplied
+  only `held`, so the heavy never charged. A short retreat during the 0.65 s telegraph keeps the
+  impact-time line open, because the marks re-check cover from the owner's current position.
+- After the volley, Aim Bot taps the sight for a three-rail clip on the 18 HP feed. Its close defense is
+  120 units for a worm and 100 for a virus, fought at the inward plate station.
+- At one segment, Aim Bot dashes away from the nearest worm or virus inside 90 units, or uses the
+  180-degree lash when the dash is spent.
+- All new branches are gated on `PROGRAM_ID.AIMBOT`; the non-Aim island break-off stays at 300 and the
+  flat-arena break-off at 210. Generalizing the port line took the Compress CAPCOM gate to 157.8 s.
+
+**Verification.**
+- Aim Bot 1P CAPCOM: **CLEAR 96.6 s**, 1 HP, 18 kills, port closed at 4.8 s. Three consecutive tracked
+  probe runs were identical.
+- Full release gate, Compress / SIEGE / three companions: **36/36**, zero deaths, CAPCOM **36.0 s**,
+  full 6 HP, 8 kills.
+- `npx tsc --noEmit` 0; `npm run build` 0 (1,219.60 kB JS / 340.84 kB gzip); `npm run bench` clean
+  (8P max projectiles 0.210 ms avg / 0.593 ms p99 / 5.428 ms max; bot swarm 0.408 ms avg / 2.933 ms p99 /
+  8.353 ms max; gauntlet 0.552 ms avg / 4.532 ms p99 / 8.405 ms max); `git diff --check` 0.
+- Version stamps bumped to **0.1.218** in `package.json`, `package-lock.json`, `index.html`,
+  `src/main.ts` and `public/sw.js`.
+
+**Decisions:** the Aim port line is local pilot behavior, not a shared route rule. Do not generalize it
+and do not add health segments for positioning.
+
+**Next:** tune STARFISH and USER for the light kits, then rerun the 26-config matrix.

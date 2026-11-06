@@ -178,6 +178,8 @@ export class BotBrain {
   private strafeT = 0;
   /** Frames of held guard after spotting an incoming bolt. */
   private guardHoldT = 0;
+  /** Stay on the volley firing spot until the telegraphed marks resolve. */
+  private volleyHoldT = 0;
   /** Local pacing so the bot does not turtle behind the shield every shot. */
   private guardCd = 0;
   /** Remaining seconds of a held overcharge beam. */
@@ -286,6 +288,7 @@ export class BotBrain {
     this.pathTimer = Math.max(0, this.pathTimer - dt);
     this.guardCd = Math.max(0, this.guardCd - dt);
     this.guardHoldT = Math.max(0, this.guardHoldT - dt);
+    this.volleyHoldT = Math.max(0, this.volleyHoldT - dt);
     this.beamHoldT = Math.max(0, this.beamHoldT - dt);
     this.avoidT = Math.max(0, this.avoidT - dt);
     this.routeHoldT = Math.max(0, this.routeHoldT - dt);
@@ -1511,8 +1514,66 @@ export class BotBrain {
   /** Assault objective: close every live ingress port, then stand in the party port. */
   private objectiveFrame(world: World, me: Player, out: InputFrame): void {
     if (world.campaignPhase !== 'assault' || world.portTotal <= 0) return;
+    // One segment left is not a trading budget. A body already inside contact range
+    // outranks the port: leave first, or parry the lunge if the dash is spent.
+    if (me.program === PROGRAM_ID.AIMBOT && me.hp <= 1) {
+      let ex = 0;
+      let ey = 0;
+      let ed = Infinity;
+      for (const w of world.worms as any[]) {
+        if (!w.active || w.hp <= 0) continue;
+        const d = Math.hypot(w.x - me.x, w.y - me.y);
+        if (d < ed) {
+          ed = d;
+          ex = w.x;
+          ey = w.y;
+        }
+      }
+      for (const v of world.viruses as any[]) {
+        if (!v.active) continue;
+        const d = Math.hypot(v.x - me.x, v.y - me.y);
+        if (d < ed) {
+          ed = d;
+          ex = v.x;
+          ey = v.y;
+        }
+      }
+      if (ed < 90) {
+        const ux = (me.x - ex) / (ed || 1);
+        const uy = (me.y - ey) / (ed || 1);
+        out.mx = ux;
+        out.my = uy;
+        if (((me as any).dashCharges ?? 0) > 0) {
+          out.pressed |= ACTION.DASH;
+        } else if (
+          ed < PLAYER.swingReach * me.meleeReachMult + 12 &&
+          me.swingPhase === 0 &&
+          this.swingCd <= 0
+        ) {
+          // No dash: face the body and use the 180-degree lash as the parry.
+          out.mx = -ux;
+          out.my = -uy;
+          out.pressed |= ACTION.SWING;
+          this.swingCd = 0.42;
+        }
+        this.steerBranch = 'low-hp-escape';
+        return;
+      }
+    }
     let threatD = Infinity;
-    for (const w of world.worms as any[]) if (w.active && w.hp > 0) threatD = Math.min(threatD, Math.hypot(w.x - me.x, w.y - me.y));
+    let wormX = 0;
+    let wormY = 0;
+    let wormD = Infinity;
+    for (const w of world.worms as any[]) {
+      if (!w.active || w.hp <= 0) continue;
+      const d = Math.hypot(w.x - me.x, w.y - me.y);
+      if (d < wormD) {
+        wormD = d;
+        wormX = w.x;
+        wormY = w.y;
+      }
+      threatD = Math.min(threatD, d);
+    }
     for (const s2 of world.sentries as any[]) {
       if (!s2.active) continue;
       if (s2.kind >= 4 && s2.kind <= 6 && s2.shapeState < 2) continue;
@@ -1521,10 +1582,17 @@ export class BotBrain {
     // A virus already on the port is not a distant spawn: it can spend the last segment
     // while the objective keeps walking into it. Stop firing at the port only for a
     // genuinely close virus; a wider radius stalled plate-arena clears.
+    let virusX = 0;
+    let virusY = 0;
     let virusD = Infinity;
     for (const v of world.viruses as any[]) {
       if (!v.active) continue;
-      virusD = Math.min(virusD, Math.hypot(v.x - me.x, v.y - me.y));
+      const d = Math.hypot(v.x - me.x, v.y - me.y);
+      if (d < virusD) {
+        virusD = d;
+        virusX = v.x;
+        virusY = v.y;
+      }
     }
     const target = (b: any) => {
       const cx = b.x + b.w * 0.5; const cy = b.y + b.h * 0.5;
@@ -1547,6 +1615,76 @@ export class BotBrain {
       // orbit at 160 crossed the plate edge. Hold an inward station toward the plate
       // centre instead, where the port is still inside bolt range and the floor is safe.
       if (world.arena.islands && d < 300) {
+        // Aim Bot's volley is the kit's answer to a port squad: six marked bodies at
+        // once, before the 2.8 s rail cycle is buried. Pick the heading that covers the
+        // most nearby bodies so the narrow 0.44 rad cone is not spent on one target.
+        if (
+          me.program === PROGRAM_ID.AIMBOT &&
+          me.laserCd <= 0 &&
+          me.aimClip <= 0 &&
+          me.energy >= AIMBOT.volleyCost
+        ) {
+          let bestCount = 0;
+          let bestAngle = 0;
+          const consider = (x: number, y: number): void => {
+            const dx = x - me.x;
+            const dy = y - me.y;
+            const dd = Math.hypot(dx, dy);
+            if (dd < 1 || dd > 650) return;
+            const a = Math.atan2(dy, dx);
+            const n = this.volleyCount(world, me, a);
+            if (n > bestCount) {
+              bestCount = n;
+              bestAngle = a;
+            }
+          };
+          for (const w of world.worms as any[]) if (w.active && w.hp > 0) consider(w.x, w.y);
+          for (const v of world.viruses as any[]) if (v.active) consider(v.x, v.y);
+          for (const s2 of world.sentries as any[]) if (s2.active) consider(s2.x, s2.y);
+          for (const e2 of world.errors as any[]) if (e2.active) consider(e2.x, e2.y);
+          if (me.laserChargeT > 0 || bestCount >= 3) {
+            out.mx = Math.cos(bestAngle) * 0.16;
+            out.my = Math.sin(bestAngle) * 0.16;
+            out.held |= ACTION.CANDLE;
+            // The heavy is edge-started; a held bit alone never begins the charge.
+            if (me.laserChargeT <= 0) out.pressed |= ACTION.CANDLE;
+            // Do not walk behind cover while the marks are still in the air: the
+            // telegraph checks the owner's line at impact, not at cast.
+            if (me.laserChargeT >= AIMBOT.volleyChargeTime - 0.08) {
+              this.volleyHoldT = AIMBOT.volleyTelegraph + 0.25;
+            }
+            this.steerBranch = 'port-volley';
+            return;
+          }
+        }
+        if (this.volleyHoldT > 0) {
+          // Back away from the port while the marks resolve. Standing beside the gimbal
+          // put cover between the owner and the marked bodies at impact time; the first
+          // successful volley only landed because a dash had already opened the line.
+          out.mx = -dx / d;
+          out.my = -dy / d;
+          out.held |= ACTION.SWING;
+          this.steerBranch = 'port-volley-hold';
+          return;
+        }
+        // Once the opening cluster is marked and the volley is on cooldown, one tap of
+        // the sight loads three rails. That is 15 damage on the feed before the ordinary
+        // 2.8 s reload, which is the difference between chipping the port and breaking it.
+        if (
+          me.program === PROGRAM_ID.AIMBOT &&
+          me.aimSightT <= 0 &&
+          me.aimClip <= 0 &&
+          me.bugCd <= 0 &&
+          me.energy >= BUG.cost &&
+          me.laserChargeT <= 0 &&
+          !this.lineBlocked(me, cx, cy, world.arena.pillars)
+        ) {
+          out.mx = (dx / d) * 0.12;
+          out.my = (dy / d) * 0.12;
+          out.pressed |= ACTION.CANDLE;
+          this.steerBranch = 'port-sight';
+          return;
+        }
         const islands = world.arena.islands;
         let island: Rect | null = null;
         for (const r of islands) {
@@ -1565,6 +1703,31 @@ export class BotBrain {
         const qx = sx - me.x;
         const qy = sy - me.y;
         const qd = Math.hypot(qx, qy) || 1;
+        // A worm that reaches the station is inside the 180-degree guard arc only
+        // if the pilot faces it. Firing at the port with the lock held left the
+        // blade pointed the wrong way, and the 2.8-second rail cycle could not
+        // answer three bodies. Keep the station, face the closest body with a
+        // small movement vector, and use the knife between rail rounds.
+        const closeVirus = virusD < 100;
+        if (me.program === PROGRAM_ID.AIMBOT && (wormD < 120 || closeVirus)) {
+          const useWorm = wormD <= virusD;
+          const tx = useWorm ? wormX : virusX;
+          const ty = useWorm ? wormY : virusY;
+          const td = Math.hypot(tx - me.x, ty - me.y) || 1;
+          out.mx = ((tx - me.x) / td) * 0.16;
+          out.my = ((ty - me.y) / td) * 0.16;
+          out.held |= ACTION.BOLT;
+          if (td < PLAYER.swingReach * me.meleeReachMult + 20) {
+            if (me.swingPhase === 0 && this.swingCd <= 0) {
+              out.pressed |= ACTION.SWING;
+              this.swingCd = 0.42;
+            } else {
+              out.held |= ACTION.SWING;
+            }
+          }
+          this.steerBranch = 'port-close';
+          return;
+        }
         if (qd > 18) {
           out.mx = qx / qd;
           out.my = qy / qd;
@@ -1611,9 +1774,16 @@ export class BotBrain {
       }
       return;
     }
-    // CAPCOM's worm squad starts on the port plate; break off at the lunge range there.
-    // Every other arena keeps the shipped 210 threshold.
-    if (threatD < (world.arena.islands ? 300 : 210) || virusD < 150) return;
+    // Aim Bot holds the CAPCOM station instead of breaking off at the shipped island
+    // lunge range; every other program keeps the original threshold so the Compress
+    // release gate is unchanged.
+    if (
+      me.program === PROGRAM_ID.AIMBOT
+        ? (!world.arena.islands && threatD < 210) || virusD < 150
+        : threatD < (world.arena.islands ? 300 : 210) || virusD < 150
+    ) {
+      return;
+    }
     let port: any = null; let pd = Infinity;
     for (const b of world.props as any[]) {
       if (!b.active || !b.portal || b.portalExit) continue;
@@ -1622,6 +1792,30 @@ export class BotBrain {
       if (d < pd) { pd = d; port = b; }
     }
     if (port) target(port);
+  }
+
+  /** Live bodies an Aim Bot volley would mark from one heading at port range. */
+  private volleyCount(world: World, me: Player, angle: number): number {
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+    const cosHalf = Math.cos(AIMBOT.volleyHalfAngle);
+    const range2 = 650 * 650;
+    let count = 0;
+    const consider = (x: number, y: number): void => {
+      const dx = x - me.x;
+      const dy = y - me.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < 1 || d2 > range2) return;
+      const d = Math.sqrt(d2);
+      if ((dx * ux + dy * uy) / d < cosHalf) return;
+      if (this.lineBlocked(me, x, y, world.arena.pillars)) return;
+      count++;
+    };
+    for (const w of world.worms as any[]) if (w.active && w.hp > 0) consider(w.x, w.y);
+    for (const v of world.viruses as any[]) if (v.active) consider(v.x, v.y);
+    for (const s2 of world.sentries as any[]) if (s2.active) consider(s2.x, s2.y);
+    for (const e2 of world.errors as any[]) if (e2.active) consider(e2.x, e2.y);
+    return count;
   }
 
   private bossFrame(world: World, me: Player, out: InputFrame): void {

@@ -192,7 +192,10 @@ local: on CAPCOM the pilot fires at the port from an inward plate station (a rad
 trench), routes over the authored bridges because the nav floor bakes the islands, and scores its emergency
 dash back onto a plate instead of straight into a gap; on DOCUMENT SCANNER it circles the platen to a clear
 above/below lane instead of walking back through the scan line. A virus inside 150 units temporarily outranks the port shot, because the old
-worm/sentry-only threat distance let a virus finish the last segment at the port.
+worm/sentry-only threat distance let a virus finish the last segment at the port. Aim Bot's CAPCOM line is its own: it opens with the six-mark
+volley, backs away while the marks resolve so cover cannot cancel them, then taps the sight for a three-rail
+clip on the feed; at one segment it also dashes away from a body inside contact range. Those branches are
+Aim-only, so the shared Compress port route and its release time are unchanged.
 
 ### Code map
 

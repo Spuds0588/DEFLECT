@@ -9,9 +9,19 @@ Status legend: `[ ]` not started · `[x]` done · `[~]` partial / placeholder ·
 - [x] CAPCOM: the pilot fires from an inward station toward the containing island's centre, routes over the authored bridges, and only dashes to a scored on-plate endpoint. Compress 4P CAPCOM clears in 36.0 s.
 - [x] Compress / SIEGE / three companions release gate: **36/36**, zero deaths. CAPCOM 36.0 s, DOCUMENT SCANNER 21.4 s, SPACE INVADERS 45.5 s, NETWORK BOARD 85.8 s.
 - [x] DOCUMENT SCANNER Compress 4P control: 21.4 s, no deaths.
-- [~] CAPCOM light kits: Pinball 1P now clears in 83.3 s (2 HP, 33 kills). Aim Bot 1P still dies at 10.9 s to the worm pack at the port, before the port closes. This remains combat pressure, not the plate route; do not weaken the island floor checks or buff player health.
+- [x] CAPCOM light kits: Pinball 1P clears in 83.3 s (2 HP, 33 kills); Aim Bot 1P clears in 96.6 s (1 HP, 18 kills, port down at 4.8 s). The Aim line is Aim-only; the Compress CAPCOM gate stays at 36.0 s. Do not weaken the island floor checks or buff player health.
 - [ ] SPACE INVADERS STARFISH and NETWORK BOARD USER still outlast the light kits. The arm-station and below-USER experiments were measured and reverted; do not ship either without a green Compress control.
 - [ ] Full 26-config matrix not rerun for this increment; the last full baseline is 784/936 (v0.1.214).
+
+## Aim Bot CAPCOM port clear (2026-11-06, v0.1.218)
+
+- [x] Aim Bot 1P CAPCOM: **CLEAR 96.6 s**, 1 HP, 18 kills, port closed at 4.8 s. Three consecutive tracked-probe runs are identical.
+- [x] The six-mark volley is edge-started with a `CANDLE` press; a retreat during the 0.65 s telegraph keeps the impact-time line open, then the sight's three-rail clip breaks the 18 HP port.
+- [x] At one segment, Aim Bot dashes away from a worm or virus inside 90 units, or uses the lash when the dash is spent.
+- [x] Compress / SIEGE / three companions release gate: **36/36**, zero deaths, CAPCOM **36.0 s** (full 6 HP, 8 kills).
+- [x] `npx tsc --noEmit`, `npm run build`, `npm run bench` and `git diff --check` pass.
+- [ ] SPACE INVADERS STARFISH and NETWORK BOARD USER still outlast the light kits.
+- [ ] Full 26-config matrix still not rerun; last baseline 784/936 (v0.1.214).
 
 ## Bot hazard follow-up (2026-11-06, v0.1.215)
 

@@ -78,7 +78,10 @@ a nearby worm, virus or error add before returning to the boss. Against staged b
 announced Mega Worm lane from the side and a floor station under the Storm Cloud; it does not chase either
 body off the map. On CAPCOM a bot shoots the port from an inward plate station instead of standing on the
 live spawner, crosses by the bridges rather than cutting over a trench, and on DOCUMENT SCANNER it walks
-around the platen rather than back through the read line.
+around the platen rather than back through the read line. As Aim Bot on CAPCOM, it opens with the six-mark
+volley, backs off while the crosshairs resolve, then taps the sight for a three-rail clip on the port; at
+one segment it dashes away from a body that reaches contact range. Those are Aim Bot pilot rules, not a
+change to the shared port route.
 They are local-only test opponents; they do not occupy multiplayer room slots.
 
 ### Gauntlet
